@@ -14,6 +14,14 @@ enum class SyncOperationType {
 }
 
 @Serializable
+enum class SyncOperationStatus {
+    APPLIED,
+    CONFLICT,
+    PENDING_APPROVAL,
+    REJECTED
+}
+
+@Serializable
 data class SyncOperationDto(
     val operationId: String,
     val deviceId: String,
@@ -24,6 +32,58 @@ data class SyncOperationDto(
     val baseRevision: Long? = null,
     val payloadJson: String = "{}",
     val createdAt: Long
+)
+
+@Serializable
+data class SyncOperationResultDto(
+    val operationId: String,
+    val deviceId: String,
+    val status: SyncOperationStatus,
+    val canonicalSequence: Long? = null,
+    val targetItemId: String? = null,
+    val resultingRevision: Long? = null,
+    val resultCode: String,
+    val resultMessage: String? = null,
+    val conflictId: String? = null,
+    val approvalId: String? = null
+)
+
+@Serializable
+data class AddItemPayloadDto(
+    val itemId: String,
+    val canonicalName: String,
+    val displayName: String,
+    val brand: String? = null,
+    val category: String,
+    val storageLocation: String,
+    val quantity: Double? = null,
+    val quantityUnit: String? = null,
+    val barcode: String? = null,
+    val notes: String? = null
+)
+
+@Serializable
+data class EditItemPayloadDto(
+    val displayName: String? = null,
+    val brand: String? = null,
+    val category: String? = null,
+    val storageLocation: String? = null,
+    val notes: String? = null
+)
+
+@Serializable
+data class SetQuantityPayloadDto(
+    val absoluteQuantity: Double
+)
+
+@Serializable
+data class AdjustQuantityPayloadDto(
+    val delta: Double
+)
+
+@Serializable
+data class RequestDiscardPayloadDto(
+    val reason: String? = null
 )
 
 @Serializable
