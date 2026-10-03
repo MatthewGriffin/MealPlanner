@@ -26,6 +26,7 @@ import com.example.chatgpt_mealplanner.sync.contract.SyncOperationDto
 import com.example.chatgpt_mealplanner.sync.contract.SyncOperationResultDto
 import com.example.chatgpt_mealplanner.sync.contract.SyncOperationStatus
 import com.example.chatgpt_mealplanner.sync.contract.SyncOperationType
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.util.UUID

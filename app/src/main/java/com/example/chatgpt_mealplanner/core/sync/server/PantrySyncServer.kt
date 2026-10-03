@@ -1,7 +1,9 @@
 package com.example.chatgpt_mealplanner.core.sync.server
 
 import com.example.chatgpt_mealplanner.core.sync.HouseholdIdentityManager
+import com.example.chatgpt_mealplanner.core.sync.engine.MainCanonicalSyncEngine
 import com.example.chatgpt_mealplanner.sync.contract.SYNC_PROTOCOL_VERSION
+import com.example.chatgpt_mealplanner.sync.contract.SyncOperationDto
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.call
@@ -15,7 +17,6 @@ import io.ktor.server.engine.sslConnector
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.request.receiveText
 import io.ktor.server.response.respond
-import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
@@ -31,7 +32,8 @@ import javax.inject.Singleton
 @Singleton
 open class PantrySyncServer @Inject constructor(
     private val identityManager: HouseholdIdentityManager,
-    private val sessionManager: SyncSessionManager
+    private val sessionManager: SyncSessionManager,
+    private val syncEngine: MainCanonicalSyncEngine
 ) {
     private var engine: CIOApplicationEngine? = null
     private val json = Json { ignoreUnknownKeys = true }
@@ -132,6 +134,31 @@ open class PantrySyncServer @Inject constructor(
                                 put("protocolVersion", SYNC_PROTOCOL_VERSION)
                             })
                         }
+                    }
+
+                    post("/sync/v1/operations") {
+                        val token = call.request.headers["X-Pantry-Session-Token"]
+                        val authenticatedDeviceId = sessionManager.validateSessionToken(token)
+
+                        if (authenticatedDeviceId == null) {
+                            call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                                put("error", "UNAUTHORIZED")
+                            })
+                            return@post
+                        }
+
+                        val bodyText = call.receiveText()
+                        val operationDto = runCatching { json.decodeFromString<SyncOperationDto>(bodyText) }.getOrNull()
+
+                        if (operationDto == null) {
+                            call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                                put("error", "MALFORMED_OPERATION_JSON")
+                            })
+                            return@post
+                        }
+
+                        val result = syncEngine.processOperation(authenticatedDeviceId, operationDto)
+                        call.respond(result)
                     }
                 }
             }
