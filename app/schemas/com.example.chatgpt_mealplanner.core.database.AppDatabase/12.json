@@ -1,0 +1,2579 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 12,
+    "identityHash": "250015b7e372ddc899056677e3b20c7d",
+    "entities": [
+      {
+        "tableName": "inventory_items",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `barcode` TEXT, `canonicalIngredientId` TEXT, `canonicalName` TEXT NOT NULL, `displayName` TEXT NOT NULL, `brand` TEXT, `category` TEXT NOT NULL, `storageLocation` TEXT NOT NULL, `quantity` REAL, `quantityUnit` TEXT, `packCount` INTEGER, `packSize` REAL, `packSizeUnit` TEXT, `quantityConfidence` TEXT NOT NULL, `status` TEXT NOT NULL, `opened` INTEGER, `frozen` INTEGER NOT NULL, `staple` INTEGER NOT NULL, `purchaseDate` TEXT, `openedDate` TEXT, `useByDate` TEXT, `bestBeforeDate` TEXT, `notes` TEXT, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "barcode",
+            "columnName": "barcode",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "canonicalIngredientId",
+            "columnName": "canonicalIngredientId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "canonicalName",
+            "columnName": "canonicalName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "displayName",
+            "columnName": "displayName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "brand",
+            "columnName": "brand",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "category",
+            "columnName": "category",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "storageLocation",
+            "columnName": "storageLocation",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "quantity",
+            "columnName": "quantity",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "quantityUnit",
+            "columnName": "quantityUnit",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "packCount",
+            "columnName": "packCount",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "packSize",
+            "columnName": "packSize",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "packSizeUnit",
+            "columnName": "packSizeUnit",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "quantityConfidence",
+            "columnName": "quantityConfidence",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "opened",
+            "columnName": "opened",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "frozen",
+            "columnName": "frozen",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "staple",
+            "columnName": "staple",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "purchaseDate",
+            "columnName": "purchaseDate",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "openedDate",
+            "columnName": "openedDate",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "useByDate",
+            "columnName": "useByDate",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "bestBeforeDate",
+            "columnName": "bestBeforeDate",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "notes",
+            "columnName": "notes",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_inventory_items_barcode",
+            "unique": false,
+            "columnNames": [
+              "barcode"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_inventory_items_barcode` ON `${TABLE_NAME}` (`barcode`)"
+          },
+          {
+            "name": "index_inventory_items_canonicalIngredientId",
+            "unique": false,
+            "columnNames": [
+              "canonicalIngredientId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_inventory_items_canonicalIngredientId` ON `${TABLE_NAME}` (`canonicalIngredientId`)"
+          },
+          {
+            "name": "index_inventory_items_category",
+            "unique": false,
+            "columnNames": [
+              "category"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_inventory_items_category` ON `${TABLE_NAME}` (`category`)"
+          },
+          {
+            "name": "index_inventory_items_storageLocation",
+            "unique": false,
+            "columnNames": [
+              "storageLocation"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_inventory_items_storageLocation` ON `${TABLE_NAME}` (`storageLocation`)"
+          },
+          {
+            "name": "index_inventory_items_status",
+            "unique": false,
+            "columnNames": [
+              "status"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_inventory_items_status` ON `${TABLE_NAME}` (`status`)"
+          }
+        ]
+      },
+      {
+        "tableName": "inventory_transactions",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `inventoryItemId` TEXT NOT NULL, `type` TEXT NOT NULL, `quantityChange` REAL, `unit` TEXT, `mealId` TEXT, `shoppingTripId` TEXT, `note` TEXT, `timestamp` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`inventoryItemId`) REFERENCES `inventory_items`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "inventoryItemId",
+            "columnName": "inventoryItemId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "type",
+            "columnName": "type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "quantityChange",
+            "columnName": "quantityChange",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "unit",
+            "columnName": "unit",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "mealId",
+            "columnName": "mealId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "shoppingTripId",
+            "columnName": "shoppingTripId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "note",
+            "columnName": "note",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "timestamp",
+            "columnName": "timestamp",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_inventory_transactions_inventoryItemId",
+            "unique": false,
+            "columnNames": [
+              "inventoryItemId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_inventory_transactions_inventoryItemId` ON `${TABLE_NAME}` (`inventoryItemId`)"
+          },
+          {
+            "name": "index_inventory_transactions_timestamp",
+            "unique": false,
+            "columnNames": [
+              "timestamp"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_inventory_transactions_timestamp` ON `${TABLE_NAME}` (`timestamp`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "inventory_items",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "inventoryItemId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "inventory_item_barcodes",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `inventoryItemId` TEXT NOT NULL, `rawBarcode` TEXT NOT NULL, `normalizedBarcode` TEXT NOT NULL, `addedAt` INTEGER NOT NULL, `source` TEXT NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`inventoryItemId`) REFERENCES `inventory_items`(`id`) ON UPDATE CASCADE ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "inventoryItemId",
+            "columnName": "inventoryItemId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rawBarcode",
+            "columnName": "rawBarcode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "normalizedBarcode",
+            "columnName": "normalizedBarcode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "addedAt",
+            "columnName": "addedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "source",
+            "columnName": "source",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_inventory_item_barcodes_normalizedBarcode",
+            "unique": true,
+            "columnNames": [
+              "normalizedBarcode"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_inventory_item_barcodes_normalizedBarcode` ON `${TABLE_NAME}` (`normalizedBarcode`)"
+          },
+          {
+            "name": "index_inventory_item_barcodes_inventoryItemId",
+            "unique": false,
+            "columnNames": [
+              "inventoryItemId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_inventory_item_barcodes_inventoryItemId` ON `${TABLE_NAME}` (`inventoryItemId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "inventory_items",
+            "onDelete": "CASCADE",
+            "onUpdate": "CASCADE",
+            "columns": [
+              "inventoryItemId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "inventory_merge_logs",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `survivorItemId` TEXT NOT NULL, `mergedItemId` TEXT NOT NULL, `mergedItemSnapshotJson` TEXT NOT NULL, `mergedRuleSnapshotJson` TEXT, `transferredBarcodesJson` TEXT NOT NULL, `transferredQuantity` REAL NOT NULL, `transferredPackCount` INTEGER NOT NULL, `mergedAt` INTEGER NOT NULL, `unmerged` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "survivorItemId",
+            "columnName": "survivorItemId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mergedItemId",
+            "columnName": "mergedItemId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mergedItemSnapshotJson",
+            "columnName": "mergedItemSnapshotJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mergedRuleSnapshotJson",
+            "columnName": "mergedRuleSnapshotJson",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "transferredBarcodesJson",
+            "columnName": "transferredBarcodesJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "transferredQuantity",
+            "columnName": "transferredQuantity",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "transferredPackCount",
+            "columnName": "transferredPackCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mergedAt",
+            "columnName": "mergedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "unmerged",
+            "columnName": "unmerged",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_inventory_merge_logs_survivorItemId",
+            "unique": false,
+            "columnNames": [
+              "survivorItemId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_inventory_merge_logs_survivorItemId` ON `${TABLE_NAME}` (`survivorItemId`)"
+          },
+          {
+            "name": "index_inventory_merge_logs_mergedItemId",
+            "unique": false,
+            "columnNames": [
+              "mergedItemId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_inventory_merge_logs_mergedItemId` ON `${TABLE_NAME}` (`mergedItemId`)"
+          }
+        ]
+      },
+      {
+        "tableName": "product_barcode_mappings",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`barcode` TEXT NOT NULL, `displayName` TEXT, `brand` TEXT, `canonicalIngredientId` TEXT, `canonicalName` TEXT, `category` TEXT, `defaultStorageLocation` TEXT, `netQuantity` REAL, `netQuantityUnit` TEXT, `packCount` INTEGER, `packSize` REAL, `packSizeUnit` TEXT, `imageUrl` TEXT, `source` TEXT NOT NULL, `confidence` TEXT NOT NULL, `lastVerifiedAt` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`barcode`))",
+        "fields": [
+          {
+            "fieldPath": "barcode",
+            "columnName": "barcode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "displayName",
+            "columnName": "displayName",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "brand",
+            "columnName": "brand",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "canonicalIngredientId",
+            "columnName": "canonicalIngredientId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "canonicalName",
+            "columnName": "canonicalName",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "category",
+            "columnName": "category",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "defaultStorageLocation",
+            "columnName": "defaultStorageLocation",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "netQuantity",
+            "columnName": "netQuantity",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "netQuantityUnit",
+            "columnName": "netQuantityUnit",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "packCount",
+            "columnName": "packCount",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "packSize",
+            "columnName": "packSize",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "packSizeUnit",
+            "columnName": "packSizeUnit",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "imageUrl",
+            "columnName": "imageUrl",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "source",
+            "columnName": "source",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "confidence",
+            "columnName": "confidence",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastVerifiedAt",
+            "columnName": "lastVerifiedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "barcode"
+          ]
+        }
+      },
+      {
+        "tableName": "meals",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `date` TEXT NOT NULL, `mealType` TEXT NOT NULL, `title` TEXT NOT NULL, `servings` INTEGER NOT NULL, `status` TEXT NOT NULL, `batchPortions` INTEGER NOT NULL, `immediatePortions` INTEGER NOT NULL, `leftoverPortions` INTEGER NOT NULL, `cookInTwoBatches` INTEGER NOT NULL, `tags` TEXT NOT NULL, `instructions` TEXT, `notes` TEXT, `cookedAt` INTEGER, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "date",
+            "columnName": "date",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mealType",
+            "columnName": "mealType",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "servings",
+            "columnName": "servings",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "batchPortions",
+            "columnName": "batchPortions",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "immediatePortions",
+            "columnName": "immediatePortions",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "leftoverPortions",
+            "columnName": "leftoverPortions",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "cookInTwoBatches",
+            "columnName": "cookInTwoBatches",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tags",
+            "columnName": "tags",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "instructions",
+            "columnName": "instructions",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "notes",
+            "columnName": "notes",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "cookedAt",
+            "columnName": "cookedAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_meals_date",
+            "unique": false,
+            "columnNames": [
+              "date"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_meals_date` ON `${TABLE_NAME}` (`date`)"
+          }
+        ]
+      },
+      {
+        "tableName": "meal_ingredients",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `mealId` TEXT NOT NULL, `canonicalIngredientId` TEXT, `displayName` TEXT NOT NULL, `plannedQuantity` REAL NOT NULL, `plannedUnit` TEXT NOT NULL, `actualQuantity` REAL, `actualUnit` TEXT, `optional` INTEGER NOT NULL, `substitutionAllowed` INTEGER NOT NULL, `substitutedCanonicalIngredientId` TEXT, `substitutedDisplayName` TEXT, PRIMARY KEY(`id`), FOREIGN KEY(`mealId`) REFERENCES `meals`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mealId",
+            "columnName": "mealId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "canonicalIngredientId",
+            "columnName": "canonicalIngredientId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "displayName",
+            "columnName": "displayName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "plannedQuantity",
+            "columnName": "plannedQuantity",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "plannedUnit",
+            "columnName": "plannedUnit",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "actualQuantity",
+            "columnName": "actualQuantity",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "actualUnit",
+            "columnName": "actualUnit",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "optional",
+            "columnName": "optional",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "substitutionAllowed",
+            "columnName": "substitutionAllowed",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "substitutedCanonicalIngredientId",
+            "columnName": "substitutedCanonicalIngredientId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "substitutedDisplayName",
+            "columnName": "substitutedDisplayName",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_meal_ingredients_mealId",
+            "unique": false,
+            "columnNames": [
+              "mealId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_meal_ingredients_mealId` ON `${TABLE_NAME}` (`mealId`)"
+          },
+          {
+            "name": "index_meal_ingredients_canonicalIngredientId",
+            "unique": false,
+            "columnNames": [
+              "canonicalIngredientId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_meal_ingredients_canonicalIngredientId` ON `${TABLE_NAME}` (`canonicalIngredientId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "meals",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "mealId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "leftovers",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `sourceMealId` TEXT, `name` TEXT NOT NULL, `initialPortions` INTEGER NOT NULL, `portions` INTEGER NOT NULL, `storageLocation` TEXT NOT NULL, `status` TEXT NOT NULL, `createdDate` TEXT NOT NULL, `consumeByDate` TEXT, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`sourceMealId`) REFERENCES `meals`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceMealId",
+            "columnName": "sourceMealId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "initialPortions",
+            "columnName": "initialPortions",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "portions",
+            "columnName": "portions",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "storageLocation",
+            "columnName": "storageLocation",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdDate",
+            "columnName": "createdDate",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "consumeByDate",
+            "columnName": "consumeByDate",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_leftovers_sourceMealId",
+            "unique": false,
+            "columnNames": [
+              "sourceMealId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_leftovers_sourceMealId` ON `${TABLE_NAME}` (`sourceMealId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "meals",
+            "onDelete": "SET NULL",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "sourceMealId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "shopping_lists",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `startDate` TEXT, `endDate` TEXT, `status` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startDate",
+            "columnName": "startDate",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "endDate",
+            "columnName": "endDate",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "shopping_list_items",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `shoppingListId` TEXT NOT NULL, `canonicalIngredientId` TEXT, `displayName` TEXT NOT NULL, `requiredQuantity` REAL, `requiredUnit` TEXT, `suggestedPurchaseQuantity` REAL, `suggestedPurchaseUnit` TEXT, `packCount` INTEGER, `reason` TEXT NOT NULL, `priority` TEXT NOT NULL, `status` TEXT NOT NULL, `optional` INTEGER NOT NULL, `sourceType` TEXT NOT NULL, `hasMealRequirement` INTEGER NOT NULL, `hasStapleRestock` INTEGER NOT NULL, `mealShortfallQuantity` REAL, `stapleReserveTopUpQuantity` REAL, `expectedFinalInventory` REAL, `expectedFinalInventoryUnit` TEXT, `quantityUncertain` INTEGER NOT NULL, `uncertaintyReason` TEXT, `requirementConfidence` TEXT NOT NULL, `wasteRisk` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`shoppingListId`) REFERENCES `shopping_lists`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "shoppingListId",
+            "columnName": "shoppingListId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "canonicalIngredientId",
+            "columnName": "canonicalIngredientId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "displayName",
+            "columnName": "displayName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "requiredQuantity",
+            "columnName": "requiredQuantity",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "requiredUnit",
+            "columnName": "requiredUnit",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "suggestedPurchaseQuantity",
+            "columnName": "suggestedPurchaseQuantity",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "suggestedPurchaseUnit",
+            "columnName": "suggestedPurchaseUnit",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "packCount",
+            "columnName": "packCount",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "reason",
+            "columnName": "reason",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "priority",
+            "columnName": "priority",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "optional",
+            "columnName": "optional",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceType",
+            "columnName": "sourceType",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hasMealRequirement",
+            "columnName": "hasMealRequirement",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hasStapleRestock",
+            "columnName": "hasStapleRestock",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mealShortfallQuantity",
+            "columnName": "mealShortfallQuantity",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "stapleReserveTopUpQuantity",
+            "columnName": "stapleReserveTopUpQuantity",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "expectedFinalInventory",
+            "columnName": "expectedFinalInventory",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "expectedFinalInventoryUnit",
+            "columnName": "expectedFinalInventoryUnit",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "quantityUncertain",
+            "columnName": "quantityUncertain",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "uncertaintyReason",
+            "columnName": "uncertaintyReason",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "requirementConfidence",
+            "columnName": "requirementConfidence",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "wasteRisk",
+            "columnName": "wasteRisk",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_shopping_list_items_shoppingListId",
+            "unique": false,
+            "columnNames": [
+              "shoppingListId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_shopping_list_items_shoppingListId` ON `${TABLE_NAME}` (`shoppingListId`)"
+          },
+          {
+            "name": "index_shopping_list_items_canonicalIngredientId",
+            "unique": false,
+            "columnNames": [
+              "canonicalIngredientId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_shopping_list_items_canonicalIngredientId` ON `${TABLE_NAME}` (`canonicalIngredientId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "shopping_lists",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "shoppingListId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "shopping_requirement_sources",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `shoppingListItemId` TEXT NOT NULL, `mealId` TEXT NOT NULL, `mealIngredientId` TEXT, `mealTitle` TEXT NOT NULL, `mealDate` TEXT NOT NULL, `requiredQuantity` REAL NOT NULL, `requiredUnit` TEXT NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`shoppingListItemId`) REFERENCES `shopping_list_items`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`mealId`) REFERENCES `meals`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "shoppingListItemId",
+            "columnName": "shoppingListItemId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mealId",
+            "columnName": "mealId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mealIngredientId",
+            "columnName": "mealIngredientId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "mealTitle",
+            "columnName": "mealTitle",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mealDate",
+            "columnName": "mealDate",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "requiredQuantity",
+            "columnName": "requiredQuantity",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "requiredUnit",
+            "columnName": "requiredUnit",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_shopping_requirement_sources_shoppingListItemId",
+            "unique": false,
+            "columnNames": [
+              "shoppingListItemId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_shopping_requirement_sources_shoppingListItemId` ON `${TABLE_NAME}` (`shoppingListItemId`)"
+          },
+          {
+            "name": "index_shopping_requirement_sources_mealId",
+            "unique": false,
+            "columnNames": [
+              "mealId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_shopping_requirement_sources_mealId` ON `${TABLE_NAME}` (`mealId`)"
+          },
+          {
+            "name": "index_shopping_requirement_sources_mealIngredientId",
+            "unique": false,
+            "columnNames": [
+              "mealIngredientId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_shopping_requirement_sources_mealIngredientId` ON `${TABLE_NAME}` (`mealIngredientId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "shopping_list_items",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "shoppingListItemId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "meals",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "mealId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "staple_rules",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `canonicalIngredientId` TEXT NOT NULL, `displayName` TEXT NOT NULL, `enabled` INTEGER NOT NULL, `archivedByMerge` INTEGER NOT NULL, `mode` TEXT NOT NULL, `thresholdQuantity` REAL, `thresholdUnit` TEXT, `targetQuantity` REAL, `targetUnit` TEXT, `thresholdPackCount` INTEGER, `targetPackCount` INTEGER, `preferredStorageLocation` TEXT, `notes` TEXT, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "canonicalIngredientId",
+            "columnName": "canonicalIngredientId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "displayName",
+            "columnName": "displayName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "enabled",
+            "columnName": "enabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "archivedByMerge",
+            "columnName": "archivedByMerge",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mode",
+            "columnName": "mode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "thresholdQuantity",
+            "columnName": "thresholdQuantity",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "thresholdUnit",
+            "columnName": "thresholdUnit",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "targetQuantity",
+            "columnName": "targetQuantity",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "targetUnit",
+            "columnName": "targetUnit",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "thresholdPackCount",
+            "columnName": "thresholdPackCount",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "targetPackCount",
+            "columnName": "targetPackCount",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "preferredStorageLocation",
+            "columnName": "preferredStorageLocation",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "notes",
+            "columnName": "notes",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_staple_rules_canonicalIngredientId",
+            "unique": true,
+            "columnNames": [
+              "canonicalIngredientId"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_staple_rules_canonicalIngredientId` ON `${TABLE_NAME}` (`canonicalIngredientId`)"
+          }
+        ]
+      },
+      {
+        "tableName": "chat_conversations",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `title` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "chat_messages",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `conversationId` TEXT NOT NULL, `role` TEXT NOT NULL, `content` TEXT NOT NULL, `structuredPayloadJson` TEXT, `modelId` TEXT, `timestamp` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`conversationId`) REFERENCES `chat_conversations`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "conversationId",
+            "columnName": "conversationId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "role",
+            "columnName": "role",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "content",
+            "columnName": "content",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "structuredPayloadJson",
+            "columnName": "structuredPayloadJson",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "modelId",
+            "columnName": "modelId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "timestamp",
+            "columnName": "timestamp",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_chat_messages_conversationId",
+            "unique": false,
+            "columnNames": [
+              "conversationId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_chat_messages_conversationId` ON `${TABLE_NAME}` (`conversationId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "chat_conversations",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "conversationId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "ai_tool_execution_logs",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `conversationId` TEXT NOT NULL, `toolName` TEXT NOT NULL, `toolCallId` TEXT NOT NULL, `executionClass` TEXT NOT NULL, `executionStatus` TEXT NOT NULL, `success` INTEGER NOT NULL, `resultPayloadJson` TEXT, `errorCode` TEXT, `errorMessage` TEXT, `startedAt` INTEGER NOT NULL, `completedAt` INTEGER, PRIMARY KEY(`id`), FOREIGN KEY(`conversationId`) REFERENCES `chat_conversations`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "conversationId",
+            "columnName": "conversationId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "toolName",
+            "columnName": "toolName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "toolCallId",
+            "columnName": "toolCallId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "executionClass",
+            "columnName": "executionClass",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "executionStatus",
+            "columnName": "executionStatus",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "success",
+            "columnName": "success",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "resultPayloadJson",
+            "columnName": "resultPayloadJson",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "errorCode",
+            "columnName": "errorCode",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "errorMessage",
+            "columnName": "errorMessage",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "startedAt",
+            "columnName": "startedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "completedAt",
+            "columnName": "completedAt",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_ai_tool_execution_logs_conversationId",
+            "unique": false,
+            "columnNames": [
+              "conversationId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_ai_tool_execution_logs_conversationId` ON `${TABLE_NAME}` (`conversationId`)"
+          },
+          {
+            "name": "index_ai_tool_execution_logs_conversationId_toolCallId",
+            "unique": true,
+            "columnNames": [
+              "conversationId",
+              "toolCallId"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_ai_tool_execution_logs_conversationId_toolCallId` ON `${TABLE_NAME}` (`conversationId`, `toolCallId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "chat_conversations",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "conversationId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "retail_products",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `retailerId` TEXT NOT NULL, `retailerProductId` TEXT NOT NULL, `name` TEXT NOT NULL, `brand` TEXT, `canonicalIngredientId` TEXT, `barcode` TEXT, `category` TEXT, `imageUrl` TEXT, `packageType` TEXT, `netQuantity` REAL, `netQuantityUnit` TEXT, `packCount` INTEGER, `packSize` REAL, `packSizeUnit` TEXT, `storageClass` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "retailerId",
+            "columnName": "retailerId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "retailerProductId",
+            "columnName": "retailerProductId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "brand",
+            "columnName": "brand",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "canonicalIngredientId",
+            "columnName": "canonicalIngredientId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "barcode",
+            "columnName": "barcode",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "category",
+            "columnName": "category",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "imageUrl",
+            "columnName": "imageUrl",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "packageType",
+            "columnName": "packageType",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "netQuantity",
+            "columnName": "netQuantity",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "netQuantityUnit",
+            "columnName": "netQuantityUnit",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "packCount",
+            "columnName": "packCount",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "packSize",
+            "columnName": "packSize",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "packSizeUnit",
+            "columnName": "packSizeUnit",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "storageClass",
+            "columnName": "storageClass",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_retail_products_retailerId_retailerProductId",
+            "unique": true,
+            "columnNames": [
+              "retailerId",
+              "retailerProductId"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_retail_products_retailerId_retailerProductId` ON `${TABLE_NAME}` (`retailerId`, `retailerProductId`)"
+          },
+          {
+            "name": "index_retail_products_canonicalIngredientId",
+            "unique": false,
+            "columnNames": [
+              "canonicalIngredientId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_retail_products_canonicalIngredientId` ON `${TABLE_NAME}` (`canonicalIngredientId`)"
+          }
+        ]
+      },
+      {
+        "tableName": "retail_price_snapshots",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `retailerId` TEXT NOT NULL, `retailerProductId` TEXT NOT NULL, `priceMinorPence` INTEGER NOT NULL, `currencyCode` TEXT NOT NULL, `promotionJson` TEXT, `availability` TEXT NOT NULL, `observedAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "retailerId",
+            "columnName": "retailerId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "retailerProductId",
+            "columnName": "retailerProductId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "priceMinorPence",
+            "columnName": "priceMinorPence",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "currencyCode",
+            "columnName": "currencyCode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "promotionJson",
+            "columnName": "promotionJson",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "availability",
+            "columnName": "availability",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "observedAt",
+            "columnName": "observedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_retail_price_snapshots_retailerProductId",
+            "unique": false,
+            "columnNames": [
+              "retailerProductId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_retail_price_snapshots_retailerProductId` ON `${TABLE_NAME}` (`retailerProductId`)"
+          },
+          {
+            "name": "index_retail_price_snapshots_observedAt",
+            "unique": false,
+            "columnNames": [
+              "observedAt"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_retail_price_snapshots_observedAt` ON `${TABLE_NAME}` (`observedAt`)"
+          }
+        ]
+      },
+      {
+        "tableName": "retail_product_mappings",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `retailerId` TEXT NOT NULL, `retailerProductId` TEXT NOT NULL, `canonicalIngredientId` TEXT NOT NULL, `decision` TEXT NOT NULL, `userConfirmed` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "retailerId",
+            "columnName": "retailerId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "retailerProductId",
+            "columnName": "retailerProductId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "canonicalIngredientId",
+            "columnName": "canonicalIngredientId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "decision",
+            "columnName": "decision",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "userConfirmed",
+            "columnName": "userConfirmed",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_retail_product_mappings_retailerId_retailerProductId_canonicalIngredientId",
+            "unique": true,
+            "columnNames": [
+              "retailerId",
+              "retailerProductId",
+              "canonicalIngredientId"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_retail_product_mappings_retailerId_retailerProductId_canonicalIngredientId` ON `${TABLE_NAME}` (`retailerId`, `retailerProductId`, `canonicalIngredientId`)"
+          }
+        ]
+      },
+      {
+        "tableName": "basket_plans",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`planId` TEXT NOT NULL, `storesCsv` TEXT NOT NULL, `feasibilityTier` TEXT NOT NULL, `basketSubtotalMinorPence` INTEGER NOT NULL, `estimatedTripPenaltyMinorPence` INTEGER NOT NULL, `estimatedWastePenaltyScore` REAL NOT NULL, `unmatchedRequirementsCsv` TEXT NOT NULL, `uncertainItemsCsv` TEXT NOT NULL, `explanationText` TEXT NOT NULL, `generatedAt` INTEGER NOT NULL, PRIMARY KEY(`planId`))",
+        "fields": [
+          {
+            "fieldPath": "planId",
+            "columnName": "planId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "storesCsv",
+            "columnName": "storesCsv",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "feasibilityTier",
+            "columnName": "feasibilityTier",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "basketSubtotalMinorPence",
+            "columnName": "basketSubtotalMinorPence",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "estimatedTripPenaltyMinorPence",
+            "columnName": "estimatedTripPenaltyMinorPence",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "estimatedWastePenaltyScore",
+            "columnName": "estimatedWastePenaltyScore",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "unmatchedRequirementsCsv",
+            "columnName": "unmatchedRequirementsCsv",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "uncertainItemsCsv",
+            "columnName": "uncertainItemsCsv",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "explanationText",
+            "columnName": "explanationText",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "generatedAt",
+            "columnName": "generatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "planId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_basket_plans_generatedAt",
+            "unique": false,
+            "columnNames": [
+              "generatedAt"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_basket_plans_generatedAt` ON `${TABLE_NAME}` (`generatedAt`)"
+          }
+        ]
+      },
+      {
+        "tableName": "basket_lines",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `basketPlanId` TEXT NOT NULL, `shoppingRequirementId` TEXT NOT NULL, `requirementDisplayName` TEXT NOT NULL, `retailerId` TEXT NOT NULL, `retailerProductId` TEXT NOT NULL, `productName` TEXT NOT NULL, `packCountToBuy` INTEGER NOT NULL, `lineTotalCostMinorPence` INTEGER NOT NULL, `requirementCovered` REAL NOT NULL, `expectedRemainder` REAL NOT NULL, `matchConfidence` TEXT NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`basketPlanId`) REFERENCES `basket_plans`(`planId`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "basketPlanId",
+            "columnName": "basketPlanId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "shoppingRequirementId",
+            "columnName": "shoppingRequirementId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "requirementDisplayName",
+            "columnName": "requirementDisplayName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "retailerId",
+            "columnName": "retailerId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "retailerProductId",
+            "columnName": "retailerProductId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "productName",
+            "columnName": "productName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "packCountToBuy",
+            "columnName": "packCountToBuy",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lineTotalCostMinorPence",
+            "columnName": "lineTotalCostMinorPence",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "requirementCovered",
+            "columnName": "requirementCovered",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "expectedRemainder",
+            "columnName": "expectedRemainder",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "matchConfidence",
+            "columnName": "matchConfidence",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_basket_lines_basketPlanId",
+            "unique": false,
+            "columnNames": [
+              "basketPlanId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_basket_lines_basketPlanId` ON `${TABLE_NAME}` (`basketPlanId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "basket_plans",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "basketPlanId"
+            ],
+            "referencedColumns": [
+              "planId"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "receipt_imports",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `retailerId` TEXT NOT NULL, `purchasedAt` TEXT NOT NULL, `totalAmountMinorPence` INTEGER, `itemCount` INTEGER NOT NULL, `fingerprint` TEXT NOT NULL, `sourceImagePath` TEXT, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "retailerId",
+            "columnName": "retailerId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "purchasedAt",
+            "columnName": "purchasedAt",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "totalAmountMinorPence",
+            "columnName": "totalAmountMinorPence",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "itemCount",
+            "columnName": "itemCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fingerprint",
+            "columnName": "fingerprint",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceImagePath",
+            "columnName": "sourceImagePath",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_receipt_imports_fingerprint",
+            "unique": true,
+            "columnNames": [
+              "fingerprint"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_receipt_imports_fingerprint` ON `${TABLE_NAME}` (`fingerprint`)"
+          }
+        ]
+      },
+      {
+        "tableName": "receipt_import_lines",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `receiptImportId` TEXT NOT NULL, `rawText` TEXT NOT NULL, `normalizedText` TEXT NOT NULL, `displayName` TEXT NOT NULL, `quantityPurchased` INTEGER NOT NULL, `unitPriceMinorPence` INTEGER, `lineTotalMinorPence` INTEGER, `candidateCanonicalIngredientId` TEXT, `netQuantity` REAL, `netQuantityUnit` TEXT, `packCount` INTEGER, `confidence` TEXT NOT NULL, `status` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`receiptImportId`) REFERENCES `receipt_imports`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "receiptImportId",
+            "columnName": "receiptImportId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rawText",
+            "columnName": "rawText",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "normalizedText",
+            "columnName": "normalizedText",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "displayName",
+            "columnName": "displayName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "quantityPurchased",
+            "columnName": "quantityPurchased",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "unitPriceMinorPence",
+            "columnName": "unitPriceMinorPence",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "lineTotalMinorPence",
+            "columnName": "lineTotalMinorPence",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "candidateCanonicalIngredientId",
+            "columnName": "candidateCanonicalIngredientId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "netQuantity",
+            "columnName": "netQuantity",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "netQuantityUnit",
+            "columnName": "netQuantityUnit",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "packCount",
+            "columnName": "packCount",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "confidence",
+            "columnName": "confidence",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_receipt_import_lines_receiptImportId",
+            "unique": false,
+            "columnNames": [
+              "receiptImportId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_receipt_import_lines_receiptImportId` ON `${TABLE_NAME}` (`receiptImportId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "receipt_imports",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "receiptImportId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "receipt_product_mappings",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `retailerId` TEXT NOT NULL, `normalizedDescription` TEXT NOT NULL, `displayName` TEXT NOT NULL, `canonicalIngredientId` TEXT, `knownNetQuantity` REAL, `knownNetUnit` TEXT, `knownPackCount` INTEGER, `storageLocation` TEXT, `userConfirmed` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "retailerId",
+            "columnName": "retailerId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "normalizedDescription",
+            "columnName": "normalizedDescription",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "displayName",
+            "columnName": "displayName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "canonicalIngredientId",
+            "columnName": "canonicalIngredientId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "knownNetQuantity",
+            "columnName": "knownNetQuantity",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "knownNetUnit",
+            "columnName": "knownNetUnit",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "knownPackCount",
+            "columnName": "knownPackCount",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "storageLocation",
+            "columnName": "storageLocation",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "userConfirmed",
+            "columnName": "userConfirmed",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_receipt_product_mappings_retailerId_normalizedDescription",
+            "unique": true,
+            "columnNames": [
+              "retailerId",
+              "normalizedDescription"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_receipt_product_mappings_retailerId_normalizedDescription` ON `${TABLE_NAME}` (`retailerId`, `normalizedDescription`)"
+          }
+        ]
+      },
+      {
+        "tableName": "receipt_spend",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `retailerId` TEXT NOT NULL, `purchasedAt` TEXT NOT NULL, `totalMinorPence` INTEGER NOT NULL, `subtotalMinorPence` INTEGER, `discountMinorPence` INTEGER NOT NULL, `itemCount` INTEGER NOT NULL, `fingerprint` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "retailerId",
+            "columnName": "retailerId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "purchasedAt",
+            "columnName": "purchasedAt",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "totalMinorPence",
+            "columnName": "totalMinorPence",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "subtotalMinorPence",
+            "columnName": "subtotalMinorPence",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "discountMinorPence",
+            "columnName": "discountMinorPence",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "itemCount",
+            "columnName": "itemCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fingerprint",
+            "columnName": "fingerprint",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_receipt_spend_fingerprint",
+            "unique": true,
+            "columnNames": [
+              "fingerprint"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_receipt_spend_fingerprint` ON `${TABLE_NAME}` (`fingerprint`)"
+          }
+        ]
+      },
+      {
+        "tableName": "receipt_spend_items",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `receiptSpendId` TEXT NOT NULL, `rawDescription` TEXT NOT NULL, `normalizedDescription` TEXT NOT NULL, `lineAmountMinorPence` INTEGER NOT NULL, `quantity` INTEGER NOT NULL, `unitPriceMinorPence` INTEGER, `category` TEXT NOT NULL, `isDiscount` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`receiptSpendId`) REFERENCES `receipt_spend`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "receiptSpendId",
+            "columnName": "receiptSpendId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rawDescription",
+            "columnName": "rawDescription",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "normalizedDescription",
+            "columnName": "normalizedDescription",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lineAmountMinorPence",
+            "columnName": "lineAmountMinorPence",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "quantity",
+            "columnName": "quantity",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "unitPriceMinorPence",
+            "columnName": "unitPriceMinorPence",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "category",
+            "columnName": "category",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isDiscount",
+            "columnName": "isDiscount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_receipt_spend_items_receiptSpendId",
+            "unique": false,
+            "columnNames": [
+              "receiptSpendId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_receipt_spend_items_receiptSpendId` ON `${TABLE_NAME}` (`receiptSpendId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "receipt_spend",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "receiptSpendId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "receipt_category_mappings",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `retailerId` TEXT NOT NULL, `normalizedDescription` TEXT NOT NULL, `category` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "retailerId",
+            "columnName": "retailerId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "normalizedDescription",
+            "columnName": "normalizedDescription",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "category",
+            "columnName": "category",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_receipt_category_mappings_retailerId_normalizedDescription",
+            "unique": true,
+            "columnNames": [
+              "retailerId",
+              "normalizedDescription"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_receipt_category_mappings_retailerId_normalizedDescription` ON `${TABLE_NAME}` (`retailerId`, `normalizedDescription`)"
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '250015b7e372ddc899056677e3b20c7d')"
+    ]
+  }
+}

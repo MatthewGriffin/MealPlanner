@@ -1,0 +1,26 @@
+{
+  "contractVersion": "ai-contract-v1",
+  "tools": [
+    { "name": "get_inventory_summary", "type": "READ" },
+    { "name": "get_inventory_for_ingredient", "type": "READ" },
+    { "name": "get_usable_inventory", "type": "READ" },
+    { "name": "get_low_stock_items", "type": "READ" },
+    { "name": "get_use_soon_items", "type": "READ" },
+    { "name": "get_recent_cooked_meals", "type": "READ" },
+    { "name": "get_upcoming_planned_meals", "type": "READ" },
+    { "name": "get_meal_details", "type": "READ" },
+    { "name": "get_available_leftovers", "type": "READ" },
+    { "name": "get_active_shopping_list", "type": "READ" },
+    { "name": "calculate_shopping_requirements", "type": "READ" },
+    { "name": "move_planned_meal", "type": "WRITE_EXPLICIT" },
+    { "name": "cancel_planned_meal", "type": "WRITE_EXPLICIT" },
+    { "name": "restore_meal_to_planned", "type": "WRITE_EXPLICIT" },
+    { "name": "prepare_mark_meal_cooked", "type": "WRITE_CONFIRMATION_REQUIRED" },
+    { "name": "mark_inventory_lot_out", "type": "WRITE_EXPLICIT" },
+    { "name": "mark_all_inventory_for_canonical_ingredient_out", "type": "WRITE_EXPLICIT" },
+    { "name": "adjust_inventory_quantity", "type": "WRITE_EXPLICIT" },
+    { "name": "resolve_inventory_lot_uncertainty", "type": "WRITE_EXPLICIT" },
+    { "name": "regenerate_shopping_list", "type": "WRITE_EXPLICIT" },
+    { "name": "add_manual_shopping_item", "type": "WRITE_EXPLICIT" }
+  ]
+}

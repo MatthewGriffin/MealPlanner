@@ -1,0 +1,304 @@
+package com.example.chatgpt_mealplanner.feature.chat
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.example.chatgpt_mealplanner.contract.AiOrchestrationResult
+import com.example.chatgpt_mealplanner.contract.AiProposedAction
+import com.example.chatgpt_mealplanner.contract.MealProposal
+import com.example.chatgpt_mealplanner.contract.ValidatedMealProposal
+import com.example.chatgpt_mealplanner.core.ai.orchestrator.AiMealPlannerOrchestrator
+import com.example.chatgpt_mealplanner.core.database.entity.ChatConversationEntity
+import com.example.chatgpt_mealplanner.core.database.entity.ChatMessageEntity
+import com.example.chatgpt_mealplanner.core.model.DomainError
+import com.example.chatgpt_mealplanner.core.model.DomainResult
+import com.example.chatgpt_mealplanner.core.model.Meal
+import com.example.chatgpt_mealplanner.core.model.MealIngredient
+import com.example.chatgpt_mealplanner.core.model.MealTag
+import com.example.chatgpt_mealplanner.core.repository.ChatRepository
+import com.example.chatgpt_mealplanner.core.service.MealDomainService
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import java.util.UUID
+import javax.inject.Inject
+
+private data class RequestStateHolder(
+    val requestState: ChatRequestState = ChatRequestState.IDLE,
+    val retainedUserMessage: String? = null,
+    val retainedUserMessageId: String? = null
+)
+
+@HiltViewModel
+class ChatViewModel @Inject constructor(
+    private val orchestrator: AiMealPlannerOrchestrator,
+    private val chatRepository: ChatRepository,
+    private val mealDomainService: MealDomainService
+) : ViewModel() {
+
+    private val conversationIdFlow = MutableStateFlow("default_conversation")
+    private val userMessageTextFlow = MutableStateFlow("")
+    private val errorMessageFlow = MutableStateFlow<String?>(null)
+    private val requestStateHolderFlow = MutableStateFlow(RequestStateHolder())
+
+    private val latestProposalFlow = MutableStateFlow<ValidatedMealProposal?>(null)
+    private val latestProposedActionFlow = MutableStateFlow<AiProposedAction?>(null)
+
+    private val showCookConfirmationDialogFlow = MutableStateFlow(false)
+    private val cookConfirmationMealIdFlow = MutableStateFlow<String?>(null)
+    private val cookConfirmationMealTitleFlow = MutableStateFlow<String?>(null)
+
+    private val messagesFlow = chatRepository.observeMessagesForConversation("default_conversation")
+
+    val uiState: StateFlow<ChatUiState> = combine(
+        conversationIdFlow,
+        messagesFlow,
+        latestProposalFlow,
+        latestProposedActionFlow,
+        requestStateHolderFlow,
+        userMessageTextFlow,
+        errorMessageFlow,
+        showCookConfirmationDialogFlow,
+        cookConfirmationMealIdFlow,
+        cookConfirmationMealTitleFlow
+    ) { flows ->
+        @Suppress("UNCHECKED_CAST")
+        val reqHolder = flows[4] as RequestStateHolder
+        val isReqInFlight = reqHolder.requestState == ChatRequestState.IN_FLIGHT
+
+        ChatUiState(
+            activeConversationId = flows[0] as String,
+            messages = flows[1] as List<ChatMessageEntity>,
+            latestProposal = flows[2] as ValidatedMealProposal?,
+            latestProposedAction = flows[3] as AiProposedAction?,
+            isLoading = isReqInFlight,
+            userMessageText = flows[5] as String,
+            errorMessage = flows[6] as String?,
+            requestState = reqHolder.requestState,
+            retainedUserMessage = reqHolder.retainedUserMessage,
+            showCookConfirmationDialog = flows[7] as Boolean,
+            cookConfirmationMealId = flows[8] as String?,
+            cookConfirmationMealTitle = flows[9] as String?
+        )
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = ChatUiState()
+    )
+
+    init {
+        ensureDefaultConversationExists()
+    }
+
+    private fun ensureDefaultConversationExists() {
+        viewModelScope.launch {
+            val existing = chatRepository.getConversationById("default_conversation")
+            if (existing == null) {
+                chatRepository.createOrUpdateConversation(
+                    ChatConversationEntity(
+                        id = "default_conversation",
+                        title = "Pantry Assistant",
+                        createdAt = System.currentTimeMillis(),
+                        updatedAt = System.currentTimeMillis()
+                    )
+                )
+            }
+        }
+    }
+
+    fun onEvent(event: ChatUiEvent) {
+        when (event) {
+            is ChatUiEvent.UpdateMessageText -> userMessageTextFlow.value = event.text
+            ChatUiEvent.SendMessage -> sendMessage()
+            ChatUiEvent.RetryLastFailedMessage -> retryLastFailedMessage()
+            is ChatUiEvent.SaveMealProposalToPlan -> saveMealProposalToPlan(event.proposal)
+            is ChatUiEvent.ConfirmCookedMeal -> confirmCookedMeal(event.mealId)
+            ChatUiEvent.DismissCookConfirmation -> dismissCookConfirmation()
+            ChatUiEvent.ClearErrorMessage -> errorMessageFlow.value = null
+        }
+    }
+
+    private fun safeLog(msg: String) {
+        try {
+            android.util.Log.i("AI_MEALPLANNER", msg)
+        } catch (_: Throwable) {}
+    }
+
+    private fun transitionRequestState(
+        toState: ChatRequestState,
+        retainedMessage: String? = null,
+        retainedMessageId: String? = null,
+        reason: String? = null
+    ) {
+        val fromState = requestStateHolderFlow.value.requestState
+        requestStateHolderFlow.value = RequestStateHolder(toState, retainedMessage, retainedMessageId)
+        if (reason != null) {
+            safeLog("[CHAT_REQUEST_STATE] from=$fromState to=$toState reason=\"$reason\"")
+        } else {
+            safeLog("[CHAT_REQUEST_STATE] from=$fromState to=$toState")
+        }
+    }
+
+    private fun sendMessage() {
+        val text = userMessageTextFlow.value.trim()
+        if (text.isBlank()) return
+
+        safeLog("[CHAT_SEND] text=\"$text\"")
+
+        val userMsgId = "msg_${System.currentTimeMillis()}"
+        userMessageTextFlow.value = ""
+        errorMessageFlow.value = null
+        transitionRequestState(ChatRequestState.IN_FLIGHT, retainedMessage = text, retainedMessageId = userMsgId)
+
+        viewModelScope.launch {
+            safeLog("[CHAT_ORCHESTRATOR_CALL] conversationId=\"default_conversation\" text=\"$text\" messageId=\"$userMsgId\"")
+            val result = orchestrator.processUserMessage("default_conversation", text, userMessageId = userMsgId)
+
+            when (result) {
+                is AiOrchestrationResult.Final -> {
+                    transitionRequestState(ChatRequestState.SUCCEEDED, retainedMessage = null, retainedMessageId = null)
+                    latestProposalFlow.value = result.validatedProposal
+                    latestProposedActionFlow.value = result.proposedAction
+
+                    val confirmAction = result.proposedAction as? AiProposedAction.ConfirmCookedMeal
+                    if (confirmAction != null) {
+                        showCookConfirmationDialogFlow.value = true
+                        cookConfirmationMealIdFlow.value = confirmAction.mealId
+                        cookConfirmationMealTitleFlow.value = confirmAction.mealTitle
+                    }
+                }
+                is AiOrchestrationResult.Error -> {
+                    errorMessageFlow.value = result.userFacingMessage
+                    transitionRequestState(ChatRequestState.FAILED_RETRYABLE, retainedMessage = text, retainedMessageId = userMsgId, reason = result.userFacingMessage)
+                }
+            }
+        }
+    }
+
+    private fun retryLastFailedMessage() {
+        val currentHolder = requestStateHolderFlow.value
+        if (currentHolder.requestState == ChatRequestState.IN_FLIGHT) return
+        val text = currentHolder.retainedUserMessage ?: return
+        val messageId = currentHolder.retainedUserMessageId
+
+        safeLog("[CHAT_RETRY] text=\"$text\" messageId=\"$messageId\"")
+
+        errorMessageFlow.value = null
+        transitionRequestState(ChatRequestState.IN_FLIGHT, retainedMessage = text, retainedMessageId = messageId)
+
+        viewModelScope.launch {
+            val result = orchestrator.processUserMessage("default_conversation", text, userMessageId = messageId)
+
+            when (result) {
+                is AiOrchestrationResult.Final -> {
+                    transitionRequestState(ChatRequestState.SUCCEEDED, retainedMessage = null, retainedMessageId = null)
+                    latestProposalFlow.value = result.validatedProposal
+                    latestProposedActionFlow.value = result.proposedAction
+
+                    val confirmAction = result.proposedAction as? AiProposedAction.ConfirmCookedMeal
+                    if (confirmAction != null) {
+                        showCookConfirmationDialogFlow.value = true
+                        cookConfirmationMealIdFlow.value = confirmAction.mealId
+                        cookConfirmationMealTitleFlow.value = confirmAction.mealTitle
+                    }
+                }
+                is AiOrchestrationResult.Error -> {
+                    errorMessageFlow.value = result.userFacingMessage
+                    transitionRequestState(ChatRequestState.FAILED_RETRYABLE, retainedMessage = text, retainedMessageId = messageId, reason = result.userFacingMessage)
+                }
+            }
+        }
+    }
+
+    private fun saveMealProposalToPlan(proposal: MealProposal) {
+        viewModelScope.launch {
+            if (proposal.ingredients.isEmpty()) {
+                errorMessageFlow.value = "Cannot save a proposal without ingredients. Please ask AI to suggest complete ingredients first."
+                return@launch
+            }
+
+            val resolvedSlot = com.example.chatgpt_mealplanner.core.ai.resolver.MealSlotResolver.resolveSlot(
+                requestedDateStr = proposal.suggestedDate,
+                requestedMealTypeStr = proposal.mealType
+            )
+            val parsedTags = proposal.tags.mapNotNull { runCatching { MealTag.valueOf(it.uppercase()) }.getOrNull() }.toSet()
+
+            val meal = Meal(
+                id = UUID.randomUUID().toString(),
+                date = resolvedSlot.date,
+                mealType = resolvedSlot.mealType,
+                title = proposal.title,
+                servings = proposal.servings,
+                batchPortions = proposal.batchPortions,
+                immediatePortions = proposal.immediatePortions,
+                leftoverPortions = proposal.leftoverPortions,
+                cookInTwoBatches = proposal.cookInTwoBatches,
+                tags = parsedTags
+            )
+
+            val ingredients = proposal.ingredients.map {
+                val parsedUnit = com.example.chatgpt_mealplanner.core.model.parseQuantityUnit(it.unit)
+                MealIngredient(
+                    id = UUID.randomUUID().toString(),
+                    mealId = meal.id,
+                    canonicalIngredientId = it.canonicalIngredientId,
+                    displayName = it.displayName,
+                    plannedQuantity = it.quantity,
+                    plannedUnit = parsedUnit,
+                    optional = it.optional,
+                    substitutionAllowed = it.substitutionAllowed
+                )
+            }
+
+            val createResult = mealDomainService.createPlannedMeal(meal, ingredients)
+
+            when (createResult) {
+                is DomainResult.Success -> {
+                    latestProposalFlow.value = null
+                    errorMessageFlow.value = "Saved '${meal.title}' to meal plan for ${meal.date}!"
+                }
+                is DomainResult.Failure -> {
+                    errorMessageFlow.value = formatDomainError(createResult.error)
+                }
+            }
+        }
+    }
+
+    private fun confirmCookedMeal(mealId: String) {
+        viewModelScope.launch {
+            val cookResult = mealDomainService.markMealCooked(mealId)
+            dismissCookConfirmation()
+
+            when (cookResult) {
+                is DomainResult.Success -> {
+                    errorMessageFlow.value = "Marked meal cooked and deducted ingredients!"
+                }
+                is DomainResult.Failure -> {
+                    errorMessageFlow.value = formatDomainError(cookResult.error)
+                }
+            }
+        }
+    }
+
+    private fun dismissCookConfirmation() {
+        showCookConfirmationDialogFlow.value = false
+        cookConfirmationMealIdFlow.value = null
+        cookConfirmationMealTitleFlow.value = null
+    }
+
+    private fun formatDomainError(error: DomainError): String {
+        return when (error) {
+            is DomainError.InsufficientQuantity -> "Insufficient stock: ${error.requested}"
+            is DomainError.InvalidUnitConversion -> "Unit conversion error"
+            is DomainError.NeedsConfirmation -> "Confirmation required: ${error.displayName}"
+            is DomainError.DuplicateOperation -> "Already completed: ${error.message}"
+            is DomainError.TransactionFailed -> "Transaction error: ${error.cause}"
+            is DomainError.ItemNotFound -> "Item not found: ${error.itemId}"
+            is DomainError.InvalidQuantity -> "Invalid quantity: ${error.quantity}"
+            is DomainError.ItemNotUsable -> "Item not available: ${error.itemId}"
+        }
+    }
+}

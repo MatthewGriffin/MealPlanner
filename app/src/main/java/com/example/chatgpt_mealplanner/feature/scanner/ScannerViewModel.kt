@@ -1,0 +1,159 @@
+package com.example.chatgpt_mealplanner.feature.scanner
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.example.chatgpt_mealplanner.core.barcode.model.ConfirmedProductInput
+import com.example.chatgpt_mealplanner.core.barcode.model.ProductDataSource
+import com.example.chatgpt_mealplanner.core.barcode.model.ProductLookupResult
+import com.example.chatgpt_mealplanner.core.barcode.model.ProductMetadata
+import com.example.chatgpt_mealplanner.core.barcode.repository.ProductLookupRepository
+import com.example.chatgpt_mealplanner.core.model.DomainResult
+import com.example.chatgpt_mealplanner.core.model.QuantityConfidence
+import com.example.chatgpt_mealplanner.core.model.StorageLocation
+import com.example.chatgpt_mealplanner.core.service.InventoryDomainService
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import javax.inject.Inject
+
+@HiltViewModel
+class ScannerViewModel @Inject constructor(
+    private val productLookupRepository: ProductLookupRepository,
+    private val inventoryDomainService: InventoryDomainService
+) : ViewModel() {
+
+    private val _state = MutableStateFlow<ScannerState>(ScannerState.RequestingPermission)
+    val state: StateFlow<ScannerState> = _state.asStateFlow()
+
+    private var lastScannedBarcode: String? = null
+    private var lastScannedTimestamp: Long = 0L
+
+    companion object {
+        const val DEBOUNCE_INTERVAL_MS = 2000L
+    }
+
+    fun onEvent(event: ScannerUiEvent) {
+        when (event) {
+            ScannerUiEvent.PermissionGranted -> {
+                _state.value = ScannerState.Ready
+            }
+            ScannerUiEvent.PermissionDenied -> {
+                _state.value = ScannerState.PermissionDenied
+            }
+            is ScannerUiEvent.BarcodeScanned -> {
+                onBarcodeScanned(event.barcode)
+            }
+            is ScannerUiEvent.ConfirmProduct -> {
+                saveConfirmedProduct(event.input)
+            }
+            ScannerUiEvent.ScanAnother -> {
+                resetScanner()
+            }
+            ScannerUiEvent.ManualAddRequested -> {
+                openManualAdd()
+            }
+            ScannerUiEvent.ClearError -> {
+                _state.value = ScannerState.Ready
+            }
+        }
+    }
+
+    private fun onBarcodeScanned(barcode: String) {
+        val now = System.currentTimeMillis()
+        if (barcode == lastScannedBarcode && (now - lastScannedTimestamp) < DEBOUNCE_INTERVAL_MS) {
+            return // Ignore duplicate scan within debounce window
+        }
+
+        lastScannedBarcode = barcode
+        lastScannedTimestamp = now
+
+        _state.value = ScannerState.LookingUp(barcode)
+
+        viewModelScope.launch {
+            when (val result = productLookupRepository.lookupBarcode(barcode)) {
+                is ProductLookupResult.Found -> {
+                    _state.value = ScannerState.Confirming(
+                        barcode = barcode,
+                        editableMetadata = result.metadata
+                    )
+                }
+                is ProductLookupResult.NotFound -> {
+                    _state.value = ScannerState.NotFound(barcode)
+                }
+                is ProductLookupResult.Error -> {
+                    _state.value = ScannerState.Error(
+                        barcode = barcode,
+                        message = "Lookup failed. You can add this item manually."
+                    )
+                }
+            }
+        }
+    }
+
+    private fun saveConfirmedProduct(input: ConfirmedProductInput) {
+        // Idempotency check: Guard against rapid double taps
+        if (_state.value is ScannerState.Saving || _state.value is ScannerState.Saved) {
+            return
+        }
+
+        _state.value = ScannerState.Saving(input)
+
+        viewModelScope.launch {
+            // 1. Add physical lot in Room database via Domain Service
+            when (val lotResult = inventoryDomainService.addLotFromProductInput(input)) {
+                is DomainResult.Success -> {
+                    // 2. Cache confirmed mapping locally for future instant offline lookups
+                    if (!input.barcode.isNullOrBlank()) {
+                        val currentLookup = (_state.value as? ScannerState.Confirming)?.editableMetadata
+                        val mappingToCache = ProductMetadata(
+                            barcode = input.barcode,
+                            displayName = currentLookup?.displayName ?: input.displayName,
+                            canonicalName = input.displayName,
+                            brand = input.brand,
+                            canonicalIngredientId = input.canonicalIngredientId,
+                            category = input.category,
+                            suggestedStorageLocation = input.storageLocation,
+                            netQuantity = input.netQuantity,
+                            netQuantityUnit = input.netQuantityUnit,
+                            packCount = input.packCount,
+                            packSize = input.packSize,
+                            packSizeUnit = input.packSizeUnit,
+                            source = currentLookup?.source ?: ProductDataSource.MANUAL
+                        )
+                        productLookupRepository.saveBarcodeMapping(mappingToCache)
+                    }
+
+                    _state.value = ScannerState.Saved(lotResult.value)
+                }
+                is DomainResult.Failure -> {
+                    _state.value = ScannerState.Error(
+                        barcode = input.barcode,
+                        message = "Failed to save item to inventory"
+                    )
+                }
+            }
+        }
+    }
+
+    private fun openManualAdd() {
+        val defaultManualMetadata = ProductMetadata(
+            barcode = lastScannedBarcode ?: "",
+            displayName = null,
+            suggestedStorageLocation = StorageLocation.CUPBOARD,
+            source = ProductDataSource.MANUAL,
+            confidence = QuantityConfidence.EXACT.let { com.example.chatgpt_mealplanner.core.barcode.model.ProductMatchConfidence.EXACT }
+        )
+        _state.value = ScannerState.Confirming(
+            barcode = lastScannedBarcode,
+            editableMetadata = defaultManualMetadata
+        )
+    }
+
+    private fun resetScanner() {
+        lastScannedBarcode = null
+        lastScannedTimestamp = 0L
+        _state.value = ScannerState.Ready
+    }
+}

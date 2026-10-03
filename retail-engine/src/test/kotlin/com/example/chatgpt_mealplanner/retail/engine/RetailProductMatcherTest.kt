@@ -1,0 +1,231 @@
+package com.example.chatgpt_mealplanner.retail.engine
+
+import com.example.chatgpt_mealplanner.retail.contract.MatchConfidence
+import com.example.chatgpt_mealplanner.retail.contract.MatchType
+import com.example.chatgpt_mealplanner.retail.contract.RetailProduct
+import com.example.chatgpt_mealplanner.retail.contract.RetailProductMappingDecision
+import com.example.chatgpt_mealplanner.retail.contract.RetailStorageClass
+import com.example.chatgpt_mealplanner.retail.contract.RetailerId
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+
+class RetailProductMatcherTest {
+
+    @Test
+    fun matcher_distinguishesBeansWithSausages_fromBakedBeans() {
+        val matcher = RetailProductMatcher()
+
+        val product = RetailProduct(
+            retailerId = RetailerId.ICELAND,
+            retailerProductId = "p1",
+            name = "Iceland Baked Beans with Pork Sausages",
+            canonicalIngredientId = "BAKED_BEANS_SAUSAGES",
+            storageClass = RetailStorageClass.AMBIENT
+        )
+
+        val candidate = matcher.evaluateMatch(
+            requirementCanonicalId = "BAKED_BEANS",
+            requirementDisplayName = "Baked Beans",
+            candidateProduct = product
+        )
+
+        assertEquals(MatchType.INCOMPATIBLE, candidate.matchType)
+        assertFalse(candidate.isAutoBasketEligible)
+    }
+
+    @Test
+    fun matcher_userRejectedMapping_overridesAutomatedMatch() {
+        val rejectedKey = UserProductMappingKey(
+            retailerId = RetailerId.ASDA.name,
+            retailerProductId = "p2",
+            canonicalIngredientId = "CHICKEN"
+        )
+        val userMappings = mapOf(rejectedKey to RetailProductMappingDecision.REJECTED_MATCH)
+        val matcher = RetailProductMatcher(userMappings)
+
+        val product = RetailProduct(
+            retailerId = RetailerId.ASDA,
+            retailerProductId = "p2",
+            name = "Asda Fresh Chicken Breast",
+            canonicalIngredientId = "CHICKEN",
+            storageClass = RetailStorageClass.FRESH
+        )
+
+        val candidate = matcher.evaluateMatch(
+            requirementCanonicalId = "CHICKEN",
+            requirementDisplayName = "Chicken Breast",
+            candidateProduct = product
+        )
+
+        assertEquals(MatchType.INCOMPATIBLE, candidate.matchType)
+        assertFalse(candidate.isAutoBasketEligible)
+    }
+
+    @Test
+    fun matcher_tinnedTomatoesAndCannedTomatoes_shareSameCanonicalConceptAndAcceptValidProducts() {
+        val matcher = RetailProductMatcher()
+
+        val candidateNames = listOf(
+            "Chopped Tomatoes 400g",
+            "Chopped Tomatoes in Tomato Juice 400g",
+            "Peeled Plum Tomatoes 400g",
+            "Whole Peeled Tomatoes",
+            "Plum Tomatoes"
+        )
+
+        for (req in listOf("Tinned Tomatoes", "Canned Tomatoes")) {
+            for (name in candidateNames) {
+                val product = RetailProduct(
+                    retailerId = RetailerId.ASDA,
+                    retailerProductId = "t_accept",
+                    name = name,
+                    storageClass = RetailStorageClass.AMBIENT
+                )
+                val match = matcher.evaluateMatch(null, req, product)
+                assertTrue(match.isAutoBasketEligible, "Expected '$name' to be accepted for requirement '$req'")
+            }
+        }
+    }
+
+    @Test
+    fun matcher_tinnedTomatoes_rejectsIncompatibleProducts() {
+        val matcher = RetailProductMatcher()
+
+        val rejectedNames = listOf(
+            "Passata",
+            "Sieved Tomatoes",
+            "Tomato Purée",
+            "Tomato Paste",
+            "Tomato Ketchup",
+            "Tomato Soup",
+            "Classic Pizza Sauce 400g",
+            "Pasta Sauce",
+            "Fresh Tomatoes 500g",
+            "Cherry Tomatoes"
+        )
+
+        for (name in rejectedNames) {
+            val product = RetailProduct(
+                retailerId = RetailerId.ASDA,
+                retailerProductId = "t_reject",
+                name = name,
+                storageClass = RetailStorageClass.AMBIENT
+            )
+            val match = matcher.evaluateMatch(null, "Tinned Tomatoes", product)
+            assertFalse(match.isAutoBasketEligible, "Expected '$name' to be rejected for Tinned Tomatoes")
+        }
+    }
+
+    @Test
+    fun matcher_tomatoSauce_passesGenuineSauces_andRejectsCompositeProducts() {
+        val matcher = RetailProductMatcher()
+
+        val passingNames = listOf(
+            "Tomato Sauce",
+            "Tomato & Basil Sauce",
+            "Tomato Pasta Sauce"
+        )
+        for (name in passingNames) {
+            val product = RetailProduct(
+                retailerId = RetailerId.ASDA,
+                retailerProductId = "ts_pass",
+                name = name,
+                storageClass = RetailStorageClass.AMBIENT
+            )
+            val match = matcher.evaluateMatch(null, "Tomato sauce", product)
+            assertTrue(match.isAutoBasketEligible, "Expected '$name' to be accepted for 'Tomato sauce'")
+        }
+
+        val rejectingNames = listOf(
+            "Stuffed Cabbage in Tomato Sauce",
+            "Meatballs in Tomato Sauce",
+            "Sardines in Tomato Sauce",
+            "Ravioli in Tomato Sauce"
+        )
+        for (name in rejectingNames) {
+            val product = RetailProduct(
+                retailerId = RetailerId.ASDA,
+                retailerProductId = "ts_reject",
+                name = name,
+                storageClass = RetailStorageClass.AMBIENT
+            )
+            val match = matcher.evaluateMatch(null, "Tomato sauce", product)
+            assertFalse(match.isAutoBasketEligible, "Expected '$name' to be rejected for 'Tomato sauce'")
+            assertEquals(MatchType.INCOMPATIBLE, match.matchType)
+        }
+    }
+
+    @Test
+    fun matcher_cabbage_passesCabbages_rejectsComposites_unlessExplicitlyRequested() {
+        val matcher = RetailProductMatcher()
+
+        val passingNames = listOf(
+            "Cabbage",
+            "White Cabbage",
+            "Red Cabbage",
+            "Savoy Cabbage"
+        )
+        for (name in passingNames) {
+            val product = RetailProduct(
+                retailerId = RetailerId.ASDA,
+                retailerProductId = "cab_pass",
+                name = name,
+                storageClass = RetailStorageClass.FRESH
+            )
+            val match = matcher.evaluateMatch(null, "Cabbage", product)
+            assertTrue(match.isAutoBasketEligible, "Expected '$name' to be accepted for 'Cabbage'")
+        }
+
+        val rejectingNames = listOf(
+            "Creamed Cabbage",
+            "Stuffed Cabbage",
+            "Cabbage Soup",
+            "Coleslaw"
+        )
+        for (name in rejectingNames) {
+            val product = RetailProduct(
+                retailerId = RetailerId.ASDA,
+                retailerProductId = "cab_reject",
+                name = name,
+                storageClass = RetailStorageClass.FRESH
+            )
+            val match = matcher.evaluateMatch(null, "Cabbage", product)
+            assertFalse(match.isAutoBasketEligible, "Expected '$name' to be rejected for generic 'Cabbage'")
+            assertEquals(MatchType.INCOMPATIBLE, match.matchType)
+        }
+
+        // Explicit modifier tests
+        val creamedProduct = RetailProduct(
+            retailerId = RetailerId.ASDA,
+            retailerProductId = "cab_creamed",
+            name = "Creamed Cabbage",
+            storageClass = RetailStorageClass.FRESH
+        )
+        val creamedMatch = matcher.evaluateMatch(null, "creamed cabbage", creamedProduct)
+        assertTrue(creamedMatch.isAutoBasketEligible, "Expected explicitly requested 'creamed cabbage' to match Creamed Cabbage")
+
+        val stuffedProduct = RetailProduct(
+            retailerId = RetailerId.ASDA,
+            retailerProductId = "cab_stuffed",
+            name = "Stuffed Cabbage",
+            storageClass = RetailStorageClass.FRESH
+        )
+        val stuffedMatch = matcher.evaluateMatch(null, "stuffed cabbage", stuffedProduct)
+        assertTrue(stuffedMatch.isAutoBasketEligible, "Expected explicitly requested 'stuffed cabbage' to match Stuffed Cabbage")
+    }
+
+    @Test
+    fun matcher_packWeightNotRequiredForIdentity() {
+        val matcher = RetailProductMatcher()
+        val product = RetailProduct(
+            retailerId = RetailerId.ASDA,
+            retailerProductId = "t_noweight",
+            name = "Peeled Plum Tomatoes",
+            storageClass = RetailStorageClass.AMBIENT
+        )
+        val match = matcher.evaluateMatch(null, "Tinned Tomatoes", product)
+        assertTrue(match.isAutoBasketEligible)
+    }
+}

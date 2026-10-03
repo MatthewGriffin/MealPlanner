@@ -1,0 +1,52 @@
+package com.example.chatgpt_mealplanner.feature.shopping
+
+import com.example.chatgpt_mealplanner.core.model.QuantityConfidence
+import com.example.chatgpt_mealplanner.core.model.QuantityUnit
+import com.example.chatgpt_mealplanner.core.model.ShoppingItemStatus
+import com.example.chatgpt_mealplanner.core.model.ShoppingListItemWithSources
+import com.example.chatgpt_mealplanner.core.model.ShoppingListWithItems
+import com.example.chatgpt_mealplanner.core.model.StapleRule
+import com.example.chatgpt_mealplanner.retail.contract.BasketComparisonResult
+import com.example.chatgpt_mealplanner.retail.contract.BasketLine
+import com.example.chatgpt_mealplanner.retail.contract.Money
+import com.example.chatgpt_mealplanner.retail.contract.RetailerId
+
+enum class ShoppingTab(val displayName: String) {
+    SHOPPING_LIST("Shopping List"),
+    STAPLE_RULES("Staple Rules")
+}
+
+data class RetailerGroup(
+    val retailerId: RetailerId?,
+    val retailerName: String,
+    val subtotal: Money?,
+    val items: List<ShoppingListItemWithSources>,
+    val lineByItemId: Map<String, BasketLine> = emptyMap()
+)
+
+data class ShoppingUiState(
+    val activeListWithItems: ShoppingListWithItems? = null,
+    val stapleRules: List<StapleRule> = emptyList(),
+    val activeTab: ShoppingTab = ShoppingTab.SHOPPING_LIST,
+    val isLoading: Boolean = false,
+    val userMessage: String? = null,
+    val selectedItemForDetail: ShoppingListItemWithSources? = null,
+    val showAddManualDialog: Boolean = false,
+    val basketComparisonResult: BasketComparisonResult? = null,
+    val retailerGroups: List<RetailerGroup> = emptyList()
+)
+
+sealed interface ShoppingUiEvent {
+    data class SelectTab(val tab: ShoppingTab) : ShoppingUiEvent
+    object RegenerateShoppingList : ShoppingUiEvent
+    data class ToggleItemChecked(val itemId: String, val currentStatus: ShoppingItemStatus) : ShoppingUiEvent
+    data class RemoveItem(val itemId: String) : ShoppingUiEvent
+    data class SelectItemDetail(val itemWithSources: ShoppingListItemWithSources?) : ShoppingUiEvent
+    object RequestAddManualItem : ShoppingUiEvent
+    object DismissAddManualDialog : ShoppingUiEvent
+    data class AddManualItem(val name: String, val quantity: Double?, val unit: QuantityUnit?, val notes: String?) : ShoppingUiEvent
+    data class ResolveUncertainty(val inventoryItemId: String, val confirmedQuantity: Double, val unit: QuantityUnit, val confidence: QuantityConfidence = QuantityConfidence.EXACT) : ShoppingUiEvent
+    data class SaveStapleRule(val rule: StapleRule) : ShoppingUiEvent
+    data class DeleteStapleRule(val ruleId: String) : ShoppingUiEvent
+    object ClearUserMessage : ShoppingUiEvent
+}
