@@ -1,6 +1,8 @@
 package com.example.chatgpt_mealplanner.core.sync.security
 
 import android.content.Context
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -23,17 +25,46 @@ open class PantryTlsKeyManager @Inject constructor(
 ) {
     private val keyAlias = "pantry_tls_key"
     private val fileName = "pantry_tls_keystore.p12"
-    private val defaultPassword = "pantry_tls_password_12345".toCharArray()
+    private val defaultFallbackPassword = "pantry_tls_password_12345".toCharArray()
+
+    private fun getOrCreateEncryptedPassword(): CharArray {
+        val ctx = context ?: return defaultFallbackPassword
+        return try {
+            val masterKey = MasterKey.Builder(ctx)
+                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                .build()
+
+            val prefs = EncryptedSharedPreferences.create(
+                ctx,
+                "pantry_tls_secure_prefs",
+                masterKey,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
+
+            var pwd = prefs.getString("KEY_TLS_P12_PASSWORD", null)
+            if (pwd.isNullOrBlank()) {
+                val pwdBytes = ByteArray(32)
+                SecureRandom().nextBytes(pwdBytes)
+                pwd = java.util.Base64.getEncoder().encodeToString(pwdBytes)
+                prefs.edit().putString("KEY_TLS_P12_PASSWORD", pwd).apply()
+            }
+            pwd.toCharArray()
+        } catch (e: Exception) {
+            defaultFallbackPassword
+        }
+    }
 
     open fun getOrCreateMainTlsKeyStore(householdId: String, customFilesDir: File? = null): KeyStore {
         val targetDir = customFilesDir ?: context?.filesDir ?: throw IllegalStateException("Context or customFilesDir must be provided")
         val ksFile = File(targetDir, fileName)
+        val password = getOrCreateEncryptedPassword()
 
         if (ksFile.exists()) {
             return try {
                 val ks = KeyStore.getInstance("PKCS12")
                 FileInputStream(ksFile).use { fis ->
-                    ks.load(fis, defaultPassword)
+                    ks.load(fis, password)
                 }
                 if (!ks.containsAlias(keyAlias)) {
                     throw SecurityException("Persistent TLS KeyStore exists but does not contain alias '$keyAlias'")
@@ -49,10 +80,10 @@ open class PantryTlsKeyManager @Inject constructor(
         val (keyPair, cert) = generateSelfSignedCertificate(householdId)
         val ks = KeyStore.getInstance("PKCS12")
         ks.load(null, null)
-        ks.setKeyEntry(keyAlias, keyPair.private, defaultPassword, arrayOf(cert))
+        ks.setKeyEntry(keyAlias, keyPair.private, password, arrayOf(cert))
 
         FileOutputStream(ksFile).use { fos ->
-            ks.store(fos, defaultPassword)
+            ks.store(fos, password)
         }
 
         return ks
@@ -122,31 +153,25 @@ open class PantryTlsKeyManager @Inject constructor(
     ): ByteArray {
         val out = ByteArrayOutputStream()
 
-        // Version v3: [0] EXPLICIT INTEGER 2
         val version = byteArrayOf(0xA0.toByte(), 0x03.toByte(), 0x02.toByte(), 0x01.toByte(), 0x02.toByte())
         out.write(version)
 
-        // Serial Number
         val serialBytes = serial.toByteArray()
         out.write(0x02)
         writeLength(out, serialBytes.size)
         out.write(serialBytes)
 
-        // Signature Algorithm: sha256WithRSAEncryption OID 1.2.840.113549.1.1.11
         val rsaOid = byteArrayOf(0x30.toByte(), 0x0D.toByte(), 0x06.toByte(), 0x09.toByte(), 0x2A.toByte(), 0x86.toByte(), 0x48.toByte(), 0x86.toByte(), 0xF7.toByte(), 0x0D.toByte(), 0x01.toByte(), 0x01.toByte(), 0x0B.toByte(), 0x05.toByte(), 0x00.toByte())
         out.write(rsaOid)
 
-        // Issuer & Subject DN: RDN Sequence for CN=PantryMainHost_...
         val dnBytes = buildRdnSequence(dn)
-        out.write(dnBytes) // Issuer
+        out.write(dnBytes)
 
-        // Validity: UTCTime
         val validityBytes = buildValidityPeriod(startDate, endDate)
         out.write(validityBytes)
 
-        out.write(dnBytes) // Subject (Same as Issuer)
+        out.write(dnBytes)
 
-        // SubjectPublicKeyInfo
         out.write(pubKey.encoded)
 
         val tbsContent = out.toByteArray()
@@ -161,8 +186,8 @@ open class PantryTlsKeyManager @Inject constructor(
     private fun buildRdnSequence(dn: String): ByteArray {
         val cnValue = dn.removePrefix("CN=").toByteArray(Charsets.UTF_8)
         val cnAttribute = ByteArrayOutputStream()
-        cnAttribute.write(byteArrayOf(0x06.toByte(), 0x03.toByte(), 0x55.toByte(), 0x04.toByte(), 0x03.toByte())) // OID 2.5.4.3 (CN)
-        cnAttribute.write(0x0C) // UTF8String
+        cnAttribute.write(byteArrayOf(0x06.toByte(), 0x03.toByte(), 0x55.toByte(), 0x04.toByte(), 0x03.toByte()))
+        cnAttribute.write(0x0C)
         writeLength(cnAttribute, cnValue.size)
         cnAttribute.write(cnValue)
 
@@ -192,12 +217,12 @@ open class PantryTlsKeyManager @Inject constructor(
         val endStr = sdf.format(end).toByteArray(Charsets.US_ASCII)
 
         val startUtc = ByteArrayOutputStream()
-        startUtc.write(0x17) // UTCTime
+        startUtc.write(0x17)
         writeLength(startUtc, startStr.size)
         startUtc.write(startStr)
 
         val endUtc = ByteArrayOutputStream()
-        endUtc.write(0x17) // UTCTime
+        endUtc.write(0x17)
         writeLength(endUtc, endStr.size)
         endUtc.write(endStr)
 
@@ -247,5 +272,5 @@ open class PantryTlsKeyManager @Inject constructor(
         return clean1 == clean2
     }
 
-    fun getTlsPassword(): CharArray = defaultPassword
+    fun getTlsPassword(): CharArray = getOrCreateEncryptedPassword()
 }
