@@ -4,7 +4,7 @@ import android.app.Application
 import android.util.Log
 import dagger.hilt.android.HiltAndroidApp
 
-const val PANTRY_DEBUG_BUILD_ID = "SYNC_PHASE2B_HARDENED_V3"
+const val PANTRY_DEBUG_BUILD_ID = "SYNC_PHASE3A_MAIN_ENGINE_V2"
 
 @HiltAndroidApp
 class MealPlannerApplication : Application() {
