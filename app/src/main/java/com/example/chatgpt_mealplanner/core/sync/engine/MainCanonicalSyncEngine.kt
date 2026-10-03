@@ -394,7 +394,37 @@ open class MainCanonicalSyncEngine @Inject constructor(
                         SyncOperationType.SET_QUANTITY -> {
                             val payload = json.decodeFromString<SetQuantityPayloadDto>(dto.payloadJson)
                             val newQty = payload.absoluteQuantity
-                            val newStatus = if (newQty <= 0.0) ItemStatus.OUT else ItemStatus.AVAILABLE
+
+                            if (newQty.isNaN() || newQty.isInfinite() || newQty < 0.0) {
+                                val parentOp = CanonicalSyncOperationEntity(
+                                    operationId = dto.operationId,
+                                    deviceId = dto.deviceId,
+                                    deviceSequence = dto.deviceSequence,
+                                    protocolVersion = dto.protocolVersion,
+                                    operationType = dto.operationType.name,
+                                    targetItemId = targetItemId,
+                                    baseRevision = dto.baseRevision,
+                                    payloadJson = dto.payloadJson,
+                                    createdAt = dto.createdAt,
+                                    canonicalSequence = allocatedSequence,
+                                    receivedAt = now,
+                                    status = SyncOperationStatus.REJECTED.name,
+                                    resultCode = "INVALID_QUANTITY"
+                                )
+                                canonicalSyncDao.insertCanonicalOperation(parentOp)
+
+                                return@runInTransaction SyncOperationResultDto(
+                                    operationId = dto.operationId,
+                                    deviceId = dto.deviceId,
+                                    status = SyncOperationStatus.REJECTED,
+                                    canonicalSequence = allocatedSequence,
+                                    targetItemId = targetItemId,
+                                    resultCode = "INVALID_QUANTITY",
+                                    resultMessage = "Requested absolute quantity $newQty is negative or invalid."
+                                )
+                            }
+
+                            val newStatus = if (newQty == 0.0) ItemStatus.OUT else ItemStatus.AVAILABLE
                             val newRev = targetItem.revision + 1L
 
                             val updated = targetItem.copy(
@@ -435,9 +465,40 @@ open class MainCanonicalSyncEngine @Inject constructor(
 
                         SyncOperationType.ADJUST_QUANTITY -> {
                             val payload = json.decodeFromString<AdjustQuantityPayloadDto>(dto.payloadJson)
-                            val currentQty = targetItem.quantity ?: 0.0
-                            val newQty = (currentQty + payload.delta).coerceAtLeast(0.0)
-                            val newStatus = if (newQty <= 0.0) ItemStatus.OUT else ItemStatus.AVAILABLE
+                            val currentQty: Double = targetItem.quantity ?: 0.0
+                            val rawResult: Double = currentQty + payload.delta
+
+                            if (payload.delta.isNaN() || payload.delta.isInfinite() || rawResult.isNaN() || rawResult.isInfinite() || rawResult < 0.0) {
+                                val parentOp = CanonicalSyncOperationEntity(
+                                    operationId = dto.operationId,
+                                    deviceId = dto.deviceId,
+                                    deviceSequence = dto.deviceSequence,
+                                    protocolVersion = dto.protocolVersion,
+                                    operationType = dto.operationType.name,
+                                    targetItemId = targetItemId,
+                                    baseRevision = dto.baseRevision,
+                                    payloadJson = dto.payloadJson,
+                                    createdAt = dto.createdAt,
+                                    canonicalSequence = allocatedSequence,
+                                    receivedAt = now,
+                                    status = SyncOperationStatus.REJECTED.name,
+                                    resultCode = "INVALID_QUANTITY"
+                                )
+                                canonicalSyncDao.insertCanonicalOperation(parentOp)
+
+                                return@runInTransaction SyncOperationResultDto(
+                                    operationId = dto.operationId,
+                                    deviceId = dto.deviceId,
+                                    status = SyncOperationStatus.REJECTED,
+                                    canonicalSequence = allocatedSequence,
+                                    targetItemId = targetItemId,
+                                    resultCode = "INVALID_QUANTITY",
+                                    resultMessage = "Calculated quantity $rawResult is negative or invalid."
+                                )
+                            }
+
+                            val newQty = rawResult
+                            val newStatus = if (newQty == 0.0) ItemStatus.OUT else ItemStatus.AVAILABLE
                             val newRev = targetItem.revision + 1L
 
                             val updated = targetItem.copy(

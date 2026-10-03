@@ -361,4 +361,80 @@ class Phase3aCanonicalEngineTest {
         assertEquals(SyncOperationStatus.REJECTED, result.status)
         assertEquals("TARGET_NOT_FOUND", result.resultCode)
     }
+
+    @Test
+    fun adjustQuantity_negativeResult_isRejected_andMainQuantityAndRevisionUnchanged() = runTest {
+        val itemId = UUID.randomUUID().toString()
+        inventoryDao.insertItem(
+            InventoryItemEntity(
+                id = itemId,
+                canonicalName = "Milk",
+                displayName = "Whole Milk",
+                category = FoodCategory.FRESH_PANTRY,
+                storageLocation = StorageLocation.FRIDGE,
+                quantity = 2.0,
+                quantityConfidence = QuantityConfidence.EXACT,
+                status = ItemStatus.AVAILABLE,
+                frozen = false,
+                staple = false,
+                createdAt = System.currentTimeMillis(),
+                updatedAt = System.currentTimeMillis(),
+                revision = 1L
+            )
+        )
+
+        val adjustPayload = AdjustQuantityPayloadDto(delta = -10.0)
+        val opDto = SyncOperationDto(
+            operationId = UUID.randomUUID().toString(),
+            deviceId = activeDeviceId,
+            deviceSequence = 1L,
+            operationType = SyncOperationType.ADJUST_QUANTITY,
+            targetItemId = itemId,
+            baseRevision = 1L,
+            payloadJson = json.encodeToString(adjustPayload),
+            createdAt = System.currentTimeMillis()
+        )
+
+        val result = engine.processOperation(activeDeviceId, opDto)
+
+        assertEquals(SyncOperationStatus.REJECTED, result.status)
+        assertEquals("INVALID_QUANTITY", result.resultCode)
+
+        val itemAfter = inventoryDao.getItemById(itemId)
+        assertEquals(2.0, itemAfter?.quantity ?: 0.0, 0.001)
+        assertEquals(1L, itemAfter?.revision)
+    }
+
+    @Test
+    fun createdAt_farInFutureOrPast_doesNotControlCanonicalSequenceOrdering() = runTest {
+        val itemIdA = UUID.randomUUID().toString()
+        val itemIdB = UUID.randomUUID().toString()
+
+        val addA = AddItemPayloadDto(itemId = itemIdA, canonicalName = "Apples", displayName = "Red Apples", category = "FRESH_PANTRY", storageLocation = "FRIDGE")
+        val addB = AddItemPayloadDto(itemId = itemIdB, canonicalName = "Bananas", displayName = "Yellow Bananas", category = "FRESH_PANTRY", storageLocation = "FRIDGE")
+
+        val opA = SyncOperationDto(
+            operationId = UUID.randomUUID().toString(),
+            deviceId = activeDeviceId,
+            deviceSequence = 1L,
+            operationType = SyncOperationType.ADD_ITEM,
+            payloadJson = json.encodeToString(addA),
+            createdAt = 4070908800000L
+        )
+
+        val opB = SyncOperationDto(
+            operationId = UUID.randomUUID().toString(),
+            deviceId = activeDeviceId,
+            deviceSequence = 2L,
+            operationType = SyncOperationType.ADD_ITEM,
+            payloadJson = json.encodeToString(addB),
+            createdAt = 946684800000L
+        )
+
+        val resA = engine.processOperation(activeDeviceId, opA)
+        val resB = engine.processOperation(activeDeviceId, opB)
+
+        assertEquals(1L, resA.canonicalSequence)
+        assertEquals(2L, resB.canonicalSequence)
+    }
 }
