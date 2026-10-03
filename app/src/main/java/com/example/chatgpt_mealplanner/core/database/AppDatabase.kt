@@ -594,6 +594,84 @@ val MIGRATION_14_15 = object : Migration(14, 15) {
     }
 }
 
+val MIGRATION_15_16 = object : Migration(15, 16) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("""
+            CREATE TABLE IF NOT EXISTS `canonical_sync_sequence` (
+                `singletonId` INTEGER NOT NULL,
+                `nextSequence` INTEGER NOT NULL,
+                PRIMARY KEY(`singletonId`)
+            )
+        """)
+
+        db.execSQL("INSERT OR IGNORE INTO `canonical_sync_sequence` (`singletonId`, `nextSequence`) VALUES (1, 1)")
+
+        db.execSQL("""
+            CREATE TABLE IF NOT EXISTS `canonical_sync_operations` (
+                `operationId` TEXT NOT NULL,
+                `deviceId` TEXT NOT NULL,
+                `deviceSequence` INTEGER NOT NULL,
+                `protocolVersion` INTEGER NOT NULL,
+                `operationType` TEXT NOT NULL,
+                `targetItemId` TEXT,
+                `baseRevision` INTEGER,
+                `payloadJson` TEXT NOT NULL,
+                `createdAt` INTEGER NOT NULL,
+                `canonicalSequence` INTEGER NOT NULL,
+                `receivedAt` INTEGER NOT NULL,
+                `status` TEXT NOT NULL,
+                `resultCode` TEXT NOT NULL,
+                `resultPayloadJson` TEXT,
+                PRIMARY KEY(`operationId`)
+            )
+        """)
+
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_canonical_sync_operations_deviceId_deviceSequence` ON `canonical_sync_operations` (`deviceId`, `deviceSequence`)")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_canonical_sync_operations_canonicalSequence` ON `canonical_sync_operations` (`canonicalSequence`)")
+
+        db.execSQL("""
+            CREATE TABLE IF NOT EXISTS `sync_conflicts` (
+                `conflictId` TEXT NOT NULL,
+                `operationId` TEXT NOT NULL,
+                `deviceId` TEXT NOT NULL,
+                `targetItemId` TEXT NOT NULL,
+                `operationType` TEXT NOT NULL,
+                `baseRevision` INTEGER NOT NULL,
+                `currentRevision` INTEGER NOT NULL,
+                `incomingPayloadJson` TEXT NOT NULL,
+                `currentItemSnapshotJson` TEXT NOT NULL,
+                `status` TEXT NOT NULL,
+                `createdAt` INTEGER NOT NULL,
+                `resolvedAt` INTEGER,
+                PRIMARY KEY(`conflictId`),
+                FOREIGN KEY(`operationId`) REFERENCES `canonical_sync_operations`(`operationId`) ON DELETE RESTRICT
+            )
+        """)
+
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_sync_conflicts_operationId` ON `sync_conflicts` (`operationId`)")
+
+        db.execSQL("""
+            CREATE TABLE IF NOT EXISTS `sync_pending_approvals` (
+                `approvalId` TEXT NOT NULL,
+                `operationId` TEXT NOT NULL,
+                `deviceId` TEXT NOT NULL,
+                `targetItemId` TEXT NOT NULL,
+                `operationType` TEXT NOT NULL,
+                `requestedBaseRevision` INTEGER NOT NULL,
+                `currentRevisionAtRequest` INTEGER NOT NULL,
+                `currentItemSnapshotJson` TEXT NOT NULL,
+                `payloadJson` TEXT NOT NULL,
+                `status` TEXT NOT NULL,
+                `createdAt` INTEGER NOT NULL,
+                PRIMARY KEY(`approvalId`),
+                FOREIGN KEY(`operationId`) REFERENCES `canonical_sync_operations`(`operationId`) ON DELETE RESTRICT
+            )
+        """)
+
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_sync_pending_approvals_operationId` ON `sync_pending_approvals` (`operationId`)")
+    }
+}
+
 val ALL_MIGRATIONS = arrayOf(
     MIGRATION_1_2,
     MIGRATION_2_3,
@@ -608,7 +686,8 @@ val ALL_MIGRATIONS = arrayOf(
     MIGRATION_11_12,
     MIGRATION_12_13,
     MIGRATION_13_14,
-    MIGRATION_14_15
+    MIGRATION_14_15,
+    MIGRATION_15_16
 )
 
 @Database(
@@ -642,9 +721,13 @@ val ALL_MIGRATIONS = arrayOf(
         ReceiptSpendItemEntity::class,
         ReceiptCategoryMappingEntity::class,
         com.example.chatgpt_mealplanner.core.database.entity.HouseholdIdentityEntity::class,
-        com.example.chatgpt_mealplanner.core.database.entity.PairedDeviceEntity::class
+        com.example.chatgpt_mealplanner.core.database.entity.PairedDeviceEntity::class,
+        com.example.chatgpt_mealplanner.core.database.entity.CanonicalSyncSequenceEntity::class,
+        com.example.chatgpt_mealplanner.core.database.entity.CanonicalSyncOperationEntity::class,
+        com.example.chatgpt_mealplanner.core.database.entity.SyncConflictEntity::class,
+        com.example.chatgpt_mealplanner.core.database.entity.SyncPendingApprovalEntity::class
     ],
-    version = 15,
+    version = 16,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -663,4 +746,5 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun receiptSpendDao(): ReceiptSpendDao
     abstract fun householdIdentityDao(): com.example.chatgpt_mealplanner.core.database.dao.HouseholdIdentityDao
     abstract fun pairedDeviceDao(): com.example.chatgpt_mealplanner.core.database.dao.PairedDeviceDao
+    abstract fun canonicalSyncDao(): com.example.chatgpt_mealplanner.core.database.dao.CanonicalSyncDao
 }

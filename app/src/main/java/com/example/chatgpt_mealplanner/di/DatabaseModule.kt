@@ -123,6 +123,11 @@ object DatabaseModule {
     fun providePairedDeviceDao(database: AppDatabase): com.example.chatgpt_mealplanner.core.database.dao.PairedDeviceDao {
         return database.pairedDeviceDao()
     }
+
+    @Provides
+    fun provideCanonicalSyncDao(database: AppDatabase): com.example.chatgpt_mealplanner.core.database.dao.CanonicalSyncDao {
+        return database.canonicalSyncDao()
+    }
 }
 
 @Module
