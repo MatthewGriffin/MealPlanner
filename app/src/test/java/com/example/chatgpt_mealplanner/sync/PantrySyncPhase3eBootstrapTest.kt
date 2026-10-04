@@ -24,8 +24,10 @@ import com.example.chatgpt_mealplanner.core.sync.follower.config.FollowerPairing
 import com.example.chatgpt_mealplanner.core.sync.follower.config.FollowerPairingStore
 import com.example.chatgpt_mealplanner.core.sync.follower.database.FollowerDatabase
 import com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerDao
+import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerDeviceSequenceEntity
 import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerInventoryItemEntity
 import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerSyncMetadataEntity
+import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerSyncOutboxEntity
 import com.example.chatgpt_mealplanner.core.sync.follower.engine.FollowerBootstrapEngine
 import com.example.chatgpt_mealplanner.core.sync.follower.engine.FollowerFeedPullEngine
 import com.example.chatgpt_mealplanner.core.sync.follower.worker.FollowerNetworkCallbackListener
@@ -63,6 +65,7 @@ import java.security.KeyPairGenerator
 import java.security.PublicKey
 import java.security.Signature
 import java.security.spec.X509EncodedKeySpec
+import java.sql.DriverManager
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -112,40 +115,186 @@ open class FakeKeyStoreManager : AndroidKeyStoreManager() {
     }
 }
 
-open class FakeRoomFollowerDatabase(private val dao: FollowerDao) : FollowerDatabase() {
-    private var inTx = false
-    private var txSuccessful = false
-    private var snapshotBeforeTx: List<FollowerInventoryItemEntity>? = null
-    private var metaBeforeTx: FollowerSyncMetadataEntity? = null
+open class RealJdbcFollowerDao(private val conn: java.sql.Connection) : FollowerDao {
+    init {
+        conn.createStatement().use { stmt ->
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS `follower_inventory_items` (
+                    `itemId` TEXT PRIMARY KEY NOT NULL,
+                    `barcode` TEXT,
+                    `canonicalName` TEXT NOT NULL,
+                    `confirmedDisplayName` TEXT NOT NULL,
+                    `confirmedBrand` TEXT,
+                    `confirmedCategory` TEXT NOT NULL,
+                    `confirmedStorageLocation` TEXT NOT NULL,
+                    `confirmedQuantity` REAL NOT NULL,
+                    `confirmedQuantityUnit` TEXT,
+                    `confirmedNotes` TEXT,
+                    `confirmedStatus` TEXT NOT NULL,
+                    `mainConfirmedRevision` INTEGER NOT NULL,
+                    `displayName` TEXT NOT NULL,
+                    `brand` TEXT,
+                    `category` TEXT NOT NULL,
+                    `storageLocation` TEXT NOT NULL,
+                    `quantity` REAL NOT NULL,
+                    `quantityUnit` TEXT,
+                    `notes` TEXT,
+                    `status` TEXT NOT NULL,
+                    `optimisticRevision` INTEGER NOT NULL,
+                    `isPendingSync` INTEGER NOT NULL,
+                    `updatedAt` INTEGER NOT NULL
+                )
+            """.trimIndent())
 
-    override fun followerDao(): FollowerDao = dao
-
-    override fun beginTransaction() {
-        inTx = true
-        txSuccessful = false
-        kotlinx.coroutines.runBlocking {
-            snapshotBeforeTx = dao.getAllItems()
-            metaBeforeTx = dao.getSyncMetadata()
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS `follower_sync_metadata` (
+                    `singletonId` INTEGER PRIMARY KEY NOT NULL,
+                    `lastReconciledCanonicalSequence` INTEGER NOT NULL,
+                    `lastSuccessfulPullAt` INTEGER,
+                    `bootstrapCompleted` INTEGER NOT NULL DEFAULT 0,
+                    `bootstrapCompletedAt` INTEGER,
+                    `bootstrapCanonicalSequence` INTEGER
+                )
+            """.trimIndent())
         }
     }
 
-    override fun setTransactionSuccessful() {
-        txSuccessful = true
-    }
-
-    override fun endTransaction() {
-        if (!txSuccessful) {
-            kotlinx.coroutines.runBlocking {
-                if (dao is FakeFollowerDao) {
-                    dao.itemsMap.clear()
-                    snapshotBeforeTx?.forEach { dao.insertOrUpdateItem(it) }
-                    metaBeforeTx?.let { dao.updateSyncMetadata(it) }
-                }
+    override suspend fun getAllItems(): List<FollowerInventoryItemEntity> {
+        val list = mutableListOf<FollowerInventoryItemEntity>()
+        conn.createStatement().use { stmt ->
+            val rs = stmt.executeQuery("SELECT itemId, canonicalName, confirmedDisplayName, confirmedCategory, confirmedStorageLocation, confirmedQuantity, confirmedStatus, mainConfirmedRevision, displayName, category, storageLocation, quantity, status, optimisticRevision, isPendingSync, updatedAt FROM follower_inventory_items")
+            while (rs.next()) {
+                list.add(
+                    FollowerInventoryItemEntity(
+                        itemId = rs.getString("itemId"),
+                        barcode = null,
+                        canonicalName = rs.getString("canonicalName"),
+                        confirmedDisplayName = rs.getString("confirmedDisplayName"),
+                        confirmedBrand = null,
+                        confirmedCategory = rs.getString("confirmedCategory"),
+                        confirmedStorageLocation = rs.getString("confirmedStorageLocation"),
+                        confirmedQuantity = rs.getDouble("confirmedQuantity"),
+                        confirmedQuantityUnit = null,
+                        confirmedNotes = null,
+                        confirmedStatus = rs.getString("confirmedStatus"),
+                        mainConfirmedRevision = rs.getLong("mainConfirmedRevision"),
+                        displayName = rs.getString("displayName"),
+                        brand = null,
+                        category = rs.getString("category"),
+                        storageLocation = rs.getString("storageLocation"),
+                        quantity = rs.getDouble("quantity"),
+                        quantityUnit = null,
+                        notes = null,
+                        status = rs.getString("status"),
+                        optimisticRevision = rs.getLong("optimisticRevision"),
+                        isPendingSync = rs.getInt("isPendingSync") == 1,
+                        updatedAt = rs.getLong("updatedAt")
+                    )
+                )
             }
         }
-        inTx = false
+        return list
     }
 
+    override suspend fun getItemById(itemId: String): FollowerInventoryItemEntity? {
+        return getAllItems().find { it.itemId == itemId }
+    }
+
+    override suspend fun insertOrUpdateItem(item: FollowerInventoryItemEntity) {
+        val count = conn.createStatement().use { stmt ->
+            val rs = stmt.executeQuery("SELECT COUNT(*) FROM follower_inventory_items")
+            if (rs.next()) rs.getInt(1) else 0
+        }
+        if (count >= 2) {
+            throw RuntimeException("Injected SQLite exception after first snapshot item write")
+        }
+
+        conn.prepareStatement("""
+            INSERT OR REPLACE INTO follower_inventory_items (
+                itemId, canonicalName, confirmedDisplayName, confirmedCategory, confirmedStorageLocation, confirmedQuantity, confirmedStatus, mainConfirmedRevision, displayName, category, storageLocation, quantity, status, optimisticRevision, isPendingSync, updatedAt
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """.trimIndent()).use { stmt ->
+            stmt.setString(1, item.itemId)
+            stmt.setString(2, item.canonicalName)
+            stmt.setString(3, item.confirmedDisplayName)
+            stmt.setString(4, item.confirmedCategory)
+            stmt.setString(5, item.confirmedStorageLocation)
+            stmt.setDouble(6, item.confirmedQuantity ?: 0.0)
+            stmt.setString(7, item.confirmedStatus)
+            stmt.setLong(8, item.mainConfirmedRevision)
+            stmt.setString(9, item.displayName)
+            stmt.setString(10, item.category)
+            stmt.setString(11, item.storageLocation)
+            stmt.setDouble(12, item.quantity ?: 0.0)
+            stmt.setString(13, item.status)
+            stmt.setLong(14, item.optimisticRevision)
+            stmt.setInt(15, if (item.isPendingSync) 1 else 0)
+            stmt.setLong(16, item.updatedAt)
+            stmt.executeUpdate()
+        }
+    }
+
+    override suspend fun getSyncMetadata(): FollowerSyncMetadataEntity? {
+        conn.createStatement().use { stmt ->
+            val rs = stmt.executeQuery("SELECT singletonId, lastReconciledCanonicalSequence, lastSuccessfulPullAt, bootstrapCompleted, bootstrapCompletedAt, bootstrapCanonicalSequence FROM follower_sync_metadata WHERE singletonId = 1")
+            if (rs.next()) {
+                val completedAtObj = rs.getObject("bootstrapCompletedAt")
+                val completedAt = if (completedAtObj == null) null else (completedAtObj as Number).toLong()
+                val canonSeqObj = rs.getObject("bootstrapCanonicalSequence")
+                val canonSeq = if (canonSeqObj == null) null else (canonSeqObj as Number).toLong()
+                return FollowerSyncMetadataEntity(
+                    singletonId = rs.getInt("singletonId"),
+                    lastReconciledCanonicalSequence = rs.getLong("lastReconciledCanonicalSequence"),
+                    lastSuccessfulPullAt = rs.getLong("lastSuccessfulPullAt"),
+                    bootstrapCompleted = rs.getInt("bootstrapCompleted") == 1,
+                    bootstrapCompletedAt = completedAt,
+                    bootstrapCanonicalSequence = canonSeq
+                )
+            }
+        }
+        return null
+    }
+
+    override suspend fun updateSyncMetadata(metadata: FollowerSyncMetadataEntity) {
+        conn.prepareStatement("""
+            INSERT OR REPLACE INTO follower_sync_metadata (
+                singletonId, lastReconciledCanonicalSequence, lastSuccessfulPullAt, bootstrapCompleted, bootstrapCompletedAt, bootstrapCanonicalSequence
+            ) VALUES (?, ?, ?, ?, ?, ?)
+        """.trimIndent()).use { stmt ->
+            stmt.setInt(1, metadata.singletonId)
+            stmt.setLong(2, metadata.lastReconciledCanonicalSequence)
+            stmt.setLong(3, metadata.lastSuccessfulPullAt ?: 0L)
+            stmt.setInt(4, if (metadata.bootstrapCompleted) 1 else 0)
+            if (metadata.bootstrapCompletedAt != null) stmt.setLong(5, metadata.bootstrapCompletedAt) else stmt.setNull(5, java.sql.Types.INTEGER)
+            if (metadata.bootstrapCanonicalSequence != null) stmt.setLong(6, metadata.bootstrapCanonicalSequence) else stmt.setNull(6, java.sql.Types.INTEGER)
+            stmt.executeUpdate()
+        }
+    }
+
+    override suspend fun getPendingOperationsInOrder(): List<FollowerSyncOutboxEntity> = emptyList()
+    override suspend fun insertOutboxOperation(op: FollowerSyncOutboxEntity) {}
+    override suspend fun updateOutboxStatus(operationId: String, status: String, attemptCount: Int, lastAttemptAt: Long?, lastErrorCode: String?) {}
+    override suspend fun reconcileOutboxResult(operationId: String, status: String, canonicalSeq: Long?, resultCode: String?, resultingRev: Long?, conflictId: String?, approvalId: String?, completedAt: Long?) {}
+    override suspend fun resetInFlightOpsToPending() {}
+    override suspend fun getOutboxByOperationId(operationId: String): FollowerSyncOutboxEntity? = null
+    override suspend fun getUnresolvedOutboxOpsForTargetItem(itemId: String): List<FollowerSyncOutboxEntity> = emptyList()
+    override suspend fun getSequenceEntity(): FollowerDeviceSequenceEntity? = null
+    override suspend fun updateSequenceEntity(entity: FollowerDeviceSequenceEntity) {}
+}
+
+open class RealRoomFollowerDatabase(private val conn: java.sql.Connection) : FollowerDatabase() {
+    private val realDao = RealJdbcFollowerDao(conn)
+
+    override fun followerDao(): FollowerDao = realDao
+
+    override fun beginTransaction() { conn.setAutoCommit(false) }
+    override fun setTransactionSuccessful() {}
+    override fun endTransaction() {
+        if (!conn.autoCommit) {
+            conn.rollback()
+            conn.setAutoCommit(true)
+        }
+    }
     override fun createOpenHelper(config: androidx.room.DatabaseConfiguration): androidx.sqlite.db.SupportSQLiteOpenHelper = error("")
     override fun createInvalidationTracker(): androidx.room.InvalidationTracker = error("")
     override fun clearAllTables() {}
@@ -268,7 +417,8 @@ class PantrySyncPhase3eBootstrapTest {
 
         // Initialize Follower side
         fakeDao = FakeFollowerDao()
-        followerDb = FakeRoomFollowerDatabase(fakeDao)
+        val conn = DriverManager.getConnection("jdbc:sqlite::memory:")
+        followerDb = RealRoomFollowerDatabase(conn)
         localEngine = TestableFollowerSyncEngine(fakeDao)
         fakeClient = FakeBootstrapSyncTestClient()
         pullEngine = FollowerFeedPullEngine(followerDb, fakeClient, localEngine)
@@ -367,18 +517,9 @@ class PantrySyncPhase3eBootstrapTest {
     // 2. real_followerRoomRollbackTest_executesProductionWithTransaction
     @Test
     fun real_followerRoomRollbackTest_executesProductionWithTransaction() = runTest {
-        val rollbackDao = object : FakeFollowerDao() {
-            var insertedCount = 0
-            override suspend fun insertOrUpdateItem(item: FollowerInventoryItemEntity) {
-                insertedCount++
-                if (insertedCount >= 2) {
-                    throw RuntimeException("Injected database fault after item 1 write")
-                }
-                super.insertOrUpdateItem(item)
-            }
-        }
-
-        val testRoomDb = FakeRoomFollowerDatabase(rollbackDao)
+        val conn = DriverManager.getConnection("jdbc:sqlite::memory:")
+        val testRoomDb = RealRoomFollowerDatabase(conn)
+        val rollbackDao = testRoomDb.followerDao()
         val testEngine = FollowerBootstrapEngine(testRoomDb, fakeClient, pullEngine)
 
         // Arrange pre-existing follower state and metadata
@@ -450,6 +591,8 @@ class PantrySyncPhase3eBootstrapTest {
         assertFalse("bootstrapCompleted MUST remain false", metaAfter?.bootstrapCompleted == true)
         assertNull("bootstrapCompletedAt MUST remain null", metaAfter?.bootstrapCompletedAt)
         assertNull("bootstrapCanonicalSequence MUST remain null", metaAfter?.bootstrapCanonicalSequence)
+
+        conn.close()
     }
 
     // 3. failClosed_encryptedStorageFailure_returnsNullConfig
