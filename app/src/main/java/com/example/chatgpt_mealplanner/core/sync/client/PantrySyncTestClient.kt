@@ -3,9 +3,10 @@ package com.example.chatgpt_mealplanner.core.sync.client
 import com.example.chatgpt_mealplanner.core.security.AndroidKeyStoreManager
 import com.example.chatgpt_mealplanner.sync.contract.AuthChallengeDto
 import com.example.chatgpt_mealplanner.sync.contract.AuthChallengeResponseDto
+import com.example.chatgpt_mealplanner.sync.contract.SyncOperationDto
+import com.example.chatgpt_mealplanner.sync.contract.SyncOperationResultDto
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
@@ -26,6 +27,12 @@ data class TestClientSyncResult(
     val success: Boolean,
     val authenticated: Boolean,
     val responseJson: String?,
+    val error: String? = null
+)
+
+data class TestClientOperationResult(
+    val success: Boolean,
+    val resultDto: SyncOperationResultDto? = null,
     val error: String? = null
 )
 
@@ -78,7 +85,7 @@ open class PantrySyncTestClient @Inject constructor(
 
             // 1. Request Challenge
             val challengeReqObj = buildJsonObject { put("deviceId", deviceId) }
-            val challengeBody = json.encodeToString(challengeReqObj).toRequestBody("application/json".toMediaType())
+            val challengeBody = json.encodeToString(buildJsonObject { put("deviceId", deviceId) }).toRequestBody("application/json".toMediaType())
             val challengeRequest = Request.Builder().url("$baseUrl/sync/v1/auth/challenge").post(challengeBody).build()
 
             val challengeResponse = client.newCall(challengeRequest).execute()
@@ -98,7 +105,7 @@ open class PantrySyncTestClient @Inject constructor(
                 deviceId = deviceId,
                 signature = signatureBase64
             )
-            val sessionBody = json.encodeToString(sessionReqDto).toRequestBody("application/json".toMediaType())
+            val sessionBody = json.encodeToString(AuthChallengeResponseDto.serializer(), sessionReqDto).toRequestBody("application/json".toMediaType())
             val sessionRequest = Request.Builder().url("$baseUrl/sync/v1/auth/session").post(sessionBody).build()
 
             val sessionResponse = client.newCall(sessionRequest).execute()
@@ -128,6 +135,41 @@ open class PantrySyncTestClient @Inject constructor(
             }
         } catch (e: Exception) {
             TestClientSyncResult(false, false, null, "Spike error: ${e.message}")
+        }
+    }
+
+    open suspend fun submitSyncOperation(
+        hostIp: String,
+        port: Int = 8443,
+        pinnedCertFingerprint: String?,
+        sessionToken: String,
+        operationDto: SyncOperationDto
+    ): TestClientOperationResult = withContext(Dispatchers.IO) {
+        try {
+            val client = createPinnedOkHttpClient(pinnedCertFingerprint)
+            val baseUrl = "https://$hostIp:$port"
+
+            val bodyText = json.encodeToString(SyncOperationDto.serializer(), operationDto)
+            val body = bodyText.toRequestBody("application/json".toMediaType())
+
+            val request = Request.Builder()
+                .url("$baseUrl/sync/v1/operations")
+                .header("X-Pantry-Session-Token", sessionToken)
+                .post(body)
+                .build()
+
+            val response = client.newCall(request).execute()
+            val responseBodyText = response.body?.string() ?: "{}"
+
+            val resultDto = runCatching { json.decodeFromString(SyncOperationResultDto.serializer(), responseBodyText) }.getOrNull()
+
+            if (response.isSuccessful && resultDto != null) {
+                TestClientOperationResult(true, resultDto, null)
+            } else {
+                TestClientOperationResult(false, resultDto, "HTTP ${response.code}: $responseBodyText")
+            }
+        } catch (e: Exception) {
+            TestClientOperationResult(false, null, e.message ?: "Network error")
         }
     }
 }
