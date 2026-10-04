@@ -1,9 +1,11 @@
 package com.example.chatgpt_mealplanner.core.sync.server
 
+import com.example.chatgpt_mealplanner.core.database.DatabaseTransactionRunner
 import com.example.chatgpt_mealplanner.core.database.dao.CanonicalSyncDao
 import com.example.chatgpt_mealplanner.core.database.dao.InventoryDao
 import com.example.chatgpt_mealplanner.core.sync.HouseholdIdentityManager
 import com.example.chatgpt_mealplanner.core.sync.engine.MainCanonicalSyncEngine
+import com.example.chatgpt_mealplanner.sync.contract.BootstrapResponseDto
 import com.example.chatgpt_mealplanner.sync.contract.InventoryItemSyncDto
 import com.example.chatgpt_mealplanner.sync.contract.SYNC_PROTOCOL_VERSION
 import com.example.chatgpt_mealplanner.sync.contract.SyncFeedItemDto
@@ -36,16 +38,76 @@ import java.security.KeyStore
 import javax.inject.Inject
 import javax.inject.Singleton
 
+class SnapshotTooLargeException(message: String) : RuntimeException(message)
+
 @Singleton
 open class PantrySyncServer @Inject constructor(
     private val identityManager: HouseholdIdentityManager,
     private val sessionManager: SyncSessionManager,
     private val syncEngine: MainCanonicalSyncEngine,
     private val canonicalSyncDao: CanonicalSyncDao,
-    private val inventoryDao: InventoryDao
+    private val inventoryDao: InventoryDao,
+    private val transactionRunner: DatabaseTransactionRunner? = null
 ) {
     private var engine: CIOApplicationEngine? = null
     private val json = Json { ignoreUnknownKeys = true }
+
+    var onBeforeSnapshotReadHook: (() -> Unit)? = null
+    var onInsideSnapshotTransactionHook: (() -> Unit)? = null
+    var onAfterSnapshotReadHook: (() -> Unit)? = null
+
+    companion object {
+        const val MAX_BOOTSTRAP_ITEMS = 5000
+    }
+
+    open suspend fun createBootstrapSnapshot(): BootstrapResponseDto {
+        onBeforeSnapshotReadHook?.invoke()
+        val householdId = identityManager.getOrCreateHouseholdIdentity().householdId
+
+        val (latestSeq, invItems) = if (transactionRunner != null) {
+            transactionRunner.runInTransaction {
+                val seq = canonicalSyncDao.getLatestCanonicalSequence() ?: 0L
+                onInsideSnapshotTransactionHook?.invoke()
+                val items = inventoryDao.getAllItemsSync()
+                Pair(seq, items)
+            }
+        } else {
+            val seq = canonicalSyncDao.getLatestCanonicalSequence() ?: 0L
+            onInsideSnapshotTransactionHook?.invoke()
+            val items = inventoryDao.getAllItemsSync()
+            Pair(seq, items)
+        }
+
+        if (invItems.size > MAX_BOOTSTRAP_ITEMS) {
+            throw SnapshotTooLargeException("Bootstrap snapshot item count ${invItems.size} exceeds maximum limit of $MAX_BOOTSTRAP_ITEMS")
+        }
+
+        val syncItems = invItems.map { invItem ->
+            InventoryItemSyncDto(
+                itemId = invItem.id,
+                barcode = invItem.barcode,
+                canonicalName = invItem.canonicalName,
+                displayName = invItem.displayName,
+                brand = invItem.brand,
+                category = invItem.category.name,
+                storageLocation = invItem.storageLocation.name,
+                quantity = invItem.quantity,
+                quantityUnit = invItem.quantityUnit?.name,
+                notes = invItem.notes,
+                status = invItem.status.name,
+                revision = invItem.revision
+            )
+        }
+
+        val dto = BootstrapResponseDto(
+            protocolVersion = SYNC_PROTOCOL_VERSION,
+            householdId = householdId,
+            snapshotCanonicalSequence = latestSeq,
+            inventoryItems = syncItems
+        )
+        onAfterSnapshotReadHook?.invoke()
+        return dto
+    }
 
     @Synchronized
     open fun start(keyStore: KeyStore, password: CharArray, port: Int = 8443) {
@@ -252,35 +314,15 @@ open class PantrySyncServer @Inject constructor(
                             return@get
                         }
 
-                        val householdId = identityManager.getOrCreateHouseholdIdentity().householdId
-                        val latestSeq = canonicalSyncDao.getLatestCanonicalSequence() ?: 0L
-                        val invItems = inventoryDao.getAllItemsSync()
-
-                        val syncItems = invItems.map { invItem ->
-                            InventoryItemSyncDto(
-                                itemId = invItem.id,
-                                barcode = invItem.barcode,
-                                canonicalName = invItem.canonicalName,
-                                displayName = invItem.displayName,
-                                brand = invItem.brand,
-                                category = invItem.category.name,
-                                storageLocation = invItem.storageLocation.name,
-                                quantity = invItem.quantity,
-                                quantityUnit = invItem.quantityUnit?.name,
-                                notes = invItem.notes,
-                                status = invItem.status.name,
-                                revision = invItem.revision
-                            )
+                        try {
+                            val bootstrapDto = createBootstrapSnapshot()
+                            call.respond(bootstrapDto)
+                        } catch (e: SnapshotTooLargeException) {
+                            call.respond(HttpStatusCode.PayloadTooLarge, buildJsonObject {
+                                put("error", "SNAPSHOT_TOO_LARGE")
+                                put("message", e.message ?: "Snapshot too large")
+                            })
                         }
-
-                        val bootstrapDto = com.example.chatgpt_mealplanner.sync.contract.BootstrapResponseDto(
-                            protocolVersion = SYNC_PROTOCOL_VERSION,
-                            householdId = householdId,
-                            snapshotCanonicalSequence = latestSeq,
-                            inventoryItems = syncItems
-                        )
-
-                        call.respond(bootstrapDto)
                     }
                 }
             }

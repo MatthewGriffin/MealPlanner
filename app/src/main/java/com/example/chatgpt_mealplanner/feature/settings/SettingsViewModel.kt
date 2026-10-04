@@ -1,5 +1,6 @@
 package com.example.chatgpt_mealplanner.feature.settings
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.chatgpt_mealplanner.contract.AiProviderResponse
@@ -8,7 +9,9 @@ import com.example.chatgpt_mealplanner.core.ai.provider.MealPlannerAiProvider
 import com.example.chatgpt_mealplanner.core.backup.BackupManager
 import com.example.chatgpt_mealplanner.core.database.dao.ChatDao
 import com.example.chatgpt_mealplanner.core.security.CredentialStore
+import com.example.chatgpt_mealplanner.core.sync.follower.worker.FollowerSyncScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -20,15 +23,18 @@ data class SettingsUiState(
     val isApiKeyConfigured: Boolean = false,
     val connectionTestResult: String? = null,
     val minimumSavingsInput: String = "3.00",
-    val exportMessage: String? = null
+    val exportMessage: String? = null,
+    val syncStatusMessage: String? = null
 )
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
+    @param:ApplicationContext private val context: Context?,
     private val credentialStore: CredentialStore,
     private val provider: MealPlannerAiProvider,
     private val chatDao: ChatDao,
-    private val backupManager: BackupManager
+    private val backupManager: BackupManager,
+    private val followerSyncScheduler: FollowerSyncScheduler
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -40,6 +46,11 @@ class SettingsViewModel @Inject constructor(
 
     private fun checkCredentialStatus() {
         _uiState.update { it.copy(isApiKeyConfigured = credentialStore.hasKey()) }
+    }
+
+    fun triggerManualSync() {
+        followerSyncScheduler.scheduleSyncWork(context, "MANUAL_SYNC")
+        _uiState.update { it.copy(syncStatusMessage = "Manual sync scheduled") }
     }
 
     fun saveApiKey(key: String) {

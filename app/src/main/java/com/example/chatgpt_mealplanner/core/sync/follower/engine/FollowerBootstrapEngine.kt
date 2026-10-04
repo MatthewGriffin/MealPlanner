@@ -6,6 +6,7 @@ import com.example.chatgpt_mealplanner.core.sync.follower.database.FollowerDatab
 import com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerDao
 import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerInventoryItemEntity
 import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerSyncMetadataEntity
+import com.example.chatgpt_mealplanner.sync.contract.BootstrapResponseDto
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -22,13 +23,19 @@ open class FollowerBootstrapEngine @Inject constructor(
     private val pantrySyncTestClient: PantrySyncTestClient,
     private val followerFeedPullEngine: FollowerFeedPullEngine
 ) {
+    companion object {
+        const val MAX_BOOTSTRAP_ITEMS = 5000
+    }
+
     open suspend fun performBootstrapPass(
         hostIp: String,
         port: Int = 8443,
         pinnedCertFingerprint: String?,
         sessionToken: String,
         followerDeviceId: String,
-        customDao: FollowerDao? = null
+        expectedHouseholdId: String? = null,
+        customDao: FollowerDao? = null,
+        sessionTokenProvider: (suspend (forceRefresh: Boolean) -> String)? = null
     ): BootstrapPassSummary {
         val dao = customDao ?: followerDatabase?.followerDao() ?: throw IllegalStateException("FollowerDatabase or customDao required")
 
@@ -41,18 +48,49 @@ open class FollowerBootstrapEngine @Inject constructor(
             return BootstrapPassSummary(false, "BOOTSTRAP_BLOCKED_LOCAL_PENDING_OPERATIONS", 0, 0L)
         }
 
-        val snapshotResult = pantrySyncTestClient.getBootstrapSnapshot(
+        var activeToken = sessionToken
+        var snapshotResult = pantrySyncTestClient.getBootstrapSnapshot(
             hostIp = hostIp,
             port = port,
             pinnedCertFingerprint = pinnedCertFingerprint,
-            sessionToken = sessionToken
+            sessionToken = activeToken
         )
+
+        val err = snapshotResult.error ?: ""
+        if (err.contains("SNAPSHOT_TOO_LARGE") || err.contains("413")) {
+            return BootstrapPassSummary(false, "SNAPSHOT_TOO_LARGE", 0, 0L)
+        }
+
+        if (!snapshotResult.success || snapshotResult.bootstrapResponse == null) {
+            if (sessionTokenProvider != null && (err.contains("EXPIRED_SESSION") || err.contains("UNAUTHORIZED") || err.contains("401"))) {
+                activeToken = sessionTokenProvider(true)
+                snapshotResult = pantrySyncTestClient.getBootstrapSnapshot(
+                    hostIp = hostIp,
+                    port = port,
+                    pinnedCertFingerprint = pinnedCertFingerprint,
+                    sessionToken = activeToken
+                )
+            }
+        }
+
+        val retryErr = snapshotResult.error ?: ""
+        if (retryErr.contains("SNAPSHOT_TOO_LARGE") || retryErr.contains("413")) {
+            return BootstrapPassSummary(false, "SNAPSHOT_TOO_LARGE", 0, 0L)
+        }
 
         if (!snapshotResult.success || snapshotResult.bootstrapResponse == null) {
             return BootstrapPassSummary(false, snapshotResult.error ?: "SNAPSHOT_FETCH_FAILED", 0, 0L)
         }
 
         val response = snapshotResult.bootstrapResponse
+        if (response.inventoryItems.size > MAX_BOOTSTRAP_ITEMS) {
+            return BootstrapPassSummary(false, "SNAPSHOT_TOO_LARGE", 0, 0L)
+        }
+
+        if (expectedHouseholdId != null && response.householdId != expectedHouseholdId) {
+            return BootstrapPassSummary(false, "HOUSEHOLD_MISMATCH", 0, 0L)
+        }
+
         val watermark = response.snapshotCanonicalSequence
         val now = System.currentTimeMillis()
 
@@ -96,10 +134,14 @@ open class FollowerBootstrapEngine @Inject constructor(
             dao.updateSyncMetadata(metaToSave)
         }
 
-        if (followerDatabase != null) {
-            followerDatabase.withTransaction { block() }
-        } else {
-            block()
+        try {
+            if (followerDatabase != null) {
+                followerDatabase.withTransaction { block() }
+            } else {
+                block()
+            }
+        } catch (e: Exception) {
+            return BootstrapPassSummary(false, "DATABASE_INSTALL_FAILED", 0, 0L)
         }
 
         // Post-bootstrap Phase 3D incremental catch-up starting from watermark
@@ -107,7 +149,7 @@ open class FollowerBootstrapEngine @Inject constructor(
             hostIp = hostIp,
             port = port,
             pinnedCertFingerprint = pinnedCertFingerprint,
-            sessionToken = sessionToken,
+            sessionToken = activeToken,
             followerDeviceId = followerDeviceId,
             customDao = dao
         )

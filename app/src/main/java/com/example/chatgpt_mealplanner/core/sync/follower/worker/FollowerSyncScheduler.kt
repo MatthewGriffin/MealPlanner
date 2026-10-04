@@ -14,11 +14,13 @@ import javax.inject.Singleton
 @Singleton
 open class FollowerSyncScheduler @Inject constructor() {
 
-    open fun scheduleSyncWork(context: Context, triggerReason: String) {
+    open fun scheduleSyncWork(context: Context?, triggerReason: String) {
         println("[SYNC_SCHEDULE] trigger=$triggerReason")
         try {
             android.util.Log.i("AI_MEALPLANNER", "[SYNC_SCHEDULE] trigger=$triggerReason")
         } catch (_: Throwable) {}
+
+        if (context == null) return
 
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)

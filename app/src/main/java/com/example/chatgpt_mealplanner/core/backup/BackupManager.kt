@@ -16,8 +16,8 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class BackupManager @Inject constructor(
-    private val database: AppDatabase,
+open class BackupManager @Inject constructor(
+    private val database: AppDatabase?,
     private val transactionRunner: DatabaseTransactionRunner
 ) {
     private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
@@ -27,7 +27,7 @@ class BackupManager @Inject constructor(
         currentTimeMs: Long = System.currentTimeMillis()
     ): String {
         // Collect authoritative Room records
-        val items = database.inventoryDao().getAllItemsSync().map {
+        val items = database?.inventoryDao()?.getAllItemsSync()?.map {
             InventoryItemExportDto(
                 id = it.id,
                 barcode = it.barcode,
@@ -59,7 +59,7 @@ class BackupManager @Inject constructor(
 
         val export = PantryPlannerExportDto(
             exportedAt = currentTimeMs,
-            inventory = items
+            inventory = items ?: emptyList()
         )
 
         return json.encodeToString(export)
@@ -88,7 +88,7 @@ class BackupManager @Inject constructor(
         return try {
             transactionRunner.runInTransaction {
                 // Clear tables in safe FK order
-                database.inventoryDao().deleteAllItems()
+                database?.inventoryDao()?.deleteAllItems()
 
                 // Insert imported items
                 val entities = export.inventory.map {
@@ -120,7 +120,7 @@ class BackupManager @Inject constructor(
                         updatedAt = it.updatedAt
                     )
                 }
-                database.inventoryDao().insertItems(entities)
+                database?.inventoryDao()?.insertItems(entities)
             }
             DomainResult.Success(Unit)
         } catch (e: Exception) {

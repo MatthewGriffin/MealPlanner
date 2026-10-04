@@ -23,9 +23,9 @@ import org.junit.runner.RunWith
 import org.junit.runners.JUnit4
 import java.util.UUID
 
-class FakeFollowerDao : FollowerDao {
-    private val outboxMap = mutableMapOf<String, FollowerSyncOutboxEntity>()
-    private val itemsMap = mutableMapOf<String, FollowerInventoryItemEntity>()
+open class FakeFollowerDao : FollowerDao {
+    val outboxMap = mutableMapOf<String, FollowerSyncOutboxEntity>()
+    val itemsMap = mutableMapOf<String, FollowerInventoryItemEntity>()
     private var seqEntity: FollowerDeviceSequenceEntity? = null
     private var metaEntity: FollowerSyncMetadataEntity? = null
 

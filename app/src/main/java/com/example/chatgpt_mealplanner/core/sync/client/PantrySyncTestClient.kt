@@ -251,4 +251,43 @@ open class PantrySyncTestClient @Inject constructor(
             TestClientBootstrapResult(false, null, e.message ?: "Network error")
         }
     }
+
+    open suspend fun obtainSessionToken(
+        hostIp: String,
+        port: Int = 8443,
+        pinnedCertFingerprint: String?,
+        deviceId: String,
+        keyAlias: String = "pantry_follower_key"
+    ): String? = withContext(Dispatchers.IO) {
+        try {
+            val client = createPinnedOkHttpClient(pinnedCertFingerprint)
+            val baseUrl = "https://$hostIp:$port"
+
+            val challengeBody = json.encodeToString(buildJsonObject { put("deviceId", deviceId) }).toRequestBody("application/json".toMediaType())
+            val challengeRequest = Request.Builder().url("$baseUrl/sync/v1/auth/challenge").post(challengeBody).build()
+            val challengeResponse = client.newCall(challengeRequest).execute()
+            if (!challengeResponse.isSuccessful) return@withContext null
+
+            val challengeDto = json.decodeFromString<AuthChallengeDto>(challengeResponse.body?.string() ?: "{}")
+            val canonicalBytes = "pantry-household-sync|1|${challengeDto.householdId}|$deviceId|${challengeDto.challengeId}|${challengeDto.nonce}".toByteArray(Charsets.UTF_8)
+            val signatureBase64 = keyStoreManager.signChallenge(keyAlias, canonicalBytes)
+
+            val sessionReqDto = AuthChallengeResponseDto(
+                challengeId = challengeDto.challengeId,
+                deviceId = deviceId,
+                signature = signatureBase64
+            )
+            val sessionBody = json.encodeToString(AuthChallengeResponseDto.serializer(), sessionReqDto).toRequestBody("application/json".toMediaType())
+            val sessionRequest = Request.Builder().url("$baseUrl/sync/v1/auth/session").post(sessionBody).build()
+
+            val sessionResponse = client.newCall(sessionRequest).execute()
+            if (!sessionResponse.isSuccessful) return@withContext null
+
+            val sessionResponseBody = sessionResponse.body?.string() ?: "{}"
+            val sessionObj = json.parseToJsonElement(sessionResponseBody).jsonObject
+            sessionObj["sessionToken"]?.jsonPrimitive?.content
+        } catch (e: Exception) {
+            null
+        }
+    }
 }
