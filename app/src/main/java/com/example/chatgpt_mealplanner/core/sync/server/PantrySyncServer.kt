@@ -1,9 +1,16 @@
 package com.example.chatgpt_mealplanner.core.sync.server
 
+import com.example.chatgpt_mealplanner.core.database.dao.CanonicalSyncDao
+import com.example.chatgpt_mealplanner.core.database.dao.InventoryDao
 import com.example.chatgpt_mealplanner.core.sync.HouseholdIdentityManager
 import com.example.chatgpt_mealplanner.core.sync.engine.MainCanonicalSyncEngine
+import com.example.chatgpt_mealplanner.sync.contract.InventoryItemSyncDto
 import com.example.chatgpt_mealplanner.sync.contract.SYNC_PROTOCOL_VERSION
+import com.example.chatgpt_mealplanner.sync.contract.SyncFeedItemDto
+import com.example.chatgpt_mealplanner.sync.contract.SyncFeedResponseDto
 import com.example.chatgpt_mealplanner.sync.contract.SyncOperationDto
+import com.example.chatgpt_mealplanner.sync.contract.SyncOperationStatus
+import com.example.chatgpt_mealplanner.sync.contract.SyncOperationType
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.call
@@ -33,7 +40,9 @@ import javax.inject.Singleton
 open class PantrySyncServer @Inject constructor(
     private val identityManager: HouseholdIdentityManager,
     private val sessionManager: SyncSessionManager,
-    private val syncEngine: MainCanonicalSyncEngine
+    private val syncEngine: MainCanonicalSyncEngine,
+    private val canonicalSyncDao: CanonicalSyncDao,
+    private val inventoryDao: InventoryDao
 ) {
     private var engine: CIOApplicationEngine? = null
     private val json = Json { ignoreUnknownKeys = true }
@@ -159,6 +168,77 @@ open class PantrySyncServer @Inject constructor(
 
                         val result = syncEngine.processOperation(authenticatedDeviceId, operationDto)
                         call.respond(result)
+                    }
+
+                    get("/sync/v1/feed") {
+                        val token = call.request.headers["X-Pantry-Session-Token"]
+                        val authenticatedDeviceId = sessionManager.validateSessionToken(token)
+
+                        if (authenticatedDeviceId == null) {
+                            call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                                put("error", "UNAUTHORIZED")
+                            })
+                            return@get
+                        }
+
+                        val sinceSeq = call.request.queryParameters["sinceSequence"]?.toLongOrNull() ?: 0L
+                        val rawLimit = call.request.queryParameters["limit"]?.toIntOrNull() ?: 100
+                        val limit = rawLimit.coerceIn(1, 500)
+
+                        val fetchedOps = canonicalSyncDao.getFeedOperationsSince(sinceSeq, limit + 1)
+                        val hasMore = fetchedOps.size > limit
+                        val opsToReturn = fetchedOps.take(limit)
+
+                        val latestSeq = canonicalSyncDao.getLatestCanonicalSequence() ?: 0L
+
+                        val feedItems = opsToReturn.map { op ->
+                            var itemSnapshot: InventoryItemSyncDto? = null
+                            if (op.status == SyncOperationStatus.APPLIED.name && op.targetItemId != null) {
+                                val invItem = inventoryDao.getItemById(op.targetItemId)
+                                if (invItem != null) {
+                                    itemSnapshot = InventoryItemSyncDto(
+                                        itemId = invItem.id,
+                                        barcode = invItem.barcode,
+                                        canonicalName = invItem.canonicalName,
+                                        displayName = invItem.displayName,
+                                        brand = invItem.brand,
+                                        category = invItem.category.name,
+                                        storageLocation = invItem.storageLocation.name,
+                                        quantity = invItem.quantity,
+                                        quantityUnit = invItem.quantityUnit?.name,
+                                        notes = invItem.notes,
+                                        status = invItem.status.name,
+                                        revision = invItem.revision
+                                    )
+                                }
+                            }
+
+                            SyncFeedItemDto(
+                                canonicalSequence = op.canonicalSequence,
+                                operationId = op.operationId,
+                                sourceDeviceId = op.deviceId,
+                                operationType = SyncOperationType.valueOf(op.operationType),
+                                targetItemId = op.targetItemId,
+                                baseRevision = op.baseRevision,
+                                payloadJson = op.payloadJson,
+                                status = SyncOperationStatus.valueOf(op.status),
+                                resultCode = op.resultCode,
+                                resultingRevision = if (op.status == SyncOperationStatus.APPLIED.name) itemSnapshot?.revision else null,
+                                canonicalItemSnapshot = itemSnapshot,
+                                conflictId = if (op.status == SyncOperationStatus.CONFLICT.name) canonicalSyncDao.getConflictByOperationId(op.operationId)?.conflictId else null,
+                                approvalId = if (op.status == SyncOperationStatus.PENDING_APPROVAL.name) canonicalSyncDao.getApprovalByOperationId(op.operationId)?.approvalId else null,
+                                occurredAt = op.createdAt
+                            )
+                        }
+
+                        val responseDto = SyncFeedResponseDto(
+                            householdId = identityManager.getOrCreateHouseholdIdentity().householdId,
+                            latestCanonicalSequence = latestSeq,
+                            items = feedItems,
+                            hasMore = hasMore
+                        )
+
+                        call.respond(responseDto)
                     }
                 }
             }

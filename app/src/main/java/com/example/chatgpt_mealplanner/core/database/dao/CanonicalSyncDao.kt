@@ -18,6 +18,12 @@ interface CanonicalSyncDao {
     @Query("SELECT * FROM canonical_sync_operations WHERE deviceId = :deviceId AND deviceSequence = :deviceSequence LIMIT 1")
     suspend fun getByDeviceSequence(deviceId: String, deviceSequence: Long): CanonicalSyncOperationEntity?
 
+    @Query("SELECT * FROM canonical_sync_operations WHERE canonicalSequence > :sinceSeq ORDER BY canonicalSequence ASC LIMIT :limit")
+    suspend fun getFeedOperationsSince(sinceSeq: Long, limit: Int): List<CanonicalSyncOperationEntity>
+
+    @Query("SELECT MAX(canonicalSequence) FROM canonical_sync_operations")
+    suspend fun getLatestCanonicalSequence(): Long?
+
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertCanonicalOperation(op: CanonicalSyncOperationEntity)
 

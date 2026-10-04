@@ -49,6 +49,48 @@ data class SyncOperationResultDto(
 )
 
 @Serializable
+data class InventoryItemSyncDto(
+    val itemId: String,
+    val barcode: String? = null,
+    val canonicalName: String,
+    val displayName: String,
+    val brand: String? = null,
+    val category: String,
+    val storageLocation: String,
+    val quantity: Double? = null,
+    val quantityUnit: String? = null,
+    val notes: String? = null,
+    val status: String,
+    val revision: Long
+)
+
+@Serializable
+data class SyncFeedItemDto(
+    val canonicalSequence: Long,
+    val operationId: String,
+    val sourceDeviceId: String,
+    val operationType: SyncOperationType,
+    val targetItemId: String? = null,
+    val baseRevision: Long? = null,
+    val payloadJson: String = "{}",
+    val status: SyncOperationStatus,
+    val resultCode: String,
+    val resultingRevision: Long? = null,
+    val canonicalItemSnapshot: InventoryItemSyncDto? = null,
+    val conflictId: String? = null,
+    val approvalId: String? = null,
+    val occurredAt: Long
+)
+
+@Serializable
+data class SyncFeedResponseDto(
+    val householdId: String,
+    val latestCanonicalSequence: Long,
+    val items: List<SyncFeedItemDto>,
+    val hasMore: Boolean
+)
+
+@Serializable
 data class AddItemPayloadDto(
     val itemId: String,
     val canonicalName: String,

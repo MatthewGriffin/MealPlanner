@@ -48,6 +48,17 @@ class FakeCanonicalSyncDao : CanonicalSyncDao {
 
     override suspend fun getByDeviceSequence(deviceId: String, deviceSequence: Long): CanonicalSyncOperationEntity? = seqMap["${deviceId}_$deviceSequence"]
 
+    override suspend fun getFeedOperationsSince(sinceSeq: Long, limit: Int): List<CanonicalSyncOperationEntity> {
+        return opsMap.values
+            .filter { it.canonicalSequence > sinceSeq }
+            .sortedBy { it.canonicalSequence }
+            .take(limit)
+    }
+
+    override suspend fun getLatestCanonicalSequence(): Long? {
+        return opsMap.values.maxOfOrNull { it.canonicalSequence }
+    }
+
     override suspend fun insertCanonicalOperation(op: CanonicalSyncOperationEntity) {
         opsMap[op.operationId] = op
         seqMap["${op.deviceId}_${op.deviceSequence}"] = op

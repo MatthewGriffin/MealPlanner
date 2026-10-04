@@ -3,10 +3,12 @@ package com.example.chatgpt_mealplanner.core.sync.client
 import com.example.chatgpt_mealplanner.core.security.AndroidKeyStoreManager
 import com.example.chatgpt_mealplanner.sync.contract.AuthChallengeDto
 import com.example.chatgpt_mealplanner.sync.contract.AuthChallengeResponseDto
+import com.example.chatgpt_mealplanner.sync.contract.SyncFeedResponseDto
 import com.example.chatgpt_mealplanner.sync.contract.SyncOperationDto
 import com.example.chatgpt_mealplanner.sync.contract.SyncOperationResultDto
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
@@ -33,6 +35,12 @@ data class TestClientSyncResult(
 data class TestClientOperationResult(
     val success: Boolean,
     val resultDto: SyncOperationResultDto? = null,
+    val error: String? = null
+)
+
+data class TestClientFeedResult(
+    val success: Boolean,
+    val feedResponse: SyncFeedResponseDto? = null,
     val error: String? = null
 )
 
@@ -170,6 +178,39 @@ open class PantrySyncTestClient @Inject constructor(
             }
         } catch (e: Exception) {
             TestClientOperationResult(false, null, e.message ?: "Network error")
+        }
+    }
+
+    open suspend fun getSyncFeed(
+        hostIp: String,
+        port: Int = 8443,
+        pinnedCertFingerprint: String?,
+        sessionToken: String,
+        sinceSequence: Long = 0L,
+        limit: Int = 100
+    ): TestClientFeedResult = withContext(Dispatchers.IO) {
+        try {
+            val client = createPinnedOkHttpClient(pinnedCertFingerprint)
+            val baseUrl = "https://$hostIp:$port"
+
+            val request = Request.Builder()
+                .url("$baseUrl/sync/v1/feed?sinceSequence=$sinceSequence&limit=$limit")
+                .header("X-Pantry-Session-Token", sessionToken)
+                .get()
+                .build()
+
+            val response = client.newCall(request).execute()
+            val responseBodyText = response.body?.string() ?: "{}"
+
+            val feedDto = runCatching { json.decodeFromString<SyncFeedResponseDto>(responseBodyText) }.getOrNull()
+
+            if (response.isSuccessful && feedDto != null) {
+                TestClientFeedResult(true, feedDto, null)
+            } else {
+                TestClientFeedResult(false, feedDto, "HTTP ${response.code}: $responseBodyText")
+            }
+        } catch (e: Exception) {
+            TestClientFeedResult(false, null, e.message ?: "Network error")
         }
     }
 }
