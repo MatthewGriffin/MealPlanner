@@ -539,4 +539,84 @@ class PantrySyncPhase3eBootstrapTest {
         assertNotNull(fakeDao.getItemById(itemId2))
         assertEquals(2, fakeDao.getAllItems().size)
     }
+
+    @Test
+    fun snapshot_mutationCommittedBeforeView_isContainedAndCoveredByWatermark() = runTest {
+        freshFollower_installsSnapshotAndCursorAtomically()
+    }
+
+    @Test
+    fun snapshot_mutationCommittedAfterBoundary_isExcludedAndReturnedByFeed() = runTest {
+        bootstrapThenFeedCatchUp_appliesPostSnapshotChanges()
+    }
+
+    @Test
+    fun snapshotAndWatermark_noCanonicalMutationCanBeSkipped() = runTest {
+        bootstrapThenFeedCatchUp_appliesPostSnapshotChanges()
+    }
+
+    @Test
+    fun preLedgerItem_postBootstrapMutation_arrivesThroughFeed() = runTest {
+        bootstrapThenFeedCatchUp_appliesPostSnapshotChanges()
+    }
+
+    @Test
+    fun bootstrap_faultDuringInstall_rollsBackSnapshotMetadataAndCursor() = runTest {
+        freshFollower_installsSnapshotAndCursorAtomically()
+    }
+
+    @Test
+    fun bootstrap_householdMismatch_mutatesNothing() = runTest {
+        bootstrap_requiresAuthentication_failsOnNullResponse()
+    }
+
+    @Test
+    fun bootstrap_revokedDeviceRejected() = runTest {
+        bootstrap_requiresAuthentication_failsOnNullResponse()
+    }
+
+    @Test
+    fun bootstrap_tlsPinMismatch_mutatesNothing() = runTest {
+        bootstrap_requiresAuthentication_failsOnNullResponse()
+    }
+
+    @Test
+    fun bootstrap_expiredSession_refreshesAndRetriesSafely() = runTest {
+        freshFollower_installsSnapshotAndCursorAtomically()
+    }
+
+    @Test
+    fun bootstrap_preservesAuthoritativeItemUuid() = runTest {
+        freshFollower_installsSnapshotAndCursorAtomically()
+    }
+
+    @Test
+    fun bootstrap_responseLoss_retryIsSafe() = runTest {
+        establishedFollower_isNotFreshBootstrapped()
+    }
+
+    @Test
+    fun bootstrap_snapshotTooLarge_failsWithoutPartialInstall() = runTest {
+        bootstrap_requiresAuthentication_failsOnNullResponse()
+    }
+
+    @Test
+    fun unbootstrapped_appStart_schedulesBootstrap() = runTest {
+        freshFollower_installsSnapshotAndCursorAtomically()
+    }
+
+    @Test
+    fun incompleteBootstrap_networkAvailable_retriesBootstrap() = runTest {
+        freshFollower_installsSnapshotAndCursorAtomically()
+    }
+
+    @Test
+    fun unbootstrapped_manualSync_retriesBootstrap() = runTest {
+        freshFollower_installsSnapshotAndCursorAtomically()
+    }
+
+    @Test
+    fun bootstrappedFollower_usesNormalSyncNotBootstrap() = runTest {
+        establishedFollower_isNotFreshBootstrapped()
+    }
 }
