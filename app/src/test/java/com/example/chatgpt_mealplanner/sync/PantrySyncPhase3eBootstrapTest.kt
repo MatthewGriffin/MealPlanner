@@ -411,4 +411,132 @@ class PantrySyncPhase3eBootstrapTest {
         val seqAfter = fakeDao.getSequenceEntity()
         assertEquals("Bootstrap MUST NOT reset or corrupt device sequence allocator", 42L, seqAfter?.nextSequence)
     }
+
+    @Test
+    fun bootstrap_preLedgerInventory_isIncluded() = runTest {
+        val itemId = UUID.randomUUID().toString()
+        val snapPreLedger = InventoryItemSyncDto(
+            itemId = itemId,
+            barcode = "5000123456789",
+            canonicalName = "Sugar",
+            displayName = "Cane Sugar",
+            brand = "Tate & Lyle",
+            category = "PANTRY_STAPLE",
+            storageLocation = "CUPBOARD",
+            quantity = 1.0,
+            quantityUnit = "KG",
+            notes = "Pre-ledger item created before canonical logging",
+            status = "AVAILABLE",
+            revision = 1L
+        )
+
+        fakeClient.bootstrapToReturn = BootstrapResponseDto(
+            protocolVersion = 1,
+            householdId = "household_123",
+            snapshotCanonicalSequence = 0L,
+            inventoryItems = listOf(snapPreLedger)
+        )
+
+        val summary = bootstrapEngine.performBootstrapPass(
+            hostIp = "192.168.0.126",
+            port = 8443,
+            pinnedCertFingerprint = null,
+            sessionToken = "valid_token",
+            followerDeviceId = followerDeviceId,
+            customDao = fakeDao
+        )
+
+        assertTrue(summary.success)
+        val itemInDb = fakeDao.getItemById(itemId)
+        assertNotNull("Pre-ledger item MUST be included in bootstrap snapshot", itemInDb)
+        assertEquals("Cane Sugar", itemInDb?.confirmedDisplayName)
+        assertEquals("AVAILABLE", itemInDb?.confirmedStatus)
+    }
+
+    @Test
+    fun bootstrap_discardedItem_policyIsCorrect() = runTest {
+        val itemId = UUID.randomUUID().toString()
+        val snapDiscarded = InventoryItemSyncDto(
+            itemId = itemId,
+            barcode = null,
+            canonicalName = "Milk",
+            displayName = "Old Spoiled Milk",
+            category = "FRESH_PANTRY",
+            storageLocation = "FRIDGE",
+            quantity = 0.0,
+            status = "OUT",
+            revision = 3L
+        )
+
+        fakeClient.bootstrapToReturn = BootstrapResponseDto(
+            protocolVersion = 1,
+            householdId = "household_123",
+            snapshotCanonicalSequence = 100L,
+            inventoryItems = listOf(snapDiscarded)
+        )
+
+        bootstrapEngine.performBootstrapPass(
+            hostIp = "192.168.0.126",
+            port = 8443,
+            pinnedCertFingerprint = null,
+            sessionToken = "valid_token",
+            followerDeviceId = followerDeviceId,
+            customDao = fakeDao
+        )
+
+        val itemInDb = fakeDao.getItemById(itemId)
+        assertNotNull(itemInDb)
+        assertEquals("OUT", itemInDb?.confirmedStatus)
+        assertEquals("OUT", itemInDb?.status)
+    }
+
+    @Test
+    fun bootstrap_sameBarcodeLotsRemainSeparate() = runTest {
+        val itemId1 = UUID.randomUUID().toString()
+        val itemId2 = UUID.randomUUID().toString()
+
+        val snap1 = InventoryItemSyncDto(
+            itemId = itemId1,
+            barcode = "5000159461122",
+            canonicalName = "Milk",
+            displayName = "Whole Milk Lot A",
+            category = "FRESH_PANTRY",
+            storageLocation = "FRIDGE",
+            quantity = 1.0,
+            status = "AVAILABLE",
+            revision = 1L
+        )
+
+        val snap2 = InventoryItemSyncDto(
+            itemId = itemId2,
+            barcode = "5000159461122",
+            canonicalName = "Milk",
+            displayName = "Whole Milk Lot B",
+            category = "FRESH_PANTRY",
+            storageLocation = "FRIDGE",
+            quantity = 1.0,
+            status = "AVAILABLE",
+            revision = 1L
+        )
+
+        fakeClient.bootstrapToReturn = BootstrapResponseDto(
+            protocolVersion = 1,
+            householdId = "household_123",
+            snapshotCanonicalSequence = 200L,
+            inventoryItems = listOf(snap1, snap2)
+        )
+
+        bootstrapEngine.performBootstrapPass(
+            hostIp = "192.168.0.126",
+            port = 8443,
+            pinnedCertFingerprint = null,
+            sessionToken = "valid_token",
+            followerDeviceId = followerDeviceId,
+            customDao = fakeDao
+        )
+
+        assertNotNull(fakeDao.getItemById(itemId1))
+        assertNotNull(fakeDao.getItemById(itemId2))
+        assertEquals(2, fakeDao.getAllItems().size)
+    }
 }

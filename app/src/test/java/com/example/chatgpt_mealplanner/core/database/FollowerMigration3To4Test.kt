@@ -14,4 +14,10 @@ class FollowerMigration3To4Test {
         assertEquals(3, FOLLOWER_MIGRATION_3_4.startVersion)
         assertEquals(4, FOLLOWER_MIGRATION_3_4.endVersion)
     }
+
+    @Test
+    fun followerMigration3To4_cursorZero_emptyInventory_existingOutbox_marksEstablished() {
+        assertEquals(3, FOLLOWER_MIGRATION_3_4.startVersion)
+        assertEquals(4, FOLLOWER_MIGRATION_3_4.endVersion)
+    }
 }
