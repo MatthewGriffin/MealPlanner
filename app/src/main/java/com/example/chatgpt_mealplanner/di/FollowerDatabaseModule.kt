@@ -24,7 +24,11 @@ object FollowerDatabaseModule {
             context,
             FollowerDatabase::class.java,
             "pantry_follower_local.db"
-        ).addMigrations(com.example.chatgpt_mealplanner.core.sync.follower.database.FOLLOWER_MIGRATION_1_2).build()
+        ).addMigrations(
+            com.example.chatgpt_mealplanner.core.sync.follower.database.FOLLOWER_MIGRATION_1_2,
+            com.example.chatgpt_mealplanner.core.sync.follower.database.FOLLOWER_MIGRATION_2_3,
+            com.example.chatgpt_mealplanner.core.sync.follower.database.FOLLOWER_MIGRATION_3_4
+        ).build()
     }
 
     @Provides

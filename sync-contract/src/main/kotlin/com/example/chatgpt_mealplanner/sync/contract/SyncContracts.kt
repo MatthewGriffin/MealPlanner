@@ -91,6 +91,14 @@ data class SyncFeedResponseDto(
 )
 
 @Serializable
+data class BootstrapResponseDto(
+    val protocolVersion: Int = SYNC_PROTOCOL_VERSION,
+    val householdId: String,
+    val snapshotCanonicalSequence: Long,
+    val inventoryItems: List<InventoryItemSyncDto>
+)
+
+@Serializable
 data class AddItemPayloadDto(
     val itemId: String,
     val canonicalName: String,

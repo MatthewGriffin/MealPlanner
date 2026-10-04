@@ -49,6 +49,32 @@ val FOLLOWER_MIGRATION_2_3 = object : Migration(2, 3) {
     }
 }
 
+val FOLLOWER_MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `follower_sync_metadata` ADD COLUMN `bootstrapCompleted` INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE `follower_sync_metadata` ADD COLUMN `bootstrapCompletedAt` INTEGER")
+        db.execSQL("ALTER TABLE `follower_sync_metadata` ADD COLUMN `bootstrapCanonicalSequence` INTEGER")
+
+        val hasItemsTable = db.compileStatement("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='follower_inventory_items'").simpleQueryForLong() > 0
+        val hasOutboxTable = db.compileStatement("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='follower_sync_outbox'").simpleQueryForLong() > 0
+
+        val itemCount = if (hasItemsTable) db.compileStatement("SELECT COUNT(*) FROM follower_inventory_items").simpleQueryForLong() else 0L
+        val outboxCount = if (hasOutboxTable) db.compileStatement("SELECT COUNT(*) FROM follower_sync_outbox").simpleQueryForLong() else 0L
+
+        val cursor = db.compileStatement("SELECT lastReconciledCanonicalSequence FROM follower_sync_metadata WHERE singletonId = 1").simpleQueryForLong()
+
+        if (cursor > 0 || itemCount > 0 || outboxCount > 0) {
+            db.execSQL("""
+                UPDATE `follower_sync_metadata` SET
+                    `bootstrapCompleted` = 1,
+                    `bootstrapCompletedAt` = NULL,
+                    `bootstrapCanonicalSequence` = `lastReconciledCanonicalSequence`
+                WHERE `singletonId` = 1
+            """)
+        }
+    }
+}
+
 @Database(
     entities = [
         FollowerInventoryItemEntity::class,
@@ -56,7 +82,7 @@ val FOLLOWER_MIGRATION_2_3 = object : Migration(2, 3) {
         FollowerDeviceSequenceEntity::class,
         FollowerSyncMetadataEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class FollowerDatabase : RoomDatabase() {

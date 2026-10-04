@@ -1,0 +1,122 @@
+package com.example.chatgpt_mealplanner.core.sync.follower.engine
+
+import androidx.room.withTransaction
+import com.example.chatgpt_mealplanner.core.sync.client.PantrySyncTestClient
+import com.example.chatgpt_mealplanner.core.sync.follower.database.FollowerDatabase
+import com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerDao
+import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerInventoryItemEntity
+import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerSyncMetadataEntity
+import javax.inject.Inject
+import javax.inject.Singleton
+
+data class BootstrapPassSummary(
+    val success: Boolean,
+    val resultCode: String,
+    val installedItemsCount: Int = 0,
+    val snapshotWatermark: Long = 0L
+)
+
+@Singleton
+open class FollowerBootstrapEngine @Inject constructor(
+    private val followerDatabase: FollowerDatabase?,
+    private val pantrySyncTestClient: PantrySyncTestClient,
+    private val followerFeedPullEngine: FollowerFeedPullEngine
+) {
+    open suspend fun performBootstrapPass(
+        hostIp: String,
+        port: Int = 8443,
+        pinnedCertFingerprint: String?,
+        sessionToken: String,
+        followerDeviceId: String,
+        customDao: FollowerDao? = null
+    ): BootstrapPassSummary {
+        val dao = customDao ?: followerDatabase?.followerDao() ?: throw IllegalStateException("FollowerDatabase or customDao required")
+
+        val currentMeta = dao.getSyncMetadata()
+        if (currentMeta?.bootstrapCompleted == true) {
+            return BootstrapPassSummary(true, "BOOTSTRAP_ALREADY_COMPLETED", 0, currentMeta.lastReconciledCanonicalSequence)
+        }
+
+        if (dao.getPendingOperationsInOrder().isNotEmpty()) {
+            return BootstrapPassSummary(false, "BOOTSTRAP_BLOCKED_LOCAL_PENDING_OPERATIONS", 0, 0L)
+        }
+
+        val snapshotResult = pantrySyncTestClient.getBootstrapSnapshot(
+            hostIp = hostIp,
+            port = port,
+            pinnedCertFingerprint = pinnedCertFingerprint,
+            sessionToken = sessionToken
+        )
+
+        if (!snapshotResult.success || snapshotResult.bootstrapResponse == null) {
+            return BootstrapPassSummary(false, snapshotResult.error ?: "SNAPSHOT_FETCH_FAILED", 0, 0L)
+        }
+
+        val response = snapshotResult.bootstrapResponse
+        val watermark = response.snapshotCanonicalSequence
+        val now = System.currentTimeMillis()
+
+        val block: suspend () -> Unit = {
+            for (snap in response.inventoryItems) {
+                val itemEntity = FollowerInventoryItemEntity(
+                    itemId = snap.itemId,
+                    barcode = snap.barcode,
+                    canonicalName = snap.canonicalName,
+                    confirmedDisplayName = snap.displayName,
+                    confirmedBrand = snap.brand,
+                    confirmedCategory = snap.category,
+                    confirmedStorageLocation = snap.storageLocation,
+                    confirmedQuantity = snap.quantity,
+                    confirmedQuantityUnit = snap.quantityUnit,
+                    confirmedNotes = snap.notes,
+                    confirmedStatus = snap.status,
+                    mainConfirmedRevision = snap.revision,
+                    displayName = snap.displayName,
+                    brand = snap.brand,
+                    category = snap.category,
+                    storageLocation = snap.storageLocation,
+                    quantity = snap.quantity,
+                    quantityUnit = snap.quantityUnit,
+                    notes = snap.notes,
+                    status = snap.status,
+                    optimisticRevision = snap.revision,
+                    isPendingSync = false,
+                    updatedAt = now
+                )
+                dao.insertOrUpdateItem(itemEntity)
+            }
+
+            val metaToSave = (dao.getSyncMetadata() ?: FollowerSyncMetadataEntity(singletonId = 1)).copy(
+                lastReconciledCanonicalSequence = watermark,
+                lastSuccessfulPullAt = now,
+                bootstrapCompleted = true,
+                bootstrapCompletedAt = now,
+                bootstrapCanonicalSequence = watermark
+            )
+            dao.updateSyncMetadata(metaToSave)
+        }
+
+        if (followerDatabase != null) {
+            followerDatabase.withTransaction { block() }
+        } else {
+            block()
+        }
+
+        // Post-bootstrap Phase 3D incremental catch-up starting from watermark
+        followerFeedPullEngine.performFeedPullPass(
+            hostIp = hostIp,
+            port = port,
+            pinnedCertFingerprint = pinnedCertFingerprint,
+            sessionToken = sessionToken,
+            followerDeviceId = followerDeviceId,
+            customDao = dao
+        )
+
+        return BootstrapPassSummary(
+            success = true,
+            resultCode = "SUCCESS",
+            installedItemsCount = response.inventoryItems.size,
+            snapshotWatermark = watermark
+        )
+    }
+}

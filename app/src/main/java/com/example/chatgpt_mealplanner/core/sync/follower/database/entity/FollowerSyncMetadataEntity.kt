@@ -7,5 +7,8 @@ import androidx.room.PrimaryKey
 data class FollowerSyncMetadataEntity(
     @PrimaryKey val singletonId: Int = 1,
     val lastReconciledCanonicalSequence: Long = 0L,
-    val lastSuccessfulPullAt: Long? = null
+    val lastSuccessfulPullAt: Long? = null,
+    val bootstrapCompleted: Boolean = false,
+    val bootstrapCompletedAt: Long? = null,
+    val bootstrapCanonicalSequence: Long? = null
 )

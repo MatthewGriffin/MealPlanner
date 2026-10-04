@@ -3,6 +3,7 @@ package com.example.chatgpt_mealplanner.core.sync.client
 import com.example.chatgpt_mealplanner.core.security.AndroidKeyStoreManager
 import com.example.chatgpt_mealplanner.sync.contract.AuthChallengeDto
 import com.example.chatgpt_mealplanner.sync.contract.AuthChallengeResponseDto
+import com.example.chatgpt_mealplanner.sync.contract.BootstrapResponseDto
 import com.example.chatgpt_mealplanner.sync.contract.SyncFeedResponseDto
 import com.example.chatgpt_mealplanner.sync.contract.SyncOperationDto
 import com.example.chatgpt_mealplanner.sync.contract.SyncOperationResultDto
@@ -41,6 +42,12 @@ data class TestClientOperationResult(
 data class TestClientFeedResult(
     val success: Boolean,
     val feedResponse: SyncFeedResponseDto? = null,
+    val error: String? = null
+)
+
+data class TestClientBootstrapResult(
+    val success: Boolean,
+    val bootstrapResponse: BootstrapResponseDto? = null,
     val error: String? = null
 )
 
@@ -169,7 +176,7 @@ open class PantrySyncTestClient @Inject constructor(
             val response = client.newCall(request).execute()
             val responseBodyText = response.body?.string() ?: "{}"
 
-            val resultDto = runCatching { json.decodeFromString(SyncOperationResultDto.serializer(), responseBodyText) }.getOrNull()
+            val resultDto = runCatching { json.decodeFromString<SyncOperationResultDto>(responseBodyText) }.getOrNull()
 
             if (response.isSuccessful && resultDto != null) {
                 TestClientOperationResult(true, resultDto, null)
@@ -211,6 +218,37 @@ open class PantrySyncTestClient @Inject constructor(
             }
         } catch (e: Exception) {
             TestClientFeedResult(false, null, e.message ?: "Network error")
+        }
+    }
+
+    open suspend fun getBootstrapSnapshot(
+        hostIp: String,
+        port: Int = 8443,
+        pinnedCertFingerprint: String?,
+        sessionToken: String
+    ): TestClientBootstrapResult = withContext(Dispatchers.IO) {
+        try {
+            val client = createPinnedOkHttpClient(pinnedCertFingerprint)
+            val baseUrl = "https://$hostIp:$port"
+
+            val request = Request.Builder()
+                .url("$baseUrl/sync/v1/bootstrap")
+                .header("X-Pantry-Session-Token", sessionToken)
+                .get()
+                .build()
+
+            val response = client.newCall(request).execute()
+            val responseBodyText = response.body?.string() ?: "{}"
+
+            val bootstrapDto = runCatching { json.decodeFromString<BootstrapResponseDto>(responseBodyText) }.getOrNull()
+
+            if (response.isSuccessful && bootstrapDto != null) {
+                TestClientBootstrapResult(true, bootstrapDto, null)
+            } else {
+                TestClientBootstrapResult(false, bootstrapDto, "HTTP ${response.code}: $responseBodyText")
+            }
+        } catch (e: Exception) {
+            TestClientBootstrapResult(false, null, e.message ?: "Network error")
         }
     }
 }

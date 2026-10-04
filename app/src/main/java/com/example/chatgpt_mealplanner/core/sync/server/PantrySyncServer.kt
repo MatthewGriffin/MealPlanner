@@ -240,6 +240,48 @@ open class PantrySyncServer @Inject constructor(
 
                         call.respond(responseDto)
                     }
+
+                    get("/sync/v1/bootstrap") {
+                        val token = call.request.headers["X-Pantry-Session-Token"]
+                        val authenticatedDeviceId = sessionManager.validateSessionToken(token)
+
+                        if (authenticatedDeviceId == null) {
+                            call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                                put("error", "UNAUTHORIZED")
+                            })
+                            return@get
+                        }
+
+                        val householdId = identityManager.getOrCreateHouseholdIdentity().householdId
+                        val latestSeq = canonicalSyncDao.getLatestCanonicalSequence() ?: 0L
+                        val invItems = inventoryDao.getAllItemsSync()
+
+                        val syncItems = invItems.map { invItem ->
+                            InventoryItemSyncDto(
+                                itemId = invItem.id,
+                                barcode = invItem.barcode,
+                                canonicalName = invItem.canonicalName,
+                                displayName = invItem.displayName,
+                                brand = invItem.brand,
+                                category = invItem.category.name,
+                                storageLocation = invItem.storageLocation.name,
+                                quantity = invItem.quantity,
+                                quantityUnit = invItem.quantityUnit?.name,
+                                notes = invItem.notes,
+                                status = invItem.status.name,
+                                revision = invItem.revision
+                            )
+                        }
+
+                        val bootstrapDto = com.example.chatgpt_mealplanner.sync.contract.BootstrapResponseDto(
+                            protocolVersion = SYNC_PROTOCOL_VERSION,
+                            householdId = householdId,
+                            snapshotCanonicalSequence = latestSeq,
+                            inventoryItems = syncItems
+                        )
+
+                        call.respond(bootstrapDto)
+                    }
                 }
             }
         }
