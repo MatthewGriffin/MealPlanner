@@ -316,6 +316,75 @@ class PantrySyncPhase3eBootstrapTest {
     }
 
     @Test
+    fun watermarkZeroCompletedBootstrap_restartDoesNotBootstrapAgain() = runTest {
+        fakeDao.updateSyncMetadata(
+            FollowerSyncMetadataEntity(
+                singletonId = 1,
+                lastReconciledCanonicalSequence = 0L,
+                bootstrapCompleted = true,
+                bootstrapCanonicalSequence = 0L
+            )
+        )
+
+        val summary = bootstrapEngine.performBootstrapPass(
+            hostIp = "192.168.0.126",
+            port = 8443,
+            pinnedCertFingerprint = null,
+            sessionToken = "valid_token",
+            followerDeviceId = followerDeviceId,
+            customDao = fakeDao
+        )
+
+        assertTrue(summary.success)
+        assertEquals("BOOTSTRAP_ALREADY_COMPLETED", summary.resultCode)
+        assertEquals(0, summary.installedItemsCount)
+    }
+
+    @Test
+    fun pendingOutbox_blocksBootstrap_preservesCompleteEnvelope() = runTest {
+        val itemId = UUID.randomUUID().toString()
+        val originalOutbox = FollowerSyncOutboxEntity(
+            operationId = "op_blocked_1",
+            deviceId = followerDeviceId,
+            deviceSequence = 5L,
+            protocolVersion = 1,
+            operationType = "SET_QUANTITY",
+            targetItemId = itemId,
+            baseRevision = 2L,
+            payloadJson = "{\"absoluteQuantity\":10.0}",
+            createdAt = 1762000000000L,
+            status = "PENDING",
+            createdLocallyAt = 1762000000000L
+        )
+        fakeDao.insertOutboxOperation(originalOutbox)
+
+        val summary = bootstrapEngine.performBootstrapPass(
+            hostIp = "192.168.0.126",
+            port = 8443,
+            pinnedCertFingerprint = null,
+            sessionToken = "valid_token",
+            followerDeviceId = followerDeviceId,
+            customDao = fakeDao
+        )
+
+        assertFalse(summary.success)
+        assertEquals("BOOTSTRAP_BLOCKED_LOCAL_PENDING_OPERATIONS", summary.resultCode)
+
+        val outboxAfter = fakeDao.getOutboxByOperationId("op_blocked_1")
+        assertNotNull(outboxAfter)
+        assertEquals(originalOutbox.operationId, outboxAfter?.operationId)
+        assertEquals(originalOutbox.deviceId, outboxAfter?.deviceId)
+        assertEquals(originalOutbox.deviceSequence, outboxAfter?.deviceSequence)
+        assertEquals(originalOutbox.protocolVersion, outboxAfter?.protocolVersion)
+        assertEquals(originalOutbox.operationType, outboxAfter?.operationType)
+        assertEquals(originalOutbox.targetItemId, outboxAfter?.targetItemId)
+        assertEquals(originalOutbox.baseRevision, outboxAfter?.baseRevision)
+        assertEquals(originalOutbox.payloadJson, outboxAfter?.payloadJson)
+        assertEquals(originalOutbox.createdAt, outboxAfter?.createdAt)
+        assertEquals(originalOutbox.status, outboxAfter?.status)
+    }
+
+    @Test
     fun bootstrap_doesNotResetDeviceSequenceAllocator() = runTest {
         val seqEntity = FollowerDeviceSequenceEntity(
             singletonId = 1,
