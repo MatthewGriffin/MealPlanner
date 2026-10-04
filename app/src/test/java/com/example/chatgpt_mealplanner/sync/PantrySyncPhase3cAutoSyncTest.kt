@@ -2,9 +2,7 @@ package com.example.chatgpt_mealplanner.sync
 
 import com.example.chatgpt_mealplanner.core.security.AndroidKeyStoreManager
 import com.example.chatgpt_mealplanner.core.sync.client.PantrySyncTestClient
-import com.example.chatgpt_mealplanner.core.sync.follower.client.FollowerSyncUploadPassSummary
 import com.example.chatgpt_mealplanner.core.sync.follower.client.FollowerSyncUploader
-import com.example.chatgpt_mealplanner.core.sync.follower.database.FollowerDatabase
 import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerInventoryItemEntity
 import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerSyncOutboxEntity
 import kotlinx.coroutines.async
@@ -19,7 +17,6 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.junit.runners.JUnit4
-import org.mockito.Mockito.mock
 import java.util.UUID
 
 @RunWith(JUnit4::class)
@@ -37,11 +34,10 @@ class PantrySyncPhase3cAutoSyncTest {
 
     @Before
     fun setUp() {
-        val mockDb = mock(FollowerDatabase::class.java)
         fakeDao = FakeFollowerDao()
         localEngine = TestableFollowerSyncEngine(fakeDao)
         testClient = PantrySyncTestClient(AndroidKeyStoreManager())
-        uploader = FollowerSyncUploader(mockDb, testClient, localEngine)
+        uploader = FollowerSyncUploader(null, testClient, localEngine)
     }
 
     @Test
