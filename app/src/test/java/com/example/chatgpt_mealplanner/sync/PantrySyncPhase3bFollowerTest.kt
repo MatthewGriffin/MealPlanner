@@ -7,6 +7,7 @@ import com.example.chatgpt_mealplanner.core.sync.follower.database.FollowerDatab
 import com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerDao
 import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerDeviceSequenceEntity
 import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerInventoryItemEntity
+import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerSyncMetadataEntity
 import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerSyncOutboxEntity
 import com.example.chatgpt_mealplanner.core.sync.follower.engine.FollowerLocalSyncEngine
 import kotlinx.coroutines.test.runTest
@@ -26,11 +27,18 @@ class FakeFollowerDao : FollowerDao {
     private val outboxMap = mutableMapOf<String, FollowerSyncOutboxEntity>()
     private val itemsMap = mutableMapOf<String, FollowerInventoryItemEntity>()
     private var seqEntity: FollowerDeviceSequenceEntity? = null
+    private var metaEntity: FollowerSyncMetadataEntity? = null
 
     override suspend fun getSequenceEntity(): FollowerDeviceSequenceEntity? = seqEntity
 
     override suspend fun updateSequenceEntity(entity: FollowerDeviceSequenceEntity) {
         seqEntity = entity
+    }
+
+    override suspend fun getSyncMetadata(): FollowerSyncMetadataEntity? = metaEntity
+
+    override suspend fun updateSyncMetadata(metadata: FollowerSyncMetadataEntity) {
+        metaEntity = metadata
     }
 
     override suspend fun insertOutboxOperation(op: FollowerSyncOutboxEntity) {

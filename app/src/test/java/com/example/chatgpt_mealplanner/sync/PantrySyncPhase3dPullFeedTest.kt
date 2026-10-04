@@ -3,9 +3,8 @@ package com.example.chatgpt_mealplanner.sync
 import com.example.chatgpt_mealplanner.core.security.AndroidKeyStoreManager
 import com.example.chatgpt_mealplanner.core.sync.client.PantrySyncTestClient
 import com.example.chatgpt_mealplanner.core.sync.client.TestClientFeedResult
-import com.example.chatgpt_mealplanner.core.sync.follower.database.FollowerDatabase
 import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerInventoryItemEntity
-import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerSyncMetadataEntity
+import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerSyncOutboxEntity
 import com.example.chatgpt_mealplanner.core.sync.follower.engine.FollowerFeedPullEngine
 import com.example.chatgpt_mealplanner.sync.contract.InventoryItemSyncDto
 import com.example.chatgpt_mealplanner.sync.contract.SyncFeedItemDto
@@ -145,7 +144,7 @@ class PantrySyncPhase3dPullFeedTest {
         val feedItem = SyncFeedItemDto(
             canonicalSequence = 102L,
             operationId = UUID.randomUUID().toString(),
-            sourceDeviceId = followerDeviceId, // Own operation!
+            sourceDeviceId = followerDeviceId,
             operationType = SyncOperationType.ADD_ITEM,
             targetItemId = itemId,
             baseRevision = null,
@@ -179,5 +178,367 @@ class PantrySyncPhase3dPullFeedTest {
 
         val meta = fakeDao.getSyncMetadata()
         assertEquals("Own operation MUST STILL advance cursor to 102L", 102L, meta?.lastReconciledCanonicalSequence)
+    }
+
+    @Test
+    fun sameBarcode_remoteLotsRemainSeparate() = runTest {
+        val itemId1 = UUID.randomUUID().toString()
+        val itemId2 = UUID.randomUUID().toString()
+
+        val snap1 = InventoryItemSyncDto(
+            itemId = itemId1,
+            barcode = "5000159461122",
+            canonicalName = "Milk",
+            displayName = "Whole Milk Lot A",
+            brand = "Craven",
+            category = "FRESH_PANTRY",
+            storageLocation = "FRIDGE",
+            quantity = 1.0,
+            quantityUnit = "LITRE",
+            notes = null,
+            status = "AVAILABLE",
+            revision = 1L
+        )
+
+        val snap2 = InventoryItemSyncDto(
+            itemId = itemId2,
+            barcode = "5000159461122",
+            canonicalName = "Milk",
+            displayName = "Whole Milk Lot B",
+            brand = "Craven",
+            category = "FRESH_PANTRY",
+            storageLocation = "FRIDGE",
+            quantity = 1.0,
+            quantityUnit = "LITRE",
+            notes = null,
+            status = "AVAILABLE",
+            revision = 1L
+        )
+
+        val feedItem1 = SyncFeedItemDto(
+            canonicalSequence = 200L,
+            operationId = UUID.randomUUID().toString(),
+            sourceDeviceId = mainDeviceId,
+            operationType = SyncOperationType.ADD_ITEM,
+            targetItemId = itemId1,
+            baseRevision = null,
+            payloadJson = "{}",
+            status = SyncOperationStatus.APPLIED,
+            resultCode = "SUCCESS",
+            resultingRevision = 1L,
+            canonicalItemSnapshot = snap1,
+            occurredAt = System.currentTimeMillis()
+        )
+
+        val feedItem2 = SyncFeedItemDto(
+            canonicalSequence = 201L,
+            operationId = UUID.randomUUID().toString(),
+            sourceDeviceId = mainDeviceId,
+            operationType = SyncOperationType.ADD_ITEM,
+            targetItemId = itemId2,
+            baseRevision = null,
+            payloadJson = "{}",
+            status = SyncOperationStatus.APPLIED,
+            resultCode = "SUCCESS",
+            resultingRevision = 1L,
+            canonicalItemSnapshot = snap2,
+            occurredAt = System.currentTimeMillis()
+        )
+
+        fakeClient.feedResponseToReturn = SyncFeedResponseDto(
+            householdId = "household_123",
+            latestCanonicalSequence = 201L,
+            items = listOf(feedItem1, feedItem2),
+            hasMore = false
+        )
+
+        val summary = pullEngine.performFeedPullPass(
+            hostIp = "192.168.0.126",
+            port = 8443,
+            pinnedCertFingerprint = null,
+            sessionToken = "valid_token",
+            followerDeviceId = followerDeviceId,
+            customDao = fakeDao
+        )
+
+        assertEquals(2, summary.processedCount)
+        assertNotNull(fakeDao.getItemById(itemId1))
+        assertNotNull(fakeDao.getItemById(itemId2))
+        assertEquals(2, fakeDao.getAllItems().size)
+    }
+
+    @Test
+    fun remoteConfirmedDiscard_updatesConfirmedStatus() = runTest {
+        val itemId = UUID.randomUUID().toString()
+
+        fakeDao.insertOrUpdateItem(
+            FollowerInventoryItemEntity(
+                itemId = itemId,
+                canonicalName = "Milk",
+                confirmedDisplayName = "Whole Milk",
+                confirmedCategory = "FRESH_PANTRY",
+                confirmedStorageLocation = "FRIDGE",
+                confirmedQuantity = 1.0,
+                confirmedQuantityUnit = "LITRE",
+                confirmedNotes = null,
+                confirmedStatus = "AVAILABLE",
+                mainConfirmedRevision = 1L,
+                displayName = "Whole Milk",
+                brand = null,
+                category = "FRESH_PANTRY",
+                storageLocation = "FRIDGE",
+                quantity = 1.0,
+                quantityUnit = "LITRE",
+                notes = null,
+                status = "AVAILABLE",
+                optimisticRevision = 1L,
+                isPendingSync = false,
+                updatedAt = System.currentTimeMillis()
+            )
+        )
+
+        val snapDiscard = InventoryItemSyncDto(
+            itemId = itemId,
+            canonicalName = "Milk",
+            displayName = "Whole Milk",
+            category = "FRESH_PANTRY",
+            storageLocation = "FRIDGE",
+            quantity = 0.0,
+            quantityUnit = "LITRE",
+            notes = null,
+            status = "OUT",
+            revision = 2L
+        )
+
+        val feedItem = SyncFeedItemDto(
+            canonicalSequence = 300L,
+            operationId = UUID.randomUUID().toString(),
+            sourceDeviceId = mainDeviceId,
+            operationType = SyncOperationType.REQUEST_DISCARD_ITEM,
+            targetItemId = itemId,
+            baseRevision = 1L,
+            payloadJson = "{}",
+            status = SyncOperationStatus.APPLIED,
+            resultCode = "SUCCESS",
+            resultingRevision = 2L,
+            canonicalItemSnapshot = snapDiscard,
+            occurredAt = System.currentTimeMillis()
+        )
+
+        fakeClient.feedResponseToReturn = SyncFeedResponseDto(
+            householdId = "household_123",
+            latestCanonicalSequence = 300L,
+            items = listOf(feedItem),
+            hasMore = false
+        )
+
+        pullEngine.performFeedPullPass(
+            hostIp = "192.168.0.126",
+            port = 8443,
+            pinnedCertFingerprint = null,
+            sessionToken = "valid_token",
+            followerDeviceId = followerDeviceId,
+            customDao = fakeDao
+        )
+
+        val itemAfter = fakeDao.getItemById(itemId)
+        assertEquals("OUT", itemAfter?.confirmedStatus)
+        assertEquals(2L, itemAfter?.mainConfirmedRevision)
+    }
+
+    @Test
+    fun remoteApplied_pendingLocalEdit_recomputesOverlay() = runTest {
+        val itemId = UUID.randomUUID().toString()
+
+        fakeDao.insertOrUpdateItem(
+            FollowerInventoryItemEntity(
+                itemId = itemId,
+                canonicalName = "Apples",
+                confirmedDisplayName = "Red Apples",
+                confirmedCategory = "FRESH_PANTRY",
+                confirmedStorageLocation = "FRIDGE",
+                confirmedQuantity = 3.0,
+                confirmedQuantityUnit = "UNIT",
+                confirmedNotes = null,
+                confirmedStatus = "AVAILABLE",
+                mainConfirmedRevision = 1L,
+                displayName = "Red Apples",
+                brand = null,
+                category = "FRESH_PANTRY",
+                storageLocation = "FRIDGE",
+                quantity = 2.0,
+                quantityUnit = "UNIT",
+                notes = null,
+                status = "AVAILABLE",
+                optimisticRevision = 1L,
+                isPendingSync = true,
+                updatedAt = System.currentTimeMillis()
+            )
+        )
+
+        fakeDao.insertOutboxOperation(
+            FollowerSyncOutboxEntity(
+                operationId = "op_pending_edit_1",
+                deviceId = followerDeviceId,
+                deviceSequence = 10L,
+                protocolVersion = 1,
+                operationType = "ADJUST_QUANTITY",
+                targetItemId = itemId,
+                baseRevision = 1L,
+                payloadJson = "{\"delta\":-1.0}",
+                createdAt = System.currentTimeMillis(),
+                status = "PENDING",
+                createdLocallyAt = System.currentTimeMillis()
+            )
+        )
+
+        val snapRemote = InventoryItemSyncDto(
+            itemId = itemId,
+            canonicalName = "Apples",
+            displayName = "Red Apples",
+            category = "FRESH_PANTRY",
+            storageLocation = "FRIDGE",
+            quantity = 5.0,
+            quantityUnit = "UNIT",
+            notes = null,
+            status = "AVAILABLE",
+            revision = 2L
+        )
+
+        val feedItem = SyncFeedItemDto(
+            canonicalSequence = 400L,
+            operationId = UUID.randomUUID().toString(),
+            sourceDeviceId = mainDeviceId,
+            operationType = SyncOperationType.SET_QUANTITY,
+            targetItemId = itemId,
+            baseRevision = 1L,
+            payloadJson = "{}",
+            status = SyncOperationStatus.APPLIED,
+            resultCode = "SUCCESS",
+            resultingRevision = 2L,
+            canonicalItemSnapshot = snapRemote,
+            occurredAt = System.currentTimeMillis()
+        )
+
+        fakeClient.feedResponseToReturn = SyncFeedResponseDto(
+            householdId = "household_123",
+            latestCanonicalSequence = 400L,
+            items = listOf(feedItem),
+            hasMore = false
+        )
+
+        pullEngine.performFeedPullPass(
+            hostIp = "192.168.0.126",
+            port = 8443,
+            pinnedCertFingerprint = null,
+            sessionToken = "valid_token",
+            followerDeviceId = followerDeviceId,
+            customDao = fakeDao
+        )
+
+        val itemAfter = fakeDao.getItemById(itemId)
+        assertEquals("Confirmed quantity MUST update to 5.0", 5.0, itemAfter?.confirmedQuantity ?: 0.0, 0.001)
+        assertEquals("Working display quantity MUST recompute to 5.0 + (-1.0) = 4.0", 4.0, itemAfter?.quantity ?: 0.0, 0.001)
+
+        val outboxOp = fakeDao.getOutboxByOperationId("op_pending_edit_1")
+        assertEquals("Pending outbox baseRevision MUST NOT be rewritten (remains 1L)", 1L, outboxOp?.baseRevision)
+    }
+
+    @Test
+    fun confirmedRemoteDiscard_doesNotEraseUnresolvedLocalOutbox() = runTest {
+        val itemId = UUID.randomUUID().toString()
+
+        fakeDao.insertOrUpdateItem(
+            FollowerInventoryItemEntity(
+                itemId = itemId,
+                canonicalName = "Bread",
+                confirmedDisplayName = "White Bread",
+                confirmedCategory = "BREAD_BAKERY",
+                confirmedStorageLocation = "CUPBOARD",
+                confirmedQuantity = 1.0,
+                confirmedQuantityUnit = "UNIT",
+                confirmedNotes = null,
+                confirmedStatus = "AVAILABLE",
+                mainConfirmedRevision = 1L,
+                displayName = "White Bread",
+                brand = null,
+                category = "BREAD_BAKERY",
+                storageLocation = "CUPBOARD",
+                quantity = 1.0,
+                quantityUnit = "UNIT",
+                notes = null,
+                status = "AVAILABLE",
+                optimisticRevision = 1L,
+                isPendingSync = true,
+                updatedAt = System.currentTimeMillis()
+            )
+        )
+
+        fakeDao.insertOutboxOperation(
+            FollowerSyncOutboxEntity(
+                operationId = "op_local_pending_1",
+                deviceId = followerDeviceId,
+                deviceSequence = 15L,
+                protocolVersion = 1,
+                operationType = "SET_QUANTITY",
+                targetItemId = itemId,
+                baseRevision = 1L,
+                payloadJson = "{\"absoluteQuantity\":2.0}",
+                createdAt = System.currentTimeMillis(),
+                status = "PENDING",
+                createdLocallyAt = System.currentTimeMillis()
+            )
+        )
+
+        val snapRemoteDiscard = InventoryItemSyncDto(
+            itemId = itemId,
+            canonicalName = "Bread",
+            displayName = "White Bread",
+            category = "BREAD_BAKERY",
+            storageLocation = "CUPBOARD",
+            quantity = 0.0,
+            quantityUnit = "UNIT",
+            notes = null,
+            status = "OUT",
+            revision = 2L
+        )
+
+        val feedItem = SyncFeedItemDto(
+            canonicalSequence = 500L,
+            operationId = UUID.randomUUID().toString(),
+            sourceDeviceId = mainDeviceId,
+            operationType = SyncOperationType.REQUEST_DISCARD_ITEM,
+            targetItemId = itemId,
+            baseRevision = 1L,
+            payloadJson = "{}",
+            status = SyncOperationStatus.APPLIED,
+            resultCode = "SUCCESS",
+            resultingRevision = 2L,
+            canonicalItemSnapshot = snapRemoteDiscard,
+            occurredAt = System.currentTimeMillis()
+        )
+
+        fakeClient.feedResponseToReturn = SyncFeedResponseDto(
+            householdId = "household_123",
+            latestCanonicalSequence = 500L,
+            items = listOf(feedItem),
+            hasMore = false
+        )
+
+        pullEngine.performFeedPullPass(
+            hostIp = "192.168.0.126",
+            port = 8443,
+            pinnedCertFingerprint = null,
+            sessionToken = "valid_token",
+            followerDeviceId = followerDeviceId,
+            customDao = fakeDao
+        )
+
+        val itemAfter = fakeDao.getItemById(itemId)
+        assertEquals("OUT", itemAfter?.confirmedStatus)
+
+        val pendingOp = fakeDao.getOutboxByOperationId("op_local_pending_1")
+        assertNotNull("Unresolved local outbox operation MUST NOT be erased by remote discard", pendingOp)
+        assertEquals("PENDING", pendingOp?.status)
     }
 }

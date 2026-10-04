@@ -7,6 +7,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerDao
 import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerDeviceSequenceEntity
 import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerInventoryItemEntity
+import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerSyncMetadataEntity
 import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerSyncOutboxEntity
 
 val FOLLOWER_MIGRATION_1_2 = object : Migration(1, 2) {
@@ -34,13 +35,28 @@ val FOLLOWER_MIGRATION_1_2 = object : Migration(1, 2) {
     }
 }
 
+val FOLLOWER_MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("""
+            CREATE TABLE IF NOT EXISTS `follower_sync_metadata` (
+                `singletonId` INTEGER NOT NULL,
+                `lastReconciledCanonicalSequence` INTEGER NOT NULL,
+                `lastSuccessfulPullAt` INTEGER,
+                PRIMARY KEY(`singletonId`)
+            )
+        """.trimIndent())
+        db.execSQL("INSERT OR IGNORE INTO `follower_sync_metadata` (`singletonId`, `lastReconciledCanonicalSequence`) VALUES (1, 0)")
+    }
+}
+
 @Database(
     entities = [
         FollowerInventoryItemEntity::class,
         FollowerSyncOutboxEntity::class,
-        FollowerDeviceSequenceEntity::class
+        FollowerDeviceSequenceEntity::class,
+        FollowerSyncMetadataEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class FollowerDatabase : RoomDatabase() {

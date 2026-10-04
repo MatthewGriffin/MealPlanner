@@ -70,8 +70,8 @@ open class FollowerFeedPullEngine @Inject constructor(
                         totalOwnSkipped++
                     } else {
                         // Remote-device operation: Reconcile confirmed base state
-                        if (feedItem.status == SyncOperationStatus.APPLIED && feedItem.canonicalItemSnapshot != null) {
-                            val snap = feedItem.canonicalItemSnapshot
+                        val snap = feedItem.canonicalItemSnapshot
+                        if (feedItem.status == SyncOperationStatus.APPLIED && snap != null) {
                             val existing = dao.getItemById(snap.itemId)
 
                             val updatedItem = if (existing != null) {

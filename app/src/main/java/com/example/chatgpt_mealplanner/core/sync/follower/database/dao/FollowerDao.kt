@@ -6,6 +6,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerDeviceSequenceEntity
 import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerInventoryItemEntity
+import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerSyncMetadataEntity
 import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerSyncOutboxEntity
 
 @Dao
@@ -16,6 +17,12 @@ interface FollowerDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun updateSequenceEntity(entity: FollowerDeviceSequenceEntity)
+
+    @Query("SELECT * FROM follower_sync_metadata WHERE singletonId = 1 LIMIT 1")
+    suspend fun getSyncMetadata(): FollowerSyncMetadataEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun updateSyncMetadata(metadata: FollowerSyncMetadataEntity)
 
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertOutboxOperation(op: FollowerSyncOutboxEntity)

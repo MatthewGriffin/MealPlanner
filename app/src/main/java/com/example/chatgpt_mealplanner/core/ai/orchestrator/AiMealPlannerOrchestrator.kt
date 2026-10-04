@@ -86,7 +86,7 @@ class AiMealPlannerOrchestrator @Inject constructor(
 
         val turnId = "turn_${System.currentTimeMillis()}"
         val traceLog = """
-            [DELETE_TRACE] buildId=SYNC_PHASE3C_AUTO_SYNC_V3 conversationId=$conversationId turnId=$turnId userMessageId=$userMsgId rawUserText="$userMessageText"
+            [DELETE_TRACE] buildId=SYNC_PHASE3D_PULL_FEED_V2 conversationId=$conversationId turnId=$turnId userMessageId=$userMsgId rawUserText="$userMessageText"
             [DELETE_TRACE] orchestrator_enter conversationId=$conversationId turnId=$turnId
             [DELETE_TRACE] pending_before=${initialPending?.javaClass?.simpleName ?: "NONE"}
             [DELETE_TRACE] affirmative=$isAffirmative
