@@ -42,6 +42,15 @@ class FakePairedDeviceDao : PairedDeviceDao {
             devicesMap[deviceId] = it.copy(status = status)
         }
     }
+
+    override suspend fun revokeDeviceIfActive(deviceId: String): Int {
+        val dev = devicesMap[deviceId] ?: return 0
+        if (dev.status == "ACTIVE") {
+            devicesMap[deviceId] = dev.copy(status = "REVOKED")
+            return 1
+        }
+        return 0
+    }
 }
 
 @RunWith(JUnit4::class)

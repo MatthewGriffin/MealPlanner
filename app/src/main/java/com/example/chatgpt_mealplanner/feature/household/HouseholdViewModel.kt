@@ -3,8 +3,11 @@ package com.example.chatgpt_mealplanner.feature.household
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.chatgpt_mealplanner.core.database.entity.HouseholdIdentityEntity
+import com.example.chatgpt_mealplanner.core.database.entity.PairedDeviceEntity
 import com.example.chatgpt_mealplanner.core.sync.HouseholdIdentityManager
 import com.example.chatgpt_mealplanner.core.sync.follower.config.FollowerPairingStore
+import com.example.chatgpt_mealplanner.core.sync.repository.PairedDeviceRepository
+import com.example.chatgpt_mealplanner.core.sync.repository.RevocationResult
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -14,14 +17,20 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class HouseholdUiState(
+    val isLoading: Boolean = true,
     val householdIdentity: HouseholdIdentityEntity? = null,
+    val pairedDevices: List<PairedDeviceEntity> = emptyList(),
+    val deviceToRevoke: PairedDeviceEntity? = null,
     val isFollowerPaired: Boolean = false,
-    val hostIp: String? = null
+    val hostIp: String? = null,
+    val statusMessage: String? = null,
+    val errorMessage: String? = null
 )
 
 @HiltViewModel
 class HouseholdViewModel @Inject constructor(
     private val identityManager: HouseholdIdentityManager,
+    private val pairedDeviceRepository: PairedDeviceRepository,
     private val followerPairingStore: FollowerPairingStore
 ) : ViewModel() {
 
@@ -33,16 +42,71 @@ class HouseholdViewModel @Inject constructor(
     }
 
     fun loadHouseholdInfo() {
+        _uiState.update { it.copy(isLoading = true) }
         viewModelScope.launch {
             val identity = identityManager.getOrCreateHouseholdIdentity()
+            val devices = pairedDeviceRepository.getAllDevices()
             val isPaired = followerPairingStore.isPaired()
             val config = followerPairingStore.getPairingConfig()
             _uiState.update {
                 it.copy(
+                    isLoading = false,
                     householdIdentity = identity,
+                    pairedDevices = devices,
                     isFollowerPaired = isPaired,
                     hostIp = config?.hostIp
                 )
+            }
+        }
+    }
+
+    fun requestRevocationConfirmation(device: PairedDeviceEntity) {
+        if (device.status == "REVOKED") return
+        _uiState.update { it.copy(deviceToRevoke = device) }
+    }
+
+    fun cancelRevocation() {
+        _uiState.update { it.copy(deviceToRevoke = null) }
+    }
+
+    fun confirmRevocation() {
+        val device = _uiState.value.deviceToRevoke ?: return
+        _uiState.update { it.copy(deviceToRevoke = null) }
+
+        viewModelScope.launch {
+            when (val res = pairedDeviceRepository.revokeDevice(device.deviceId)) {
+                is RevocationResult.Success -> {
+                    _uiState.update { current ->
+                        current.copy(
+                            statusMessage = "Revoked access for ${res.device.deviceName}",
+                            errorMessage = null
+                        )
+                    }
+                    loadHouseholdInfo()
+                }
+                is RevocationResult.AlreadyRevoked -> {
+                    _uiState.update { current ->
+                        current.copy(
+                            statusMessage = "Device ${res.device.deviceName} is already revoked",
+                            errorMessage = null
+                        )
+                    }
+                    loadHouseholdInfo()
+                }
+                is RevocationResult.DeviceNotFound -> {
+                    _uiState.update { current ->
+                        current.copy(
+                            errorMessage = "Device not found for revocation: ${res.deviceId}"
+                        )
+                    }
+                }
+                is RevocationResult.UnknownStatusFailure -> {
+                    _uiState.update { current ->
+                        current.copy(
+                            errorMessage = "Cannot revoke device with status '${res.status}'"
+                        )
+                    }
+                }
             }
         }
     }

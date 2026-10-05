@@ -236,6 +236,9 @@ class MainActivity : ComponentActivity() {
                                 uiState = state,
                                 onPairNewDeviceClicked = { currentScreen = Screen.PAIR_DEVICE },
                                 onJoinHouseholdClicked = { currentScreen = Screen.JOIN_HOUSEHOLD },
+                                onRequestRevocation = householdViewModel::requestRevocationConfirmation,
+                                onConfirmRevocation = householdViewModel::confirmRevocation,
+                                onCancelRevocation = householdViewModel::cancelRevocation,
                                 modifier = Modifier.padding(innerPadding)
                             )
                         }

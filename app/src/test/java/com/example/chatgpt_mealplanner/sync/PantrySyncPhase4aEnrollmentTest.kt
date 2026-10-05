@@ -118,7 +118,7 @@ open class TestFollowerIdentityStore(
 
 open class TestSyncPairedDeviceDao : PairedDeviceDao {
     var shouldFailInsert = false
-    private val devicesMap = mutableMapOf<String, PairedDeviceEntity>()
+    private val devicesMap = java.util.concurrent.ConcurrentHashMap<String, PairedDeviceEntity>()
 
     override suspend fun getDeviceById(deviceId: String): PairedDeviceEntity? = devicesMap[deviceId]
     override suspend fun getAllDevices(): List<PairedDeviceEntity> = devicesMap.values.toList()
@@ -133,6 +133,17 @@ open class TestSyncPairedDeviceDao : PairedDeviceDao {
     override suspend fun updateDeviceStatus(deviceId: String, status: String) {
         devicesMap[deviceId]?.let {
             devicesMap[deviceId] = it.copy(status = status)
+        }
+    }
+
+    override suspend fun revokeDeviceIfActive(deviceId: String): Int {
+        synchronized(this) {
+            val existing = devicesMap[deviceId] ?: return 0
+            if (existing.status == "ACTIVE") {
+                devicesMap[deviceId] = existing.copy(status = "REVOKED")
+                return 1
+            }
+            return 0
         }
     }
 }
