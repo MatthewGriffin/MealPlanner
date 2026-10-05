@@ -1,6 +1,7 @@
 package com.example.chatgpt_mealplanner.core.sync.client
 
 import com.example.chatgpt_mealplanner.core.security.AndroidKeyStoreManager
+import com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerErrorClassifier
 import com.example.chatgpt_mealplanner.sync.contract.AuthChallengeDto
 import com.example.chatgpt_mealplanner.sync.contract.AuthChallengeResponseDto
 import com.example.chatgpt_mealplanner.sync.contract.BootstrapResponseDto
@@ -25,6 +26,14 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import javax.net.ssl.SSLContext
 import javax.net.ssl.X509TrustManager
+
+sealed interface AuthTokenResult {
+    data class Success(val token: String) : AuthTokenResult
+    data class AuthFailure(val errorCode: String, val message: String) : AuthTokenResult
+    data class ServerFailure(val errorCode: String, val message: String) : AuthTokenResult
+    data class TransportFailure(val message: String) : AuthTokenResult
+    object Revoked : AuthTokenResult
+}
 
 data class TestClientSyncResult(
     val success: Boolean,
@@ -228,28 +237,129 @@ open class PantrySyncTestClient @Inject constructor(
         pinnedCertFingerprint: String?,
         sessionToken: String
     ): TestClientBootstrapResult = withContext(Dispatchers.IO) {
-        try {
-            val client = createPinnedOkHttpClient(pinnedCertFingerprint)
-            val baseUrl = "https://$hostIp:$port"
-
-            val request = Request.Builder()
-                .url("$baseUrl/sync/v1/bootstrap")
-                .header("X-Pantry-Session-Token", sessionToken)
-                .get()
-                .build()
-
-            val response = client.newCall(request).execute()
-            val responseBodyText = response.body?.string() ?: "{}"
-
-            val bootstrapDto = runCatching { json.decodeFromString<BootstrapResponseDto>(responseBodyText) }.getOrNull()
-
-            if (response.isSuccessful && bootstrapDto != null) {
-                TestClientBootstrapResult(true, bootstrapDto, null)
-            } else {
-                TestClientBootstrapResult(false, bootstrapDto, "HTTP ${response.code}: $responseBodyText")
-            }
+        val client = try {
+            createPinnedOkHttpClient(pinnedCertFingerprint)
         } catch (e: Exception) {
-            TestClientBootstrapResult(false, null, e.message ?: "Network error")
+            return@withContext TestClientBootstrapResult(false, null, "TLS_ERROR")
+        }
+
+        val baseUrl = "https://$hostIp:$port"
+        val request = Request.Builder()
+            .url("$baseUrl/sync/v1/bootstrap")
+            .header("X-Pantry-Session-Token", sessionToken)
+            .get()
+            .build()
+
+        val response = try {
+            client.newCall(request).execute()
+        } catch (e: java.io.IOException) {
+            return@withContext TestClientBootstrapResult(false, null, "NETWORK_ERROR")
+        } catch (e: Exception) {
+            return@withContext TestClientBootstrapResult(false, null, "SERVER_ERROR")
+        }
+
+        val responseBodyText = response.body?.string() ?: "{}"
+        if (!response.isSuccessful) {
+            if (FollowerErrorClassifier.isExplicitRevocation(responseBodyText)) {
+                followerPairingStore?.markRevoked()
+                return@withContext TestClientBootstrapResult(false, null, "FOLLOWER_REVOKED")
+            }
+            return@withContext if (response.code in listOf(401, 403)) {
+                TestClientBootstrapResult(false, null, "UNAUTHORIZED")
+            } else {
+                TestClientBootstrapResult(false, null, "SERVER_ERROR")
+            }
+        }
+
+        val bootstrapDto = runCatching { json.decodeFromString<BootstrapResponseDto>(responseBodyText) }.getOrNull()
+        if (bootstrapDto != null) {
+            TestClientBootstrapResult(true, bootstrapDto, null)
+        } else {
+            TestClientBootstrapResult(false, null, "SERVER_ERROR")
+        }
+    }
+
+    open suspend fun obtainSessionTokenResult(
+        hostIp: String,
+        port: Int = 8443,
+        pinnedCertFingerprint: String?,
+        deviceId: String,
+        keyAlias: String = "pantry_follower_key"
+    ): AuthTokenResult = withContext(Dispatchers.IO) {
+        val client = try {
+            createPinnedOkHttpClient(pinnedCertFingerprint)
+        } catch (e: Exception) {
+            return@withContext AuthTokenResult.TransportFailure(e.message ?: "TLS setup error")
+        }
+
+        val baseUrl = "https://$hostIp:$port"
+
+        val challengeResponse = try {
+            val challengeBody = json.encodeToString(buildJsonObject { put("deviceId", deviceId) }).toRequestBody("application/json".toMediaType())
+            val challengeRequest = Request.Builder().url("$baseUrl/sync/v1/auth/challenge").post(challengeBody).build()
+            client.newCall(challengeRequest).execute()
+        } catch (e: java.io.IOException) {
+            return@withContext AuthTokenResult.TransportFailure(e.message ?: "Network transport error during challenge")
+        } catch (e: Exception) {
+            return@withContext AuthTokenResult.ServerFailure("CHALLENGE_EXEC_ERROR", e.message ?: "Challenge execution error")
+        }
+
+        val challengeResponseBody = challengeResponse.body?.string() ?: ""
+        if (!challengeResponse.isSuccessful) {
+            if (FollowerErrorClassifier.isExplicitRevocation(challengeResponseBody)) {
+                followerPairingStore?.markRevoked()
+                return@withContext AuthTokenResult.Revoked
+            }
+            return@withContext if (challengeResponse.code in listOf(401, 403)) {
+                AuthTokenResult.AuthFailure("CHALLENGE_REJECTED", "Auth challenge rejected by server (HTTP ${challengeResponse.code})")
+            } else {
+                AuthTokenResult.ServerFailure("HTTP_${challengeResponse.code}", "Server error during challenge (HTTP ${challengeResponse.code})")
+            }
+        }
+
+        val challengeDto = runCatching { json.decodeFromString<AuthChallengeDto>(challengeResponseBody) }.getOrNull()
+            ?: return@withContext AuthTokenResult.ServerFailure("MALFORMED_CHALLENGE_RESPONSE", "Malformed challenge response JSON")
+
+        val canonicalBytes = "pantry-household-sync|1|${challengeDto.householdId}|$deviceId|${challengeDto.challengeId}|${challengeDto.nonce}".toByteArray(Charsets.UTF_8)
+        val signatureBase64 = keyStoreManager.signChallenge(keyAlias, canonicalBytes)
+
+        val sessionReqDto = AuthChallengeResponseDto(
+            challengeId = challengeDto.challengeId,
+            deviceId = deviceId,
+            signature = signatureBase64
+        )
+
+        val sessionResponse = try {
+            val sessionBody = json.encodeToString(AuthChallengeResponseDto.serializer(), sessionReqDto).toRequestBody("application/json".toMediaType())
+            val sessionRequest = Request.Builder().url("$baseUrl/sync/v1/auth/session").post(sessionBody).build()
+            client.newCall(sessionRequest).execute()
+        } catch (e: java.io.IOException) {
+            return@withContext AuthTokenResult.TransportFailure(e.message ?: "Network transport error during session request")
+        } catch (e: Exception) {
+            return@withContext AuthTokenResult.ServerFailure("SESSION_EXEC_ERROR", e.message ?: "Session execution error")
+        }
+
+        val sessionResponseBody = sessionResponse.body?.string() ?: ""
+        if (!sessionResponse.isSuccessful) {
+            if (com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerErrorClassifier.isExplicitRevocation(sessionResponseBody)) {
+                followerPairingStore?.markRevoked()
+                return@withContext AuthTokenResult.Revoked
+            }
+            return@withContext if (sessionResponse.code in listOf(401, 403)) {
+                AuthTokenResult.AuthFailure("SESSION_REJECTED", "Session creation rejected by server (HTTP ${sessionResponse.code})")
+            } else {
+                AuthTokenResult.ServerFailure("HTTP_${sessionResponse.code}", "Server error during session creation (HTTP ${sessionResponse.code})")
+            }
+        }
+
+        val sessionObj = runCatching { json.parseToJsonElement(sessionResponseBody).jsonObject }.getOrNull()
+            ?: return@withContext AuthTokenResult.ServerFailure("MALFORMED_SESSION_RESPONSE", "Malformed session response JSON")
+
+        val token = sessionObj["sessionToken"]?.jsonPrimitive?.content
+        if (token != null) {
+            AuthTokenResult.Success(token)
+        } else {
+            AuthTokenResult.ServerFailure("MISSING_TOKEN", "Session token missing in server response")
         }
     }
 
@@ -259,41 +369,10 @@ open class PantrySyncTestClient @Inject constructor(
         pinnedCertFingerprint: String?,
         deviceId: String,
         keyAlias: String = "pantry_follower_key"
-    ): String? = withContext(Dispatchers.IO) {
-        try {
-            val client = createPinnedOkHttpClient(pinnedCertFingerprint)
-            val baseUrl = "https://$hostIp:$port"
-
-            val challengeBody = json.encodeToString(buildJsonObject { put("deviceId", deviceId) }).toRequestBody("application/json".toMediaType())
-            val challengeRequest = Request.Builder().url("$baseUrl/sync/v1/auth/challenge").post(challengeBody).build()
-            val challengeResponse = client.newCall(challengeRequest).execute()
-            if (!challengeResponse.isSuccessful) return@withContext null
-
-            val challengeDto = json.decodeFromString<AuthChallengeDto>(challengeResponse.body?.string() ?: "{}")
-            val canonicalBytes = "pantry-household-sync|1|${challengeDto.householdId}|$deviceId|${challengeDto.challengeId}|${challengeDto.nonce}".toByteArray(Charsets.UTF_8)
-            val signatureBase64 = keyStoreManager.signChallenge(keyAlias, canonicalBytes)
-
-            val sessionReqDto = AuthChallengeResponseDto(
-                challengeId = challengeDto.challengeId,
-                deviceId = deviceId,
-                signature = signatureBase64
-            )
-            val sessionBody = json.encodeToString(AuthChallengeResponseDto.serializer(), sessionReqDto).toRequestBody("application/json".toMediaType())
-            val sessionRequest = Request.Builder().url("$baseUrl/sync/v1/auth/session").post(sessionBody).build()
-
-            val sessionResponse = client.newCall(sessionRequest).execute()
-            val sessionResponseBody = sessionResponse.body?.string() ?: "{}"
-            if (!sessionResponse.isSuccessful) {
-                if (com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerErrorClassifier.isExplicitRevocation(sessionResponseBody)) {
-                    followerPairingStore?.markRevoked()
-                }
-                return@withContext null
-            }
-
-            val sessionObj = json.parseToJsonElement(sessionResponseBody).jsonObject
-            sessionObj["sessionToken"]?.jsonPrimitive?.content
-        } catch (e: Exception) {
-            null
+    ): String? {
+        return when (val res = obtainSessionTokenResult(hostIp, port, pinnedCertFingerprint, deviceId, keyAlias)) {
+            is AuthTokenResult.Success -> res.token
+            else -> null
         }
     }
 

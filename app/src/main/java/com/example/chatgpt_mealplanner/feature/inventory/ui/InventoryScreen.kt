@@ -1,5 +1,8 @@
 package com.example.chatgpt_mealplanner.feature.inventory.ui
 
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -645,6 +648,8 @@ fun FollowerSyncStatusCard(
     onSyncNowClicked: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var isExpanded by remember { mutableStateOf(false) }
+
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -662,7 +667,7 @@ fun FollowerSyncStatusCard(
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 val title = when (status.state) {
                     com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncState.UNPAIRED -> "Pairing required"
@@ -678,17 +683,24 @@ fun FollowerSyncStatusCard(
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleSmall,
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                    fontWeight = FontWeight.Bold
                 )
 
-                if (status.state in listOf(
-                        com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncState.PENDING_CHANGES,
-                        com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncState.SYNC_ERROR,
-                        com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncState.AUTHENTICATION_REQUIRED
-                    )
-                ) {
-                    TextButton(onClick = onSyncNowClicked) {
-                        Text("Sync Now")
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (status.state in listOf(
+                            com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncState.PENDING_CHANGES,
+                            com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncState.SYNC_ERROR,
+                            com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncState.AUTHENTICATION_REQUIRED,
+                            com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncState.BOOTSTRAP_REQUIRED
+                        )
+                    ) {
+                        TextButton(onClick = onSyncNowClicked) {
+                            Text(if (status.state == com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncState.BOOTSTRAP_REQUIRED) "Retry Bootstrap" else "Sync Now")
+                        }
+                    }
+
+                    TextButton(onClick = { isExpanded = !isExpanded }) {
+                        Text(if (isExpanded) "Hide Details" else "Details")
                     }
                 }
             }
@@ -696,10 +708,49 @@ fun FollowerSyncStatusCard(
             if (status.state == com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncState.ACCESS_REVOKED) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "Your local inventory remains on this device, but this device can no longer sync with the household.",
+                    text = "Access was revoked by the Main device. Your local inventory remains on this device, but this device can no longer sync with the household.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onErrorContainer
                 )
+            }
+
+            if (isExpanded) {
+                Spacer(modifier = Modifier.height(8.dp))
+
+                if (status.lastSyncTime != null) {
+                    val sdf = SimpleDateFormat("MMM dd, yyyy HH:mm:ss", Locale.US)
+                    Text(
+                        text = "Last successful refresh from Main: ${sdf.format(Date(status.lastSyncTime))}",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                } else {
+                    Text(
+                        text = "Last successful refresh from Main: None yet",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+                Text("Changes not yet confirmed by Main: ${status.pendingUploadCount}", style = MaterialTheme.typography.bodySmall)
+                if (status.conflictCount > 0) {
+                    Text("Conflicts needing review on Main: ${status.conflictCount}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.tertiary)
+                }
+                if (status.pendingApprovalCount > 0) {
+                    Text("Approvals waiting for Main: ${status.pendingApprovalCount}", style = MaterialTheme.typography.bodySmall)
+                }
+                if (status.rejectedCount > 0) {
+                    Text("Rejected operations: ${status.rejectedCount}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                }
+
+                if (status.canonicalCursor != null) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Diagnostics: Reconciled Canonical Sequence ${status.canonicalCursor}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    )
+                }
             }
         }
     }

@@ -6,6 +6,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.ListenableWorker.Result
 import androidx.work.WorkerParameters
 import com.example.chatgpt_mealplanner.core.security.AndroidKeyStoreManager
+import com.example.chatgpt_mealplanner.core.sync.client.AuthTokenResult
 import com.example.chatgpt_mealplanner.core.sync.client.PantrySyncTestClient
 import com.example.chatgpt_mealplanner.core.sync.follower.client.FollowerSyncUploader
 import com.example.chatgpt_mealplanner.core.sync.follower.config.FollowerPairingStore
@@ -47,42 +48,79 @@ class FollowerOutboxSyncWorker @AssistedInject constructor(
 
         var activeToken = config.sessionToken
         if (activeToken.isNullOrBlank()) {
-            activeToken = pantrySyncTestClient.obtainSessionToken(
-                hostIp = hostIp,
-                port = port,
-                pinnedCertFingerprint = pinnedCertFingerprint,
-                deviceId = deviceId,
-                keyAlias = keyAlias
-            )
-            if (activeToken.isNullOrBlank()) {
-                if (followerPairingStore.isRevoked()) {
+            when (val authRes = pantrySyncTestClient.obtainSessionTokenResult(hostIp, port, pinnedCertFingerprint, deviceId, keyAlias)) {
+                is AuthTokenResult.Success -> {
+                    activeToken = authRes.token
+                    followerPairingStore.updateSessionToken(authRes.token)
+                }
+                is AuthTokenResult.Revoked -> {
                     statusRepository.reportExplicitRevocation()
                     return Result.failure()
                 }
-                statusRepository.reportTransientSyncError("AUTH_EXPIRED: Session refresh failed")
-                return Result.retry()
+                is AuthTokenResult.AuthFailure -> {
+                    if (followerPairingStore.isRevoked()) {
+                        statusRepository.reportExplicitRevocation()
+                        return Result.failure()
+                    }
+                    statusRepository.reportAuthenticationError(authRes.message)
+                    return Result.retry()
+                }
+                is AuthTokenResult.TransportFailure -> {
+                    if (followerPairingStore.isRevoked()) {
+                        statusRepository.reportExplicitRevocation()
+                        return Result.failure()
+                    }
+                    statusRepository.reportTransientSyncError(authRes.message)
+                    return Result.retry()
+                }
+                is AuthTokenResult.ServerFailure -> {
+                    if (followerPairingStore.isRevoked()) {
+                        statusRepository.reportExplicitRevocation()
+                        return Result.failure()
+                    }
+                    statusRepository.reportGenericSyncError(authRes.message)
+                    return Result.retry()
+                }
             }
-            followerPairingStore.updateSessionToken(activeToken)
         }
 
+        val tokenToUse = activeToken
+
         val sessionRefreshLambda: suspend (Boolean) -> String = { _ ->
-            val refreshedToken = pantrySyncTestClient.obtainSessionToken(
-                hostIp = hostIp,
-                port = port,
-                pinnedCertFingerprint = pinnedCertFingerprint,
-                deviceId = deviceId,
-                keyAlias = keyAlias
-            )
-            if (refreshedToken == null) {
-                if (followerPairingStore.isRevoked()) {
-                    statusRepository.reportExplicitRevocation()
-                } else {
-                    statusRepository.reportTransientSyncError("AUTH_EXPIRED: Session refresh failed")
+            when (val refreshedRes = pantrySyncTestClient.obtainSessionTokenResult(hostIp, port, pinnedCertFingerprint, deviceId, keyAlias)) {
+                is AuthTokenResult.Success -> {
+                    followerPairingStore.updateSessionToken(refreshedRes.token)
+                    refreshedRes.token
                 }
-                throw IllegalStateException("Session refresh failed")
+                is AuthTokenResult.Revoked -> {
+                    statusRepository.reportExplicitRevocation()
+                    throw IllegalStateException("Session refresh failed: Device revoked")
+                }
+                is AuthTokenResult.AuthFailure -> {
+                    if (followerPairingStore.isRevoked()) {
+                        statusRepository.reportExplicitRevocation()
+                    } else {
+                        statusRepository.reportAuthenticationError(refreshedRes.message)
+                    }
+                    throw IllegalStateException("Session refresh failed: Auth failure")
+                }
+                is AuthTokenResult.TransportFailure -> {
+                    if (followerPairingStore.isRevoked()) {
+                        statusRepository.reportExplicitRevocation()
+                    } else {
+                        statusRepository.reportTransientSyncError(refreshedRes.message)
+                    }
+                    throw IllegalStateException("Session refresh failed: Transport failure")
+                }
+                is AuthTokenResult.ServerFailure -> {
+                    if (followerPairingStore.isRevoked()) {
+                        statusRepository.reportExplicitRevocation()
+                    } else {
+                        statusRepository.reportGenericSyncError(refreshedRes.message)
+                    }
+                    throw IllegalStateException("Session refresh failed: Server failure")
+                }
             }
-            followerPairingStore.updateSessionToken(refreshedToken)
-            refreshedToken
         }
 
         val dao = followerDatabase.followerDao()
@@ -92,7 +130,7 @@ class FollowerOutboxSyncWorker @AssistedInject constructor(
                 hostIp = hostIp,
                 port = port,
                 pinnedCertFingerprint = pinnedCertFingerprint,
-                sessionToken = activeToken,
+                sessionToken = tokenToUse,
                 followerDeviceId = deviceId,
                 sessionTokenProvider = sessionRefreshLambda
             )
@@ -101,7 +139,7 @@ class FollowerOutboxSyncWorker @AssistedInject constructor(
                     statusRepository.reportExplicitRevocation()
                     return Result.failure()
                 }
-                statusRepository.reportTransientSyncError("TRANSPORT_ERROR: Bootstrap failed")
+                statusRepository.reportTransientSyncError("Bootstrap failed")
                 return Result.retry()
             }
         }
@@ -110,7 +148,7 @@ class FollowerOutboxSyncWorker @AssistedInject constructor(
             hostIp = hostIp,
             port = port,
             pinnedCertFingerprint = pinnedCertFingerprint,
-            sessionToken = activeToken,
+            sessionToken = tokenToUse,
             deviceId = deviceId
         )
 
@@ -119,7 +157,7 @@ class FollowerOutboxSyncWorker @AssistedInject constructor(
                 hostIp = hostIp,
                 port = port,
                 pinnedCertFingerprint = pinnedCertFingerprint,
-                sessionToken = activeToken,
+                sessionToken = tokenToUse,
                 followerDeviceId = deviceId
             )
             statusRepository.clearSyncError()
@@ -128,7 +166,7 @@ class FollowerOutboxSyncWorker @AssistedInject constructor(
                 statusRepository.reportExplicitRevocation()
                 return Result.failure()
             }
-            statusRepository.reportTransientSyncError("NETWORK_ERROR: Transport error during upload")
+            statusRepository.reportTransientSyncError("Transport error during upload")
         }
 
         println("[SYNC_WORKER] finish summary=$summary")

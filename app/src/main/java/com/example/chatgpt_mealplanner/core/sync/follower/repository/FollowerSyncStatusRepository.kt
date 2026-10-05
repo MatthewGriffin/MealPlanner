@@ -21,6 +21,12 @@ enum class FollowerSyncState {
     NO_PENDING_UPLOADS
 }
 
+enum class FollowerSyncErrorCategory {
+    AUTHENTICATION_REQUIRED,
+    TRANSIENT_NETWORK_ERROR,
+    GENERIC_SYNC_ERROR
+}
+
 data class FollowerSyncStatusModel(
     val state: FollowerSyncState,
     val pendingUploadCount: Int = 0,
@@ -28,6 +34,7 @@ data class FollowerSyncStatusModel(
     val pendingApprovalCount: Int = 0,
     val rejectedCount: Int = 0,
     val lastSyncTime: Long? = null,
+    val canonicalCursor: Long? = null,
     val lastError: String? = null
 )
 
@@ -54,8 +61,11 @@ object FollowerErrorClassifier {
 open class FollowerSyncStatusRepository @Inject constructor(
     private val followerPairingStore: FollowerPairingStore
 ) {
-    private val _lastSyncError = MutableStateFlow<String?>(null)
-    val lastSyncError = _lastSyncError.asStateFlow()
+    private val _lastSyncErrorCategory = MutableStateFlow<FollowerSyncErrorCategory?>(null)
+    val lastSyncErrorCategory = _lastSyncErrorCategory.asStateFlow()
+
+    private val _lastSyncErrorMessage = MutableStateFlow<String?>(null)
+    val lastSyncErrorMessage = _lastSyncErrorMessage.asStateFlow()
 
     private val _isRevoked = MutableStateFlow(false)
     val isRevoked = _isRevoked.asStateFlow()
@@ -65,13 +75,28 @@ open class FollowerSyncStatusRepository @Inject constructor(
         followerPairingStore.markRevoked()
     }
 
+    open fun reportAuthenticationError(message: String? = null) {
+        _lastSyncErrorCategory.value = FollowerSyncErrorCategory.AUTHENTICATION_REQUIRED
+        _lastSyncErrorMessage.value = message ?: "Authentication required"
+    }
+
     open fun reportTransientSyncError(error: String?) {
-        _lastSyncError.value = error
-        // Transient error reporting NEVER mutates durable revocation status!
+        if (error == null) {
+            clearSyncError()
+            return
+        }
+        _lastSyncErrorCategory.value = FollowerSyncErrorCategory.TRANSIENT_NETWORK_ERROR
+        _lastSyncErrorMessage.value = error
+    }
+
+    open fun reportGenericSyncError(error: String?) {
+        _lastSyncErrorCategory.value = FollowerSyncErrorCategory.GENERIC_SYNC_ERROR
+        _lastSyncErrorMessage.value = error
     }
 
     open fun clearSyncError() {
-        _lastSyncError.value = null
+        _lastSyncErrorCategory.value = null
+        _lastSyncErrorMessage.value = null
     }
 
     open suspend fun calculateStatus(
@@ -87,7 +112,7 @@ open class FollowerSyncStatusRepository @Inject constructor(
         if (followerPairingStore.isRevoked() || _isRevoked.value) {
             return FollowerSyncStatusModel(
                 state = FollowerSyncState.ACCESS_REVOKED,
-                lastError = _lastSyncError.value ?: "Access revoked by Main"
+                lastError = _lastSyncErrorMessage.value ?: "Access revoked by Main"
             )
         }
 
@@ -113,22 +138,23 @@ open class FollowerSyncStatusRepository @Inject constructor(
         val pendingApprovalCount = allOps.count { it.status == "PENDING_APPROVAL" }
         val rejectedCount = allOps.count { it.status == "REJECTED" }
 
-        val lastErr = _lastSyncError.value
+        val errCategory = _lastSyncErrorCategory.value
+        val lastErr = _lastSyncErrorMessage.value
 
         // Deterministic Precedence:
         // 1. UNPAIRED / ACCESS_REVOKED (Checked above)
         // 2. BOOTSTRAP_REQUIRED (Checked above)
-        // 3. AUTHENTICATION_REQUIRED (Session refresh failure)
-        // 4. SYNC_ERROR (Transport failure)
+        // 3. AUTHENTICATION_REQUIRED (Structured Category)
+        // 4. SYNC_ERROR (Structured Category)
         // 5. SYNCING (WorkManager RUNNING)
         // 6. PENDING_CHANGES (pendingUploadCount > 0)
         // 7. NO_PENDING_UPLOADS (Idle)
 
         val state = when {
-            lastErr != null && lastErr.contains("AUTH_EXPIRED", ignoreCase = true) -> {
+            errCategory == FollowerSyncErrorCategory.AUTHENTICATION_REQUIRED -> {
                 FollowerSyncState.AUTHENTICATION_REQUIRED
             }
-            lastErr != null && (lastErr.contains("NETWORK", ignoreCase = true) || lastErr.contains("TRANSPORT", ignoreCase = true) || lastErr.contains("CONNECT", ignoreCase = true)) -> {
+            errCategory == FollowerSyncErrorCategory.TRANSIENT_NETWORK_ERROR || errCategory == FollowerSyncErrorCategory.GENERIC_SYNC_ERROR -> {
                 FollowerSyncState.SYNC_ERROR
             }
             isWorkerRunning -> {
@@ -149,6 +175,7 @@ open class FollowerSyncStatusRepository @Inject constructor(
             pendingApprovalCount = pendingApprovalCount,
             rejectedCount = rejectedCount,
             lastSyncTime = meta.lastSuccessfulPullAt,
+            canonicalCursor = meta.lastReconciledCanonicalSequence,
             lastError = lastErr
         )
     }

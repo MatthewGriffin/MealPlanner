@@ -38,6 +38,7 @@ open class FollowerFeedPullEngine @Inject constructor(
         var totalOwnSkipped = 0
 
         var hasMore = true
+        var passSucceeded = true
         var currentCursor = dao.getSyncMetadata()?.lastReconciledCanonicalSequence ?: 0L
 
         while (hasMore) {
@@ -51,6 +52,7 @@ open class FollowerFeedPullEngine @Inject constructor(
             )
 
             if (!feedResult.success || feedResult.feedResponse == null) {
+                passSucceeded = false
                 break // Stop pass on transport error
             }
 
@@ -137,8 +139,7 @@ open class FollowerFeedPullEngine @Inject constructor(
                     val currentMeta = dao.getSyncMetadata() ?: FollowerSyncMetadataEntity(singletonId = 1, lastReconciledCanonicalSequence = 0L)
                     dao.updateSyncMetadata(
                         currentMeta.copy(
-                            lastReconciledCanonicalSequence = currentCursor,
-                            lastSuccessfulPullAt = System.currentTimeMillis()
+                            lastReconciledCanonicalSequence = currentCursor
                         )
                     )
                 }
@@ -149,6 +150,15 @@ open class FollowerFeedPullEngine @Inject constructor(
                     block()
                 }
             }
+        }
+
+        if (passSucceeded) {
+            val finalMeta = dao.getSyncMetadata() ?: FollowerSyncMetadataEntity(singletonId = 1, lastReconciledCanonicalSequence = 0L)
+            dao.updateSyncMetadata(
+                finalMeta.copy(
+                    lastSuccessfulPullAt = System.currentTimeMillis()
+                )
+            )
         }
 
         return FollowerFeedPullSummary(

@@ -283,7 +283,7 @@ class PantrySyncPhase4cStatusTest {
     @Test
     fun test17_authExpiry_isNotMislabeledRevocation() = runTest {
         pairingStore.savePairingConfig(FollowerPairingConfig("192.168.1.100", 8443, validFingerprint, followerDeviceId))
-        statusRepository.reportTransientSyncError("AUTH_EXPIRED: Session token expired")
+        statusRepository.reportAuthenticationError("Session token expired")
 
         val status = statusRepository.calculateStatus(followerDao)
         assertEquals(FollowerSyncState.AUTHENTICATION_REQUIRED, status.state)
@@ -413,6 +413,8 @@ class PantrySyncPhase4cStatusTest {
 
         statusRepository.reportTransientSyncError(body403)
         assertFalse("Generic HTTP 403 without FOLLOWER_REVOKED MUST NOT mark revoked", pairingStore.isRevoked())
+        assertEquals(FollowerSyncState.SYNC_ERROR, statusRepository.calculateStatus(followerDao).state)
+        statusRepository.clearSyncError()
         assertEquals(FollowerSyncState.NO_PENDING_UPLOADS, statusRepository.calculateStatus(followerDao).state)
     }
 
@@ -471,6 +473,8 @@ class PantrySyncPhase4cStatusTest {
         statusRepository.reportTransientSyncError("FOLLOWER_REVOKED")
 
         assertFalse("reportTransientSyncError MUST NOT mark revoked", pairingStore.isRevoked())
+        assertEquals(FollowerSyncState.SYNC_ERROR, statusRepository.calculateStatus(followerDao).state)
+        statusRepository.clearSyncError()
         assertEquals(FollowerSyncState.NO_PENDING_UPLOADS, statusRepository.calculateStatus(followerDao).state)
     }
 
