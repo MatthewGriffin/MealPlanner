@@ -17,6 +17,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import com.example.chatgpt_mealplanner.core.sync.enrollment.PantryEnrollmentInvitationManager
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -27,6 +30,7 @@ data class HouseholdUiState(
     val openConflicts: List<SyncConflictEntity> = emptyList(),
     val openApprovals: List<SyncPendingApprovalEntity> = emptyList(),
     val deviceToRevoke: PairedDeviceEntity? = null,
+    val activeInvitationPayloadJson: String? = null,
     val isFollowerPaired: Boolean = false,
     val hostIp: String? = null,
     val statusMessage: String? = null,
@@ -38,9 +42,11 @@ class HouseholdViewModel @Inject constructor(
     private val identityManager: HouseholdIdentityManager,
     private val pairedDeviceRepository: PairedDeviceRepository,
     private val followerPairingStore: FollowerPairingStore,
-    private val syncConflictApprovalRepository: SyncConflictApprovalRepository? = null
+    private val syncConflictApprovalRepository: SyncConflictApprovalRepository? = null,
+    private val pantryEnrollmentInvitationManager: PantryEnrollmentInvitationManager? = null
 ) : ViewModel() {
 
+    private val json = Json { ignoreUnknownKeys = true }
     private val _uiState = MutableStateFlow(HouseholdUiState())
     val uiState: StateFlow<HouseholdUiState> = _uiState.asStateFlow()
 
@@ -79,6 +85,25 @@ class HouseholdViewModel @Inject constructor(
 
     fun cancelRevocation() {
         _uiState.update { it.copy(deviceToRevoke = null) }
+    }
+
+    fun createReauthorizationInvitation(targetDeviceId: String) {
+        viewModelScope.launch {
+            val identity = identityManager.getOrCreateHouseholdIdentity()
+            val hostIp = _uiState.value.hostIp ?: "192.168.1.100"
+            val invPayload = pantryEnrollmentInvitationManager?.createReauthorizationInvitation(
+                householdId = identity.householdId,
+                mainDeviceId = identity.mainDeviceId,
+                targetDeviceId = targetDeviceId,
+                hostIp = hostIp,
+                tlsFingerprint = "SHA256:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF"
+            )
+
+            if (invPayload != null) {
+                val jsonStr = json.encodeToString(invPayload)
+                _uiState.update { it.copy(activeInvitationPayloadJson = jsonStr) }
+            }
+        }
     }
 
     fun confirmRevocation() {

@@ -162,7 +162,41 @@ data class QrInvitationPayloadDto(
     val port: Int = 8443,
     val tlsCertificateFingerprint: String,
     val enrollmentToken: String,
-    val expiresAt: Long
+    val expiresAt: Long,
+    val purpose: String = "ENROLL_NEW_DEVICE",
+    val targetDeviceId: String? = null
+)
+
+object ReauthorizationCanonicalPayload {
+    fun buildPayload(
+        protocolVersion: Int = SYNC_PROTOCOL_VERSION,
+        purpose: String = "REAUTHORIZE_EXISTING_DEVICE",
+        householdId: String,
+        mainDeviceId: String,
+        followerDeviceId: String,
+        enrollmentToken: String
+    ): ByteArray {
+        val rawStr = "pantry-household-reauthorize|$protocolVersion|$purpose|$householdId|$mainDeviceId|$followerDeviceId|$enrollmentToken"
+        return rawStr.toByteArray(Charsets.UTF_8)
+    }
+}
+
+@Serializable
+data class ReauthorizationRequestDto(
+    val enrollmentToken: String,
+    val householdId: String,
+    val mainDeviceId: String,
+    val followerDeviceId: String,
+    val signature: String
+)
+
+@Serializable
+data class ReauthorizationResponseDto(
+    val success: Boolean,
+    val householdId: String,
+    val followerDeviceId: String,
+    val errorCode: String? = null,
+    val errorMessage: String? = null
 )
 
 @Serializable

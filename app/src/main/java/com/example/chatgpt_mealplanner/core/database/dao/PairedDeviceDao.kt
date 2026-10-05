@@ -20,6 +20,9 @@ interface PairedDeviceDao {
     @Query("UPDATE paired_devices SET status = :status WHERE deviceId = :deviceId")
     suspend fun updateDeviceStatus(deviceId: String, status: String)
 
+    @Query("UPDATE paired_devices SET status = :newStatus WHERE deviceId = :deviceId AND status = :expectedCurrentStatus")
+    suspend fun updateDeviceStatusConditional(deviceId: String, newStatus: String, expectedCurrentStatus: String): Int
+
     @Query("UPDATE paired_devices SET status = 'REVOKED' WHERE deviceId = :deviceId AND status = 'ACTIVE'")
     suspend fun revokeDeviceIfActive(deviceId: String): Int
 }

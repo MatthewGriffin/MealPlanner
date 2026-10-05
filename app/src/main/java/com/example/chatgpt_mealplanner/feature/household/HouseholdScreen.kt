@@ -42,6 +42,7 @@ fun HouseholdScreen(
     onRequestRevocation: (PairedDeviceEntity) -> Unit,
     onConfirmRevocation: () -> Unit,
     onCancelRevocation: () -> Unit,
+    onReauthorizeDevice: (String) -> Unit = {},
     onResolveConflictKeepMain: (String) -> Unit = {},
     onResolveConflictApplyFollower: (String) -> Unit = {},
     onApprovePendingDiscard: (String) -> Unit = {},
@@ -172,7 +173,8 @@ fun HouseholdScreen(
             items(uiState.pairedDevices, key = { it.deviceId }) { device ->
                 PairedDeviceCard(
                     device = device,
-                    onRevokeClicked = { onRequestRevocation(device) }
+                    onRevokeClicked = { onRequestRevocation(device) },
+                    onReauthorizeClicked = { onReauthorizeDevice(device.deviceId) }
                 )
                 Spacer(modifier = Modifier.height(8.dp))
             }
@@ -247,7 +249,8 @@ fun HouseholdScreen(
 @Composable
 fun PairedDeviceCard(
     device: PairedDeviceEntity,
-    onRevokeClicked: () -> Unit
+    onRevokeClicked: () -> Unit,
+    onReauthorizeClicked: () -> Unit = {}
 ) {
     Card(
         modifier = Modifier
@@ -297,12 +300,18 @@ fun PairedDeviceCard(
                     Text("Revoke Access")
                 }
             } else if (device.status == "REVOKED") {
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = "Access Revoked by Main",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.error
                 )
+                Spacer(modifier = Modifier.height(4.dp))
+                OutlinedButton(
+                    onClick = onReauthorizeClicked
+                ) {
+                    Text("Re-authorize Device")
+                }
             }
         }
     }

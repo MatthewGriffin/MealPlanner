@@ -100,6 +100,11 @@ open class FollowerPairingStore @Inject constructor(
         return prefs.getString("KEY_ACCESS_STATUS", null) == "REVOKED"
     }
 
+    open fun clearRevoked(): Boolean {
+        val prefs = getPrefs() ?: return false
+        return prefs.edit().remove("KEY_ACCESS_STATUS").commit()
+    }
+
     open fun clear() {
         val prefs = getPrefs() ?: return
         prefs.edit().clear().apply()

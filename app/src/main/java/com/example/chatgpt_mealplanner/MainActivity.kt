@@ -239,6 +239,7 @@ class MainActivity : ComponentActivity() {
                                 onRequestRevocation = householdViewModel::requestRevocationConfirmation,
                                 onConfirmRevocation = householdViewModel::confirmRevocation,
                                 onCancelRevocation = householdViewModel::cancelRevocation,
+                                onReauthorizeDevice = householdViewModel::createReauthorizationInvitation,
                                 onResolveConflictKeepMain = householdViewModel::resolveConflictKeepMain,
                                 onResolveConflictApplyFollower = householdViewModel::resolveConflictApplyFollower,
                                 onApprovePendingDiscard = householdViewModel::approvePendingDiscard,

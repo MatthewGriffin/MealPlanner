@@ -17,6 +17,8 @@ data class EphemeralInvitation(
     val enrollmentToken: String,
     val householdId: String,
     val mainDeviceId: String,
+    val targetDeviceId: String? = null,
+    val purpose: String = "ENROLL_NEW_DEVICE",
     val expiresAt: Long,
     var isConsumed: Boolean = false,
     var claimedByDeviceId: String? = null
@@ -59,8 +61,48 @@ open class PantryEnrollmentInvitationManager @Inject constructor(
 
         QrInvitationPayloadDto(
             protocolVersion = 1,
+            purpose = "ENROLL_NEW_DEVICE",
             householdId = householdId,
             mainDeviceId = mainDeviceId,
+            host = hostIp,
+            port = port,
+            tlsCertificateFingerprint = tlsFingerprint,
+            enrollmentToken = tokenHex,
+            expiresAt = expiresAt
+        )
+    }
+
+    open suspend fun createReauthorizationInvitation(
+        householdId: String,
+        mainDeviceId: String,
+        targetDeviceId: String,
+        hostIp: String,
+        port: Int = 8443,
+        tlsFingerprint: String,
+        expiryMs: Long = DEFAULT_EXPIRY_MS
+    ): QrInvitationPayloadDto = mutex.withLock {
+        val tokenBytes = ByteArray(16)
+        secureRandom.nextBytes(tokenBytes)
+        val tokenHex = tokenBytes.joinToString("") { "%02x".format(it) }
+        val now = System.currentTimeMillis()
+        val expiresAt = now + expiryMs
+
+        val invitation = EphemeralInvitation(
+            enrollmentToken = tokenHex,
+            householdId = householdId,
+            mainDeviceId = mainDeviceId,
+            targetDeviceId = targetDeviceId,
+            purpose = "REAUTHORIZE_EXISTING_DEVICE",
+            expiresAt = expiresAt
+        )
+        invitations[tokenHex] = invitation
+
+        QrInvitationPayloadDto(
+            protocolVersion = 1,
+            purpose = "REAUTHORIZE_EXISTING_DEVICE",
+            householdId = householdId,
+            mainDeviceId = mainDeviceId,
+            targetDeviceId = targetDeviceId,
             host = hostIp,
             port = port,
             tlsCertificateFingerprint = tlsFingerprint,
@@ -198,6 +240,131 @@ open class PantryEnrollmentInvitationManager @Inject constructor(
                 errorMessage = "Failed to store paired device: ${e.message}"
             )
         }
+    }
+
+    open suspend fun processReauthorization(
+        request: com.example.chatgpt_mealplanner.sync.contract.ReauthorizationRequestDto,
+        expectedHouseholdId: String,
+        expectedMainDeviceId: String,
+        currentTimeMs: Long = System.currentTimeMillis()
+    ): com.example.chatgpt_mealplanner.sync.contract.ReauthorizationResponseDto = mutex.withLock {
+        if (request.householdId != expectedHouseholdId || request.mainDeviceId != expectedMainDeviceId) {
+            return com.example.chatgpt_mealplanner.sync.contract.ReauthorizationResponseDto(
+                success = false,
+                householdId = expectedHouseholdId,
+                followerDeviceId = request.followerDeviceId,
+                errorCode = "IDENTITY_MISMATCH",
+                errorMessage = "Household or Main device ID mismatch"
+            )
+        }
+
+        val invitation = invitations[request.enrollmentToken]
+            ?: return com.example.chatgpt_mealplanner.sync.contract.ReauthorizationResponseDto(
+                success = false,
+                householdId = expectedHouseholdId,
+                followerDeviceId = request.followerDeviceId,
+                errorCode = "INVITATION_NOT_FOUND",
+                errorMessage = "Re-authorization invitation token is invalid or expired"
+            )
+
+        if (invitation.purpose != "REAUTHORIZE_EXISTING_DEVICE") {
+            return com.example.chatgpt_mealplanner.sync.contract.ReauthorizationResponseDto(
+                success = false,
+                householdId = expectedHouseholdId,
+                followerDeviceId = request.followerDeviceId,
+                errorCode = "INVALID_INVITATION_PURPOSE",
+                errorMessage = "Ordinary enrollment invitation cannot be used for re-authorization"
+            )
+        }
+
+        if (invitation.targetDeviceId != request.followerDeviceId) {
+            return com.example.chatgpt_mealplanner.sync.contract.ReauthorizationResponseDto(
+                success = false,
+                householdId = expectedHouseholdId,
+                followerDeviceId = request.followerDeviceId,
+                errorCode = "TARGET_DEVICE_MISMATCH",
+                errorMessage = "Invitation is bound to a different follower device ID"
+            )
+        }
+
+        if (currentTimeMs >= invitation.expiresAt) {
+            invitations.remove(request.enrollmentToken)
+            return com.example.chatgpt_mealplanner.sync.contract.ReauthorizationResponseDto(
+                success = false,
+                householdId = expectedHouseholdId,
+                followerDeviceId = request.followerDeviceId,
+                errorCode = "INVITATION_EXPIRED",
+                errorMessage = "Re-authorization invitation has expired"
+            )
+        }
+
+        if (invitation.isConsumed) {
+            return com.example.chatgpt_mealplanner.sync.contract.ReauthorizationResponseDto(
+                success = false,
+                householdId = expectedHouseholdId,
+                followerDeviceId = request.followerDeviceId,
+                errorCode = "INVITATION_ALREADY_CONSUMED",
+                errorMessage = "Re-authorization invitation has already been consumed"
+            )
+        }
+
+        val storedDevice = pairedDeviceDao.getDeviceById(request.followerDeviceId)
+            ?: return com.example.chatgpt_mealplanner.sync.contract.ReauthorizationResponseDto(
+                success = false,
+                householdId = expectedHouseholdId,
+                followerDeviceId = request.followerDeviceId,
+                errorCode = "UNKNOWN_DEVICE",
+                errorMessage = "Follower device ID is not found in paired devices"
+            )
+
+        if (storedDevice.status != "REVOKED") {
+            return com.example.chatgpt_mealplanner.sync.contract.ReauthorizationResponseDto(
+                success = false,
+                householdId = expectedHouseholdId,
+                followerDeviceId = request.followerDeviceId,
+                errorCode = "DEVICE_NOT_REVOKED",
+                errorMessage = "Device status is ${storedDevice.status}, not REVOKED"
+            )
+        }
+
+        val canonicalBytes = com.example.chatgpt_mealplanner.sync.contract.ReauthorizationCanonicalPayload.buildPayload(
+            protocolVersion = 1,
+            purpose = invitation.purpose,
+            householdId = request.householdId,
+            mainDeviceId = request.mainDeviceId,
+            followerDeviceId = request.followerDeviceId,
+            enrollmentToken = request.enrollmentToken
+        )
+        val isValidSignature = keyStoreManager.verifySignature(storedDevice.devicePublicKey, canonicalBytes, request.signature)
+
+        if (!isValidSignature) {
+            return com.example.chatgpt_mealplanner.sync.contract.ReauthorizationResponseDto(
+                success = false,
+                householdId = expectedHouseholdId,
+                followerDeviceId = request.followerDeviceId,
+                errorCode = "INVALID_SIGNATURE",
+                errorMessage = "Re-authorization signature verification failed against stored public key"
+            )
+        }
+
+        val rowsUpdated = pairedDeviceDao.updateDeviceStatusConditional(request.followerDeviceId, "ACTIVE", "REVOKED")
+        if (rowsUpdated != 1) {
+            return com.example.chatgpt_mealplanner.sync.contract.ReauthorizationResponseDto(
+                success = false,
+                householdId = expectedHouseholdId,
+                followerDeviceId = request.followerDeviceId,
+                errorCode = "TRANSITION_FAILED",
+                errorMessage = "Failed to transition device status from REVOKED to ACTIVE"
+            )
+        }
+
+        invitation.isConsumed = true
+
+        com.example.chatgpt_mealplanner.sync.contract.ReauthorizationResponseDto(
+            success = true,
+            householdId = expectedHouseholdId,
+            followerDeviceId = request.followerDeviceId
+        )
     }
 
     open fun clear() {

@@ -108,6 +108,11 @@ open class FakePairingStore : FollowerPairingStore(null) {
 
     override fun isRevoked(): Boolean = revokedMarker
 
+    override fun clearRevoked(): Boolean {
+        revokedMarker = false
+        return true
+    }
+
     override fun clear() {
         savedConfig = null
         revokedMarker = false
@@ -142,6 +147,17 @@ open class TestSyncPairedDeviceDao : PairedDeviceDao {
     override suspend fun updateDeviceStatus(deviceId: String, status: String) {
         devicesMap[deviceId]?.let {
             devicesMap[deviceId] = it.copy(status = status)
+        }
+    }
+
+    override suspend fun updateDeviceStatusConditional(deviceId: String, newStatus: String, expectedCurrentStatus: String): Int {
+        synchronized(this) {
+            val existing = devicesMap[deviceId] ?: return 0
+            if (existing.status == expectedCurrentStatus) {
+                devicesMap[deviceId] = existing.copy(status = newStatus)
+                return 1
+            }
+            return 0
         }
     }
 

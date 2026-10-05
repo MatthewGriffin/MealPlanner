@@ -43,6 +43,15 @@ class FakePairedDeviceDao : PairedDeviceDao {
         }
     }
 
+    override suspend fun updateDeviceStatusConditional(deviceId: String, newStatus: String, expectedCurrentStatus: String): Int {
+        val dev = devicesMap[deviceId] ?: return 0
+        if (dev.status == expectedCurrentStatus) {
+            devicesMap[deviceId] = dev.copy(status = newStatus)
+            return 1
+        }
+        return 0
+    }
+
     override suspend fun revokeDeviceIfActive(deviceId: String): Int {
         val dev = devicesMap[deviceId] ?: return 0
         if (dev.status == "ACTIVE") {

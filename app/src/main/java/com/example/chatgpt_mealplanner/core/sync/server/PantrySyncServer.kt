@@ -188,6 +188,49 @@ open class PantrySyncServer @Inject constructor(
                         }
                     }
 
+                    post("/sync/v1/reauthorize") {
+                        val bodyText = call.receiveText()
+                        val req = runCatching { json.decodeFromString<com.example.chatgpt_mealplanner.sync.contract.ReauthorizationRequestDto>(bodyText) }.getOrNull()
+
+                        if (req == null) {
+                            call.respond(
+                                HttpStatusCode.BadRequest,
+                                com.example.chatgpt_mealplanner.sync.contract.ReauthorizationResponseDto(
+                                    success = false,
+                                    householdId = identityManager.getOrCreateHouseholdIdentity().householdId,
+                                    followerDeviceId = "",
+                                    errorCode = "MALFORMED_REQUEST",
+                                    errorMessage = "Malformed re-authorization request JSON"
+                                )
+                            )
+                            return@post
+                        }
+
+                        val invitationMgr = invitationManager
+                        if (invitationMgr == null) {
+                            call.respond(HttpStatusCode.ServiceUnavailable)
+                            return@post
+                        }
+
+                        val household = identityManager.getOrCreateHouseholdIdentity()
+                        val response = invitationMgr.processReauthorization(
+                            request = req,
+                            expectedHouseholdId = household.householdId,
+                            expectedMainDeviceId = household.mainDeviceId
+                        )
+
+                        if (response.success) {
+                            call.respond(response)
+                        } else {
+                            val status = when (response.errorCode) {
+                                "INVITATION_NOT_FOUND", "INVITATION_EXPIRED", "INVITATION_ALREADY_CONSUMED" -> HttpStatusCode.Gone
+                                "IDENTITY_MISMATCH", "TARGET_DEVICE_MISMATCH", "INVALID_SIGNATURE", "INVALID_INVITATION_PURPOSE" -> HttpStatusCode.Forbidden
+                                else -> HttpStatusCode.BadRequest
+                            }
+                            call.respond(status, response)
+                        }
+                    }
+
                     post("/sync/v1/auth/challenge") {
                         val bodyText = call.receiveText()
                         val reqObj = runCatching { json.parseToJsonElement(bodyText).jsonObject }.getOrNull()
