@@ -38,6 +38,9 @@ import java.security.KeyStore
 import javax.inject.Inject
 import javax.inject.Singleton
 
+import com.example.chatgpt_mealplanner.core.sync.enrollment.PantryEnrollmentInvitationManager
+import com.example.chatgpt_mealplanner.sync.contract.EnrollmentRequestDto
+
 class SnapshotTooLargeException(message: String) : RuntimeException(message)
 
 @Singleton
@@ -47,7 +50,8 @@ open class PantrySyncServer @Inject constructor(
     private val syncEngine: MainCanonicalSyncEngine,
     private val canonicalSyncDao: CanonicalSyncDao,
     private val inventoryDao: InventoryDao,
-    private val transactionRunner: DatabaseTransactionRunner? = null
+    private val transactionRunner: DatabaseTransactionRunner? = null,
+    private val invitationManager: PantryEnrollmentInvitationManager? = null
 ) {
     private var engine: CIOApplicationEngine? = null
     private val json = Json { ignoreUnknownKeys = true }
@@ -141,6 +145,47 @@ open class PantrySyncServer @Inject constructor(
                             put("protocolVersion", SYNC_PROTOCOL_VERSION)
                             put("status", "ok")
                         })
+                    }
+
+                    post("/sync/v1/enrollment/register") {
+                        val bodyText = call.receiveText()
+                        val reqDto = runCatching { json.decodeFromString<EnrollmentRequestDto>(bodyText) }.getOrNull()
+
+                        if (reqDto == null) {
+                            call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                                put("success", false)
+                                put("errorCode", "INVALID_REQUEST_JSON")
+                                put("errorMessage", "Malformed enrollment request JSON")
+                            })
+                            return@post
+                        }
+
+                        val invMgr = invitationManager
+                        if (invMgr == null) {
+                            call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                                put("success", false)
+                                put("errorCode", "INVITATION_MANAGER_UNAVAILABLE")
+                            })
+                            return@post
+                        }
+
+                        val household = identityManager.getOrCreateHouseholdIdentity()
+                        val response = invMgr.processEnrollment(
+                            request = reqDto,
+                            expectedHouseholdId = household.householdId,
+                            expectedMainDeviceId = household.mainDeviceId
+                        )
+
+                        if (response.success) {
+                            call.respond(response)
+                        } else {
+                            val status = when (response.errorCode) {
+                                "INVITATION_NOT_FOUND", "INVITATION_EXPIRED", "INVITATION_ALREADY_CONSUMED" -> HttpStatusCode.Gone
+                                "IDENTITY_MISMATCH", "INVITATION_IDENTITY_MISMATCH", "FOLLOWER_REVOKED" -> HttpStatusCode.Forbidden
+                                else -> HttpStatusCode.BadRequest
+                            }
+                            call.respond(status, response)
+                        }
                     }
 
                     post("/sync/v1/auth/challenge") {

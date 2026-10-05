@@ -103,6 +103,9 @@ dependencies {
     // ML Kit Barcode & Text Recognition
     implementation(libs.mlkit.barcode.scanning)
     implementation(libs.mlkit.text.recognition)
+
+    // ZXing for QR Code Rendering
+    implementation("com.google.zxing:core:3.5.3")
     implementation(libs.kotlinx.coroutines.play.services)
 
     // Networking & Serialization

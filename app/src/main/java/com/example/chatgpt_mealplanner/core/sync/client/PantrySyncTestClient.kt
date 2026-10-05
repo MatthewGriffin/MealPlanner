@@ -290,4 +290,55 @@ open class PantrySyncTestClient @Inject constructor(
             null
         }
     }
+
+    open suspend fun registerEnrollment(
+        hostIp: String,
+        port: Int = 8443,
+        pinnedCertFingerprint: String,
+        requestDto: com.example.chatgpt_mealplanner.sync.contract.EnrollmentRequestDto
+    ): com.example.chatgpt_mealplanner.sync.contract.EnrollmentResponseDto = withContext(Dispatchers.IO) {
+        if (pinnedCertFingerprint.isBlank()) {
+            return@withContext com.example.chatgpt_mealplanner.sync.contract.EnrollmentResponseDto(
+                success = false,
+                householdId = requestDto.householdId,
+                errorCode = "BLANK_PINNED_FINGERPRINT",
+                errorMessage = "TLS certificate fingerprint cannot be blank"
+            )
+        }
+
+        try {
+            val client = createPinnedOkHttpClient(pinnedCertFingerprint)
+            val baseUrl = "https://$hostIp:$port"
+
+            val bodyJson = json.encodeToString(com.example.chatgpt_mealplanner.sync.contract.EnrollmentRequestDto.serializer(), requestDto)
+            val reqBody = bodyJson.toRequestBody("application/json".toMediaType())
+
+            val request = Request.Builder()
+                .url("$baseUrl/sync/v1/enrollment/register")
+                .post(reqBody)
+                .build()
+
+            val response = client.newCall(request).execute()
+            val respBodyStr = response.body?.string() ?: ""
+
+            if (response.isSuccessful) {
+                json.decodeFromString<com.example.chatgpt_mealplanner.sync.contract.EnrollmentResponseDto>(respBodyStr)
+            } else {
+                val parsedErr = runCatching { json.decodeFromString<com.example.chatgpt_mealplanner.sync.contract.EnrollmentResponseDto>(respBodyStr) }.getOrNull()
+                parsedErr ?: com.example.chatgpt_mealplanner.sync.contract.EnrollmentResponseDto(
+                    success = false,
+                    householdId = requestDto.householdId,
+                    errorCode = "HTTP_${response.code}",
+                    errorMessage = response.message
+                )
+            }
+        } catch (e: Exception) {
+            com.example.chatgpt_mealplanner.sync.contract.EnrollmentResponseDto(
+                success = false,
+                householdId = requestDto.householdId,
+                errorCode = "NETWORK_ERROR",
+                errorMessage = e.message ?: "Network error during enrollment"
+            )
+        }
+    }
 }

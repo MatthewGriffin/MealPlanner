@@ -53,4 +53,33 @@ object SyncContractValidation {
         if (dto.protocolVersion != SYNC_PROTOCOL_VERSION) return false
         return true
     }
+
+    fun isValidSha256Fingerprint(fingerprint: String?): Boolean {
+        if (fingerprint.isNullOrBlank()) return false
+        val trimmed = fingerprint.trim().uppercase()
+        val regex = Regex("^SHA256:(?:[0-9A-F]{2}:){31}[0-9A-F]{2}$")
+        return regex.matches(trimmed)
+    }
+
+    fun validateQrInvitation(dto: QrInvitationPayloadDto, currentTimeMs: Long = System.currentTimeMillis()): Boolean {
+        if (dto.protocolVersion != SYNC_PROTOCOL_VERSION) return false
+        if (!isValidUuid(dto.householdId)) return false
+        if (!isValidUuid(dto.mainDeviceId)) return false
+        if (dto.host.isBlank()) return false
+        if (dto.port <= 0 || dto.port > 65535) return false
+        if (!isValidSha256Fingerprint(dto.tlsCertificateFingerprint)) return false
+        if (dto.enrollmentToken.isBlank()) return false
+        if (dto.expiresAt <= currentTimeMs) return false
+        return true
+    }
+
+    fun validateEnrollmentRequest(dto: EnrollmentRequestDto): Boolean {
+        if (dto.enrollmentToken.isBlank()) return false
+        if (!isValidUuid(dto.householdId)) return false
+        if (!isValidUuid(dto.mainDeviceId)) return false
+        if (!isValidUuid(dto.followerDeviceId)) return false
+        if (dto.followerDeviceName.isBlank()) return false
+        if (dto.followerPublicKey.isBlank()) return false
+        return true
+    }
 }

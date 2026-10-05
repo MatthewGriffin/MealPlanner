@@ -151,3 +151,33 @@ data class AuthChallengeResponseDto(
     val deviceId: String,
     val signature: String
 )
+
+@Serializable
+data class QrInvitationPayloadDto(
+    val protocolVersion: Int = SYNC_PROTOCOL_VERSION,
+    val householdId: String,
+    val mainDeviceId: String,
+    val host: String,
+    val port: Int = 8443,
+    val tlsCertificateFingerprint: String,
+    val enrollmentToken: String,
+    val expiresAt: Long
+)
+
+@Serializable
+data class EnrollmentRequestDto(
+    val enrollmentToken: String,
+    val householdId: String,
+    val mainDeviceId: String,
+    val followerDeviceId: String,
+    val followerDeviceName: String,
+    val followerPublicKey: String
+)
+
+@Serializable
+data class EnrollmentResponseDto(
+    val success: Boolean,
+    val householdId: String,
+    val errorCode: String? = null,
+    val errorMessage: String? = null
+)

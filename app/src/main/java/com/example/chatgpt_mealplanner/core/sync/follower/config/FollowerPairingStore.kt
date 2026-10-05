@@ -64,16 +64,25 @@ open class FollowerPairingStore @Inject constructor(
         )
     }
 
-    open fun savePairingConfig(config: FollowerPairingConfig) {
-        val prefs = getPrefs() ?: return
-        prefs.edit()
+    open fun savePairingConfig(config: FollowerPairingConfig): Boolean {
+        val prefs = getPrefs() ?: return false
+        val success = prefs.edit()
             .putString("KEY_HOST_IP", config.hostIp)
             .putInt("KEY_PORT", config.port)
             .putString("KEY_PINNED_CERT_FINGERPRINT", config.pinnedCertFingerprint)
             .putString("KEY_DEVICE_ID", config.deviceId)
             .putString("KEY_SESSION_TOKEN", config.sessionToken)
             .putString("KEY_KEY_ALIAS", config.keyAlias)
-            .apply()
+            .commit()
+
+        if (!success) return false
+
+        val saved = getPairingConfig()
+        return saved != null &&
+                saved.hostIp == config.hostIp &&
+                saved.port == config.port &&
+                saved.pinnedCertFingerprint == config.pinnedCertFingerprint &&
+                saved.deviceId == config.deviceId
     }
 
     open fun updateSessionToken(sessionToken: String?) {

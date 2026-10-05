@@ -98,4 +98,24 @@ open class AndroidKeyStoreManager @Inject constructor() {
             false
         }
     }
+
+    open fun isValidP256PublicKey(publicKeyBase64: String?): Boolean {
+        if (publicKeyBase64.isNullOrBlank()) return false
+        return try {
+            val keyBytes = Base64Utils.decode(publicKeyBase64)
+            val keyFactory = KeyFactory.getInstance(KeyProperties.KEY_ALGORITHM_EC)
+            val pubKey = keyFactory.generatePublic(X509EncodedKeySpec(keyBytes)) as? java.security.interfaces.ECPublicKey
+                ?: return false
+
+            if (pubKey.algorithm != KeyProperties.KEY_ALGORITHM_EC) return false
+
+            val params = pubKey.params ?: return false
+            val fieldSize = params.curve.field.fieldSize
+            val orderBitLength = params.order.bitLength()
+
+            fieldSize == 256 && orderBitLength == 256
+        } catch (_: Exception) {
+            false
+        }
+    }
 }

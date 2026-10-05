@@ -46,6 +46,14 @@ import com.example.chatgpt_mealplanner.feature.spend.ReceiptSpendScreen
 import com.example.chatgpt_mealplanner.ui.theme.ChatGPT_MealPlannerTheme
 import dagger.hilt.android.AndroidEntryPoint
 
+import androidx.compose.material.icons.filled.Devices
+import com.example.chatgpt_mealplanner.feature.household.HouseholdScreen
+import com.example.chatgpt_mealplanner.feature.household.HouseholdViewModel
+import com.example.chatgpt_mealplanner.feature.household.JoinHouseholdScreen
+import com.example.chatgpt_mealplanner.feature.household.JoinHouseholdViewModel
+import com.example.chatgpt_mealplanner.feature.household.PairDeviceScreen
+import com.example.chatgpt_mealplanner.feature.household.PairDeviceViewModel
+
 enum class Screen(val label: String) {
     CHAT("Assistant"),
     INVENTORY("Inventory"),
@@ -53,7 +61,10 @@ enum class Screen(val label: String) {
     SHOPPING("Shopping"),
     SCANNER("Scanner"),
     SETTINGS("Settings"),
-    RECEIPT_SPEND("Shopping Spend")
+    RECEIPT_SPEND("Shopping Spend"),
+    HOUSEHOLD("Household Sync"),
+    PAIR_DEVICE("Pair New Device"),
+    JOIN_HOUSEHOLD("Join Household")
 }
 
 @AndroidEntryPoint
@@ -79,7 +90,10 @@ class MainActivity : ComponentActivity() {
                     currentScreen == Screen.SCANNER && isConfirming -> {
                         { scannerViewModel.onEvent(com.example.chatgpt_mealplanner.feature.scanner.ScannerUiEvent.ScanAnother) }
                     }
-                    currentScreen == Screen.SCANNER || currentScreen == Screen.SETTINGS -> {
+                    currentScreen == Screen.PAIR_DEVICE || currentScreen == Screen.JOIN_HOUSEHOLD -> {
+                        { currentScreen = Screen.HOUSEHOLD }
+                    }
+                    currentScreen == Screen.SCANNER || currentScreen == Screen.SETTINGS || currentScreen == Screen.HOUSEHOLD -> {
                         { currentScreen = Screen.INVENTORY }
                     }
                     else -> null
@@ -100,6 +114,12 @@ class MainActivity : ComponentActivity() {
                                 }
                             },
                             actions = {
+                                IconButton(onClick = { currentScreen = Screen.HOUSEHOLD }) {
+                                    Icon(
+                                        Icons.Default.Devices,
+                                        contentDescription = "Household Sync"
+                                    )
+                                }
                                 if (currentScreen != Screen.SETTINGS) {
                                     IconButton(onClick = { currentScreen = Screen.SETTINGS }) {
                                         Icon(
@@ -205,6 +225,40 @@ class MainActivity : ComponentActivity() {
 
                         Screen.RECEIPT_SPEND -> {
                             ReceiptSpendScreen(
+                                modifier = Modifier.padding(innerPadding)
+                            )
+                        }
+
+                        Screen.HOUSEHOLD -> {
+                            val householdViewModel: HouseholdViewModel = hiltViewModel()
+                            val state by householdViewModel.uiState.collectAsState()
+                            HouseholdScreen(
+                                uiState = state,
+                                onPairNewDeviceClicked = { currentScreen = Screen.PAIR_DEVICE },
+                                onJoinHouseholdClicked = { currentScreen = Screen.JOIN_HOUSEHOLD },
+                                modifier = Modifier.padding(innerPadding)
+                            )
+                        }
+
+                        Screen.PAIR_DEVICE -> {
+                            val pairViewModel: PairDeviceViewModel = hiltViewModel()
+                            val state by pairViewModel.uiState.collectAsState()
+                            PairDeviceScreen(
+                                uiState = state,
+                                onGenerateNewCodeClicked = { pairViewModel.generateInvitation() },
+                                onCancelClicked = { currentScreen = Screen.HOUSEHOLD },
+                                modifier = Modifier.padding(innerPadding)
+                            )
+                        }
+
+                        Screen.JOIN_HOUSEHOLD -> {
+                            val joinViewModel: JoinHouseholdViewModel = hiltViewModel()
+                            val state by joinViewModel.uiState.collectAsState()
+                            JoinHouseholdScreen(
+                                uiState = state,
+                                onQrScanned = { joinViewModel.onQrCodeScanned(it) },
+                                onRetryClicked = { joinViewModel.retryScan() },
+                                onDoneClicked = { currentScreen = Screen.HOUSEHOLD },
                                 modifier = Modifier.padding(innerPadding)
                             )
                         }
