@@ -320,6 +320,22 @@ open class PantrySyncServer @Inject constructor(
                                 }
                             }
 
+                            val isResolutionResultCode = op.resultCode in listOf(
+                                "RESOLVED_KEEP_MAIN",
+                                "RESOLVED_APPLY_FOLLOWER",
+                                "APPROVED_DISCARD",
+                                "REJECTED_DISCARD"
+                            )
+
+                            val origOpId = if (isResolutionResultCode) {
+                                runCatching {
+                                    val obj = json.parseToJsonElement(op.payloadJson).jsonObject
+                                    obj["originalOperationId"]?.jsonPrimitive?.content
+                                }.getOrNull()
+                            } else {
+                                null
+                            }
+
                             SyncFeedItemDto(
                                 canonicalSequence = op.canonicalSequence,
                                 operationId = op.operationId,
@@ -334,6 +350,7 @@ open class PantrySyncServer @Inject constructor(
                                 canonicalItemSnapshot = itemSnapshot,
                                 conflictId = if (op.status == SyncOperationStatus.CONFLICT.name) canonicalSyncDao.getConflictByOperationId(op.operationId)?.conflictId else null,
                                 approvalId = if (op.status == SyncOperationStatus.PENDING_APPROVAL.name) canonicalSyncDao.getApprovalByOperationId(op.operationId)?.approvalId else null,
+                                originalOperationId = origOpId,
                                 occurredAt = op.createdAt
                             )
                         }

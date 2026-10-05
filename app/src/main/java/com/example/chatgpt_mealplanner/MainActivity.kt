@@ -239,6 +239,10 @@ class MainActivity : ComponentActivity() {
                                 onRequestRevocation = householdViewModel::requestRevocationConfirmation,
                                 onConfirmRevocation = householdViewModel::confirmRevocation,
                                 onCancelRevocation = householdViewModel::cancelRevocation,
+                                onResolveConflictKeepMain = householdViewModel::resolveConflictKeepMain,
+                                onResolveConflictApplyFollower = householdViewModel::resolveConflictApplyFollower,
+                                onApprovePendingDiscard = householdViewModel::approvePendingDiscard,
+                                onRejectPendingDiscard = householdViewModel::rejectPendingDiscard,
                                 modifier = Modifier.padding(innerPadding)
                             )
                         }

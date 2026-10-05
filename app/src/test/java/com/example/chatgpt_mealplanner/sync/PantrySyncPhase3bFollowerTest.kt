@@ -106,7 +106,7 @@ open class FakeFollowerDao : FollowerDao {
 
     override suspend fun getUnresolvedOutboxOpsForTargetItem(itemId: String): List<FollowerSyncOutboxEntity> {
         return outboxMap.values
-            .filter { it.targetItemId == itemId && (it.status == "PENDING" || it.status == "IN_FLIGHT") }
+            .filter { it.targetItemId == itemId && (it.status == "PENDING" || it.status == "IN_FLIGHT" || it.status == "CONFLICT" || it.status == "PENDING_APPROVAL") }
             .sortedBy { it.deviceSequence }
     }
 

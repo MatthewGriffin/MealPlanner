@@ -65,11 +65,11 @@ class FakeCanonicalSyncDao : CanonicalSyncDao {
     }
 
     override suspend fun insertConflict(conflict: SyncConflictEntity) {
-        conflictsMap[conflict.operationId] = conflict
+        conflictsMap[conflict.conflictId] = conflict
     }
 
     override suspend fun insertPendingApproval(approval: SyncPendingApprovalEntity) {
-        approvalsMap[approval.operationId] = approval
+        approvalsMap[approval.approvalId] = approval
     }
 
     override suspend fun getSequenceEntity(): CanonicalSyncSequenceEntity? = sequenceEntity
@@ -78,9 +78,35 @@ class FakeCanonicalSyncDao : CanonicalSyncDao {
         sequenceEntity = entity
     }
 
-    override suspend fun getConflictByOperationId(operationId: String): SyncConflictEntity? = conflictsMap[operationId]
+    override suspend fun getConflictByOperationId(operationId: String): SyncConflictEntity? {
+        return conflictsMap.values.find { it.operationId == operationId }
+    }
 
-    override suspend fun getApprovalByOperationId(operationId: String): SyncPendingApprovalEntity? = approvalsMap[operationId]
+    override suspend fun getApprovalByOperationId(operationId: String): SyncPendingApprovalEntity? {
+        return approvalsMap.values.find { it.operationId == operationId }
+    }
+
+    override suspend fun getOpenConflicts(): List<SyncConflictEntity> = conflictsMap.values.filter { it.status == "OPEN" }.sortedByDescending { it.createdAt }
+
+    override suspend fun getConflictById(conflictId: String): SyncConflictEntity? = conflictsMap.values.find { it.conflictId == conflictId }
+
+    override suspend fun updateConflictStatus(conflictId: String, status: String, resolvedAt: Long?) {
+        val conflict = getConflictById(conflictId)
+        if (conflict != null) {
+            conflictsMap[conflict.conflictId] = conflict.copy(status = status, resolvedAt = resolvedAt)
+        }
+    }
+
+    override suspend fun getOpenPendingApprovals(): List<SyncPendingApprovalEntity> = approvalsMap.values.filter { it.status == "PENDING_APPROVAL" }.sortedByDescending { it.createdAt }
+
+    override suspend fun getApprovalById(approvalId: String): SyncPendingApprovalEntity? = approvalsMap.values.find { it.approvalId == approvalId }
+
+    override suspend fun updateApprovalStatus(approvalId: String, status: String) {
+        val approval = getApprovalById(approvalId)
+        if (approval != null) {
+            approvalsMap[approval.approvalId] = approval.copy(status = status)
+        }
+    }
 }
 
 @RunWith(JUnit4::class)

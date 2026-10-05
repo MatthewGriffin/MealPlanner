@@ -119,7 +119,20 @@ open class FollowerFeedPullEngine @Inject constructor(
                         }
                     }
 
-                    // Atomically advance cursor for each consumed item
+                    val origOpId = feedItem.originalOperationId
+                    if (origOpId != null) {
+                        val unresolved = dao.getOutboxByOperationId(origOpId)
+                        if (unresolved != null && (unresolved.status == "CONFLICT" || unresolved.status == "PENDING_APPROVAL")) {
+                            val targetStatus = if (feedItem.status == SyncOperationStatus.APPLIED) "APPLIED" else "REJECTED"
+                            dao.updateOutboxStatus(
+                                operationId = unresolved.operationId,
+                                status = targetStatus,
+                                attemptCount = unresolved.attemptCount,
+                                lastAttemptAt = System.currentTimeMillis(),
+                                lastErrorCode = feedItem.resultCode
+                            )
+                        }
+                    }
                     currentCursor = feedItem.canonicalSequence
                     val currentMeta = dao.getSyncMetadata() ?: FollowerSyncMetadataEntity(singletonId = 1, lastReconciledCanonicalSequence = 0L)
                     dao.updateSyncMetadata(

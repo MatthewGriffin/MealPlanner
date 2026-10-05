@@ -44,4 +44,22 @@ interface CanonicalSyncDao {
 
     @Query("SELECT * FROM sync_pending_approvals WHERE operationId = :operationId LIMIT 1")
     suspend fun getApprovalByOperationId(operationId: String): SyncPendingApprovalEntity?
+
+    @Query("SELECT * FROM sync_conflicts WHERE status = 'OPEN' ORDER BY createdAt DESC")
+    suspend fun getOpenConflicts(): List<SyncConflictEntity>
+
+    @Query("SELECT * FROM sync_conflicts WHERE conflictId = :conflictId LIMIT 1")
+    suspend fun getConflictById(conflictId: String): SyncConflictEntity?
+
+    @Query("UPDATE sync_conflicts SET status = :status, resolvedAt = :resolvedAt WHERE conflictId = :conflictId")
+    suspend fun updateConflictStatus(conflictId: String, status: String, resolvedAt: Long?)
+
+    @Query("SELECT * FROM sync_pending_approvals WHERE status = 'PENDING_APPROVAL' ORDER BY createdAt DESC")
+    suspend fun getOpenPendingApprovals(): List<SyncPendingApprovalEntity>
+
+    @Query("SELECT * FROM sync_pending_approvals WHERE approvalId = :approvalId LIMIT 1")
+    suspend fun getApprovalById(approvalId: String): SyncPendingApprovalEntity?
+
+    @Query("UPDATE sync_pending_approvals SET status = :status WHERE approvalId = :approvalId")
+    suspend fun updateApprovalStatus(approvalId: String, status: String)
 }

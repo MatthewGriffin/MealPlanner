@@ -28,6 +28,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.chatgpt_mealplanner.core.database.entity.PairedDeviceEntity
+import com.example.chatgpt_mealplanner.core.database.entity.SyncConflictEntity
+import com.example.chatgpt_mealplanner.core.database.entity.SyncPendingApprovalEntity
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -40,6 +42,10 @@ fun HouseholdScreen(
     onRequestRevocation: (PairedDeviceEntity) -> Unit,
     onConfirmRevocation: () -> Unit,
     onCancelRevocation: () -> Unit,
+    onResolveConflictKeepMain: (String) -> Unit = {},
+    onResolveConflictApplyFollower: (String) -> Unit = {},
+    onApprovePendingDiscard: (String) -> Unit = {},
+    onRejectPendingDiscard: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     if (uiState.deviceToRevoke != null) {
@@ -172,6 +178,50 @@ fun HouseholdScreen(
             }
         }
 
+        if (uiState.openApprovals.isNotEmpty()) {
+            item {
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "Pending Discard Approvals",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.error
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+
+            items(uiState.openApprovals, key = { it.approvalId }) { approval ->
+                PendingApprovalCard(
+                    approval = approval,
+                    onApprove = { onApprovePendingDiscard(approval.approvalId) },
+                    onReject = { onRejectPendingDiscard(approval.approvalId) }
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+        }
+
+        if (uiState.openConflicts.isNotEmpty()) {
+            item {
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "Sync Conflicts",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.tertiary
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+
+            items(uiState.openConflicts, key = { it.conflictId }) { conflict ->
+                SyncConflictCard(
+                    conflict = conflict,
+                    onKeepMain = { onResolveConflictKeepMain(conflict.conflictId) },
+                    onApplyFollower = { onResolveConflictApplyFollower(conflict.conflictId) }
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+        }
+
         item {
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -253,6 +303,70 @@ fun PairedDeviceCard(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.error
                 )
+            }
+        }
+    }
+}
+
+@Composable
+fun PendingApprovalCard(
+    approval: SyncPendingApprovalEntity,
+    onApprove: () -> Unit,
+    onReject: () -> Unit
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = "Destructive Removal Request",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.error
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text("Follower Device: ${approval.deviceId.take(8)}...")
+            Text("Item ID: ${approval.targetItemId}")
+            Text("Requested Action: Discard Item")
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = onApprove,
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Approve Discard")
+                }
+                OutlinedButton(onClick = onReject) {
+                    Text("Reject")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SyncConflictCard(
+    conflict: SyncConflictEntity,
+    onKeepMain: () -> Unit,
+    onApplyFollower: () -> Unit
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = "Sync Revision Mismatch",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text("Follower Device: ${conflict.deviceId.take(8)}...")
+            Text("Item ID: ${conflict.targetItemId}")
+            Text("Revision Mismatch: Base ${conflict.baseRevision} vs Main ${conflict.currentRevision}")
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onKeepMain) {
+                    Text("Keep Main Version")
+                }
+                OutlinedButton(onClick = onApplyFollower) {
+                    Text("Apply Follower Change")
+                }
             }
         }
     }

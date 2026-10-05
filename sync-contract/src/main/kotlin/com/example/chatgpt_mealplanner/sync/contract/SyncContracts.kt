@@ -79,6 +79,7 @@ data class SyncFeedItemDto(
     val canonicalItemSnapshot: InventoryItemSyncDto? = null,
     val conflictId: String? = null,
     val approvalId: String? = null,
+    val originalOperationId: String? = null,
     val occurredAt: Long
 )
 

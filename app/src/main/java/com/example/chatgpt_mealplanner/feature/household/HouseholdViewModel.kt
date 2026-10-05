@@ -4,10 +4,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.chatgpt_mealplanner.core.database.entity.HouseholdIdentityEntity
 import com.example.chatgpt_mealplanner.core.database.entity.PairedDeviceEntity
+import com.example.chatgpt_mealplanner.core.database.entity.SyncConflictEntity
+import com.example.chatgpt_mealplanner.core.database.entity.SyncPendingApprovalEntity
 import com.example.chatgpt_mealplanner.core.sync.HouseholdIdentityManager
 import com.example.chatgpt_mealplanner.core.sync.follower.config.FollowerPairingStore
 import com.example.chatgpt_mealplanner.core.sync.repository.PairedDeviceRepository
+import com.example.chatgpt_mealplanner.core.sync.repository.ResolutionResult
 import com.example.chatgpt_mealplanner.core.sync.repository.RevocationResult
+import com.example.chatgpt_mealplanner.core.sync.repository.SyncConflictApprovalRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -20,6 +24,8 @@ data class HouseholdUiState(
     val isLoading: Boolean = true,
     val householdIdentity: HouseholdIdentityEntity? = null,
     val pairedDevices: List<PairedDeviceEntity> = emptyList(),
+    val openConflicts: List<SyncConflictEntity> = emptyList(),
+    val openApprovals: List<SyncPendingApprovalEntity> = emptyList(),
     val deviceToRevoke: PairedDeviceEntity? = null,
     val isFollowerPaired: Boolean = false,
     val hostIp: String? = null,
@@ -31,7 +37,8 @@ data class HouseholdUiState(
 class HouseholdViewModel @Inject constructor(
     private val identityManager: HouseholdIdentityManager,
     private val pairedDeviceRepository: PairedDeviceRepository,
-    private val followerPairingStore: FollowerPairingStore
+    private val followerPairingStore: FollowerPairingStore,
+    private val syncConflictApprovalRepository: SyncConflictApprovalRepository? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HouseholdUiState())
@@ -46,13 +53,18 @@ class HouseholdViewModel @Inject constructor(
         viewModelScope.launch {
             val identity = identityManager.getOrCreateHouseholdIdentity()
             val devices = pairedDeviceRepository.getAllDevices()
+            val conflicts = syncConflictApprovalRepository?.getOpenConflicts() ?: emptyList()
+            val approvals = syncConflictApprovalRepository?.getOpenPendingApprovals() ?: emptyList()
             val isPaired = followerPairingStore.isPaired()
             val config = followerPairingStore.getPairingConfig()
+
             _uiState.update {
                 it.copy(
                     isLoading = false,
                     householdIdentity = identity,
                     pairedDevices = devices,
+                    openConflicts = conflicts,
+                    openApprovals = approvals,
                     isFollowerPaired = isPaired,
                     hostIp = config?.hostIp
                 )
@@ -106,6 +118,82 @@ class HouseholdViewModel @Inject constructor(
                             errorMessage = "Cannot revoke device with status '${res.status}'"
                         )
                     }
+                }
+            }
+        }
+    }
+
+    fun resolveConflictKeepMain(conflictId: String) {
+        viewModelScope.launch {
+            val repo = syncConflictApprovalRepository ?: return@launch
+            when (val res = repo.resolveConflictKeepMain(conflictId)) {
+                is ResolutionResult.Success -> {
+                    _uiState.update { it.copy(statusMessage = "Conflict resolved: Main version kept") }
+                    loadHouseholdInfo()
+                }
+                is ResolutionResult.AlreadyResolved -> {
+                    _uiState.update { it.copy(statusMessage = "Conflict was already resolved") }
+                    loadHouseholdInfo()
+                }
+                else -> {
+                    _uiState.update { it.copy(errorMessage = "Failed to resolve conflict") }
+                }
+            }
+        }
+    }
+
+    fun resolveConflictApplyFollower(conflictId: String) {
+        viewModelScope.launch {
+            val repo = syncConflictApprovalRepository ?: return@launch
+            when (val res = repo.resolveConflictApplyFollower(conflictId)) {
+                is ResolutionResult.Success -> {
+                    _uiState.update { it.copy(statusMessage = "Conflict resolved: Follower changes applied") }
+                    loadHouseholdInfo()
+                }
+                is ResolutionResult.AlreadyResolved -> {
+                    _uiState.update { it.copy(statusMessage = "Conflict was already resolved") }
+                    loadHouseholdInfo()
+                }
+                else -> {
+                    _uiState.update { it.copy(errorMessage = "Failed to resolve conflict") }
+                }
+            }
+        }
+    }
+
+    fun approvePendingDiscard(approvalId: String) {
+        viewModelScope.launch {
+            val repo = syncConflictApprovalRepository ?: return@launch
+            when (val res = repo.approvePendingDiscard(approvalId)) {
+                is ResolutionResult.Success -> {
+                    _uiState.update { it.copy(statusMessage = "Discard request approved") }
+                    loadHouseholdInfo()
+                }
+                is ResolutionResult.AlreadyResolved -> {
+                    _uiState.update { it.copy(statusMessage = "Discard request was already processed") }
+                    loadHouseholdInfo()
+                }
+                else -> {
+                    _uiState.update { it.copy(errorMessage = "Failed to approve discard request") }
+                }
+            }
+        }
+    }
+
+    fun rejectPendingDiscard(approvalId: String) {
+        viewModelScope.launch {
+            val repo = syncConflictApprovalRepository ?: return@launch
+            when (val res = repo.rejectPendingDiscard(approvalId)) {
+                is ResolutionResult.Success -> {
+                    _uiState.update { it.copy(statusMessage = "Discard request rejected") }
+                    loadHouseholdInfo()
+                }
+                is ResolutionResult.AlreadyResolved -> {
+                    _uiState.update { it.copy(statusMessage = "Discard request was already processed") }
+                    loadHouseholdInfo()
+                }
+                else -> {
+                    _uiState.update { it.copy(errorMessage = "Failed to reject discard request") }
                 }
             }
         }
