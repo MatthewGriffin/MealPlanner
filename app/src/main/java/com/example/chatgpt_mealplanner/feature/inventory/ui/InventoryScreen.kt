@@ -149,6 +149,13 @@ fun InventoryScreen(
                 }
             }
 
+            if (state.isFollowerPaired && state.followerSyncStatus != null) {
+                FollowerSyncStatusCard(
+                    status = state.followerSyncStatus,
+                    onSyncNowClicked = { onEvent(InventoryUiEvent.TriggerManualSync) }
+                )
+            }
+
             if (state.isLoading) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
@@ -630,4 +637,70 @@ fun MergeItemsDialog(
             }
         }
     )
+}
+
+@Composable
+fun FollowerSyncStatusCard(
+    status: com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncStatusModel,
+    onSyncNowClicked: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(bottom = 8.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = when (status.state) {
+                com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncState.ACCESS_REVOKED -> MaterialTheme.colorScheme.errorContainer
+                com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncState.SYNC_ERROR -> MaterialTheme.colorScheme.errorContainer
+                com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncState.PENDING_CHANGES -> MaterialTheme.colorScheme.secondaryContainer
+                else -> MaterialTheme.colorScheme.surfaceVariant
+            }
+        )
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+            ) {
+                val title = when (status.state) {
+                    com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncState.UNPAIRED -> "Pairing required"
+                    com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncState.BOOTSTRAP_REQUIRED -> "Initial snapshot required"
+                    com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncState.ACCESS_REVOKED -> "Access revoked by Main"
+                    com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncState.AUTHENTICATION_REQUIRED -> "Authentication required"
+                    com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncState.SYNC_ERROR -> "Sync couldn't connect to Main"
+                    com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncState.SYNCING -> "Syncing with Main..."
+                    com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncState.PENDING_CHANGES -> "${status.pendingUploadCount} change(s) waiting to upload"
+                    com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncState.NO_PENDING_UPLOADS -> "No changes waiting to upload"
+                }
+
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                )
+
+                if (status.state in listOf(
+                        com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncState.PENDING_CHANGES,
+                        com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncState.SYNC_ERROR,
+                        com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncState.AUTHENTICATION_REQUIRED
+                    )
+                ) {
+                    TextButton(onClick = onSyncNowClicked) {
+                        Text("Sync Now")
+                    }
+                }
+            }
+
+            if (status.state == com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncState.ACCESS_REVOKED) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Your local inventory remains on this device, but this device can no longer sync with the household.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onErrorContainer
+                )
+            }
+        }
+    }
 }

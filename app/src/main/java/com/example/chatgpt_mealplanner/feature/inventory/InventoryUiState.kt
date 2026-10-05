@@ -21,10 +21,13 @@ data class InventoryUiState(
     val searchQuery: String = "",
     val isLoading: Boolean = false,
     val userMessage: String? = null,
-    val selectedItemForEdit: InventoryItem? = null
+    val selectedItemForEdit: InventoryItem? = null,
+    val isFollowerPaired: Boolean = false,
+    val followerSyncStatus: com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncStatusModel? = null
 )
 
 sealed interface InventoryUiEvent {
+    object TriggerManualSync : InventoryUiEvent
     data class SelectFilter(val filter: InventoryFilter) : InventoryUiEvent
     data class SearchQueryChanged(val query: String) : InventoryUiEvent
     data class AddItemRequested(val item: InventoryItem) : InventoryUiEvent

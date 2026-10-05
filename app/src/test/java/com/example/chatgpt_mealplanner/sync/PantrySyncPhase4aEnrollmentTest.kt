@@ -89,6 +89,7 @@ open class TestEnrollmentKeyStoreManager : AndroidKeyStoreManager() {
 open class FakePairingStore : FollowerPairingStore(null) {
     var savedConfig: FollowerPairingConfig? = null
     var shouldFailSave = false
+    var revokedMarker = false
 
     override fun isPaired(): Boolean = savedConfig != null
 
@@ -100,8 +101,16 @@ open class FakePairingStore : FollowerPairingStore(null) {
         return true
     }
 
+    override fun markRevoked(): Boolean {
+        revokedMarker = true
+        return true
+    }
+
+    override fun isRevoked(): Boolean = revokedMarker
+
     override fun clear() {
         savedConfig = null
+        revokedMarker = false
     }
 }
 

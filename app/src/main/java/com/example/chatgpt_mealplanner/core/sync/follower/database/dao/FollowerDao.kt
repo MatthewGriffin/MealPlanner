@@ -39,6 +39,9 @@ interface FollowerDao {
     @Query("SELECT * FROM follower_sync_outbox WHERE status IN ('PENDING', 'IN_FLIGHT') ORDER BY deviceSequence ASC")
     suspend fun getPendingOperationsInOrder(): List<FollowerSyncOutboxEntity>
 
+    @Query("SELECT * FROM follower_sync_outbox ORDER BY deviceSequence ASC")
+    suspend fun getAllOutboxOps(): List<FollowerSyncOutboxEntity>
+
     @Query("SELECT * FROM follower_sync_outbox WHERE targetItemId = :itemId AND status IN ('PENDING', 'IN_FLIGHT') ORDER BY deviceSequence ASC")
     suspend fun getUnresolvedOutboxOpsForTargetItem(itemId: String): List<FollowerSyncOutboxEntity>
 

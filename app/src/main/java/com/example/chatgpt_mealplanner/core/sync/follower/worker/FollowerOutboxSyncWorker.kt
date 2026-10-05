@@ -7,11 +7,12 @@ import androidx.work.ListenableWorker.Result
 import androidx.work.WorkerParameters
 import com.example.chatgpt_mealplanner.core.security.AndroidKeyStoreManager
 import com.example.chatgpt_mealplanner.core.sync.client.PantrySyncTestClient
-import com.example.chatgpt_mealplanner.core.sync.follower.config.FollowerPairingStore
 import com.example.chatgpt_mealplanner.core.sync.follower.client.FollowerSyncUploader
+import com.example.chatgpt_mealplanner.core.sync.follower.config.FollowerPairingStore
 import com.example.chatgpt_mealplanner.core.sync.follower.database.FollowerDatabase
 import com.example.chatgpt_mealplanner.core.sync.follower.engine.FollowerBootstrapEngine
 import com.example.chatgpt_mealplanner.core.sync.follower.engine.FollowerFeedPullEngine
+import com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncStatusRepository
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 
@@ -25,11 +26,17 @@ class FollowerOutboxSyncWorker @AssistedInject constructor(
     private val followerBootstrapEngine: FollowerBootstrapEngine,
     private val pantrySyncTestClient: PantrySyncTestClient,
     private val keyStoreManager: AndroidKeyStoreManager,
-    private val followerPairingStore: FollowerPairingStore
+    private val followerPairingStore: FollowerPairingStore,
+    private val statusRepository: FollowerSyncStatusRepository
 ) : CoroutineWorker(appContext, workerParams) {
 
     override suspend fun doWork(): Result {
         println("[SYNC_WORKER] start")
+        if (followerPairingStore.isRevoked()) {
+            statusRepository.reportExplicitRevocation()
+            return Result.failure()
+        }
+
         val config = followerPairingStore.getPairingConfig() ?: return Result.success()
 
         val hostIp = config.hostIp
@@ -48,6 +55,11 @@ class FollowerOutboxSyncWorker @AssistedInject constructor(
                 keyAlias = keyAlias
             )
             if (activeToken.isNullOrBlank()) {
+                if (followerPairingStore.isRevoked()) {
+                    statusRepository.reportExplicitRevocation()
+                    return Result.failure()
+                }
+                statusRepository.reportTransientSyncError("AUTH_EXPIRED: Session refresh failed")
                 return Result.retry()
             }
             followerPairingStore.updateSessionToken(activeToken)
@@ -60,7 +72,15 @@ class FollowerOutboxSyncWorker @AssistedInject constructor(
                 pinnedCertFingerprint = pinnedCertFingerprint,
                 deviceId = deviceId,
                 keyAlias = keyAlias
-            ) ?: throw IllegalStateException("Session refresh failed")
+            )
+            if (refreshedToken == null) {
+                if (followerPairingStore.isRevoked()) {
+                    statusRepository.reportExplicitRevocation()
+                } else {
+                    statusRepository.reportTransientSyncError("AUTH_EXPIRED: Session refresh failed")
+                }
+                throw IllegalStateException("Session refresh failed")
+            }
             followerPairingStore.updateSessionToken(refreshedToken)
             refreshedToken
         }
@@ -77,6 +97,11 @@ class FollowerOutboxSyncWorker @AssistedInject constructor(
                 sessionTokenProvider = sessionRefreshLambda
             )
             if (!bootstrapSummary.success) {
+                if (followerPairingStore.isRevoked()) {
+                    statusRepository.reportExplicitRevocation()
+                    return Result.failure()
+                }
+                statusRepository.reportTransientSyncError("TRANSPORT_ERROR: Bootstrap failed")
                 return Result.retry()
             }
         }
@@ -97,6 +122,13 @@ class FollowerOutboxSyncWorker @AssistedInject constructor(
                 sessionToken = activeToken,
                 followerDeviceId = deviceId
             )
+            statusRepository.clearSyncError()
+        } else {
+            if (followerPairingStore.isRevoked()) {
+                statusRepository.reportExplicitRevocation()
+                return Result.failure()
+            }
+            statusRepository.reportTransientSyncError("NETWORK_ERROR: Transport error during upload")
         }
 
         println("[SYNC_WORKER] finish summary=$summary")

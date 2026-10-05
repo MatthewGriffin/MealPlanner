@@ -90,6 +90,16 @@ open class FollowerPairingStore @Inject constructor(
         prefs.edit().putString("KEY_SESSION_TOKEN", sessionToken).apply()
     }
 
+    open fun markRevoked(): Boolean {
+        val prefs = getPrefs() ?: return false
+        return prefs.edit().putString("KEY_ACCESS_STATUS", "REVOKED").commit()
+    }
+
+    open fun isRevoked(): Boolean {
+        val prefs = getPrefs() ?: return false
+        return prefs.getString("KEY_ACCESS_STATUS", null) == "REVOKED"
+    }
+
     open fun clear() {
         val prefs = getPrefs() ?: return
         prefs.edit().clear().apply()

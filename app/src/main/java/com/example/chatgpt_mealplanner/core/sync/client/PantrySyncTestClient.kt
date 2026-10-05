@@ -53,7 +53,8 @@ data class TestClientBootstrapResult(
 
 @Singleton
 open class PantrySyncTestClient @Inject constructor(
-    private val keyStoreManager: AndroidKeyStoreManager
+    private val keyStoreManager: AndroidKeyStoreManager,
+    private val followerPairingStore: com.example.chatgpt_mealplanner.core.sync.follower.config.FollowerPairingStore? = null
 ) {
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -281,9 +282,14 @@ open class PantrySyncTestClient @Inject constructor(
             val sessionRequest = Request.Builder().url("$baseUrl/sync/v1/auth/session").post(sessionBody).build()
 
             val sessionResponse = client.newCall(sessionRequest).execute()
-            if (!sessionResponse.isSuccessful) return@withContext null
-
             val sessionResponseBody = sessionResponse.body?.string() ?: "{}"
+            if (!sessionResponse.isSuccessful) {
+                if (com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerErrorClassifier.isExplicitRevocation(sessionResponseBody)) {
+                    followerPairingStore?.markRevoked()
+                }
+                return@withContext null
+            }
+
             val sessionObj = json.parseToJsonElement(sessionResponseBody).jsonObject
             sessionObj["sessionToken"]?.jsonPrimitive?.content
         } catch (e: Exception) {

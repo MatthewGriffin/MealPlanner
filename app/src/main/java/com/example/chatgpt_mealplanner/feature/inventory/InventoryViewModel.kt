@@ -1,7 +1,10 @@
 package com.example.chatgpt_mealplanner.feature.inventory
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
 import com.example.chatgpt_mealplanner.core.model.DomainError
 import com.example.chatgpt_mealplanner.core.model.DomainResult
 import com.example.chatgpt_mealplanner.core.model.InventoryItem
@@ -9,7 +12,12 @@ import com.example.chatgpt_mealplanner.core.model.QuantityConfidence
 import com.example.chatgpt_mealplanner.core.model.QuantityUnit
 import com.example.chatgpt_mealplanner.core.repository.InventoryRepository
 import com.example.chatgpt_mealplanner.core.service.InventoryDomainService
+import com.example.chatgpt_mealplanner.core.sync.follower.config.FollowerPairingStore
+import com.example.chatgpt_mealplanner.core.sync.follower.database.FollowerDatabase
+import com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncStatusRepository
+import com.example.chatgpt_mealplanner.core.sync.follower.worker.FollowerSyncScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -20,14 +28,56 @@ import javax.inject.Inject
 @HiltViewModel
 class InventoryViewModel @Inject constructor(
     private val inventoryRepository: InventoryRepository,
-    private val inventoryDomainService: InventoryDomainService
+    private val inventoryDomainService: InventoryDomainService,
+    @param:ApplicationContext private val context: Context? = null,
+    private val followerPairingStore: FollowerPairingStore? = null,
+    private val followerSyncStatusRepository: FollowerSyncStatusRepository? = null,
+    private val followerSyncScheduler: FollowerSyncScheduler? = null,
+    private val followerDatabase: FollowerDatabase? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(InventoryUiState())
     val uiState: StateFlow<InventoryUiState> = _uiState.asStateFlow()
 
+    private var workObserverJob: kotlinx.coroutines.Job? = null
+
     init {
         loadInventory()
+        observeWorkManagerAndSyncStatus()
+    }
+
+    fun triggerManualSync() {
+        val ctx = context
+        if (ctx != null && followerSyncScheduler != null) {
+            followerSyncScheduler.scheduleSyncWork(ctx, "USER_MANUAL_TRIGGER")
+        }
+    }
+
+    private fun observeWorkManagerAndSyncStatus() {
+        workObserverJob?.cancel()
+        val store = followerPairingStore ?: return
+        if (!store.isPaired()) {
+            _uiState.update { it.copy(isFollowerPaired = false, followerSyncStatus = null) }
+            return
+        }
+
+        workObserverJob = viewModelScope.launch {
+            val dao = followerDatabase?.followerDao()
+            val ctx = context
+            val workManager = try { if (ctx != null) WorkManager.getInstance(ctx) else null } catch (_: Exception) { null }
+
+            if (workManager != null) {
+                workManager.getWorkInfosForUniqueWorkFlow(FollowerSyncScheduler.WORK_NAME)
+                    .collect { workInfos ->
+                        val isWorkerRunning = workInfos.any { it.state == WorkInfo.State.RUNNING }
+                        val status = followerSyncStatusRepository?.calculateStatus(dao, isWorkerRunning)
+                        _uiState.update { it.copy(isFollowerPaired = true, followerSyncStatus = status) }
+                    }
+            } else {
+                val status = followerSyncStatusRepository?.calculateStatus(dao, false)
+                _uiState.update { it.copy(isFollowerPaired = true, followerSyncStatus = status) }
+            }
+        }
     }
 
     private fun loadInventory() {
@@ -51,6 +101,9 @@ class InventoryViewModel @Inject constructor(
 
     fun onEvent(event: InventoryUiEvent) {
         when (event) {
+            InventoryUiEvent.TriggerManualSync -> {
+                triggerManualSync()
+            }
             is InventoryUiEvent.SearchQueryChanged -> {
                 _uiState.update { currentState ->
                     val filtered = filterItems(currentState.rawItems, currentState.activeFilter, event.query)

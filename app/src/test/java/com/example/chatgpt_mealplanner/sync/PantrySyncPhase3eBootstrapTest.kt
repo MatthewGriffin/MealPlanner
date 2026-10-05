@@ -272,6 +272,7 @@ open class RealJdbcFollowerDao(private val conn: java.sql.Connection) : Follower
     }
 
     override suspend fun getPendingOperationsInOrder(): List<FollowerSyncOutboxEntity> = emptyList()
+    override suspend fun getAllOutboxOps(): List<FollowerSyncOutboxEntity> = emptyList()
     override suspend fun insertOutboxOperation(op: FollowerSyncOutboxEntity) {}
     override suspend fun updateOutboxStatus(operationId: String, status: String, attemptCount: Int, lastAttemptAt: Long?, lastErrorCode: String?) {}
     override suspend fun reconcileOutboxResult(operationId: String, status: String, canonicalSeq: Long?, resultCode: String?, resultingRev: Long?, conflictId: String?, approvalId: String?, completedAt: Long?) {}
