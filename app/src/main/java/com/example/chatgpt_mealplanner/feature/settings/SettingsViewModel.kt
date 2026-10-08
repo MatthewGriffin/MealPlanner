@@ -49,8 +49,14 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun triggerManualSync() {
-        followerSyncScheduler.scheduleSyncWork(context, "MANUAL_SYNC")
-        _uiState.update { it.copy(syncStatusMessage = "Manual sync scheduled") }
+        val scheduler = followerSyncScheduler
+        val shouldEnqueue = scheduler.recordManualSyncIntent()
+        if (!shouldEnqueue) {
+            return
+        }
+        viewModelScope.launch {
+            scheduler.scheduleSyncWorkAsync(context, "MANUAL_SYNC", intentAlreadyRecorded = true)
+        }
     }
 
     fun saveApiKey(key: String) {

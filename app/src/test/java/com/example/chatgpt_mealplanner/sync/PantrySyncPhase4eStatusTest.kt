@@ -526,8 +526,9 @@ class PantrySyncPhase4eStatusTest {
     fun testN_tryAgainSchedulesExistingUniqueWorkOnly() = runTest {
         var triggerReasonPassed: String? = null
         val scheduler = object : FollowerSyncScheduler() {
-            override fun scheduleSyncWork(context: android.content.Context?, triggerReason: String) {
+            override fun scheduleSyncWork(context: android.content.Context?, triggerReason: String): com.example.chatgpt_mealplanner.core.sync.follower.worker.WorkSchedulingResult {
                 triggerReasonPassed = triggerReason
+                return com.example.chatgpt_mealplanner.core.sync.follower.worker.WorkSchedulingResult.SUBMITTED_AND_CONFIRMED
             }
         }
         scheduler.scheduleSyncWork(null, "TRY_AGAIN_USER_CLICK")

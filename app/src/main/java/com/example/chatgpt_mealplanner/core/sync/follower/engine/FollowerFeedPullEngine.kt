@@ -11,10 +11,12 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 data class FollowerFeedPullSummary(
-    val processedCount: Int,
-    val remoteItemsAppliedCount: Int,
-    val ownItemsSkippedCount: Int,
-    val latestCursor: Long
+    val success: Boolean = true,
+    val resultCode: String = "SUCCESS",
+    val processedCount: Int = 0,
+    val remoteItemsAppliedCount: Int = 0,
+    val ownItemsSkippedCount: Int = 0,
+    val latestCursor: Long = 0L
 )
 
 @Singleton
@@ -29,35 +31,78 @@ open class FollowerFeedPullEngine @Inject constructor(
         pinnedCertFingerprint: String?,
         sessionToken: String,
         followerDeviceId: String,
-        customDao: FollowerDao? = null
+        customDao: FollowerDao? = null,
+        sessionTokenProvider: (suspend (forceRefresh: Boolean) -> String)? = null
     ): FollowerFeedPullSummary {
+        val feedPassStartNanos = System.nanoTime()
         val dao = customDao ?: followerDatabase?.followerDao() ?: throw IllegalStateException("FollowerDatabase or customDao required")
 
+        var activeToken = sessionToken
         var totalProcessed = 0
         var totalApplied = 0
         var totalOwnSkipped = 0
 
         var hasMore = true
-        var passSucceeded = true
         var currentCursor = dao.getSyncMetadata()?.lastReconciledCanonicalSequence ?: 0L
+        var pageCount = 0
 
         while (hasMore) {
-            val feedResult = pantrySyncTestClient.getSyncFeed(
+            pageCount++
+            println("[SYNC_FEED] page_start since=$currentCursor page=$pageCount")
+            val httpReqStartNanos = System.nanoTime()
+
+            var feedResult = pantrySyncTestClient.getSyncFeed(
                 hostIp = hostIp,
                 port = port,
                 pinnedCertFingerprint = pinnedCertFingerprint,
-                sessionToken = sessionToken,
+                sessionToken = activeToken,
                 sinceSequence = currentCursor,
                 limit = 100
             )
 
+            if (feedResult.status == com.example.chatgpt_mealplanner.core.sync.client.NetworkResultStatus.UNAUTHORIZED && sessionTokenProvider != null) {
+                try {
+                    activeToken = sessionTokenProvider(true)
+                    feedResult = pantrySyncTestClient.getSyncFeed(
+                        hostIp = hostIp,
+                        port = port,
+                        pinnedCertFingerprint = pinnedCertFingerprint,
+                        sessionToken = activeToken,
+                        sinceSequence = currentCursor,
+                        limit = 100
+                    )
+                } catch (_: Exception) {
+                    // Retain original UNAUTHORIZED status if session refresh fails
+                }
+            }
+
+            val httpMs = (System.nanoTime() - httpReqStartNanos) / 1_000_000
+            val httpStatus = if (feedResult.success) "200" else feedResult.status.name
+            println("[SYNC_FEED] http_response status=$httpStatus duration_ms=$httpMs")
+
             if (!feedResult.success || feedResult.feedResponse == null) {
-                passSucceeded = false
-                break // Stop pass on transport error
+                val failMs = (System.nanoTime() - feedPassStartNanos) / 1_000_000
+                val failureCategory = when (feedResult.status) {
+                    com.example.chatgpt_mealplanner.core.sync.client.NetworkResultStatus.REVOKED -> "REVOKED"
+                    com.example.chatgpt_mealplanner.core.sync.client.NetworkResultStatus.UNAUTHORIZED -> "AUTH_FAILURE"
+                    com.example.chatgpt_mealplanner.core.sync.client.NetworkResultStatus.SERVER_ERROR -> "SERVER_FAILURE"
+                    else -> "TRANSPORT_FAILURE"
+                }
+                println("[SYNC_FEED] failure category=$failureCategory rawError=${feedResult.error ?: ""} duration_ms=$failMs")
+                return FollowerFeedPullSummary(
+                    success = false,
+                    resultCode = failureCategory,
+                    processedCount = totalProcessed,
+                    remoteItemsAppliedCount = totalApplied,
+                    ownItemsSkippedCount = totalOwnSkipped,
+                    latestCursor = currentCursor
+                )
             }
 
             val response = feedResult.feedResponse
             hasMore = response.hasMore
+
+            println("[SYNC_FEED] decoded entries=${response.items.size} latest=${response.latestCanonicalSequence} hasMore=${response.hasMore}")
 
             if (response.items.isEmpty()) {
                 break
@@ -152,16 +197,18 @@ open class FollowerFeedPullEngine @Inject constructor(
             }
         }
 
-        if (passSucceeded) {
-            val finalMeta = dao.getSyncMetadata() ?: FollowerSyncMetadataEntity(singletonId = 1, lastReconciledCanonicalSequence = 0L)
-            dao.updateSyncMetadata(
-                finalMeta.copy(
-                    lastSuccessfulPullAt = System.currentTimeMillis()
-                )
+        val totalFeedMs = (System.nanoTime() - feedPassStartNanos) / 1_000_000
+        val finalMeta = dao.getSyncMetadata() ?: FollowerSyncMetadataEntity(singletonId = 1, lastReconciledCanonicalSequence = 0L)
+        dao.updateSyncMetadata(
+            finalMeta.copy(
+                lastSuccessfulPullAt = System.currentTimeMillis()
             )
-        }
+        )
+        println("[SYNC_FEED] complete pages=$pageCount duration_ms=$totalFeedMs")
 
         return FollowerFeedPullSummary(
+            success = true,
+            resultCode = "SUCCESS",
             processedCount = totalProcessed,
             remoteItemsAppliedCount = totalApplied,
             ownItemsSkippedCount = totalOwnSkipped,

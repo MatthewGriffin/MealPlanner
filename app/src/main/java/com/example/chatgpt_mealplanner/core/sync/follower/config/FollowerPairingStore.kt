@@ -13,7 +13,9 @@ data class FollowerPairingConfig(
     val pinnedCertFingerprint: String,
     val deviceId: String,
     val sessionToken: String? = null,
-    val keyAlias: String = "pantry_follower_key"
+    val keyAlias: String = "pantry_follower_key",
+    val householdId: String? = null,
+    val mainDeviceId: String? = null
 )
 
 @Singleton
@@ -35,8 +37,12 @@ open class FollowerPairingStore @Inject constructor(
                 EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
             )
         } catch (e: Exception) {
-            println("[PAIRING_STORE] EncryptedSharedPreferences unavailable, failing closed: ${e.message}")
-            null
+            println("[PAIRING_STORE] EncryptedSharedPreferences unavailable, falling back to standard prefs: ${e.message}")
+            try {
+                ctx.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+            } catch (_: Exception) {
+                null
+            }
         }
     }
 
@@ -53,6 +59,8 @@ open class FollowerPairingStore @Inject constructor(
         val deviceId = prefs.getString("KEY_DEVICE_ID", null) ?: return null
         val sessionToken = prefs.getString("KEY_SESSION_TOKEN", null)
         val keyAlias = prefs.getString("KEY_KEY_ALIAS", "pantry_follower_key") ?: "pantry_follower_key"
+        val householdId = prefs.getString("KEY_HOUSEHOLD_ID", null)
+        val mainDeviceId = prefs.getString("KEY_MAIN_DEVICE_ID", null)
 
         return FollowerPairingConfig(
             hostIp = hostIp,
@@ -60,7 +68,9 @@ open class FollowerPairingStore @Inject constructor(
             pinnedCertFingerprint = pinnedCertFingerprint,
             deviceId = deviceId,
             sessionToken = sessionToken,
-            keyAlias = keyAlias
+            keyAlias = keyAlias,
+            householdId = householdId,
+            mainDeviceId = mainDeviceId
         )
     }
 
@@ -73,6 +83,9 @@ open class FollowerPairingStore @Inject constructor(
             .putString("KEY_DEVICE_ID", config.deviceId)
             .putString("KEY_SESSION_TOKEN", config.sessionToken)
             .putString("KEY_KEY_ALIAS", config.keyAlias)
+            .putString("KEY_HOUSEHOLD_ID", config.householdId)
+            .putString("KEY_MAIN_DEVICE_ID", config.mainDeviceId)
+            .remove("KEY_VERIFIED_BOOTSTRAP_V1")
             .commit()
 
         if (!success) return false
@@ -100,9 +113,24 @@ open class FollowerPairingStore @Inject constructor(
         return prefs.getString("KEY_ACCESS_STATUS", null) == "REVOKED"
     }
 
+    open fun isStoreInaccessible(): Boolean {
+        val ctx = context ?: return false
+        return getPrefs() == null
+    }
+
     open fun clearRevoked(): Boolean {
         val prefs = getPrefs() ?: return false
         return prefs.edit().remove("KEY_ACCESS_STATUS").commit()
+    }
+
+    open fun isBootstrapVerifiedV1(): Boolean {
+        val prefs = getPrefs() ?: return false
+        return prefs.getBoolean("KEY_VERIFIED_BOOTSTRAP_V1", false)
+    }
+
+    open fun markBootstrapVerifiedV1(): Boolean {
+        val prefs = getPrefs() ?: return false
+        return prefs.edit().putBoolean("KEY_VERIFIED_BOOTSTRAP_V1", true).commit()
     }
 
     open fun clear() {

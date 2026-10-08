@@ -46,7 +46,10 @@ import com.example.chatgpt_mealplanner.sync.contract.SyncOperationStatus
 import com.example.chatgpt_mealplanner.sync.contract.SyncOperationType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -610,8 +613,9 @@ class PantrySyncPhase3eBootstrapTest {
     fun real_appStartTrigger_schedulesUniqueWorker() = runTest {
         var capturedTrigger: String? = null
         val testScheduler = object : FollowerSyncScheduler() {
-            override fun scheduleSyncWork(context: Context?, triggerReason: String) {
+            override fun scheduleSyncWork(context: Context?, triggerReason: String): com.example.chatgpt_mealplanner.core.sync.follower.worker.WorkSchedulingResult {
                 capturedTrigger = triggerReason
+                return com.example.chatgpt_mealplanner.core.sync.follower.worker.WorkSchedulingResult.SUBMITTED_AND_CONFIRMED
             }
         }
 
@@ -638,8 +642,9 @@ class PantrySyncPhase3eBootstrapTest {
     fun real_networkAvailableTrigger_schedulesUniqueWorker() = runTest {
         var capturedTrigger: String? = null
         val testScheduler = object : FollowerSyncScheduler() {
-            override fun scheduleSyncWork(context: Context?, triggerReason: String) {
+            override fun scheduleSyncWork(context: Context?, triggerReason: String): com.example.chatgpt_mealplanner.core.sync.follower.worker.WorkSchedulingResult {
                 capturedTrigger = triggerReason
+                return com.example.chatgpt_mealplanner.core.sync.follower.worker.WorkSchedulingResult.SUBMITTED_AND_CONFIRMED
             }
         }
 
@@ -650,36 +655,54 @@ class PantrySyncPhase3eBootstrapTest {
     // 6. real_manualSyncTrigger_schedulesUniqueWorker
     @Test
     fun real_manualSyncTrigger_schedulesUniqueWorker() = runTest {
-        var capturedTrigger: String? = null
-        val testScheduler = object : FollowerSyncScheduler() {
-            override fun scheduleSyncWork(context: Context?, triggerReason: String) {
-                capturedTrigger = triggerReason
+        val testDispatcher = kotlinx.coroutines.test.UnconfinedTestDispatcher(testScheduler)
+        Dispatchers.setMain(testDispatcher)
+        try {
+            var capturedTrigger: String? = null
+            val testScheduler = object : FollowerSyncScheduler() {
+                override fun scheduleSyncWork(context: Context?, triggerReason: String): com.example.chatgpt_mealplanner.core.sync.follower.worker.WorkSchedulingResult {
+                    capturedTrigger = triggerReason
+                    return com.example.chatgpt_mealplanner.core.sync.follower.worker.WorkSchedulingResult.SUBMITTED_AND_CONFIRMED
+                }
+
+                override suspend fun scheduleSyncWorkAsync(context: Context?, triggerReason: String): com.example.chatgpt_mealplanner.core.sync.follower.worker.WorkSchedulingResult {
+                    capturedTrigger = triggerReason
+                    return com.example.chatgpt_mealplanner.core.sync.follower.worker.WorkSchedulingResult.SUBMITTED_AND_CONFIRMED
+                }
+
+                override suspend fun scheduleSyncWorkAsync(context: Context?, triggerReason: String, intentAlreadyRecorded: Boolean): com.example.chatgpt_mealplanner.core.sync.follower.worker.WorkSchedulingResult {
+                    capturedTrigger = triggerReason
+                    return com.example.chatgpt_mealplanner.core.sync.follower.worker.WorkSchedulingResult.SUBMITTED_AND_CONFIRMED
+                }
             }
+
+            val dummyCredentialStore = object : CredentialStore {
+                override fun hasKey(): Boolean = false
+                override fun saveKey(key: String) {}
+                override fun loadKey(): String? = null
+                override fun deleteKey() {}
+            }
+
+            val dummyAiProvider = object : com.example.chatgpt_mealplanner.core.ai.provider.MealPlannerAiProvider {
+                override suspend fun send(request: com.example.chatgpt_mealplanner.contract.AiProviderRequest): com.example.chatgpt_mealplanner.contract.AiProviderResponse = com.example.chatgpt_mealplanner.contract.AiProviderResponse.Error("DUMMY", "Dummy")
+                override suspend fun continueWithToolResults(request: com.example.chatgpt_mealplanner.contract.AiContinueWithToolsRequest): com.example.chatgpt_mealplanner.contract.AiProviderResponse = com.example.chatgpt_mealplanner.contract.AiProviderResponse.Error("DUMMY", "Dummy")
+            }
+
+            val viewModel = SettingsViewModel(
+                context = null,
+                credentialStore = dummyCredentialStore,
+                provider = dummyAiProvider,
+                chatDao = FakeChatDao(),
+                backupManager = FakeBackupManager(),
+                followerSyncScheduler = testScheduler
+            )
+
+            viewModel.triggerManualSync()
+            advanceUntilIdle()
+            assertEquals("MANUAL_SYNC", capturedTrigger)
+        } finally {
+            Dispatchers.resetMain()
         }
-
-        val dummyCredentialStore = object : CredentialStore {
-            override fun hasKey(): Boolean = false
-            override fun saveKey(key: String) {}
-            override fun loadKey(): String? = null
-            override fun deleteKey() {}
-        }
-
-        val dummyAiProvider = object : com.example.chatgpt_mealplanner.core.ai.provider.MealPlannerAiProvider {
-            override suspend fun send(request: com.example.chatgpt_mealplanner.contract.AiProviderRequest): com.example.chatgpt_mealplanner.contract.AiProviderResponse = com.example.chatgpt_mealplanner.contract.AiProviderResponse.Error("DUMMY", "Dummy")
-            override suspend fun continueWithToolResults(request: com.example.chatgpt_mealplanner.contract.AiContinueWithToolsRequest): com.example.chatgpt_mealplanner.contract.AiProviderResponse = com.example.chatgpt_mealplanner.contract.AiProviderResponse.Error("DUMMY", "Dummy")
-        }
-
-        val viewModel = SettingsViewModel(
-            context = null,
-            credentialStore = dummyCredentialStore,
-            provider = dummyAiProvider,
-            chatDao = FakeChatDao(),
-            backupManager = FakeBackupManager(),
-            followerSyncScheduler = testScheduler
-        )
-
-        viewModel.triggerManualSync()
-        assertEquals("MANUAL_SYNC", capturedTrigger)
     }
 
     // 7. bootstrap_expiredSession_refreshesAndRetriesSafely
@@ -762,7 +785,8 @@ class PantrySyncPhase3eBootstrapTest {
                 singletonId = 1,
                 lastReconciledCanonicalSequence = 500L,
                 bootstrapCompleted = true,
-                bootstrapCanonicalSequence = 500L
+                bootstrapCanonicalSequence = 500L,
+                lastSuccessfulPullAt = System.currentTimeMillis()
             )
         )
 

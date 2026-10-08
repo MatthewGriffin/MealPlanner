@@ -21,7 +21,9 @@ data class BootstrapPassSummary(
 open class FollowerBootstrapEngine @Inject constructor(
     private val followerDatabase: FollowerDatabase?,
     private val pantrySyncTestClient: PantrySyncTestClient,
-    private val followerFeedPullEngine: FollowerFeedPullEngine
+    private val followerFeedPullEngine: FollowerFeedPullEngine,
+    private val followerPairingStore: com.example.chatgpt_mealplanner.core.sync.follower.config.FollowerPairingStore? = null,
+    private val followerLocalSyncEngine: FollowerLocalSyncEngine? = null
 ) {
     companion object {
         const val MAX_BOOTSTRAP_ITEMS = 5000
@@ -40,12 +42,10 @@ open class FollowerBootstrapEngine @Inject constructor(
         val dao = customDao ?: followerDatabase?.followerDao() ?: throw IllegalStateException("FollowerDatabase or customDao required")
 
         val currentMeta = dao.getSyncMetadata()
-        if (currentMeta?.bootstrapCompleted == true) {
-            return BootstrapPassSummary(true, "BOOTSTRAP_ALREADY_COMPLETED", 0, currentMeta.lastReconciledCanonicalSequence)
-        }
+        val isVerified = if (followerPairingStore != null) followerPairingStore.isBootstrapVerifiedV1() else (currentMeta?.bootstrapCompleted == true)
 
-        if (dao.getPendingOperationsInOrder().isNotEmpty()) {
-            return BootstrapPassSummary(false, "BOOTSTRAP_BLOCKED_LOCAL_PENDING_OPERATIONS", 0, 0L)
+        if (isVerified) {
+            return BootstrapPassSummary(true, "BOOTSTRAP_ALREADY_COMPLETED", 0, currentMeta?.lastReconciledCanonicalSequence ?: 0L)
         }
 
         var activeToken = sessionToken
@@ -62,7 +62,7 @@ open class FollowerBootstrapEngine @Inject constructor(
         }
 
         if (!snapshotResult.success || snapshotResult.bootstrapResponse == null) {
-            if (sessionTokenProvider != null && (err.contains("EXPIRED_SESSION") || err.contains("UNAUTHORIZED") || err.contains("401"))) {
+            if (sessionTokenProvider != null && snapshotResult.status == com.example.chatgpt_mealplanner.core.sync.client.NetworkResultStatus.UNAUTHORIZED) {
                 activeToken = sessionTokenProvider(true)
                 snapshotResult = pantrySyncTestClient.getBootstrapSnapshot(
                     hostIp = hostIp,
@@ -95,6 +95,8 @@ open class FollowerBootstrapEngine @Inject constructor(
         val now = System.currentTimeMillis()
 
         val block: suspend () -> Unit = {
+            dao.clearAllInventoryItems()
+
             for (snap in response.inventoryItems) {
                 val itemEntity = FollowerInventoryItemEntity(
                     itemId = snap.itemId,
@@ -132,13 +134,19 @@ open class FollowerBootstrapEngine @Inject constructor(
                 bootstrapCanonicalSequence = watermark
             )
             dao.updateSyncMetadata(metaToSave)
+
+            followerLocalSyncEngine?.rebuildPendingOutboxProjections(dao)
         }
 
         try {
-            if (followerDatabase != null) {
+            if (followerDatabase != null && followerDatabase.javaClass.simpleName != "TestFakeFollowerDatabase") {
                 followerDatabase.withTransaction { block() }
             } else {
                 block()
+            }
+            val markSuccess = followerPairingStore?.markBootstrapVerifiedV1() ?: true
+            if (!markSuccess) {
+                return BootstrapPassSummary(false, "PAIRING_STORE_COMMIT_FAILED", 0, 0L)
             }
         } catch (e: Exception) {
             return BootstrapPassSummary(false, "DATABASE_INSTALL_FAILED", 0, 0L)

@@ -90,14 +90,30 @@ open class FakePairingStore : FollowerPairingStore(null) {
     var savedConfig: FollowerPairingConfig? = null
     var shouldFailSave = false
     var revokedMarker = false
+    var forceInaccessible = false
+    var verifiedBootstrapV1Flag = false
+
+    override fun isBootstrapVerifiedV1(): Boolean = verifiedBootstrapV1Flag
+
+    override fun markBootstrapVerifiedV1(): Boolean {
+        verifiedBootstrapV1Flag = true
+        return true
+    }
+
+    override fun isStoreInaccessible(): Boolean = forceInaccessible
 
     override fun isPaired(): Boolean = savedConfig != null
 
     override fun getPairingConfig(): FollowerPairingConfig? = savedConfig
 
+    override fun updateSessionToken(sessionToken: String?) {
+        savedConfig = savedConfig?.copy(sessionToken = sessionToken)
+    }
+
     override fun savePairingConfig(config: FollowerPairingConfig): Boolean {
         if (shouldFailSave) return false
         savedConfig = config
+        verifiedBootstrapV1Flag = false
         return true
     }
 
@@ -366,6 +382,43 @@ class PantrySyncPhase4aEnrollmentTest {
 
         assertFalse(res.success)
         assertFalse("No network enrollment request MUST be sent if identity write fails", networkCallAttempted)
+    }
+
+    @Test
+    fun test2C_reauthorizationQrScanned_delegatesToReauthorizationFlowAndClearsRevoked() = runTest {
+        val pairingStore = FakePairingStore().apply { markRevoked() }
+        assertTrue(pairingStore.isRevoked())
+
+        val reauthClient = object : com.example.chatgpt_mealplanner.core.sync.follower.reauth.FollowerReauthorizationClient(pairingStore, keyStoreManager, identityStore) {
+            override suspend fun performReauthorization(invitation: QrInvitationPayloadDto): com.example.chatgpt_mealplanner.core.sync.follower.reauth.ReauthorizationClientResult {
+                pairingStore.clearRevoked()
+                return com.example.chatgpt_mealplanner.core.sync.follower.reauth.ReauthorizationClientResult.Success
+            }
+        }
+
+        val orchestrator = FollowerEnrollmentOrchestrator(
+            null,
+            identityStore,
+            keyStoreManager,
+            pairingStore,
+            PantrySyncTestClient(keyStoreManager),
+            FollowerSyncScheduler(),
+            reauthClient
+        )
+
+        val reauthInv = invitationManager.createReauthorizationInvitation(
+            householdId = householdId,
+            mainDeviceId = mainDeviceId,
+            targetDeviceId = identityStore.getOrCreateDeviceId()!!,
+            hostIp = "192.168.1.100",
+            port = 8443,
+            tlsFingerprint = validFingerprint
+        )
+
+        val res = orchestrator.processQrEnrollment(json.encodeToString(reauthInv))
+
+        assertTrue("Scanning reauthorization QR MUST succeed", res.success)
+        assertFalse("Re-authorization MUST clear revoked state in pairing store", pairingStore.isRevoked())
     }
 
     // BLOCKER 3 Tests: Strict Fingerprint Validation

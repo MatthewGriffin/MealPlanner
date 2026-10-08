@@ -29,3 +29,27 @@ data class FollowerInventoryItemEntity(
     val isPendingSync: Boolean = false,
     val updatedAt: Long
 )
+
+fun FollowerInventoryItemEntity.toDomainModel(): com.example.chatgpt_mealplanner.core.model.InventoryItem {
+    val parsedCategory = runCatching { com.example.chatgpt_mealplanner.core.model.FoodCategory.valueOf(category) }.getOrDefault(com.example.chatgpt_mealplanner.core.model.FoodCategory.OTHER)
+    val parsedLocation = runCatching { com.example.chatgpt_mealplanner.core.model.StorageLocation.valueOf(storageLocation) }.getOrDefault(com.example.chatgpt_mealplanner.core.model.StorageLocation.CUPBOARD)
+    val parsedStatus = runCatching { com.example.chatgpt_mealplanner.core.model.ItemStatus.valueOf(status) }.getOrDefault(com.example.chatgpt_mealplanner.core.model.ItemStatus.AVAILABLE)
+    val parsedUnit = quantityUnit?.let { com.example.chatgpt_mealplanner.core.model.parseQuantityUnit(it) }
+
+    return com.example.chatgpt_mealplanner.core.model.InventoryItem(
+        id = itemId,
+        barcode = barcode,
+        canonicalName = canonicalName,
+        displayName = displayName,
+        brand = brand,
+        category = parsedCategory,
+        storageLocation = parsedLocation,
+        quantity = quantity,
+        quantityUnit = parsedUnit,
+        notes = notes,
+        status = parsedStatus,
+        revision = optimisticRevision,
+        createdAt = updatedAt,
+        updatedAt = updatedAt
+    )
+}

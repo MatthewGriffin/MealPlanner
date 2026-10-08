@@ -22,7 +22,8 @@ open class FollowerEnrollmentOrchestrator @Inject constructor(
     private val keyStoreManager: AndroidKeyStoreManager,
     private val followerPairingStore: FollowerPairingStore,
     private val pantrySyncClient: PantrySyncTestClient,
-    private val followerSyncScheduler: FollowerSyncScheduler
+    private val followerSyncScheduler: FollowerSyncScheduler,
+    private val reauthorizationClient: com.example.chatgpt_mealplanner.core.sync.follower.reauth.FollowerReauthorizationClient? = null
 ) {
     private val json = Json { ignoreUnknownKeys = true }
     private val keyAlias = "pantry_follower_key"
@@ -74,6 +75,42 @@ open class FollowerEnrollmentOrchestrator @Inject constructor(
                 errorMessage = "Failed to export public key from AndroidKeyStore"
             )
 
+        // Delegate to Re-authorization Client if purpose is REAUTHORIZE_EXISTING_DEVICE!
+        if (qrPayload.purpose == "REAUTHORIZE_EXISTING_DEVICE") {
+            val client = reauthorizationClient ?: com.example.chatgpt_mealplanner.core.sync.follower.reauth.FollowerReauthorizationClient(followerPairingStore, keyStoreManager, identityStore)
+            val reauthRes = client.performReauthorization(qrPayload)
+            return when (reauthRes) {
+                is com.example.chatgpt_mealplanner.core.sync.follower.reauth.ReauthorizationClientResult.Success -> {
+                    val config = FollowerPairingConfig(
+                        hostIp = qrPayload.host,
+                        port = qrPayload.port,
+                        pinnedCertFingerprint = qrPayload.tlsCertificateFingerprint,
+                        deviceId = followerDeviceId,
+                        sessionToken = null,
+                        keyAlias = keyAlias,
+                        householdId = qrPayload.householdId,
+                        mainDeviceId = qrPayload.mainDeviceId
+                    )
+                    followerPairingStore.savePairingConfig(config)
+                    followerPairingStore.clearRevoked()
+                    followerSyncScheduler.scheduleSyncWorkNonBlocking(context, "REAUTHORIZATION_COMPLETE")
+
+                    EnrollmentResponseDto(
+                        success = true,
+                        householdId = qrPayload.householdId
+                    )
+                }
+                is com.example.chatgpt_mealplanner.core.sync.follower.reauth.ReauthorizationClientResult.Failure -> {
+                    EnrollmentResponseDto(
+                        success = false,
+                        householdId = qrPayload.householdId,
+                        errorCode = reauthRes.errorCode,
+                        errorMessage = reauthRes.message
+                    )
+                }
+            }
+        }
+
         val enrollmentReq = EnrollmentRequestDto(
             enrollmentToken = qrPayload.enrollmentToken,
             householdId = qrPayload.householdId,
@@ -111,7 +148,9 @@ open class FollowerEnrollmentOrchestrator @Inject constructor(
             pinnedCertFingerprint = qrPayload.tlsCertificateFingerprint,
             deviceId = followerDeviceId,
             sessionToken = null,
-            keyAlias = keyAlias
+            keyAlias = keyAlias,
+            householdId = qrPayload.householdId,
+            mainDeviceId = qrPayload.mainDeviceId
         )
 
         val savedSuccessfully = followerPairingStore.savePairingConfig(config)
@@ -124,8 +163,8 @@ open class FollowerEnrollmentOrchestrator @Inject constructor(
             )
         }
 
-        // 4. Schedule existing sync worker to run Phase 2B auth, Phase 3E bootstrap, and Phase 3D feed
-        followerSyncScheduler.scheduleSyncWork(context, "ENROLLMENT_COMPLETE")
+        // 4. Schedule existing sync worker for ongoing background sync
+        followerSyncScheduler.scheduleSyncWorkNonBlocking(context, "ENROLLMENT_COMPLETE")
 
         return response
     }

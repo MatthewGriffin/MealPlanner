@@ -47,9 +47,13 @@ class InventoryViewModel @Inject constructor(
     }
 
     fun triggerManualSync() {
-        val ctx = context
-        if (ctx != null && followerSyncScheduler != null) {
-            followerSyncScheduler.scheduleSyncWork(ctx, "USER_MANUAL_TRIGGER")
+        val scheduler = followerSyncScheduler ?: return
+        val shouldEnqueue = scheduler.recordManualSyncIntent()
+        if (!shouldEnqueue) {
+            return
+        }
+        viewModelScope.launch {
+            scheduler.scheduleSyncWorkAsync(context, "USER_MANUAL_TRIGGER", intentAlreadyRecorded = true)
         }
     }
 

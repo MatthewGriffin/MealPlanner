@@ -36,7 +36,8 @@ open class FollowerSyncUploader @Inject constructor(
         pinnedCertFingerprint: String?,
         sessionToken: String,
         deviceId: String,
-        customDao: FollowerDao? = null
+        customDao: FollowerDao? = null,
+        sessionTokenProvider: (suspend (forceRefresh: Boolean) -> String)? = null
     ): FollowerSyncUploadPassSummary {
         if (!uploadMutex.tryLock()) {
             println("[SYNC_UPLOAD] Single-flight pass active. Signaling re-check to prevent stranded operations.")
@@ -83,13 +84,29 @@ open class FollowerSyncUploader @Inject constructor(
                         createdAt = op.createdAt
                     )
 
-                    val uploadResult = pantrySyncTestClient.submitSyncOperation(
+                    var activeToken = sessionToken
+                    var uploadResult = pantrySyncTestClient.submitSyncOperation(
                         hostIp = hostIp,
                         port = port,
                         pinnedCertFingerprint = pinnedCertFingerprint,
-                        sessionToken = sessionToken,
+                        sessionToken = activeToken,
                         operationDto = dto
                     )
+
+                    if (uploadResult.status == com.example.chatgpt_mealplanner.core.sync.client.NetworkResultStatus.UNAUTHORIZED && sessionTokenProvider != null) {
+                        try {
+                            activeToken = sessionTokenProvider(true)
+                            uploadResult = pantrySyncTestClient.submitSyncOperation(
+                                hostIp = hostIp,
+                                port = port,
+                                pinnedCertFingerprint = pinnedCertFingerprint,
+                                sessionToken = activeToken,
+                                operationDto = dto
+                            )
+                        } catch (_: Exception) {
+                            // Retain original result if session refresh fails
+                        }
+                    }
 
                     if (!uploadResult.success && uploadResult.resultDto == null) {
                         // Transport / Connection Failure: Stop pass immediately and leave operation retryable!

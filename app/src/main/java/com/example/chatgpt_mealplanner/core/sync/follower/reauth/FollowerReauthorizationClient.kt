@@ -29,7 +29,8 @@ sealed interface ReauthorizationClientResult {
 @Singleton
 open class FollowerReauthorizationClient @Inject constructor(
     private val followerPairingStore: FollowerPairingStore,
-    private val keyStoreManager: AndroidKeyStoreManager
+    private val keyStoreManager: AndroidKeyStoreManager,
+    private val identityStore: com.example.chatgpt_mealplanner.core.sync.enrollment.FollowerIdentityStore? = null
 ) {
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -57,9 +58,22 @@ open class FollowerReauthorizationClient @Inject constructor(
         val sslContext = SSLContext.getInstance("TLS")
         sslContext.init(null, arrayOf(trustManager), java.security.SecureRandom())
 
+        val hostnameVerifier = javax.net.ssl.HostnameVerifier { _, session ->
+            try {
+                val certs = session.peerCertificates
+                if (certs.isNullOrEmpty()) return@HostnameVerifier false
+                val serverCert = certs[0] as? X509Certificate ?: return@HostnameVerifier false
+                val sha256Digest = MessageDigest.getInstance("SHA-256").digest(serverCert.encoded)
+                val fingerprint = "SHA256:" + sha256Digest.joinToString(":") { "%02X".format(it) }
+                fingerprint.uppercase() == pinnedCertFingerprint.trim().uppercase()
+            } catch (_: Exception) {
+                false
+            }
+        }
+
         return OkHttpClient.Builder()
             .sslSocketFactory(sslContext.socketFactory, trustManager)
-            .hostnameVerifier { _, _ -> true }
+            .hostnameVerifier(hostnameVerifier)
             .build()
     }
 
@@ -75,10 +89,10 @@ open class FollowerReauthorizationClient @Inject constructor(
         }
 
         val config = followerPairingStore.getPairingConfig()
-            ?: return@withContext ReauthorizationClientResult.Failure("NOT_PAIRED", "No local follower pairing configuration found")
+        val localDeviceId = config?.deviceId ?: identityStore?.getOrCreateDeviceId()
+            ?: return@withContext ReauthorizationClientResult.Failure("NO_DEVICE_ID", "No local follower device ID found")
 
-        val localDeviceId = config.deviceId
-        val keyAlias = config.keyAlias
+        val keyAlias = config?.keyAlias ?: "pantry_follower_key"
 
         if (invitation.targetDeviceId != null && invitation.targetDeviceId != localDeviceId) {
             return@withContext ReauthorizationClientResult.Failure("TARGET_DEVICE_MISMATCH", "Re-authorization invitation is bound to a different follower device ID")

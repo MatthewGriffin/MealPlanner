@@ -8,6 +8,7 @@ import com.example.chatgpt_mealplanner.core.sync.engine.MainCanonicalSyncEngine
 import com.example.chatgpt_mealplanner.sync.contract.BootstrapResponseDto
 import com.example.chatgpt_mealplanner.sync.contract.InventoryItemSyncDto
 import com.example.chatgpt_mealplanner.sync.contract.SYNC_PROTOCOL_VERSION
+import com.example.chatgpt_mealplanner.sync.contract.SyncContractValidation
 import com.example.chatgpt_mealplanner.sync.contract.SyncFeedItemDto
 import com.example.chatgpt_mealplanner.sync.contract.SyncFeedResponseDto
 import com.example.chatgpt_mealplanner.sync.contract.SyncOperationDto
@@ -17,12 +18,13 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.call
 import io.ktor.server.application.install
-import io.ktor.server.cio.CIO
-import io.ktor.server.cio.CIOApplicationEngine
 import io.ktor.server.engine.applicationEngineEnvironment
 import io.ktor.server.engine.connector
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.engine.sslConnector
+import io.ktor.server.netty.Netty
+import io.ktor.server.netty.NettyApplicationEngine
+import io.netty.channel.nio.NioEventLoopGroup
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.request.receiveText
 import io.ktor.server.response.respond
@@ -43,6 +45,13 @@ import com.example.chatgpt_mealplanner.sync.contract.EnrollmentRequestDto
 
 class SnapshotTooLargeException(message: String) : RuntimeException(message)
 
+enum class PantryServerState {
+    STOPPED,
+    STARTING,
+    RUNNING,
+    FAILED
+}
+
 @Singleton
 open class PantrySyncServer @Inject constructor(
     private val identityManager: HouseholdIdentityManager,
@@ -53,7 +62,23 @@ open class PantrySyncServer @Inject constructor(
     private val transactionRunner: DatabaseTransactionRunner? = null,
     private val invitationManager: PantryEnrollmentInvitationManager? = null
 ) {
-    private var engine: CIOApplicationEngine? = null
+    private var engine: io.ktor.server.engine.ApplicationEngine? = null
+    private var serverState = PantryServerState.STOPPED
+
+    open fun getServerState(): PantryServerState = serverState
+    open fun isRunning(): Boolean = serverState == PantryServerState.RUNNING
+
+    open fun markRunning() {
+        if (serverState == PantryServerState.STARTING) {
+            serverState = PantryServerState.RUNNING
+        }
+    }
+
+    open fun markFailed() {
+        try { engine?.stop(1000, 2000) } catch (_: Throwable) {}
+        engine = null
+        serverState = PantryServerState.FAILED
+    }
     private val json = Json { ignoreUnknownKeys = true }
 
     var onBeforeSnapshotReadHook: (() -> Unit)? = null
@@ -115,30 +140,36 @@ open class PantrySyncServer @Inject constructor(
 
     @Synchronized
     open fun start(keyStore: KeyStore, password: CharArray, port: Int = 8443) {
-        if (engine != null) return
+        if (serverState == PantryServerState.RUNNING || serverState == PantryServerState.STARTING) return
 
-        val env = applicationEngineEnvironment {
-            connector {
-                this.port = port
-            }
-            sslConnector(
-                keyStore = keyStore,
-                keyAlias = "pantry_tls_key",
-                keyStorePassword = { password },
-                privateKeyPassword = { password }
-            ) {
-                this.port = port
-            }
+        if (engine != null) {
+            try { engine?.stop(0, 0) } catch (_: Throwable) {}
+            engine = null
+        }
 
-            module {
-                install(ContentNegotiation) {
-                    json(Json {
-                        ignoreUnknownKeys = true
-                        prettyPrint = true
-                    })
+        serverState = PantryServerState.STARTING
+
+        try {
+            var env: io.ktor.server.engine.ApplicationEngineEnvironment? = null
+            env = applicationEngineEnvironment {
+                sslConnector(
+                    keyStore = keyStore,
+                    keyAlias = "pantry_tls_key",
+                    keyStorePassword = { password },
+                    privateKeyPassword = { password }
+                ) {
+                    this.port = port
                 }
 
-                routing {
+                    module {
+                        install(ContentNegotiation) {
+                            json(Json {
+                                ignoreUnknownKeys = true
+                                prettyPrint = true
+                            })
+                        }
+
+                        routing {
                     get("/sync/v1/health") {
                         call.respond(buildJsonObject {
                             put("service", "pantry-household-sync")
@@ -321,10 +352,14 @@ open class PantrySyncServer @Inject constructor(
                     }
 
                     get("/sync/v1/feed") {
+                        val reqStartNanos = System.nanoTime()
                         val token = call.request.headers["X-Pantry-Session-Token"]
                         val authenticatedDeviceId = sessionManager.validateSessionToken(token)
 
                         if (authenticatedDeviceId == null) {
+                            val durMs = (System.nanoTime() - reqStartNanos) / 1_000_000
+                            println("[SYNC_MAIN] feed request device=UNAUTHORIZED since=-1 limit=0")
+                            println("[SYNC_MAIN] feed response status=401 entries=0 latestSequence=0 hasMore=false duration_ms=$durMs")
                             call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
                                 put("error", "UNAUTHORIZED")
                             })
@@ -334,6 +369,9 @@ open class PantrySyncServer @Inject constructor(
                         val sinceSeq = call.request.queryParameters["sinceSequence"]?.toLongOrNull() ?: 0L
                         val rawLimit = call.request.queryParameters["limit"]?.toIntOrNull() ?: 100
                         val limit = rawLimit.coerceIn(1, 500)
+                        val redactedDevice = authenticatedDeviceId.take(8)
+
+                        println("[SYNC_MAIN] feed request device=$redactedDevice... since=$sinceSeq limit=$limit")
 
                         val fetchedOps = canonicalSyncDao.getFeedOperationsSince(sinceSeq, limit + 1)
                         val hasMore = fetchedOps.size > limit
@@ -405,24 +443,38 @@ open class PantrySyncServer @Inject constructor(
                             hasMore = hasMore
                         )
 
+                        val durMs = (System.nanoTime() - reqStartNanos) / 1_000_000
+                        println("[SYNC_MAIN] feed response status=200 entries=${feedItems.size} latestSequence=$latestSeq hasMore=$hasMore duration_ms=$durMs")
+
                         call.respond(responseDto)
                     }
 
                     get("/sync/v1/bootstrap") {
+                        val reqStartNanos = System.nanoTime()
                         val token = call.request.headers["X-Pantry-Session-Token"]
                         val authenticatedDeviceId = sessionManager.validateSessionToken(token)
 
                         if (authenticatedDeviceId == null) {
+                            val durMs = (System.nanoTime() - reqStartNanos) / 1_000_000
+                            println("[SYNC_MAIN] bootstrap request device=UNAUTHORIZED")
+                            println("[SYNC_MAIN] bootstrap response status=401 items=0 watermark=0 duration_ms=$durMs")
                             call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
                                 put("error", "UNAUTHORIZED")
                             })
                             return@get
                         }
 
+                        val redactedDevice = authenticatedDeviceId.take(8)
+                        println("[SYNC_MAIN] bootstrap request device=$redactedDevice...")
+
                         try {
                             val bootstrapDto = createBootstrapSnapshot()
+                            val durMs = (System.nanoTime() - reqStartNanos) / 1_000_000
+                            println("[SYNC_MAIN] bootstrap response status=200 items=${bootstrapDto.inventoryItems.size} watermark=${bootstrapDto.snapshotCanonicalSequence} duration_ms=$durMs")
                             call.respond(bootstrapDto)
                         } catch (e: SnapshotTooLargeException) {
+                            val durMs = (System.nanoTime() - reqStartNanos) / 1_000_000
+                            println("[SYNC_MAIN] bootstrap response status=413 items=0 watermark=0 duration_ms=$durMs")
                             call.respond(HttpStatusCode.PayloadTooLarge, buildJsonObject {
                                 put("error", "SNAPSHOT_TOO_LARGE")
                                 put("message", e.message ?: "Snapshot too large")
@@ -433,15 +485,117 @@ open class PantrySyncServer @Inject constructor(
             }
         }
 
-        engine = embeddedServer(CIO, env)
-        engine?.start(wait = false)
+        serverState = PantryServerState.STARTING
+        var attempts = 0
+        while (attempts < 5) {
+            try {
+                val newEngine = io.ktor.server.netty.NettyApplicationEngine(env!!) {}
+                newEngine.start(wait = false)
+                engine = newEngine
+                return
+            } catch (e: java.util.concurrent.RejectedExecutionException) {
+                attempts++
+                if (attempts >= 5) {
+                    serverState = PantryServerState.FAILED
+                    engine = null
+                    return
+                }
+                try { Thread.sleep(500L) } catch (_: Throwable) {}
+            } catch (e: Throwable) {
+                serverState = PantryServerState.FAILED
+                engine = null
+                throw e
+            }
+        }
+    } catch (e: Throwable) {
+        serverState = PantryServerState.FAILED
+        engine = null
+        throw e
+    }
     }
 
     @Synchronized
     open fun stop() {
-        engine?.stop(1000, 2000)
+        val eng = engine ?: return
+        try {
+            eng.stop(100L, 500L)
+        } catch (_: Throwable) {}
         engine = null
+        serverState = PantryServerState.STOPPED
     }
 
-    open fun isRunning(): Boolean = engine != null
+    private fun createPinnedOkHttpClient(pinnedCertFingerprint: String): okhttp3.OkHttpClient {
+        if (!SyncContractValidation.isValidSha256Fingerprint(pinnedCertFingerprint)) {
+            throw IllegalArgumentException("Missing, blank, or malformed TLS certificate fingerprint: $pinnedCertFingerprint")
+        }
+
+        val trustManager = object : javax.net.ssl.X509TrustManager {
+            override fun checkClientTrusted(chain: Array<out java.security.cert.X509Certificate>?, authType: String?) {}
+            override fun checkServerTrusted(chain: Array<out java.security.cert.X509Certificate>?, authType: String?) {
+                if (chain.isNullOrEmpty()) throw java.security.cert.CertificateException("Server certificate chain is empty")
+                val serverCert = chain[0]
+                val sha256Digest = java.security.MessageDigest.getInstance("SHA-256").digest(serverCert.encoded)
+                val fingerprint = "SHA256:" + sha256Digest.joinToString(":") { "%02X".format(it) }
+
+                val expected = pinnedCertFingerprint.trim().uppercase()
+                if (fingerprint.uppercase() != expected) {
+                    throw java.security.cert.CertificateException("TLS Certificate Fingerprint Mismatch. Expected: $expected, Actual: $fingerprint")
+                }
+            }
+            override fun getAcceptedIssuers(): Array<java.security.cert.X509Certificate> = emptyArray()
+        }
+
+        val hostnameVerifier = javax.net.ssl.HostnameVerifier { _, session ->
+            try {
+                val certs = session.peerCertificates
+                if (certs.isNullOrEmpty()) return@HostnameVerifier false
+                val serverCert = certs[0] as? java.security.cert.X509Certificate ?: return@HostnameVerifier false
+                val sha256Digest = java.security.MessageDigest.getInstance("SHA-256").digest(serverCert.encoded)
+                val fingerprint = "SHA256:" + sha256Digest.joinToString(":") { "%02X".format(it) }
+                fingerprint.uppercase() == pinnedCertFingerprint.trim().uppercase()
+            } catch (_: Exception) {
+                false
+            }
+        }
+
+        val sslContext = javax.net.ssl.SSLContext.getInstance("TLS")
+        sslContext.init(null, arrayOf(trustManager), java.security.SecureRandom())
+
+        return okhttp3.OkHttpClient.Builder()
+            .sslSocketFactory(sslContext.socketFactory, trustManager)
+            .hostnameVerifier(hostnameVerifier)
+            .build()
+    }
+
+    open suspend fun verifyHealthProbe(
+        hostIp: String,
+        port: Int,
+        expectedTlsFingerprint: String
+    ): Boolean = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        if (!SyncContractValidation.isValidSha256Fingerprint(expectedTlsFingerprint)) return@withContext false
+        val client = try {
+            createPinnedOkHttpClient(expectedTlsFingerprint)
+        } catch (e: Exception) {
+            return@withContext false
+        }
+
+        val healthUrl = "https://$hostIp:$port/sync/v1/health"
+        try {
+            val request = okhttp3.Request.Builder().url(healthUrl).get().build()
+            val response = client.newCall(request).execute()
+            val body = response.body?.string() ?: ""
+            val dto = runCatching { json.decodeFromString<HealthResponseDto>(body) }.getOrNull()
+            val isOk = response.isSuccessful && dto != null && dto.status == "ok" && dto.service == "pantry-household-sync"
+            if (isOk) {
+                markRunning()
+                true
+            } else {
+                markFailed()
+                false
+            }
+        } catch (e: Exception) {
+            markFailed()
+            false
+        }
+    }
 }

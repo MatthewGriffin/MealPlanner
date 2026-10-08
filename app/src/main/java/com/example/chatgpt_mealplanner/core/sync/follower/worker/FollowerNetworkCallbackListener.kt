@@ -32,7 +32,7 @@ open class FollowerNetworkCallbackListener @Inject constructor(
                     android.util.Log.i("AI_MEALPLANNER", "[SYNC_NETWORK] Network onAvailable -> Enqueueing sync work")
                 } catch (_: Throwable) {}
 
-                syncScheduler.scheduleSyncWork(context, "NETWORK_AVAILABLE")
+                syncScheduler.scheduleSyncWorkNonBlocking(context, "NETWORK_AVAILABLE")
             }
         }
 

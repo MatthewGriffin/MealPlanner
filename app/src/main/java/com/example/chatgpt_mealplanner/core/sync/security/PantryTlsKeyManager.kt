@@ -56,7 +56,7 @@ open class PantryTlsKeyManager @Inject constructor(
     }
 
     open fun getOrCreateMainTlsKeyStore(householdId: String, customFilesDir: File? = null): KeyStore {
-        val targetDir = customFilesDir ?: context?.filesDir ?: throw IllegalStateException("Context or customFilesDir must be provided")
+        val targetDir = customFilesDir ?: context?.filesDir ?: File(System.getProperty("java.io.tmpdir") ?: "/tmp")
         val ksFile = File(targetDir, fileName)
         val password = getOrCreateEncryptedPassword()
 

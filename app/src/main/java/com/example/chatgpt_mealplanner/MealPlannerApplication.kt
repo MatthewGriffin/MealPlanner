@@ -2,12 +2,24 @@ package com.example.chatgpt_mealplanner
 
 import android.app.Application
 import android.util.Log
+import androidx.hilt.work.HiltWorkerFactory
+import androidx.work.Configuration
 import dagger.hilt.android.HiltAndroidApp
+import javax.inject.Inject
 
-const val PANTRY_DEBUG_BUILD_ID = "SYNC_PHASE3D_PULL_FEED_V2"
+const val PANTRY_DEBUG_BUILD_ID = "SYNC_PHASE4G_SYNC_NOW_V1_1"
 
 @HiltAndroidApp
-class MealPlannerApplication : Application() {
+class MealPlannerApplication : Application(), Configuration.Provider {
+
+    @Inject
+    lateinit var workerFactory: HiltWorkerFactory
+
+    override val workManagerConfiguration: Configuration
+        get() = Configuration.Builder()
+            .setWorkerFactory(workerFactory)
+            .build()
+
     override fun onCreate() {
         super.onCreate()
         val buildLog = """

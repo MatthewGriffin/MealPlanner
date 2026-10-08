@@ -37,7 +37,7 @@ class AppStartupManager @Inject constructor(
             val meta = dao.getSyncMetadata()
             val hasPending = dao.getPendingOperationsInOrder().isNotEmpty()
             if (meta?.bootstrapCompleted != true || hasPending) {
-                followerSyncScheduler.scheduleSyncWork(context, "APP_START")
+                followerSyncScheduler.scheduleSyncWorkNonBlocking(context, "APP_START")
             }
         }
 

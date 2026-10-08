@@ -22,6 +22,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import javax.inject.Inject
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -69,9 +70,14 @@ enum class Screen(val label: String) {
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    @Inject
+    lateinit var hostController: com.example.chatgpt_mealplanner.core.sync.server.PantrySyncHostController
+
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        hostController.ensureHostStarted(this)
         enableEdgeToEdge()
         setContent {
             ChatGPT_MealPlannerTheme {
@@ -239,7 +245,9 @@ class MainActivity : ComponentActivity() {
                                 onRequestRevocation = householdViewModel::requestRevocationConfirmation,
                                 onConfirmRevocation = householdViewModel::confirmRevocation,
                                 onCancelRevocation = householdViewModel::cancelRevocation,
+                                onSyncNowClicked = householdViewModel::triggerSyncNow,
                                 onReauthorizeDevice = householdViewModel::createReauthorizationInvitation,
+                                onDismissReauthorizationDialog = householdViewModel::dismissReauthorizationDialog,
                                 onResolveConflictKeepMain = householdViewModel::resolveConflictKeepMain,
                                 onResolveConflictApplyFollower = householdViewModel::resolveConflictApplyFollower,
                                 onApprovePendingDiscard = householdViewModel::approvePendingDiscard,

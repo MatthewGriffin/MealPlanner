@@ -35,6 +35,14 @@ sealed interface AuthTokenResult {
     object Revoked : AuthTokenResult
 }
 
+enum class NetworkResultStatus {
+    SUCCESS,
+    UNAUTHORIZED,
+    SERVER_ERROR,
+    TRANSPORT_ERROR,
+    REVOKED
+}
+
 data class TestClientSyncResult(
     val success: Boolean,
     val authenticated: Boolean,
@@ -43,21 +51,24 @@ data class TestClientSyncResult(
 )
 
 data class TestClientOperationResult(
-    val success: Boolean,
+    val success: Boolean = true,
     val resultDto: SyncOperationResultDto? = null,
-    val error: String? = null
+    val error: String? = null,
+    val status: NetworkResultStatus = if (success) NetworkResultStatus.SUCCESS else if (error == "FOLLOWER_REVOKED") NetworkResultStatus.REVOKED else if (error?.contains("401") == true || error?.contains("UNAUTHORIZED") == true || error?.contains("EXPIRED") == true) NetworkResultStatus.UNAUTHORIZED else NetworkResultStatus.SERVER_ERROR
 )
 
 data class TestClientFeedResult(
-    val success: Boolean,
+    val success: Boolean = true,
     val feedResponse: SyncFeedResponseDto? = null,
-    val error: String? = null
+    val error: String? = null,
+    val status: NetworkResultStatus = if (success) NetworkResultStatus.SUCCESS else if (error == "FOLLOWER_REVOKED") NetworkResultStatus.REVOKED else if (error?.contains("401") == true || error?.contains("UNAUTHORIZED") == true || error?.contains("EXPIRED") == true) NetworkResultStatus.UNAUTHORIZED else NetworkResultStatus.SERVER_ERROR
 )
 
 data class TestClientBootstrapResult(
-    val success: Boolean,
+    val success: Boolean = true,
     val bootstrapResponse: BootstrapResponseDto? = null,
-    val error: String? = null
+    val error: String? = null,
+    val status: NetworkResultStatus = if (success) NetworkResultStatus.SUCCESS else if (error == "FOLLOWER_REVOKED") NetworkResultStatus.REVOKED else if (error?.contains("401") == true || error?.contains("UNAUTHORIZED") == true || error?.contains("EXPIRED") == true) NetworkResultStatus.UNAUTHORIZED else NetworkResultStatus.SERVER_ERROR
 )
 
 @Singleton
@@ -186,15 +197,25 @@ open class PantrySyncTestClient @Inject constructor(
             val response = client.newCall(request).execute()
             val responseBodyText = response.body?.string() ?: "{}"
 
-            val resultDto = runCatching { json.decodeFromString<SyncOperationResultDto>(responseBodyText) }.getOrNull()
-
-            if (response.isSuccessful && resultDto != null) {
-                TestClientOperationResult(true, resultDto, null)
-            } else {
-                TestClientOperationResult(false, resultDto, "HTTP ${response.code}: $responseBodyText")
+            if (!response.isSuccessful) {
+                if (FollowerErrorClassifier.isExplicitRevocation(responseBodyText)) {
+                    followerPairingStore?.markRevoked()
+                    return@withContext TestClientOperationResult(status = NetworkResultStatus.REVOKED, error = "FOLLOWER_REVOKED")
+                }
+                val status = if (response.code in listOf(401, 403)) NetworkResultStatus.UNAUTHORIZED else NetworkResultStatus.SERVER_ERROR
+                return@withContext TestClientOperationResult(status = status, error = "HTTP ${response.code}: $responseBodyText")
             }
+
+            val resultDto = runCatching { json.decodeFromString<SyncOperationResultDto>(responseBodyText) }.getOrNull()
+            if (resultDto != null) {
+                TestClientOperationResult(status = NetworkResultStatus.SUCCESS, resultDto = resultDto)
+            } else {
+                TestClientOperationResult(status = NetworkResultStatus.SERVER_ERROR, error = "Malformed response JSON")
+            }
+        } catch (e: java.io.IOException) {
+            TestClientOperationResult(status = NetworkResultStatus.TRANSPORT_ERROR, error = e.message ?: "Network transport error")
         } catch (e: Exception) {
-            TestClientOperationResult(false, null, e.message ?: "Network error")
+            TestClientOperationResult(status = NetworkResultStatus.SERVER_ERROR, error = e.message ?: "Execution error")
         }
     }
 
@@ -219,15 +240,25 @@ open class PantrySyncTestClient @Inject constructor(
             val response = client.newCall(request).execute()
             val responseBodyText = response.body?.string() ?: "{}"
 
-            val feedDto = runCatching { json.decodeFromString<SyncFeedResponseDto>(responseBodyText) }.getOrNull()
-
-            if (response.isSuccessful && feedDto != null) {
-                TestClientFeedResult(true, feedDto, null)
-            } else {
-                TestClientFeedResult(false, feedDto, "HTTP ${response.code}: $responseBodyText")
+            if (!response.isSuccessful) {
+                if (FollowerErrorClassifier.isExplicitRevocation(responseBodyText)) {
+                    followerPairingStore?.markRevoked()
+                    return@withContext TestClientFeedResult(status = NetworkResultStatus.REVOKED, error = "FOLLOWER_REVOKED")
+                }
+                val status = if (response.code in listOf(401, 403)) NetworkResultStatus.UNAUTHORIZED else NetworkResultStatus.SERVER_ERROR
+                return@withContext TestClientFeedResult(status = status, error = "HTTP ${response.code}: $responseBodyText")
             }
+
+            val feedDto = runCatching { json.decodeFromString<SyncFeedResponseDto>(responseBodyText) }.getOrNull()
+            if (feedDto != null) {
+                TestClientFeedResult(status = NetworkResultStatus.SUCCESS, feedResponse = feedDto)
+            } else {
+                TestClientFeedResult(status = NetworkResultStatus.SERVER_ERROR, error = "Malformed response JSON")
+            }
+        } catch (e: java.io.IOException) {
+            TestClientFeedResult(status = NetworkResultStatus.TRANSPORT_ERROR, error = e.message ?: "Network transport error")
         } catch (e: Exception) {
-            TestClientFeedResult(false, null, e.message ?: "Network error")
+            TestClientFeedResult(status = NetworkResultStatus.SERVER_ERROR, error = e.message ?: "Execution error")
         }
     }
 
@@ -240,7 +271,7 @@ open class PantrySyncTestClient @Inject constructor(
         val client = try {
             createPinnedOkHttpClient(pinnedCertFingerprint)
         } catch (e: Exception) {
-            return@withContext TestClientBootstrapResult(false, null, "TLS_ERROR")
+            return@withContext TestClientBootstrapResult(status = NetworkResultStatus.TRANSPORT_ERROR, error = "TLS_ERROR")
         }
 
         val baseUrl = "https://$hostIp:$port"
@@ -253,29 +284,29 @@ open class PantrySyncTestClient @Inject constructor(
         val response = try {
             client.newCall(request).execute()
         } catch (e: java.io.IOException) {
-            return@withContext TestClientBootstrapResult(false, null, "NETWORK_ERROR")
+            return@withContext TestClientBootstrapResult(status = NetworkResultStatus.TRANSPORT_ERROR, error = "NETWORK_ERROR")
         } catch (e: Exception) {
-            return@withContext TestClientBootstrapResult(false, null, "SERVER_ERROR")
+            return@withContext TestClientBootstrapResult(status = NetworkResultStatus.SERVER_ERROR, error = "SERVER_ERROR")
         }
 
         val responseBodyText = response.body?.string() ?: "{}"
         if (!response.isSuccessful) {
             if (FollowerErrorClassifier.isExplicitRevocation(responseBodyText)) {
                 followerPairingStore?.markRevoked()
-                return@withContext TestClientBootstrapResult(false, null, "FOLLOWER_REVOKED")
+                return@withContext TestClientBootstrapResult(status = NetworkResultStatus.REVOKED, error = "FOLLOWER_REVOKED")
             }
             return@withContext if (response.code in listOf(401, 403)) {
-                TestClientBootstrapResult(false, null, "UNAUTHORIZED")
+                TestClientBootstrapResult(status = NetworkResultStatus.UNAUTHORIZED, error = "UNAUTHORIZED")
             } else {
-                TestClientBootstrapResult(false, null, "SERVER_ERROR")
+                TestClientBootstrapResult(status = NetworkResultStatus.SERVER_ERROR, error = "SERVER_ERROR")
             }
         }
 
         val bootstrapDto = runCatching { json.decodeFromString<BootstrapResponseDto>(responseBodyText) }.getOrNull()
         if (bootstrapDto != null) {
-            TestClientBootstrapResult(true, bootstrapDto, null)
+            TestClientBootstrapResult(status = NetworkResultStatus.SUCCESS, bootstrapResponse = bootstrapDto)
         } else {
-            TestClientBootstrapResult(false, null, "SERVER_ERROR")
+            TestClientBootstrapResult(status = NetworkResultStatus.SERVER_ERROR, error = "SERVER_ERROR")
         }
     }
 

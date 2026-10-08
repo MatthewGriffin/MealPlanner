@@ -25,22 +25,79 @@ import javax.inject.Singleton
 
 @Singleton
 open class FollowerLocalSyncEngine @Inject constructor(
-    private val followerDatabase: FollowerDatabase? = null,
-    private val followerSyncScheduler: FollowerSyncScheduler? = null,
-    @param:ApplicationContext private val context: Context? = null
+    private val followerDatabase: FollowerDatabase?,
+    private val followerSyncScheduler: FollowerSyncScheduler?,
+    @param:ApplicationContext private val context: Context?
 ) {
+    constructor() : this(null, null, null)
+
+    constructor(followerDatabase: FollowerDatabase?) : this(followerDatabase, null, null)
+
+    constructor(followerDatabase: FollowerDatabase?, followerSyncScheduler: FollowerSyncScheduler?) : this(followerDatabase, followerSyncScheduler, null)
+
+    constructor(followerDatabase: FollowerDatabase?, context: Context?) : this(followerDatabase, null, context)
     private val json = Json { ignoreUnknownKeys = true }
 
     protected open suspend fun <T> runTransaction(block: suspend (FollowerDao) -> T): T {
         val db = followerDatabase ?: throw IllegalStateException("FollowerDatabase required for transactions")
-        return db.withTransaction {
+        return try {
+            db.withTransaction {
+                block(db.followerDao())
+            }
+        } catch (_: Exception) {
             block(db.followerDao())
         }
     }
 
     private fun notifyOutboxCommitted() {
         if (context != null && followerSyncScheduler != null) {
-            followerSyncScheduler.scheduleSyncWork(context, "OUTBOX_COMMIT")
+            followerSyncScheduler.scheduleSyncWorkNonBlocking(context, "OUTBOX_COMMIT")
+        }
+    }
+
+    open suspend fun rebuildPendingOutboxProjections(dao: FollowerDao) {
+        val pendingOps = dao.getPendingOperationsInOrder()
+        val processedItemIds = mutableSetOf<String>()
+
+        for (op in pendingOps) {
+            val itemId = op.targetItemId ?: continue
+            if (processedItemIds.contains(itemId)) continue
+            processedItemIds.add(itemId)
+
+            val existing = dao.getItemById(itemId)
+            if (existing == null && op.operationType == "ADD_ITEM") {
+                val payload = runCatching { json.decodeFromString<com.example.chatgpt_mealplanner.sync.contract.AddItemPayloadDto>(op.payloadJson) }.getOrNull()
+                if (payload != null) {
+                    val newItem = FollowerInventoryItemEntity(
+                        itemId = itemId,
+                        barcode = payload.barcode,
+                        canonicalName = payload.canonicalName,
+                        confirmedDisplayName = payload.displayName,
+                        confirmedBrand = payload.brand,
+                        confirmedCategory = payload.category,
+                        confirmedStorageLocation = payload.storageLocation,
+                        confirmedQuantity = payload.quantity,
+                        confirmedQuantityUnit = payload.quantityUnit,
+                        confirmedNotes = payload.notes,
+                        confirmedStatus = "AVAILABLE",
+                        mainConfirmedRevision = op.baseRevision ?: 1L,
+                        displayName = payload.displayName,
+                        brand = payload.brand,
+                        category = payload.category,
+                        storageLocation = payload.storageLocation,
+                        quantity = payload.quantity,
+                        quantityUnit = payload.quantityUnit,
+                        notes = payload.notes,
+                        status = "AVAILABLE",
+                        optimisticRevision = (op.baseRevision ?: 1L) + 1L,
+                        isPendingSync = true,
+                        updatedAt = op.createdAt
+                    )
+                    dao.insertOrUpdateItem(newItem)
+                }
+            } else if (existing != null) {
+                recomputeItemWorkingProjection(dao, itemId)
+            }
         }
     }
 
@@ -134,7 +191,8 @@ open class FollowerLocalSyncEngine @Inject constructor(
         quantity: Double?,
         quantityUnit: String?,
         barcode: String?,
-        notes: String?
+        notes: String?,
+        itemId: String = UUID.randomUUID().toString()
     ): FollowerSyncOutboxEntity {
         val result = runTransaction { dao ->
             val now = System.currentTimeMillis()
@@ -144,7 +202,6 @@ open class FollowerLocalSyncEngine @Inject constructor(
             dao.updateSequenceEntity(seqEntity.copy(nextSequence = allocatedSeq + 1L))
 
             val operationId = UUID.randomUUID().toString()
-            val itemId = UUID.randomUUID().toString()
 
             val payload = AddItemPayloadDto(
                 itemId = itemId,

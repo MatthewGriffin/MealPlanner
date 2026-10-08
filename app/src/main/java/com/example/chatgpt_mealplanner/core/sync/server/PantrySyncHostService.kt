@@ -16,8 +16,16 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+
+enum class HostServiceState {
+    STOPPED,
+    STARTING,
+    READY,
+    FAILED
+}
 
 @AndroidEntryPoint
 class PantrySyncHostService : Service() {
@@ -47,23 +55,38 @@ class PantrySyncHostService : Service() {
             return START_NOT_STICKY
         }
 
-        startForeground(notificationId, createNotification())
+        try {
+            startForeground(notificationId, createNotification())
+        } catch (e: Throwable) {
+            println("[HOST_SERVICE] startForeground failed: ${e.message}")
+            try { android.util.Log.e("AI_MEALPLANNER", "[HOST_SERVICE] startForeground failed", e) } catch (_: Throwable) {}
+            _serviceState.value = HostServiceState.FAILED
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
+        _serviceState.value = HostServiceState.STARTING
 
         serviceScope.launch {
-            if (!pantrySyncServer.isRunning()) {
-                val household = identityManager.getOrCreateHouseholdIdentity()
-                val p12Store = tlsKeyManager.getOrCreateMainTlsKeyStore(household.householdId)
-                val certFingerprint = tlsKeyManager.getCertificateFingerprint(p12Store)
-                val password = tlsKeyManager.getTlsPassword()
+            try {
+                if (!pantrySyncServer.isRunning()) {
+                    val household = identityManager.getOrCreateHouseholdIdentity()
+                    val p12Store = tlsKeyManager.getOrCreateMainTlsKeyStore(household.householdId)
+                    val certFingerprint = tlsKeyManager.getCertificateFingerprint(p12Store)
+                    val password = tlsKeyManager.getTlsPassword()
 
-                println("[TLS_IDENTITY] buildId=SYNC_PHASE2B_HARDENED_V2 householdId=${household.householdId} certFingerprint=$certFingerprint")
-                try { android.util.Log.i("AI_MEALPLANNER", "[TLS_IDENTITY] buildId=SYNC_PHASE2B_HARDENED_V2 householdId=${household.householdId} certFingerprint=$certFingerprint") } catch (_: Throwable) {}
+                    println("[TLS_IDENTITY] buildId=SYNC_PHASE2B_HARDENED_V2 householdId=${household.householdId} certFingerprint=$certFingerprint")
+                    try { android.util.Log.i("AI_MEALPLANNER", "[TLS_IDENTITY] buildId=SYNC_PHASE2B_HARDENED_V2 householdId=${household.householdId} certFingerprint=$certFingerprint") } catch (_: Throwable) {}
 
-                pantrySyncServer.start(
-                    keyStore = p12Store,
-                    password = password,
-                    port = 8443
-                )
+                    pantrySyncServer.start(
+                        keyStore = p12Store,
+                        password = password,
+                        port = 8443
+                    )
+                }
+                _serviceState.value = HostServiceState.READY
+            } catch (e: Exception) {
+                _serviceState.value = HostServiceState.FAILED
             }
         }
 
@@ -81,6 +104,7 @@ class PantrySyncHostService : Service() {
     private fun stopServerAndService() {
         pantrySyncServer.stop()
         stopForeground(STOP_FOREGROUND_REMOVE)
+        _serviceState.value = HostServiceState.STOPPED
         stopSelf()
     }
 
@@ -111,5 +135,24 @@ class PantrySyncHostService : Service() {
     companion object {
         const val ACTION_START = "com.example.chatgpt_mealplanner.sync.START_HOST"
         const val ACTION_STOP = "com.example.chatgpt_mealplanner.sync.STOP_HOST"
+
+        private val _serviceState = kotlinx.coroutines.flow.MutableStateFlow(HostServiceState.STOPPED)
+        val serviceState: kotlinx.coroutines.flow.StateFlow<HostServiceState> = _serviceState.asStateFlow()
+
+        fun resetFailedState() {
+            if (_serviceState.value == HostServiceState.FAILED) {
+                _serviceState.value = HostServiceState.STOPPED
+            }
+        }
+
+        fun resetStateForTest() {
+            _serviceState.value = HostServiceState.STOPPED
+        }
+
+        fun setStartingForTest() {
+            if (_serviceState.value == HostServiceState.STOPPED) {
+                _serviceState.value = HostServiceState.STARTING
+            }
+        }
     }
 }

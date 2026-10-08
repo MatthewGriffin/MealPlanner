@@ -70,6 +70,33 @@ open class FollowerSyncStatusRepository @Inject constructor(
     private val _isRevoked = MutableStateFlow(false)
     val isRevoked = _isRevoked.asStateFlow()
 
+    private val _isWorkerRunning = MutableStateFlow(false)
+    val isWorkerRunning = _isWorkerRunning.asStateFlow()
+    private val statusLock = Any()
+    private var activeStatusOwnerToken = 0L
+
+    open fun reportWorkerStarted(ownerToken: Long = 0L) {
+        synchronized(statusLock) {
+            if (ownerToken != 0L) {
+                activeStatusOwnerToken = ownerToken
+            }
+            _isWorkerRunning.value = true
+        }
+    }
+
+    open fun reportWorkerFinished(ownerToken: Long = 0L) {
+        synchronized(statusLock) {
+            if (ownerToken != 0L && activeStatusOwnerToken == ownerToken) {
+                _isWorkerRunning.value = false
+                activeStatusOwnerToken = 0L
+            } else if (ownerToken == 0L && activeStatusOwnerToken == 0L) {
+                _isWorkerRunning.value = false
+            } else {
+                println("[SYNC_STATUS] Stale/unowned worker finished call (token=$ownerToken, active=$activeStatusOwnerToken); preserving active Syncing status.")
+            }
+        }
+    }
+
     open fun reportExplicitRevocation() {
         _isRevoked.value = true
         followerPairingStore.markRevoked()
@@ -150,6 +177,8 @@ open class FollowerSyncStatusRepository @Inject constructor(
         // 6. PENDING_CHANGES (pendingUploadCount > 0)
         // 7. NO_PENDING_UPLOADS (Idle)
 
+        val isCurrentlyRunning = _isWorkerRunning.value || isWorkerRunning
+
         val state = when {
             errCategory == FollowerSyncErrorCategory.AUTHENTICATION_REQUIRED -> {
                 FollowerSyncState.AUTHENTICATION_REQUIRED
@@ -157,7 +186,7 @@ open class FollowerSyncStatusRepository @Inject constructor(
             errCategory == FollowerSyncErrorCategory.TRANSIENT_NETWORK_ERROR || errCategory == FollowerSyncErrorCategory.GENERIC_SYNC_ERROR -> {
                 FollowerSyncState.SYNC_ERROR
             }
-            isWorkerRunning -> {
+            isCurrentlyRunning -> {
                 FollowerSyncState.SYNCING
             }
             pendingUploadCount > 0 -> {

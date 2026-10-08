@@ -34,6 +34,12 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.runtime.remember
+import com.example.chatgpt_mealplanner.core.sync.enrollment.QrCodeGenerator
+
 @Composable
 fun HouseholdScreen(
     uiState: HouseholdUiState,
@@ -42,7 +48,9 @@ fun HouseholdScreen(
     onRequestRevocation: (PairedDeviceEntity) -> Unit,
     onConfirmRevocation: () -> Unit,
     onCancelRevocation: () -> Unit,
+    onSyncNowClicked: () -> Unit = {},
     onReauthorizeDevice: (String) -> Unit = {},
+    onDismissReauthorizationDialog: () -> Unit = {},
     onResolveConflictKeepMain: (String) -> Unit = {},
     onResolveConflictApplyFollower: (String) -> Unit = {},
     onApprovePendingDiscard: (String) -> Unit = {},
@@ -70,6 +78,40 @@ fun HouseholdScreen(
             dismissButton = {
                 TextButton(onClick = onCancelRevocation) {
                     Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (uiState.activeInvitationPayloadJson != null) {
+        val jsonStr = uiState.activeInvitationPayloadJson
+        val qrBitmap = remember(jsonStr) {
+            runCatching {
+                QrCodeGenerator.generateQrBitmap(jsonStr, 512)
+            }.getOrNull()
+        }
+        AlertDialog(
+            onDismissRequest = onDismissReauthorizationDialog,
+            title = { Text("Re-authorization QR Code") },
+            text = {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        "Scan this QR code on the revoked follower device to re-authorize access.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    if (qrBitmap != null) {
+                        Image(
+                            bitmap = qrBitmap.asImageBitmap(),
+                            contentDescription = "Re-authorization QR Code",
+                            modifier = Modifier.size(240.dp)
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = onDismissReauthorizationDialog) {
+                    Text("Done")
                 }
             }
         )
@@ -107,40 +149,55 @@ fun HouseholdScreen(
                         fontWeight = FontWeight.Bold
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                    val household = uiState.householdIdentity
-                    if (household != null) {
-                        Text("Name: ${household.householdName}")
-                        Text("Household ID: ${household.householdId}")
-                        Text("This Device: Main / Authoritative Device (${household.mainDeviceId.take(8)}...)")
-                    }
-
-                    if (uiState.isFollowerPaired) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "Paired as Follower with Host: ${uiState.hostIp}",
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.Bold
-                        )
+                    if (uiState.appRole == com.example.chatgpt_mealplanner.core.sync.AppRole.FOLLOWER) {
+                        Text("Role: Follower Device", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        Text("Household ID: ${uiState.pairedHouseholdId ?: "Paired Household"}")
+                        if (!uiState.pairedMainDeviceId.isNullOrBlank()) {
+                            Text("Main Device ID: (${uiState.pairedMainDeviceId.take(8)}...)")
+                        }
+                        Text("Host IP: ${uiState.hostIp ?: "Unknown"}")
+                    } else {
+                        val household = uiState.householdIdentity
+                        if (household != null) {
+                            Text("Name: ${household.householdName}")
+                            Text("Household ID: ${household.householdId}")
+                            Text("This Device: Main / Authoritative Device (${household.mainDeviceId.take(8)}...)")
+                        }
                     }
                 }
             }
 
-            if (uiState.statusMessage != null) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = uiState.statusMessage,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            if (uiState.errorMessage != null) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = uiState.errorMessage,
-                    color = MaterialTheme.colorScheme.error,
-                    fontWeight = FontWeight.Bold
-                )
+            if (uiState.appRole == com.example.chatgpt_mealplanner.core.sync.AppRole.FOLLOWER) {
+                Spacer(modifier = Modifier.height(16.dp))
+                Card(modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Sync Section" }) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = "Sync",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        val isErrorState = uiState.isAuthError || uiState.errorMessage != null || uiState.followerSyncStatus?.state == com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncState.SYNC_ERROR
+                        Text(
+                            text = "Status: ${uiState.truthfulStatusText}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (isErrorState) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                        )
+                        if (uiState.lastSuccessfulSyncFormatted != null) {
+                            Text(
+                                text = "Last successful sync: ${uiState.lastSuccessfulSyncFormatted}",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Button(
+                            onClick = onSyncNowClicked,
+                            enabled = !uiState.isSyncing
+                        ) {
+                            Text(if (uiState.isSyncing) "Syncing…" else "Sync now")
+                        }
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(24.dp))

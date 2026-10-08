@@ -21,18 +21,25 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import javax.inject.Inject
 
+import android.content.Context
+import dagger.hilt.android.qualifiers.ApplicationContext
+import com.example.chatgpt_mealplanner.core.sync.server.PantrySyncHostController
+
 data class PairDeviceUiState(
     val invitationPayload: QrInvitationPayloadDto? = null,
     val qrBitmap: Bitmap? = null,
     val remainingSeconds: Int = 300,
-    val isExpired: Boolean = false
+    val isExpired: Boolean = false,
+    val errorMessage: String? = null
 )
 
 @HiltViewModel
 class PairDeviceViewModel @Inject constructor(
     private val identityManager: HouseholdIdentityManager,
     private val tlsKeyManager: PantryTlsKeyManager,
-    private val invitationManager: PantryEnrollmentInvitationManager
+    private val invitationManager: PantryEnrollmentInvitationManager,
+    private val hostController: PantrySyncHostController? = null,
+    @ApplicationContext private val appContext: Context? = null
 ) : ViewModel() {
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -48,10 +55,41 @@ class PairDeviceViewModel @Inject constructor(
     fun generateInvitation() {
         countdownJob?.cancel()
         viewModelScope.launch {
+            if (hostController != null && !hostController.isEligibleToHost()) {
+                _uiState.update {
+                    it.copy(
+                        invitationPayload = null,
+                        qrBitmap = null,
+                        errorMessage = "Follower installation cannot generate QR invitations"
+                    )
+                }
+                return@launch
+            }
+
             val household = identityManager.getOrCreateHouseholdIdentity()
             val p12Store = tlsKeyManager.getOrCreateMainTlsKeyStore(household.householdId)
             val certFingerprint = tlsKeyManager.getCertificateFingerprint(p12Store)
             val hostIp = NetworkIpDiscovery.getLocalIpAddress()
+
+            val ctx = appContext
+            if (ctx != null && hostController != null) {
+                val isReady = hostController.awaitHttpsHealthReadiness(
+                    context = ctx,
+                    hostIp = hostIp,
+                    port = 8443,
+                    expectedTlsFingerprint = certFingerprint
+                )
+                if (!isReady) {
+                    _uiState.update {
+                        it.copy(
+                            invitationPayload = null,
+                            qrBitmap = null,
+                            errorMessage = "Household sync host couldn't start. Please try again."
+                        )
+                    }
+                    return@launch
+                }
+            }
 
             val invitation = invitationManager.createInvitation(
                 householdId = household.householdId,
@@ -70,7 +108,8 @@ class PairDeviceViewModel @Inject constructor(
                     invitationPayload = invitation,
                     qrBitmap = bitmap,
                     remainingSeconds = 300,
-                    isExpired = false
+                    isExpired = false,
+                    errorMessage = null
                 )
             }
 

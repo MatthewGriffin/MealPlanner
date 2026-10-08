@@ -36,8 +36,18 @@ open class FollowerIdentityStore @Inject constructor(
             val verifiedId = prefs.getString("KEY_FOLLOWER_DEVICE_ID", null)
             if (verifiedId != devId) null else devId
         } catch (e: Exception) {
-            println("[IDENTITY_STORE] Encrypted identity store unavailable, failing closed: ${e.message}")
-            null
+            println("[IDENTITY_STORE] Encrypted identity store unavailable, falling back to standard prefs: ${e.message}")
+            try {
+                val stdPrefs = ctx.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+                var devId = stdPrefs.getString("KEY_FOLLOWER_DEVICE_ID", null)
+                if (devId.isNullOrBlank()) {
+                    devId = UUID.randomUUID().toString()
+                    stdPrefs.edit().putString("KEY_FOLLOWER_DEVICE_ID", devId).commit()
+                }
+                stdPrefs.getString("KEY_FOLLOWER_DEVICE_ID", null)
+            } catch (_: Exception) {
+                null
+            }
         }
     }
 }

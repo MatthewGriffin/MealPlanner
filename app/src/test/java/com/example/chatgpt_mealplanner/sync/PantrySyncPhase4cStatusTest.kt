@@ -198,8 +198,9 @@ class PantrySyncPhase4cStatusTest {
     fun test11_tryAgain_schedulesExistingUniqueWorker() = runTest {
         var trigger: String? = null
         val testScheduler = object : FollowerSyncScheduler() {
-            override fun scheduleSyncWork(context: android.content.Context?, triggerReason: String) {
+            override fun scheduleSyncWork(context: android.content.Context?, triggerReason: String): com.example.chatgpt_mealplanner.core.sync.follower.worker.WorkSchedulingResult {
                 trigger = triggerReason
+                return com.example.chatgpt_mealplanner.core.sync.follower.worker.WorkSchedulingResult.SUBMITTED_AND_CONFIRMED
             }
         }
 
@@ -366,7 +367,15 @@ class PantrySyncPhase4cStatusTest {
     fun test23_phase3cTransportFailure_exitsPassWithoutTightLoop() = runTest {
         var passCount = 0
         val uploader = object : com.example.chatgpt_mealplanner.core.sync.follower.client.FollowerSyncUploader(null, PantrySyncTestClient(keyStoreManager), com.example.chatgpt_mealplanner.core.sync.follower.engine.FollowerLocalSyncEngine()) {
-            override suspend fun performSyncUpload(hostIp: String, port: Int, pinnedCertFingerprint: String?, sessionToken: String, deviceId: String, customDao: com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerDao?): com.example.chatgpt_mealplanner.core.sync.follower.client.FollowerSyncUploadPassSummary {
+            override suspend fun performSyncUpload(
+                hostIp: String,
+                port: Int,
+                pinnedCertFingerprint: String?,
+                sessionToken: String,
+                deviceId: String,
+                customDao: com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerDao?,
+                sessionTokenProvider: (suspend (forceRefresh: Boolean) -> String)?
+            ): com.example.chatgpt_mealplanner.core.sync.follower.client.FollowerSyncUploadPassSummary {
                 passCount++
                 return com.example.chatgpt_mealplanner.core.sync.follower.client.FollowerSyncUploadPassSummary(0, 0, 0, 0, 0, 1)
             }

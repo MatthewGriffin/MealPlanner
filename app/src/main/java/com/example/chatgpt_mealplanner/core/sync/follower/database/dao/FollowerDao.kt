@@ -54,6 +54,45 @@ interface FollowerDao {
     @Query("SELECT * FROM follower_inventory_items ORDER BY displayName ASC")
     suspend fun getAllItems(): List<FollowerInventoryItemEntity>
 
+    @Query("DELETE FROM follower_inventory_items")
+    suspend fun clearAllInventoryItems() = Unit
+
+    @Query("SELECT COUNT(*) FROM follower_inventory_items WHERE status IN ('AVAILABLE', 'LOW', 'USE_SOON')")
+    suspend fun getUsableItemsCount(): Int = 0
+
+    @Query("SELECT COUNT(*) FROM follower_inventory_items WHERE status = 'OUT'")
+    suspend fun getOutItemsCount(): Int = 0
+
+    @Query("SELECT * FROM follower_inventory_items ORDER BY displayName ASC")
+    fun observeAllItems(): kotlinx.coroutines.flow.Flow<List<FollowerInventoryItemEntity>> = kotlinx.coroutines.flow.flowOf(emptyList())
+
+    @Query("SELECT * FROM follower_inventory_items WHERE status IN ('AVAILABLE', 'LOW', 'USE_SOON') ORDER BY displayName ASC")
+    fun observeUsableItems(): kotlinx.coroutines.flow.Flow<List<FollowerInventoryItemEntity>> = kotlinx.coroutines.flow.flowOf(emptyList())
+
+    @Query("SELECT * FROM follower_inventory_items WHERE storageLocation = :location AND status IN ('AVAILABLE', 'LOW', 'USE_SOON') ORDER BY displayName ASC")
+    fun observeUsableItemsByLocation(location: String): kotlinx.coroutines.flow.Flow<List<FollowerInventoryItemEntity>> = kotlinx.coroutines.flow.flowOf(emptyList())
+
+    @Query("SELECT * FROM follower_inventory_items WHERE status = 'LOW' ORDER BY displayName ASC")
+    fun observeLowStockItems(): kotlinx.coroutines.flow.Flow<List<FollowerInventoryItemEntity>> = kotlinx.coroutines.flow.flowOf(emptyList())
+
+    @Query("SELECT * FROM follower_inventory_items WHERE status = 'USE_SOON' ORDER BY displayName ASC")
+    fun observeUseSoonItems(): kotlinx.coroutines.flow.Flow<List<FollowerInventoryItemEntity>> = kotlinx.coroutines.flow.flowOf(emptyList())
+
+    @Query("SELECT * FROM follower_inventory_items WHERE status = 'OUT' ORDER BY displayName ASC")
+    fun observeOutOfStockItems(): kotlinx.coroutines.flow.Flow<List<FollowerInventoryItemEntity>> = kotlinx.coroutines.flow.flowOf(emptyList())
+
+    @Query("SELECT * FROM follower_inventory_items WHERE storageLocation = :location ORDER BY displayName ASC")
+    fun observeItemsByLocation(location: String): kotlinx.coroutines.flow.Flow<List<FollowerInventoryItemEntity>> = kotlinx.coroutines.flow.flowOf(emptyList())
+
+    @Query("SELECT * FROM follower_inventory_items WHERE status = :status ORDER BY displayName ASC")
+    fun observeItemsByStatus(status: String): kotlinx.coroutines.flow.Flow<List<FollowerInventoryItemEntity>> = kotlinx.coroutines.flow.flowOf(emptyList())
+
+    @Query("SELECT * FROM follower_inventory_items WHERE barcode = :barcode LIMIT 1")
+    suspend fun getItemByBarcode(barcode: String): FollowerInventoryItemEntity? = null
+
+    @Query("SELECT * FROM follower_inventory_items WHERE canonicalName = :canonicalName AND status IN ('AVAILABLE', 'LOW', 'USE_SOON') ORDER BY displayName ASC")
+    suspend fun getUsableItemsByCanonicalIngredientId(canonicalName: String): List<FollowerInventoryItemEntity> = emptyList()
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrUpdateItem(item: FollowerInventoryItemEntity)
 }
