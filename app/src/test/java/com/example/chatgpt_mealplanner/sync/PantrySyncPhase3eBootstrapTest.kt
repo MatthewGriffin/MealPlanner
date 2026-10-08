@@ -284,6 +284,19 @@ open class RealJdbcFollowerDao(private val conn: java.sql.Connection) : Follower
     override suspend fun getUnresolvedOutboxOpsForTargetItem(itemId: String): List<FollowerSyncOutboxEntity> = emptyList()
     override suspend fun getSequenceEntity(): FollowerDeviceSequenceEntity? = null
     override suspend fun updateSequenceEntity(entity: FollowerDeviceSequenceEntity) {}
+    override suspend fun clearAllInventoryItems() {}
+    override suspend fun getUsableItemsCount(): Int = kotlinx.coroutines.runBlocking { getAllItems().count { it.status in listOf("AVAILABLE", "LOW", "USE_SOON") } }
+    override suspend fun getOutItemsCount(): Int = kotlinx.coroutines.runBlocking { getAllItems().count { it.status == "OUT" } }
+    override fun observeAllItems(): kotlinx.coroutines.flow.Flow<List<FollowerInventoryItemEntity>> = kotlinx.coroutines.flow.flowOf(kotlinx.coroutines.runBlocking { getAllItems().sortedBy { it.displayName } })
+    override fun observeUsableItems(): kotlinx.coroutines.flow.Flow<List<FollowerInventoryItemEntity>> = kotlinx.coroutines.flow.flowOf(kotlinx.coroutines.runBlocking { getAllItems().filter { it.status in listOf("AVAILABLE", "LOW", "USE_SOON") }.sortedBy { it.displayName } })
+    override fun observeUsableItemsByLocation(location: String): kotlinx.coroutines.flow.Flow<List<FollowerInventoryItemEntity>> = kotlinx.coroutines.flow.flowOf(kotlinx.coroutines.runBlocking { getAllItems().filter { it.storageLocation == location && it.status in listOf("AVAILABLE", "LOW", "USE_SOON") }.sortedBy { it.displayName } })
+    override fun observeLowStockItems(): kotlinx.coroutines.flow.Flow<List<FollowerInventoryItemEntity>> = kotlinx.coroutines.flow.flowOf(kotlinx.coroutines.runBlocking { getAllItems().filter { it.status == "LOW" }.sortedBy { it.displayName } })
+    override fun observeUseSoonItems(): kotlinx.coroutines.flow.Flow<List<FollowerInventoryItemEntity>> = kotlinx.coroutines.flow.flowOf(kotlinx.coroutines.runBlocking { getAllItems().filter { it.status == "USE_SOON" }.sortedBy { it.displayName } })
+    override fun observeOutOfStockItems(): kotlinx.coroutines.flow.Flow<List<FollowerInventoryItemEntity>> = kotlinx.coroutines.flow.flowOf(kotlinx.coroutines.runBlocking { getAllItems().filter { it.status == "OUT" }.sortedBy { it.displayName } })
+    override fun observeItemsByLocation(location: String): kotlinx.coroutines.flow.Flow<List<FollowerInventoryItemEntity>> = kotlinx.coroutines.flow.flowOf(kotlinx.coroutines.runBlocking { getAllItems().filter { it.storageLocation == location }.sortedBy { it.displayName } })
+    override fun observeItemsByStatus(status: String): kotlinx.coroutines.flow.Flow<List<FollowerInventoryItemEntity>> = kotlinx.coroutines.flow.flowOf(kotlinx.coroutines.runBlocking { getAllItems().filter { it.status == status }.sortedBy { it.displayName } })
+    override suspend fun getItemByBarcode(barcode: String): FollowerInventoryItemEntity? = getAllItems().firstOrNull { it.barcode == barcode }
+    override suspend fun getUsableItemsByCanonicalIngredientId(canonicalName: String): List<FollowerInventoryItemEntity> = getAllItems().filter { it.canonicalName == canonicalName && it.status in listOf("AVAILABLE", "LOW", "USE_SOON") }.sortedBy { it.displayName }
 }
 
 open class RealRoomFollowerDatabase(private val conn: java.sql.Connection) : FollowerDatabase() {

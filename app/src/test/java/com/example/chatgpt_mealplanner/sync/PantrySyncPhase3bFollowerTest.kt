@@ -114,7 +114,42 @@ open class FakeFollowerDao : FollowerDao {
 
     override suspend fun getItemById(itemId: String): FollowerInventoryItemEntity? = itemsMap[itemId]
 
-    override suspend fun getAllItems(): List<FollowerInventoryItemEntity> = itemsMap.values.toList()
+    override suspend fun getAllItems(): List<FollowerInventoryItemEntity> = itemsMap.values.sortedBy { it.displayName }
+
+    override suspend fun clearAllInventoryItems() { itemsMap.clear() }
+
+    override suspend fun getUsableItemsCount(): Int = itemsMap.values.count { it.status in listOf("AVAILABLE", "LOW", "USE_SOON") }
+
+    override suspend fun getOutItemsCount(): Int = itemsMap.values.count { it.status == "OUT" }
+
+    override fun observeAllItems(): kotlinx.coroutines.flow.Flow<List<FollowerInventoryItemEntity>> =
+        kotlinx.coroutines.flow.flowOf(itemsMap.values.sortedBy { it.displayName })
+
+    override fun observeUsableItems(): kotlinx.coroutines.flow.Flow<List<FollowerInventoryItemEntity>> =
+        kotlinx.coroutines.flow.flowOf(itemsMap.values.filter { it.status in listOf("AVAILABLE", "LOW", "USE_SOON") }.sortedBy { it.displayName })
+
+    override fun observeUsableItemsByLocation(location: String): kotlinx.coroutines.flow.Flow<List<FollowerInventoryItemEntity>> =
+        kotlinx.coroutines.flow.flowOf(itemsMap.values.filter { it.storageLocation == location && it.status in listOf("AVAILABLE", "LOW", "USE_SOON") }.sortedBy { it.displayName })
+
+    override fun observeLowStockItems(): kotlinx.coroutines.flow.Flow<List<FollowerInventoryItemEntity>> =
+        kotlinx.coroutines.flow.flowOf(itemsMap.values.filter { it.status == "LOW" }.sortedBy { it.displayName })
+
+    override fun observeUseSoonItems(): kotlinx.coroutines.flow.Flow<List<FollowerInventoryItemEntity>> =
+        kotlinx.coroutines.flow.flowOf(itemsMap.values.filter { it.status == "USE_SOON" }.sortedBy { it.displayName })
+
+    override fun observeOutOfStockItems(): kotlinx.coroutines.flow.Flow<List<FollowerInventoryItemEntity>> =
+        kotlinx.coroutines.flow.flowOf(itemsMap.values.filter { it.status == "OUT" }.sortedBy { it.displayName })
+
+    override fun observeItemsByLocation(location: String): kotlinx.coroutines.flow.Flow<List<FollowerInventoryItemEntity>> =
+        kotlinx.coroutines.flow.flowOf(itemsMap.values.filter { it.storageLocation == location }.sortedBy { it.displayName })
+
+    override fun observeItemsByStatus(status: String): kotlinx.coroutines.flow.Flow<List<FollowerInventoryItemEntity>> =
+        kotlinx.coroutines.flow.flowOf(itemsMap.values.filter { it.status == status }.sortedBy { it.displayName })
+
+    override suspend fun getItemByBarcode(barcode: String): FollowerInventoryItemEntity? = itemsMap.values.firstOrNull { it.barcode == barcode }
+
+    override suspend fun getUsableItemsByCanonicalIngredientId(canonicalName: String): List<FollowerInventoryItemEntity> =
+        itemsMap.values.filter { it.canonicalName == canonicalName && it.status in listOf("AVAILABLE", "LOW", "USE_SOON") }.sortedBy { it.displayName }
 
     override suspend fun insertOrUpdateItem(item: FollowerInventoryItemEntity) {
         itemsMap[item.itemId] = item
