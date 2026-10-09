@@ -11,6 +11,9 @@ interface HouseholdIdentityDao {
     @Query("SELECT * FROM household_identity LIMIT 1")
     suspend fun getHouseholdIdentity(): HouseholdIdentityEntity?
 
+    @Query("SELECT * FROM household_identity LIMIT 1")
+    fun getHouseholdIdentitySync(): HouseholdIdentityEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertHouseholdIdentity(identity: HouseholdIdentityEntity)
 }

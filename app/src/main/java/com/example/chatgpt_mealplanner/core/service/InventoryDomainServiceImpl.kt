@@ -24,6 +24,15 @@ import com.example.chatgpt_mealplanner.core.model.QuantityUnit
 import com.example.chatgpt_mealplanner.core.model.StapleRuleMode
 import com.example.chatgpt_mealplanner.core.model.TransactionType
 import com.example.chatgpt_mealplanner.core.util.UnitConverter
+import com.example.chatgpt_mealplanner.core.database.dao.CanonicalSyncDao
+import com.example.chatgpt_mealplanner.core.database.entity.CanonicalSyncOperationEntity
+import com.example.chatgpt_mealplanner.core.database.entity.CanonicalSyncSequenceEntity
+import com.example.chatgpt_mealplanner.core.sync.AppRoleResolver
+import com.example.chatgpt_mealplanner.core.sync.HouseholdIdentityManager
+import com.example.chatgpt_mealplanner.sync.contract.AddItemPayloadDto
+import com.example.chatgpt_mealplanner.sync.contract.SYNC_PROTOCOL_VERSION
+import com.example.chatgpt_mealplanner.sync.contract.SyncOperationStatus
+import com.example.chatgpt_mealplanner.sync.contract.SyncOperationType
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.util.UUID
@@ -36,8 +45,50 @@ class InventoryDomainServiceImpl @Inject constructor(
     private val inventoryBarcodeDao: InventoryBarcodeDao,
     private val transactionDao: TransactionDao,
     private val stapleRuleDao: StapleRuleDao,
-    private val transactionRunner: DatabaseTransactionRunner
+    private val transactionRunner: DatabaseTransactionRunner,
+    private val appRoleResolver: AppRoleResolver,
+    private val canonicalSyncDao: CanonicalSyncDao,
+    private val householdIdentityManager: HouseholdIdentityManager
 ) : InventoryDomainService {
+
+    constructor(
+        inventoryDao: InventoryDao,
+        inventoryBarcodeDao: InventoryBarcodeDao,
+        transactionDao: TransactionDao,
+        stapleRuleDao: StapleRuleDao,
+        transactionRunner: DatabaseTransactionRunner
+    ) : this(
+        inventoryDao = inventoryDao,
+        inventoryBarcodeDao = inventoryBarcodeDao,
+        transactionDao = transactionDao,
+        stapleRuleDao = stapleRuleDao,
+        transactionRunner = transactionRunner,
+        appRoleResolver = object : AppRoleResolver(object : com.example.chatgpt_mealplanner.core.sync.follower.config.FollowerPairingStore(null) { override fun isPaired() = false }) {},
+        canonicalSyncDao = object : CanonicalSyncDao {
+            override suspend fun getByOperationId(operationId: String) = null
+            override suspend fun getByDeviceSequence(deviceId: String, deviceSequence: Long) = null
+            override suspend fun getFeedOperationsSince(sinceSeq: Long, limit: Int) = emptyList<CanonicalSyncOperationEntity>()
+            override suspend fun getLatestCanonicalSequence() = null
+            override suspend fun insertCanonicalOperation(op: CanonicalSyncOperationEntity) {}
+            override suspend fun getSequenceEntity() = null
+            override suspend fun updateSequenceEntity(entity: CanonicalSyncSequenceEntity) {}
+            override suspend fun getOpenConflicts() = emptyList<com.example.chatgpt_mealplanner.core.database.entity.SyncConflictEntity>()
+            override suspend fun getConflictById(conflictId: String) = null
+            override suspend fun getConflictByOperationId(operationId: String) = null
+            override suspend fun insertConflict(conflict: com.example.chatgpt_mealplanner.core.database.entity.SyncConflictEntity) {}
+            override suspend fun updateConflictStatus(conflictId: String, status: String, resolvedAt: Long?) {}
+            override suspend fun getOpenPendingApprovals() = emptyList<com.example.chatgpt_mealplanner.core.database.entity.SyncPendingApprovalEntity>()
+            override suspend fun getApprovalById(approvalId: String) = null
+            override suspend fun getApprovalByOperationId(operationId: String) = null
+            override suspend fun insertPendingApproval(approval: com.example.chatgpt_mealplanner.core.database.entity.SyncPendingApprovalEntity) {}
+            override suspend fun updateApprovalStatus(approvalId: String, status: String) {}
+        },
+        householdIdentityManager = HouseholdIdentityManager(object : com.example.chatgpt_mealplanner.core.database.dao.HouseholdIdentityDao {
+            override suspend fun getHouseholdIdentity() = null
+            override fun getHouseholdIdentitySync() = null
+            override suspend fun insertHouseholdIdentity(identity: com.example.chatgpt_mealplanner.core.database.entity.HouseholdIdentityEntity) {}
+        })
+    )
 
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -54,6 +105,53 @@ class InventoryDomainServiceImpl @Inject constructor(
         return transactionRunner.runInTransaction {
             val normBarcode = normalizeBarcode(item.barcode)
             val itemToSave = if (normBarcode != item.barcode) item.copy(barcode = normBarcode) else item
+
+            val isMain = appRoleResolver.isMain()
+
+            if (isMain) {
+                val identity = householdIdentityManager.getOrCreateHouseholdIdentity()
+                val mainDeviceId = identity.mainDeviceId
+                if (mainDeviceId.isBlank()) {
+                    throw IllegalStateException("Main deviceId is blank")
+                }
+
+                val seqEntity = canonicalSyncDao.getSequenceEntity() ?: CanonicalSyncSequenceEntity(singletonId = 1, nextSequence = 1L)
+                val allocatedSequence = seqEntity.nextSequence
+                canonicalSyncDao.updateSequenceEntity(seqEntity.copy(nextSequence = allocatedSequence + 1L))
+
+                val addItemPayload = AddItemPayloadDto(
+                    itemId = itemToSave.id,
+                    canonicalName = itemToSave.canonicalName,
+                    displayName = itemToSave.displayName,
+                    brand = itemToSave.brand,
+                    category = itemToSave.category.name,
+                    storageLocation = itemToSave.storageLocation.name,
+                    quantity = itemToSave.quantity,
+                    quantityUnit = itemToSave.quantityUnit?.name,
+                    barcode = itemToSave.barcode,
+                    notes = itemToSave.notes
+                )
+                val payloadJson = json.encodeToString(addItemPayload)
+                val now = System.currentTimeMillis()
+
+                val canonicalOp = CanonicalSyncOperationEntity(
+                    operationId = UUID.randomUUID().toString(),
+                    deviceId = mainDeviceId,
+                    deviceSequence = allocatedSequence,
+                    protocolVersion = SYNC_PROTOCOL_VERSION,
+                    operationType = SyncOperationType.ADD_ITEM.name,
+                    targetItemId = itemToSave.id,
+                    baseRevision = null,
+                    payloadJson = payloadJson,
+                    createdAt = now,
+                    canonicalSequence = allocatedSequence,
+                    receivedAt = now,
+                    status = SyncOperationStatus.APPLIED.name,
+                    resultCode = "APPLIED",
+                    resultPayloadJson = null
+                )
+                canonicalSyncDao.insertCanonicalOperation(canonicalOp)
+            }
 
             inventoryDao.insertItem(itemToSave.toEntity())
 

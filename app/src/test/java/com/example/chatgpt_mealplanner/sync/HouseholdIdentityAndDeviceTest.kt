@@ -21,6 +21,8 @@ class FakeHouseholdIdentityDao : HouseholdIdentityDao {
 
     override suspend fun getHouseholdIdentity(): HouseholdIdentityEntity? = identity
 
+    override fun getHouseholdIdentitySync(): HouseholdIdentityEntity? = identity
+
     override suspend fun insertHouseholdIdentity(identity: HouseholdIdentityEntity) {
         this.identity = identity
     }
