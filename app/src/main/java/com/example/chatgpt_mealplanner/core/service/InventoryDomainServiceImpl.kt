@@ -30,6 +30,7 @@ import com.example.chatgpt_mealplanner.core.database.entity.CanonicalSyncSequenc
 import com.example.chatgpt_mealplanner.core.sync.AppRoleResolver
 import com.example.chatgpt_mealplanner.core.sync.HouseholdIdentityManager
 import com.example.chatgpt_mealplanner.sync.contract.AddItemPayloadDto
+import com.example.chatgpt_mealplanner.sync.contract.EditItemPayloadDto
 import com.example.chatgpt_mealplanner.sync.contract.SYNC_PROTOCOL_VERSION
 import com.example.chatgpt_mealplanner.sync.contract.SyncOperationStatus
 import com.example.chatgpt_mealplanner.sync.contract.SyncOperationType
@@ -102,11 +103,10 @@ class InventoryDomainServiceImpl @Inject constructor(
     }
 
     override suspend fun addItem(item: InventoryItem): DomainResult<Unit> {
+        val isMain = appRoleResolver.isMainAsync()
         return transactionRunner.runInTransaction {
             val normBarcode = normalizeBarcode(item.barcode)
             val itemToSave = if (normBarcode != item.barcode) item.copy(barcode = normBarcode) else item
-
-            val isMain = appRoleResolver.isMain()
 
             if (isMain) {
                 val identity = householdIdentityManager.getOrCreateHouseholdIdentity()
@@ -373,14 +373,69 @@ class InventoryDomainServiceImpl @Inject constructor(
     }
 
     override suspend fun updateItem(item: InventoryItem): DomainResult<Unit> {
+        val isMain = appRoleResolver.isMainAsync()
         return transactionRunner.runInTransaction {
             val existing = inventoryDao.getItemById(item.id)
                 ?: return@runInTransaction DomainResult.Failure(DomainError.ItemNotFound(item.id))
 
             val normBarcode = normalizeBarcode(item.barcode)
             val existingModel = existing.toDomainModel()
-            val updatedItemToSave = (if (normBarcode != item.barcode) item.copy(barcode = normBarcode) else item)
-                .copy(updatedAt = System.currentTimeMillis(), revision = existingModel.revision + 1L)
+
+            val normalizedItem = if (normBarcode != item.barcode) {
+                item.copy(barcode = normBarcode)
+            } else {
+                item
+            }
+
+            val isNoOp = existingModel.copy(updatedAt = 0L, revision = 0L) ==
+                    normalizedItem.copy(updatedAt = 0L, revision = 0L)
+
+            if (isNoOp) {
+                return@runInTransaction DomainResult.Success(Unit)
+            }
+
+            val nextRevision = existingModel.revision + 1L
+            val now = System.currentTimeMillis()
+            val updatedItemToSave = normalizedItem.copy(updatedAt = now, revision = nextRevision)
+
+            if (isMain) {
+                val identity = householdIdentityManager.getOrCreateHouseholdIdentity()
+                val mainDeviceId = identity.mainDeviceId
+                if (mainDeviceId.isBlank()) {
+                    throw IllegalStateException("Main deviceId is blank")
+                }
+
+                val seqEntity = canonicalSyncDao.getSequenceEntity() ?: CanonicalSyncSequenceEntity(singletonId = 1, nextSequence = 1L)
+                val allocatedSequence = seqEntity.nextSequence
+                canonicalSyncDao.updateSequenceEntity(seqEntity.copy(nextSequence = allocatedSequence + 1L))
+
+                val editItemPayload = EditItemPayloadDto(
+                    displayName = updatedItemToSave.displayName,
+                    brand = updatedItemToSave.brand,
+                    category = updatedItemToSave.category.name,
+                    storageLocation = updatedItemToSave.storageLocation.name,
+                    notes = updatedItemToSave.notes
+                )
+                val payloadJson = json.encodeToString(editItemPayload)
+
+                val canonicalOp = CanonicalSyncOperationEntity(
+                    operationId = UUID.randomUUID().toString(),
+                    deviceId = mainDeviceId,
+                    deviceSequence = allocatedSequence,
+                    protocolVersion = SYNC_PROTOCOL_VERSION,
+                    operationType = SyncOperationType.EDIT_ITEM.name,
+                    targetItemId = updatedItemToSave.id,
+                    baseRevision = existingModel.revision,
+                    payloadJson = payloadJson,
+                    createdAt = now,
+                    canonicalSequence = allocatedSequence,
+                    receivedAt = now,
+                    status = SyncOperationStatus.APPLIED.name,
+                    resultCode = "APPLIED",
+                    resultPayloadJson = null
+                )
+                canonicalSyncDao.insertCanonicalOperation(canonicalOp)
+            }
 
             inventoryDao.updateItem(updatedItemToSave.toEntity())
 

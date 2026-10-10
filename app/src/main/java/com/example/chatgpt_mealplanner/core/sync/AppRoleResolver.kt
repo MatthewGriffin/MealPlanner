@@ -24,6 +24,21 @@ open class AppRoleResolver @Inject constructor(
         }
     )
 
+    open suspend fun getAppRoleAsync(): AppRole {
+        val identity = householdIdentityDao.getHouseholdIdentity()
+        if (identity != null) {
+            return AppRole.MAIN
+        }
+        return if (followerPairingStore.isPaired()) {
+            AppRole.FOLLOWER
+        } else {
+            AppRole.MAIN
+        }
+    }
+
+    open suspend fun isMainAsync(): Boolean = getAppRoleAsync() == AppRole.MAIN
+    open suspend fun isFollowerAsync(): Boolean = getAppRoleAsync() == AppRole.FOLLOWER
+
     open fun getAppRole(): AppRole {
         val hasMainIdentity = try {
             householdIdentityDao.getHouseholdIdentitySync() != null
