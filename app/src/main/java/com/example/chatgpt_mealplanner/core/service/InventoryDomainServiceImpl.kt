@@ -27,8 +27,12 @@ import com.example.chatgpt_mealplanner.core.util.UnitConverter
 import com.example.chatgpt_mealplanner.core.database.dao.CanonicalSyncDao
 import com.example.chatgpt_mealplanner.core.database.entity.CanonicalSyncOperationEntity
 import com.example.chatgpt_mealplanner.core.database.entity.CanonicalSyncSequenceEntity
+import com.example.chatgpt_mealplanner.core.sync.AppRole
 import com.example.chatgpt_mealplanner.core.sync.AppRoleResolver
 import com.example.chatgpt_mealplanner.core.sync.HouseholdIdentityManager
+import com.example.chatgpt_mealplanner.core.sync.enrollment.FollowerIdentityStore
+import com.example.chatgpt_mealplanner.core.sync.follower.database.FollowerDatabase
+import com.example.chatgpt_mealplanner.core.sync.follower.engine.FollowerLocalSyncEngine
 import com.example.chatgpt_mealplanner.sync.contract.AddItemPayloadDto
 import com.example.chatgpt_mealplanner.sync.contract.EditItemPayloadDto
 import com.example.chatgpt_mealplanner.sync.contract.SetQuantityPayloadDto
@@ -50,7 +54,10 @@ class InventoryDomainServiceImpl @Inject constructor(
     private val transactionRunner: DatabaseTransactionRunner,
     private val appRoleResolver: AppRoleResolver,
     private val canonicalSyncDao: CanonicalSyncDao,
-    private val householdIdentityManager: HouseholdIdentityManager
+    private val householdIdentityManager: HouseholdIdentityManager,
+    private val followerDatabase: FollowerDatabase? = null,
+    private val followerLocalSyncEngine: FollowerLocalSyncEngine? = null,
+    private val followerIdentityStore: FollowerIdentityStore? = null
 ) : InventoryDomainService {
 
     constructor(
@@ -622,7 +629,48 @@ class InventoryDomainServiceImpl @Inject constructor(
         newStatus: ItemStatus?,
         note: String?
     ): DomainResult<Unit> {
-        val isMain = appRoleResolver.isMainAsync()
+        val appRole = appRoleResolver.getAppRoleAsync()
+        if (appRole == AppRole.FOLLOWER) {
+            if (newQuantity == null || newQuantity < 0.0 || newQuantity.isNaN() || newQuantity.isInfinite()) {
+                return DomainResult.Failure(DomainError.InvalidQuantity(newQuantity ?: -1.0))
+            }
+
+            val dao = followerDatabase?.followerDao()
+            val existing = if (dao != null) {
+                dao.getItemById(itemId)
+                    ?: return DomainResult.Failure(DomainError.ItemNotFound(itemId))
+            } else null
+
+            if (existing != null && newUnit != null) {
+                val existingUnit = existing.quantityUnit?.let { runCatching { QuantityUnit.valueOf(it) }.getOrNull() }
+                if (existingUnit != null && newUnit != existingUnit) {
+                    return DomainResult.Failure(DomainError.InvalidUnitConversion(existingUnit, newUnit))
+                }
+            }
+
+            val engine = followerLocalSyncEngine
+                ?: return DomainResult.Failure(DomainError.TransactionFailed("Follower sync engine unavailable"))
+            val deviceId = followerIdentityStore?.getOrCreateDeviceId()
+                ?: return DomainResult.Failure(DomainError.TransactionFailed("Follower identity store unavailable"))
+
+            try {
+                engine.recordLocalSetQuantity(
+                    deviceId = deviceId,
+                    targetItemId = itemId,
+                    absoluteQuantity = newQuantity
+                )
+            } catch (_: IllegalArgumentException) {
+                return DomainResult.Failure(DomainError.ItemNotFound(itemId))
+            } catch (e: Throwable) {
+                return DomainResult.Failure(DomainError.TransactionFailed(e.message ?: "Failed to record local quantity correction"))
+            }
+            return DomainResult.Success(Unit)
+        }
+
+        if (appRole != AppRole.MAIN) {
+            return DomainResult.Failure(DomainError.TransactionFailed("Unresolved application role"))
+        }
+
         return transactionRunner.runInTransaction {
             val itemEntity = inventoryDao.getItemById(itemId)
                 ?: return@runInTransaction DomainResult.Failure(DomainError.ItemNotFound(itemId))
@@ -647,7 +695,7 @@ class InventoryDomainServiceImpl @Inject constructor(
                 revision = item.revision + 1L
             )
 
-            if (isMain && newQuantity != null) {
+            if (newQuantity != null) {
                 val identity = householdIdentityManager.getOrCreateHouseholdIdentity()
                 val mainDeviceId = identity.mainDeviceId
                 if (mainDeviceId.isNotBlank()) {

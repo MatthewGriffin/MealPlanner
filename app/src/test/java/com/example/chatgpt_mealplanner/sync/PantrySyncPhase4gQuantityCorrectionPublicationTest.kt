@@ -21,7 +21,9 @@ import com.example.chatgpt_mealplanner.core.service.InventoryDomainServiceImpl
 import com.example.chatgpt_mealplanner.core.sync.AppRole
 import com.example.chatgpt_mealplanner.core.sync.AppRoleResolver
 import com.example.chatgpt_mealplanner.core.sync.HouseholdIdentityManager
+import com.example.chatgpt_mealplanner.core.sync.enrollment.FollowerIdentityStore
 import com.example.chatgpt_mealplanner.core.sync.follower.config.FollowerPairingStore
+import com.example.chatgpt_mealplanner.core.sync.follower.database.FollowerDatabase
 import com.example.chatgpt_mealplanner.sync.contract.SetQuantityPayloadDto
 import com.example.chatgpt_mealplanner.sync.contract.SyncOperationType
 import kotlinx.coroutines.test.runTest
@@ -317,33 +319,78 @@ class PantrySyncPhase4gQuantityCorrectionPublicationTest {
     }
 
     @Test
-    fun testRecordUserCorrection_onFollower_doesNotPublishCanonicalOperation() = runTest {
-        val itemsMap = mutableMapOf<String, InventoryItemEntity>()
-        val ops = mutableListOf<CanonicalSyncOperationEntity>()
+    fun testRecordUserCorrection_onFollower_queuesFollowerOutboxAndNoMainCanonicalOperation() = runTest {
+        val followerItemsMap = mutableMapOf<String, com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerInventoryItemEntity>()
+        val followerOutbox = mutableListOf<com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerSyncOutboxEntity>()
+        val mainOps = mutableListOf<CanonicalSyncOperationEntity>()
 
-        val sample = createSampleItemEntity(quantity = 1.0, revision = 1L)
-        itemsMap[sample.id] = sample
+        val sampleFollowerItem = com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerInventoryItemEntity(
+            itemId = "item-qty-1",
+            barcode = null,
+            canonicalName = "olive oil",
+            confirmedDisplayName = "Olive Oil",
+            confirmedBrand = "Filippo Berio",
+            confirmedCategory = "CUPBOARD",
+            confirmedStorageLocation = "CUPBOARD",
+            confirmedQuantity = 2.0,
+            confirmedQuantityUnit = "LITRE",
+            confirmedNotes = null,
+            confirmedStatus = "AVAILABLE",
+            mainConfirmedRevision = 1L,
+            displayName = "Olive Oil",
+            brand = "Filippo Berio",
+            category = "CUPBOARD",
+            storageLocation = "CUPBOARD",
+            quantity = 2.0,
+            quantityUnit = "LITRE",
+            notes = null,
+            status = "AVAILABLE",
+            optimisticRevision = 1L,
+            isPendingSync = false,
+            updatedAt = 1000L
+        )
+        followerItemsMap[sampleFollowerItem.itemId] = sampleFollowerItem
 
-        val inventoryDao: InventoryDao = mock {
+        val followerDao: com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerDao = mock {
             onBlocking { getItemById(any()) } doAnswer { invocation ->
-                itemsMap[invocation.getArgument<String>(0)]
-            }
-            onBlocking { updateItem(any()) } doAnswer { invocation ->
-                val item = invocation.getArgument<InventoryItemEntity>(0)
-                itemsMap[item.id] = item
-                Unit
+                followerItemsMap[invocation.getArgument<String>(0)]
             }
         }
 
-        val canonicalSyncDao: CanonicalSyncDao = mock {
-            onBlocking { insertCanonicalOperation(any()) } doAnswer { invocation ->
-                ops.add(invocation.getArgument(0))
-                Unit
+        val localSyncEngine = object : com.example.chatgpt_mealplanner.core.sync.follower.engine.FollowerLocalSyncEngine(null) {
+            override suspend fun recordLocalSetQuantity(
+                deviceId: String,
+                targetItemId: String,
+                absoluteQuantity: Double
+            ): com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerSyncOutboxEntity {
+                val outboxEntity = com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerSyncOutboxEntity(
+                    operationId = "op-set-qty-123",
+                    deviceId = deviceId,
+                    deviceSequence = 1L,
+                    protocolVersion = 1,
+                    operationType = SyncOperationType.SET_QUANTITY.name,
+                    targetItemId = targetItemId,
+                    baseRevision = 1L,
+                    payloadJson = json.encodeToString(SetQuantityPayloadDto(absoluteQuantity = absoluteQuantity)),
+                    createdAt = 1000L,
+                    status = "PENDING",
+                    createdLocallyAt = 1000L
+                )
+                followerOutbox.add(outboxEntity)
+                val item = followerItemsMap[targetItemId]
+                if (item != null) {
+                    followerItemsMap[targetItemId] = item.copy(quantity = absoluteQuantity, isPendingSync = true)
+                }
+                return outboxEntity
             }
+        }
+
+        val identityStore = object : FollowerIdentityStore(null) {
+            override fun getOrCreateDeviceId(): String = "follower-device-999"
         }
 
         val domainService = InventoryDomainServiceImpl(
-            inventoryDao = inventoryDao,
+            inventoryDao = mock(),
             inventoryBarcodeDao = mock(),
             transactionDao = mock(),
             stapleRuleDao = mock(),
@@ -352,8 +399,16 @@ class PantrySyncPhase4gQuantityCorrectionPublicationTest {
                 override suspend fun getAppRoleAsync(): AppRole = AppRole.FOLLOWER
                 override suspend fun isMainAsync(): Boolean = false
             },
-            canonicalSyncDao = canonicalSyncDao,
-            householdIdentityManager = HouseholdIdentityManager(mock())
+            canonicalSyncDao = mock {
+                onBlocking { insertCanonicalOperation(any()) } doAnswer { invocation ->
+                    mainOps.add(invocation.getArgument(0))
+                    Unit
+                }
+            },
+            householdIdentityManager = HouseholdIdentityManager(mock()),
+            followerDatabase = null,
+            followerLocalSyncEngine = localSyncEngine,
+            followerIdentityStore = identityStore
         )
 
         val result = domainService.recordUserCorrection(
@@ -362,18 +417,31 @@ class PantrySyncPhase4gQuantityCorrectionPublicationTest {
             newUnit = QuantityUnit.LITRE,
             newConfidence = QuantityConfidence.EXACT,
             newStatus = null,
-            note = "Follower edit"
+            note = "Follower correction"
         )
 
         assertTrue(result is DomainResult.Success)
 
-        // Item is updated locally on Follower
-        val saved = itemsMap["item-qty-1"]
-        assertNotNull(saved)
-        assertEquals(4.0, saved!!.quantity!!, 0.001)
+        // 1. ZERO Main canonical ops published
+        assertEquals(0, mainOps.size)
 
-        // ZERO canonical ops published because role is FOLLOWER
-        assertEquals(0, ops.size)
+        // 2. Exactly ONE Follower outbox SET_QUANTITY operation created
+        assertEquals(1, followerOutbox.size)
+        val ob = followerOutbox[0]
+        assertEquals(SyncOperationType.SET_QUANTITY.name, ob.operationType)
+        assertEquals("follower-device-999", ob.deviceId)
+        assertEquals("item-qty-1", ob.targetItemId)
+        assertEquals(1L, ob.baseRevision)
+        assertEquals("PENDING", ob.status)
+
+        val payload = json.decodeFromString<SetQuantityPayloadDto>(ob.payloadJson)
+        assertEquals(4.0, payload.absoluteQuantity, 0.001)
+
+        // 3. Optimistic working projection updated on Follower
+        val updated = followerItemsMap["item-qty-1"]
+        assertNotNull(updated)
+        assertEquals(4.0, updated!!.quantity!!, 0.001)
+        assertEquals(true, updated.isPendingSync)
     }
 
     @Test
@@ -481,5 +549,193 @@ class PantrySyncPhase4gQuantityCorrectionPublicationTest {
         assertTrue(result is DomainResult.Failure)
         assertTrue((result as DomainResult.Failure).error is DomainError.ItemNotFound)
         assertEquals(0, ops.size)
+    }
+
+    @Test
+    fun testRecordUserCorrection_onFollower_missingDependencies_returnsTransactionFailed() = runTest {
+        val domainService = InventoryDomainServiceImpl(
+            inventoryDao = mock(),
+            inventoryBarcodeDao = mock(),
+            transactionDao = mock(),
+            stapleRuleDao = mock(),
+            transactionRunner = TestTransactionRunner(),
+            appRoleResolver = object : AppRoleResolver(TestPairingStore(paired = true)) {
+                override suspend fun getAppRoleAsync(): AppRole = AppRole.FOLLOWER
+                override suspend fun isMainAsync(): Boolean = false
+            },
+            canonicalSyncDao = mock(),
+            householdIdentityManager = HouseholdIdentityManager(mock()),
+            followerDatabase = null,
+            followerLocalSyncEngine = null,
+            followerIdentityStore = null
+        )
+
+        val result = domainService.recordUserCorrection(
+            itemId = "item-qty-1",
+            newQuantity = 5.0,
+            newUnit = QuantityUnit.UNIT,
+            newConfidence = QuantityConfidence.EXACT,
+            newStatus = null,
+            note = "Follower edit without engine"
+        )
+
+        assertTrue(result is DomainResult.Failure)
+        assertTrue((result as DomainResult.Failure).error is DomainError.TransactionFailed)
+    }
+
+    @Test
+    fun testRecordUserCorrection_onFollower_invalidQuantity_returnsInvalidQuantity() = runTest {
+        val domainService = InventoryDomainServiceImpl(
+            inventoryDao = mock(),
+            inventoryBarcodeDao = mock(),
+            transactionDao = mock(),
+            stapleRuleDao = mock(),
+            transactionRunner = TestTransactionRunner(),
+            appRoleResolver = object : AppRoleResolver(TestPairingStore(paired = true)) {
+                override suspend fun getAppRoleAsync(): AppRole = AppRole.FOLLOWER
+                override suspend fun isMainAsync(): Boolean = false
+            },
+            canonicalSyncDao = mock(),
+            householdIdentityManager = HouseholdIdentityManager(mock()),
+            followerDatabase = null,
+            followerLocalSyncEngine = null,
+            followerIdentityStore = null
+        )
+
+        val resultNull = domainService.recordUserCorrection(
+            itemId = "item-qty-1",
+            newQuantity = null,
+            newUnit = null,
+            newConfidence = QuantityConfidence.UNKNOWN,
+            newStatus = null,
+            note = "Null quantity"
+        )
+
+        assertTrue(resultNull is DomainResult.Failure)
+        assertTrue((resultNull as DomainResult.Failure).error is DomainError.InvalidQuantity)
+
+        val resultNegative = domainService.recordUserCorrection(
+            itemId = "item-qty-1",
+            newQuantity = -3.0,
+            newUnit = QuantityUnit.UNIT,
+            newConfidence = QuantityConfidence.EXACT,
+            newStatus = null,
+            note = "Negative quantity"
+        )
+
+        assertTrue(resultNegative is DomainResult.Failure)
+        assertTrue((resultNegative as DomainResult.Failure).error is DomainError.InvalidQuantity)
+    }
+
+    @Test
+    fun testRecordUserCorrection_onFollower_unsupportedUnitChange_returnsInvalidUnitConversion() = runTest {
+        val followerItemsMap = mutableMapOf<String, com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerInventoryItemEntity>()
+        val followerOutbox = mutableListOf<com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerSyncOutboxEntity>()
+
+        val sampleFollowerItem = com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerInventoryItemEntity(
+            itemId = "item-qty-1",
+            barcode = null,
+            canonicalName = "olive oil",
+            confirmedDisplayName = "Olive Oil",
+            confirmedBrand = "Filippo Berio",
+            confirmedCategory = "CUPBOARD",
+            confirmedStorageLocation = "CUPBOARD",
+            confirmedQuantity = 2.0,
+            confirmedQuantityUnit = "LITRE",
+            confirmedNotes = null,
+            confirmedStatus = "AVAILABLE",
+            mainConfirmedRevision = 1L,
+            displayName = "Olive Oil",
+            brand = "Filippo Berio",
+            category = "CUPBOARD",
+            storageLocation = "CUPBOARD",
+            quantity = 2.0,
+            quantityUnit = "LITRE",
+            notes = null,
+            status = "AVAILABLE",
+            optimisticRevision = 1L,
+            isPendingSync = false,
+            updatedAt = 1000L
+        )
+        followerItemsMap[sampleFollowerItem.itemId] = sampleFollowerItem
+
+
+
+        val followerDao: com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerDao = mock {
+            onBlocking { getItemById(any()) } doAnswer { invocation ->
+                followerItemsMap[invocation.getArgument<String>(0)]
+            }
+        }
+
+        val followerDb = object : FollowerDatabase() {
+            override fun followerDao(): com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerDao = followerDao
+            override fun clearAllTables() {}
+            override fun createInvalidationTracker(): androidx.room.InvalidationTracker = mock()
+            override fun createOpenHelper(config: androidx.room.DatabaseConfiguration): androidx.sqlite.db.SupportSQLiteOpenHelper = mock()
+        }
+
+        val localSyncEngine = object : com.example.chatgpt_mealplanner.core.sync.follower.engine.FollowerLocalSyncEngine(null) {
+            override suspend fun recordLocalSetQuantity(
+                deviceId: String,
+                targetItemId: String,
+                absoluteQuantity: Double
+            ): com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerSyncOutboxEntity {
+                val outboxEntity = com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerSyncOutboxEntity(
+                    operationId = "op-set-qty-999",
+                    deviceId = deviceId,
+                    deviceSequence = 1L,
+                    protocolVersion = 1,
+                    operationType = SyncOperationType.SET_QUANTITY.name,
+                    targetItemId = targetItemId,
+                    baseRevision = 1L,
+                    payloadJson = json.encodeToString(SetQuantityPayloadDto(absoluteQuantity = absoluteQuantity)),
+                    createdAt = 1000L,
+                    status = "PENDING",
+                    createdLocallyAt = 1000L
+                )
+                followerOutbox.add(outboxEntity)
+                return outboxEntity
+            }
+        }
+
+        val identityStore = object : FollowerIdentityStore(null) {
+            override fun getOrCreateDeviceId(): String = "follower-device-999"
+        }
+
+        val domainService = InventoryDomainServiceImpl(
+            inventoryDao = mock(),
+            inventoryBarcodeDao = mock(),
+            transactionDao = mock(),
+            stapleRuleDao = mock(),
+            transactionRunner = TestTransactionRunner(),
+            appRoleResolver = object : AppRoleResolver(TestPairingStore(paired = true)) {
+                override suspend fun getAppRoleAsync(): AppRole = AppRole.FOLLOWER
+                override suspend fun isMainAsync(): Boolean = false
+            },
+            canonicalSyncDao = mock(),
+            householdIdentityManager = HouseholdIdentityManager(mock()),
+            followerDatabase = followerDb,
+            followerLocalSyncEngine = localSyncEngine,
+            followerIdentityStore = identityStore
+        )
+
+        // Attempt unit change from LITRE to GRAM on Follower
+        val resultUnitChange = domainService.recordUserCorrection(
+            itemId = "item-qty-1",
+            newQuantity = 500.0,
+            newUnit = QuantityUnit.GRAM,
+            newConfidence = QuantityConfidence.EXACT,
+            newStatus = null,
+            note = "Unit change"
+        )
+
+        assertTrue(resultUnitChange is DomainResult.Failure)
+        val err = (resultUnitChange as DomainResult.Failure).error
+        assertTrue("Error should be InvalidUnitConversion", err is DomainError.InvalidUnitConversion)
+        assertEquals(QuantityUnit.LITRE, (err as DomainError.InvalidUnitConversion).from)
+        assertEquals(QuantityUnit.GRAM, err.to)
+
+        // ZERO Follower outbox entries created
+        assertEquals(0, followerOutbox.size)
     }
 }
