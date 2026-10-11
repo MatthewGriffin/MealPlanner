@@ -31,6 +31,7 @@ import com.example.chatgpt_mealplanner.core.sync.AppRoleResolver
 import com.example.chatgpt_mealplanner.core.sync.HouseholdIdentityManager
 import com.example.chatgpt_mealplanner.sync.contract.AddItemPayloadDto
 import com.example.chatgpt_mealplanner.sync.contract.EditItemPayloadDto
+import com.example.chatgpt_mealplanner.sync.contract.SetQuantityPayloadDto
 import com.example.chatgpt_mealplanner.sync.contract.SYNC_PROTOCOL_VERSION
 import com.example.chatgpt_mealplanner.sync.contract.SyncOperationStatus
 import com.example.chatgpt_mealplanner.sync.contract.SyncOperationType
@@ -621,6 +622,7 @@ class InventoryDomainServiceImpl @Inject constructor(
         newStatus: ItemStatus?,
         note: String?
     ): DomainResult<Unit> {
+        val isMain = appRoleResolver.isMainAsync()
         return transactionRunner.runInTransaction {
             val itemEntity = inventoryDao.getItemById(itemId)
                 ?: return@runInTransaction DomainResult.Failure(DomainError.ItemNotFound(itemId))
@@ -644,6 +646,37 @@ class InventoryDomainServiceImpl @Inject constructor(
                 updatedAt = System.currentTimeMillis(),
                 revision = item.revision + 1L
             )
+
+            if (isMain && newQuantity != null) {
+                val identity = householdIdentityManager.getOrCreateHouseholdIdentity()
+                val mainDeviceId = identity.mainDeviceId
+                if (mainDeviceId.isNotBlank()) {
+                    val seqEntity = canonicalSyncDao.getSequenceEntity() ?: CanonicalSyncSequenceEntity(singletonId = 1, nextSequence = 1L)
+                    val allocatedSequence = seqEntity.nextSequence
+                    canonicalSyncDao.updateSequenceEntity(seqEntity.copy(nextSequence = allocatedSequence + 1L))
+
+                    val setQtyPayload = SetQuantityPayloadDto(absoluteQuantity = newQuantity)
+                    val payloadJson = json.encodeToString(setQtyPayload)
+
+                    val canonicalOp = CanonicalSyncOperationEntity(
+                        operationId = UUID.randomUUID().toString(),
+                        deviceId = mainDeviceId,
+                        deviceSequence = allocatedSequence,
+                        protocolVersion = SYNC_PROTOCOL_VERSION,
+                        operationType = SyncOperationType.SET_QUANTITY.name,
+                        targetItemId = updatedItem.id,
+                        baseRevision = item.revision,
+                        payloadJson = payloadJson,
+                        createdAt = updatedItem.updatedAt,
+                        canonicalSequence = allocatedSequence,
+                        receivedAt = updatedItem.updatedAt,
+                        status = SyncOperationStatus.APPLIED.name,
+                        resultCode = "APPLIED",
+                        resultPayloadJson = null
+                    )
+                    canonicalSyncDao.insertCanonicalOperation(canonicalOp)
+                }
+            }
 
             inventoryDao.updateItem(updatedItem.toEntity())
 
