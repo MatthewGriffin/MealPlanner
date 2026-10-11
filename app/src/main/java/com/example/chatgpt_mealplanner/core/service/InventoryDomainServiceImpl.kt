@@ -32,6 +32,7 @@ import com.example.chatgpt_mealplanner.core.sync.AppRoleResolver
 import com.example.chatgpt_mealplanner.core.sync.HouseholdIdentityManager
 import com.example.chatgpt_mealplanner.core.sync.enrollment.FollowerIdentityStore
 import com.example.chatgpt_mealplanner.core.sync.follower.database.FollowerDatabase
+import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.toDomainModel
 import com.example.chatgpt_mealplanner.core.sync.follower.engine.FollowerLocalSyncEngine
 import com.example.chatgpt_mealplanner.sync.contract.AddItemPayloadDto
 import com.example.chatgpt_mealplanner.sync.contract.EditItemPayloadDto
@@ -209,6 +210,91 @@ class InventoryDomainServiceImpl @Inject constructor(
             input.netQuantity
         }
 
+        val appRole = appRoleResolver.getAppRoleAsync()
+        val normProductName = normalizeProductName(input.displayName)
+        val addedQuantity = derivedTotalQuantity ?: 0.0
+
+        if (appRole == AppRole.FOLLOWER) {
+            val dao = followerDatabase?.followerDao()
+                ?: return DomainResult.Failure(DomainError.TransactionFailed("Follower database unavailable"))
+            val followerItems = dao.getAllItems().filter { it.status != ItemStatus.DISCARDED.name }.map { it.toDomainModel() }
+            val exactNameMatches = followerItems.filter {
+                normalizeProductName(it.displayName) == normProductName || normalizeProductName(it.canonicalName) == normProductName
+            }
+
+            if (exactNameMatches.size == 1) {
+                val targetItem = exactNameMatches.first()
+                val inputUnit = input.netQuantityUnit ?: input.packSizeUnit
+                if (inputUnit != null && targetItem.quantityUnit != null && inputUnit != targetItem.quantityUnit) {
+                    return DomainResult.Failure(DomainError.InvalidUnitConversion(targetItem.quantityUnit!!, inputUnit))
+                }
+
+                if (addedQuantity <= 0.0 || addedQuantity.isNaN() || addedQuantity.isInfinite()) {
+                    return DomainResult.Failure(DomainError.InvalidQuantity(addedQuantity))
+                }
+
+                when (val restockRes = restockItem(targetItem.id, addedQuantity = addedQuantity)) {
+                    is DomainResult.Success -> {
+                        val newQty = (targetItem.quantity ?: 0.0) + addedQuantity
+                        val updated = targetItem.copy(quantity = newQty, status = ItemStatus.AVAILABLE)
+                        return DomainResult.Success(updated)
+                    }
+                    is DomainResult.Failure -> return restockRes
+                }
+            } else if (exactNameMatches.size > 1) {
+                return DomainResult.Failure(
+                    DomainError.DuplicateOperation("Multiple inventory items match '${input.displayName}'. Please select which item to update or merge.")
+                )
+            }
+        } else if (appRole == AppRole.MAIN) {
+            val isBarcodeAssociated = normBarcode != null && inventoryBarcodeDao.getBarcodeEntity(normBarcode) != null
+            if (!isBarcodeAssociated) {
+                val allItems = inventoryDao.getAllItemsSync().filter { it.status != ItemStatus.DISCARDED }.map { it.toDomainModel() }
+                val exactNameMatches = allItems.filter {
+                    normalizeProductName(it.displayName) == normProductName || normalizeProductName(it.canonicalName) == normProductName
+                }
+
+                if (exactNameMatches.size == 1) {
+                    val targetItem = exactNameMatches.first()
+                    val inputUnit = input.netQuantityUnit ?: input.packSizeUnit
+                    if (inputUnit != null && targetItem.quantityUnit != null && inputUnit != targetItem.quantityUnit) {
+                        return DomainResult.Failure(DomainError.InvalidUnitConversion(targetItem.quantityUnit!!, inputUnit))
+                    }
+
+                    if (addedQuantity <= 0.0 || addedQuantity.isNaN() || addedQuantity.isInfinite()) {
+                        return DomainResult.Failure(DomainError.InvalidQuantity(addedQuantity))
+                    }
+
+                    when (val restockRes = restockItem(targetItem.id, addedQuantity = addedQuantity)) {
+                        is DomainResult.Success -> {
+                            val now = System.currentTimeMillis()
+                            if (normBarcode != null) {
+                                try {
+                                    inventoryBarcodeDao.insertBarcode(
+                                        InventoryItemBarcodeEntity(
+                                            id = UUID.randomUUID().toString(),
+                                            inventoryItemId = targetItem.id,
+                                            rawBarcode = input.barcode ?: normBarcode,
+                                            normalizedBarcode = normBarcode,
+                                            addedAt = now,
+                                            source = "AUTO_ASSOCIATE_EXACT_NAME"
+                                        )
+                                    )
+                                } catch (_: Throwable) {}
+                            }
+                            val updatedItem = inventoryDao.getItemById(targetItem.id)?.toDomainModel() ?: targetItem
+                            return DomainResult.Success(updatedItem)
+                        }
+                        is DomainResult.Failure -> return restockRes
+                    }
+                } else if (exactNameMatches.size > 1) {
+                    return DomainResult.Failure(
+                        DomainError.DuplicateOperation("Multiple inventory items match '${input.displayName}'. Please select which item to update or merge.")
+                    )
+                }
+            }
+        }
+
         return transactionRunner.runInTransaction {
             val now = System.currentTimeMillis()
 
@@ -254,65 +340,6 @@ class InventoryDomainServiceImpl @Inject constructor(
                         return@runInTransaction DomainResult.Success(updatedItem)
                     }
                 }
-            }
-
-            // STEP 3 & STEP 4 - EXACT NORMALIZED-NAME LOOKUP
-            val normProductName = normalizeProductName(input.displayName)
-            val allItems = inventoryDao.getAllItemsSync().filter { it.status != ItemStatus.DISCARDED }.map { it.toDomainModel() }
-            val exactNameMatches = allItems.filter { normalizeProductName(it.displayName) == normProductName || normalizeProductName(it.canonicalName) == normProductName }
-
-            if (exactNameMatches.size == 1) {
-                val targetItem = exactNameMatches.first()
-                safeLog("[INVENTORY_IDENTITY_DECISION] rawBarcode=${input.barcode}, normalizedBarcode=$normBarcode, lookupProductName=\"${input.displayName}\", normalizedProductName=\"$normProductName\", exactNameMatchIds=[\"${targetItem.id}\"], decision=AUTO_ASSOCIATE_EXACT_NAME, targetItemId=${targetItem.id}, reason=EXACT_NORMALIZED_NAME_MATCH")
-
-                if (normBarcode != null) {
-                    inventoryBarcodeDao.insertBarcode(
-                        InventoryItemBarcodeEntity(
-                            id = UUID.randomUUID().toString(),
-                            inventoryItemId = targetItem.id,
-                            rawBarcode = input.barcode ?: normBarcode,
-                            normalizedBarcode = normBarcode,
-                            addedAt = now,
-                            source = "AUTO_ASSOCIATE_EXACT_NAME"
-                        )
-                    )
-                }
-
-                val addedQuantity = derivedTotalQuantity ?: 0.0
-                val newQty = (targetItem.quantity ?: 0.0) + addedQuantity
-                val newPackCount = (targetItem.packCount ?: 0) + (input.packCount ?: 1)
-
-                val updatedTargetItem = targetItem.copy(
-                    quantity = newQty,
-                    packCount = newPackCount,
-                    status = ItemStatus.AVAILABLE,
-                    updatedAt = now,
-                    revision = targetItem.revision + 1L
-                )
-
-                inventoryDao.updateItem(updatedTargetItem.toEntity())
-
-                val transaction = InventoryTransactionEntity(
-                    id = UUID.randomUUID().toString(),
-                    inventoryItemId = targetItem.id,
-                    type = TransactionType.RESTOCK,
-                    quantityChange = addedQuantity,
-                    unit = targetItem.quantityUnit ?: input.netQuantityUnit ?: input.packSizeUnit,
-                    note = "Restocked via exact normalized name match (${targetItem.displayName})",
-                    timestamp = now
-                )
-                transactionDao.insertTransaction(transaction)
-
-                if (input.staple || targetItem.staple) {
-                    setStapleStatus(targetItem.id, true)
-                }
-
-                return@runInTransaction DomainResult.Success(updatedTargetItem)
-            } else if (exactNameMatches.size > 1) {
-                safeLog("[INVENTORY_IDENTITY_DECISION] rawBarcode=${input.barcode}, normalizedBarcode=$normBarcode, exactNameMatchIds=${exactNameMatches.map { it.id }}, decision=REQUIRE_DISAMBIGUATION, reason=MULTIPLE_EXACT_NAME_MATCHES")
-                return@runInTransaction DomainResult.Failure(
-                    DomainError.DuplicateOperation("Multiple inventory items match '${input.displayName}'. Please select which item to update or merge.")
-                )
             }
 
             // STEP 6 - NO EXACT MATCH -> CREATE NEW ITEM

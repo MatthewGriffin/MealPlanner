@@ -1,5 +1,6 @@
 package com.example.chatgpt_mealplanner.sync
 
+import com.example.chatgpt_mealplanner.core.barcode.model.ConfirmedProductInput
 import com.example.chatgpt_mealplanner.core.database.dao.CanonicalSyncDao
 import com.example.chatgpt_mealplanner.core.database.dao.HouseholdIdentityDao
 import com.example.chatgpt_mealplanner.core.database.dao.InventoryDao
@@ -438,5 +439,295 @@ class PantrySyncPhase4gRestockSyncTest {
 
         assertTrue(result is DomainResult.Failure)
         assertTrue((result as DomainResult.Failure).error is DomainError.ItemNotFound)
+    }
+
+    @Test
+    fun testAddLotFromProductInput_onMain_exactNameMatch_delegatesToRestockAndEmitsSetQuantity() = runTest {
+        val itemsMap = mutableMapOf<String, InventoryItemEntity>()
+        val ops = mutableListOf<CanonicalSyncOperationEntity>()
+        val txs = mutableListOf<InventoryTransactionEntity>()
+
+        val sample = createSampleItemEntity(id = "item-scan-1", quantity = 2.0, revision = 1L)
+        itemsMap[sample.id] = sample
+
+        val inventoryDao: InventoryDao = mock {
+            onBlocking { getItemById(any()) } doAnswer { invocation ->
+                itemsMap[invocation.getArgument<String>(0)]
+            }
+            onBlocking { getAllItemsSync() } doAnswer { itemsMap.values.toList() }
+            onBlocking { updateItem(any()) } doAnswer { invocation ->
+                val item = invocation.getArgument<InventoryItemEntity>(0)
+                itemsMap[item.id] = item
+                Unit
+            }
+        }
+
+        val canonicalSyncDao: CanonicalSyncDao = mock {
+            onBlocking { getSequenceEntity() } doAnswer { null }
+            onBlocking { updateSequenceEntity(any()) } doAnswer { Unit }
+            onBlocking { insertCanonicalOperation(any()) } doAnswer { invocation ->
+                ops.add(invocation.getArgument(0))
+                Unit
+            }
+        }
+
+        val transactionDao: TransactionDao = mock {
+            onBlocking { insertTransaction(any()) } doAnswer { invocation ->
+                txs.add(invocation.getArgument(0))
+                Unit
+            }
+        }
+
+        val identityDao: HouseholdIdentityDao = mock {
+            onBlocking { getHouseholdIdentity() } doAnswer {
+                HouseholdIdentityEntity("house-1", "Main Household", "main-device-100", System.currentTimeMillis())
+            }
+        }
+
+        val domainService = InventoryDomainServiceImpl(
+            inventoryDao = inventoryDao,
+            inventoryBarcodeDao = mock(),
+            transactionDao = transactionDao,
+            stapleRuleDao = mock(),
+            transactionRunner = TestTransactionRunner(),
+            appRoleResolver = object : AppRoleResolver(TestPairingStore(), identityDao) {
+                override suspend fun getAppRoleAsync(): AppRole = AppRole.MAIN
+                override suspend fun isMainAsync(): Boolean = true
+            },
+            canonicalSyncDao = canonicalSyncDao,
+            householdIdentityManager = HouseholdIdentityManager(identityDao)
+        )
+
+        val input = ConfirmedProductInput(
+            barcode = null,
+            displayName = "Olive Oil",
+            brand = "Filippo Berio",
+            canonicalIngredientId = null,
+            canonicalName = "olive oil",
+            category = FoodCategory.CUPBOARD,
+            storageLocation = StorageLocation.CUPBOARD,
+            netQuantity = 3.0,
+            netQuantityUnit = QuantityUnit.LITRE,
+            packCount = 1,
+            packSize = 3.0,
+            packSizeUnit = QuantityUnit.LITRE,
+            quantityConfidence = QuantityConfidence.EXACT,
+            opened = false,
+            staple = false,
+            notes = null,
+            purchaseDate = null,
+            openedDate = null,
+            useByDate = null,
+            bestBeforeDate = null
+        )
+
+        val result = domainService.addLotFromProductInput(input)
+
+        assertTrue(result is DomainResult.Success)
+
+        // 1. Quantity updated to 5.0 on Main
+        val updated = itemsMap["item-scan-1"]
+        assertNotNull(updated)
+        assertEquals(5.0, updated!!.quantity!!, 0.001)
+        assertEquals(2L, updated.revision)
+
+        // 2. Exactly 1 canonical SET_QUANTITY operation emitted
+        assertEquals(1, ops.size)
+        assertEquals(SyncOperationType.SET_QUANTITY.name, ops[0].operationType)
+
+        // 3. RESTOCK transaction history logged
+        assertEquals(1, txs.size)
+        assertEquals(TransactionType.RESTOCK, txs[0].type)
+    }
+
+    @Test
+    fun testAddLotFromProductInput_onFollower_exactNameMatch_delegatesToRestockAndQueuesOutbox() = runTest {
+        val followerItemsMap = mutableMapOf<String, FollowerInventoryItemEntity>()
+        val followerOutbox = mutableListOf<FollowerSyncOutboxEntity>()
+
+        val sampleFollowerItem = FollowerInventoryItemEntity(
+            itemId = "item-scan-follower-1",
+            barcode = null,
+            canonicalName = "olive oil",
+            confirmedDisplayName = "Olive Oil",
+            confirmedBrand = "Filippo Berio",
+            confirmedCategory = "CUPBOARD",
+            confirmedStorageLocation = "CUPBOARD",
+            confirmedQuantity = 2.0,
+            confirmedQuantityUnit = "LITRE",
+            confirmedNotes = null,
+            confirmedStatus = "AVAILABLE",
+            mainConfirmedRevision = 1L,
+            displayName = "Olive Oil",
+            brand = "Filippo Berio",
+            category = "CUPBOARD",
+            storageLocation = "CUPBOARD",
+            quantity = 2.0,
+            quantityUnit = "LITRE",
+            notes = null,
+            status = "AVAILABLE",
+            optimisticRevision = 1L,
+            isPendingSync = false,
+            updatedAt = 1000L
+        )
+        followerItemsMap[sampleFollowerItem.itemId] = sampleFollowerItem
+
+        val followerDao: FollowerDao = mock {
+            onBlocking { getAllItems() } doAnswer { followerItemsMap.values.toList() }
+            onBlocking { getItemById(any()) } doAnswer { invocation ->
+                followerItemsMap[invocation.getArgument<String>(0)]
+            }
+            onBlocking { getUnresolvedOutboxOpsForTargetItem(any()) } doAnswer { emptyList() }
+        }
+
+        val localSyncEngine = object : FollowerLocalSyncEngine(null) {
+            override suspend fun recordLocalRestock(
+                deviceId: String,
+                targetItemId: String,
+                addedQuantity: Double
+            ): FollowerSyncOutboxEntity {
+                val item = followerItemsMap[targetItemId]!!
+                val newQty = (item.quantity ?: 0.0) + addedQuantity
+                val outboxEntity = FollowerSyncOutboxEntity(
+                    operationId = "op-scan-restock-888",
+                    deviceId = deviceId,
+                    deviceSequence = 1L,
+                    protocolVersion = 1,
+                    operationType = SyncOperationType.SET_QUANTITY.name,
+                    targetItemId = targetItemId,
+                    baseRevision = 1L,
+                    payloadJson = json.encodeToString(SetQuantityPayloadDto(absoluteQuantity = newQty)),
+                    createdAt = 1000L,
+                    status = "PENDING",
+                    createdLocallyAt = 1000L
+                )
+                followerOutbox.add(outboxEntity)
+                followerItemsMap[targetItemId] = item.copy(quantity = newQty, isPendingSync = true)
+                return outboxEntity
+            }
+        }
+
+        val domainService = InventoryDomainServiceImpl(
+            inventoryDao = mock(),
+            inventoryBarcodeDao = mock(),
+            transactionDao = mock(),
+            stapleRuleDao = mock(),
+            transactionRunner = TestTransactionRunner(),
+            appRoleResolver = object : AppRoleResolver(TestPairingStore(paired = true)) {
+                override suspend fun getAppRoleAsync(): AppRole = AppRole.FOLLOWER
+                override suspend fun isMainAsync(): Boolean = false
+            },
+            canonicalSyncDao = mock(),
+            householdIdentityManager = HouseholdIdentityManager(mock()),
+            followerDatabase = object : FollowerDatabase() {
+                override fun followerDao(): FollowerDao = followerDao
+                override fun clearAllTables() {}
+                override fun createInvalidationTracker(): androidx.room.InvalidationTracker = mock()
+                override fun createOpenHelper(config: androidx.room.DatabaseConfiguration): androidx.sqlite.db.SupportSQLiteOpenHelper = mock()
+            },
+            followerLocalSyncEngine = localSyncEngine,
+            followerIdentityStore = object : FollowerIdentityStore(null) {
+                override fun getOrCreateDeviceId(): String = "follower-dev-123"
+            }
+        )
+
+        val input = ConfirmedProductInput(
+            barcode = null,
+            displayName = "Olive Oil",
+            brand = "Filippo Berio",
+            canonicalIngredientId = null,
+            canonicalName = "olive oil",
+            category = FoodCategory.CUPBOARD,
+            storageLocation = StorageLocation.CUPBOARD,
+            netQuantity = 3.0,
+            netQuantityUnit = QuantityUnit.LITRE,
+            packCount = 1,
+            packSize = 3.0,
+            packSizeUnit = QuantityUnit.LITRE,
+            quantityConfidence = QuantityConfidence.EXACT,
+            opened = false,
+            staple = false,
+            notes = null,
+            purchaseDate = null,
+            openedDate = null,
+            useByDate = null,
+            bestBeforeDate = null
+        )
+
+        val result = domainService.addLotFromProductInput(input)
+
+        assertTrue(result is DomainResult.Success)
+
+        // Exactly 1 Follower outbox SET_QUANTITY operation created
+        assertEquals(1, followerOutbox.size)
+        val ob = followerOutbox[0]
+        assertEquals(SyncOperationType.SET_QUANTITY.name, ob.operationType)
+        assertEquals("item-scan-follower-1", ob.targetItemId)
+
+        val payload = json.decodeFromString<SetQuantityPayloadDto>(ob.payloadJson)
+        assertEquals(5.0, payload.absoluteQuantity, 0.001)
+    }
+
+    @Test
+    fun testAddLotFromProductInput_unitMismatch_failsWithoutMutation() = runTest {
+        val itemsMap = mutableMapOf<String, InventoryItemEntity>()
+        val ops = mutableListOf<CanonicalSyncOperationEntity>()
+
+        val sample = createSampleItemEntity(id = "item-scan-1", quantity = 2.0, revision = 1L)
+        itemsMap[sample.id] = sample
+
+        val inventoryDao: InventoryDao = mock {
+            onBlocking { getItemById(any()) } doAnswer { invocation ->
+                itemsMap[invocation.getArgument<String>(0)]
+            }
+            onBlocking { getAllItemsSync() } doAnswer { itemsMap.values.toList() }
+        }
+
+        val domainService = InventoryDomainServiceImpl(
+            inventoryDao = inventoryDao,
+            inventoryBarcodeDao = mock(),
+            transactionDao = mock(),
+            stapleRuleDao = mock(),
+            transactionRunner = TestTransactionRunner(),
+            appRoleResolver = object : AppRoleResolver(TestPairingStore()) {
+                override suspend fun getAppRoleAsync(): AppRole = AppRole.MAIN
+            },
+            canonicalSyncDao = mock {
+                onBlocking { insertCanonicalOperation(any()) } doAnswer { invocation ->
+                    ops.add(invocation.getArgument(0))
+                    Unit
+                }
+            },
+            householdIdentityManager = HouseholdIdentityManager(mock())
+        )
+
+        val inputMismatch = ConfirmedProductInput(
+            barcode = null,
+            displayName = "Olive Oil",
+            brand = "Filippo Berio",
+            canonicalIngredientId = null,
+            canonicalName = "olive oil",
+            category = FoodCategory.CUPBOARD,
+            storageLocation = StorageLocation.CUPBOARD,
+            netQuantity = 500.0,
+            netQuantityUnit = QuantityUnit.GRAM,
+            packCount = 1,
+            packSize = 500.0,
+            packSizeUnit = QuantityUnit.GRAM,
+            quantityConfidence = QuantityConfidence.EXACT,
+            opened = false,
+            staple = false,
+            notes = null,
+            purchaseDate = null,
+            openedDate = null,
+            useByDate = null,
+            bestBeforeDate = null
+        )
+
+        val result = domainService.addLotFromProductInput(inputMismatch)
+
+        assertTrue(result is DomainResult.Failure)
+        assertTrue((result as DomainResult.Failure).error is DomainError.InvalidUnitConversion)
+        assertEquals(0, ops.size)
     }
 }
