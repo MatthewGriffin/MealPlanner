@@ -36,6 +36,7 @@ import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.toDoma
 import com.example.chatgpt_mealplanner.core.sync.follower.engine.FollowerLocalSyncEngine
 import com.example.chatgpt_mealplanner.sync.contract.AddItemPayloadDto
 import com.example.chatgpt_mealplanner.sync.contract.EditItemPayloadDto
+import com.example.chatgpt_mealplanner.sync.contract.RequestDiscardPayloadDto
 import com.example.chatgpt_mealplanner.sync.contract.SetQuantityPayloadDto
 import com.example.chatgpt_mealplanner.sync.contract.SYNC_PROTOCOL_VERSION
 import com.example.chatgpt_mealplanner.sync.contract.SyncOperationStatus
@@ -781,11 +782,54 @@ class InventoryDomainServiceImpl @Inject constructor(
     }
 
     override suspend fun discardItem(itemId: String, reason: String?): DomainResult<Unit> {
+        val appRole = appRoleResolver.getAppRoleAsync()
+        if (appRole == AppRole.FOLLOWER) {
+            val dao = followerDatabase?.followerDao()
+                ?: return DomainResult.Failure(DomainError.TransactionFailed("Follower database unavailable"))
+            val existing = dao.getItemById(itemId)
+                ?: return DomainResult.Failure(DomainError.ItemNotFound(itemId))
+
+            if (existing.status == ItemStatus.DISCARDED.name || existing.confirmedStatus == ItemStatus.DISCARDED.name) {
+                return DomainResult.Success(Unit)
+            }
+
+            val unresolvedOps = dao.getUnresolvedOutboxOpsForTargetItem(itemId)
+            val existingDiscardRequest = unresolvedOps.find { it.operationType == SyncOperationType.REQUEST_DISCARD_ITEM.name }
+            if (existingDiscardRequest != null) {
+                return DomainResult.Failure(DomainError.DuplicateOperation("Discard request for item $itemId is already pending approval"))
+            }
+
+            val engine = followerLocalSyncEngine
+                ?: return DomainResult.Failure(DomainError.TransactionFailed("Follower sync engine unavailable"))
+            val deviceId = followerIdentityStore?.getOrCreateDeviceId()
+                ?: return DomainResult.Failure(DomainError.TransactionFailed("Follower identity store unavailable"))
+
+            try {
+                engine.recordLocalRequestDiscard(
+                    deviceId = deviceId,
+                    targetItemId = itemId,
+                    reason = reason
+                )
+            } catch (_: IllegalArgumentException) {
+                return DomainResult.Failure(DomainError.ItemNotFound(itemId))
+            } catch (e: Throwable) {
+                return DomainResult.Failure(DomainError.TransactionFailed(e.message ?: "Failed to record local discard request"))
+            }
+            return DomainResult.Success(Unit)
+        }
+
+        if (appRole != AppRole.MAIN) {
+            return DomainResult.Failure(DomainError.TransactionFailed("Unresolved application role"))
+        }
+
         return transactionRunner.runInTransaction {
             val itemEntity = inventoryDao.getItemById(itemId)
                 ?: return@runInTransaction DomainResult.Failure(DomainError.ItemNotFound(itemId))
 
             val item = itemEntity.toDomainModel()
+            if (item.status == ItemStatus.DISCARDED) {
+                return@runInTransaction DomainResult.Success(Unit)
+            }
 
             val updatedItem = item.copy(
                 quantity = 0.0,
@@ -793,6 +837,35 @@ class InventoryDomainServiceImpl @Inject constructor(
                 updatedAt = System.currentTimeMillis(),
                 revision = item.revision + 1L
             )
+
+            val identity = householdIdentityManager.getOrCreateHouseholdIdentity()
+            val mainDeviceId = identity.mainDeviceId
+            if (mainDeviceId.isNotBlank()) {
+                val seqEntity = canonicalSyncDao.getSequenceEntity() ?: CanonicalSyncSequenceEntity(singletonId = 1, nextSequence = 1L)
+                val allocatedSequence = seqEntity.nextSequence
+                canonicalSyncDao.updateSequenceEntity(seqEntity.copy(nextSequence = allocatedSequence + 1L))
+
+                val payloadJson = json.encodeToString(RequestDiscardPayloadDto(reason = reason))
+
+                val canonicalOp = CanonicalSyncOperationEntity(
+                    operationId = UUID.randomUUID().toString(),
+                    deviceId = mainDeviceId,
+                    deviceSequence = allocatedSequence,
+                    protocolVersion = SYNC_PROTOCOL_VERSION,
+                    operationType = SyncOperationType.REQUEST_DISCARD_ITEM.name,
+                    targetItemId = updatedItem.id,
+                    baseRevision = item.revision,
+                    payloadJson = payloadJson,
+                    createdAt = updatedItem.updatedAt,
+                    canonicalSequence = allocatedSequence,
+                    receivedAt = updatedItem.updatedAt,
+                    status = SyncOperationStatus.APPLIED.name,
+                    resultCode = "APPROVED_DISCARD",
+                    resultPayloadJson = null
+                )
+                canonicalSyncDao.insertCanonicalOperation(canonicalOp)
+            }
+
             inventoryDao.updateItem(updatedItem.toEntity())
 
             // Deactivate staple rule for discarded item
