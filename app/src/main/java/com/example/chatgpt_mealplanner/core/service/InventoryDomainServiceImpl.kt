@@ -787,12 +787,52 @@ class InventoryDomainServiceImpl @Inject constructor(
     }
 
     override suspend fun restockItem(itemId: String, addedQuantity: Double?): DomainResult<Unit> {
+        if (addedQuantity == null || addedQuantity <= 0.0 || addedQuantity.isNaN() || addedQuantity.isInfinite()) {
+            return DomainResult.Failure(DomainError.InvalidQuantity(addedQuantity ?: 0.0))
+        }
+
+        val appRole = appRoleResolver.getAppRoleAsync()
+        if (appRole == AppRole.FOLLOWER) {
+            val engine = followerLocalSyncEngine
+                ?: return DomainResult.Failure(DomainError.TransactionFailed("Follower sync engine unavailable"))
+            val deviceId = followerIdentityStore?.getOrCreateDeviceId()
+                ?: return DomainResult.Failure(DomainError.TransactionFailed("Follower identity store unavailable"))
+
+            try {
+                engine.recordLocalRestock(
+                    deviceId = deviceId,
+                    targetItemId = itemId,
+                    addedQuantity = addedQuantity
+                )
+            } catch (e: IllegalArgumentException) {
+                val msg = e.message ?: ""
+                return if (msg.contains("not found")) {
+                    DomainResult.Failure(DomainError.ItemNotFound(itemId))
+                } else {
+                    DomainResult.Failure(DomainError.InvalidQuantity(addedQuantity))
+                }
+            } catch (e: IllegalStateException) {
+                return DomainResult.Failure(DomainError.DuplicateOperation(e.message ?: "Restock blocked by pending operations"))
+            } catch (e: Throwable) {
+                return DomainResult.Failure(DomainError.TransactionFailed(e.message ?: "Failed to record local restock"))
+            }
+            return DomainResult.Success(Unit)
+        }
+
+        if (appRole != AppRole.MAIN) {
+            return DomainResult.Failure(DomainError.TransactionFailed("Unresolved application role"))
+        }
+
         return transactionRunner.runInTransaction {
             val itemEntity = inventoryDao.getItemById(itemId)
                 ?: return@runInTransaction DomainResult.Failure(DomainError.ItemNotFound(itemId))
 
             val item = itemEntity.toDomainModel()
-            val newQty = (item.quantity ?: 0.0) + (addedQuantity ?: 0.0)
+            val currentQty = item.quantity ?: 0.0
+            val newQty = currentQty + addedQuantity
+            if (newQty.isNaN() || newQty.isInfinite() || newQty < 0.0) {
+                return@runInTransaction DomainResult.Failure(DomainError.InvalidQuantity(newQty))
+            }
 
             val updatedItem = item.copy(
                 quantity = newQty,
@@ -800,6 +840,36 @@ class InventoryDomainServiceImpl @Inject constructor(
                 updatedAt = System.currentTimeMillis(),
                 revision = item.revision + 1L
             )
+
+            val identity = householdIdentityManager.getOrCreateHouseholdIdentity()
+            val mainDeviceId = identity.mainDeviceId
+            if (mainDeviceId.isNotBlank()) {
+                val seqEntity = canonicalSyncDao.getSequenceEntity() ?: CanonicalSyncSequenceEntity(singletonId = 1, nextSequence = 1L)
+                val allocatedSequence = seqEntity.nextSequence
+                canonicalSyncDao.updateSequenceEntity(seqEntity.copy(nextSequence = allocatedSequence + 1L))
+
+                val setQtyPayload = SetQuantityPayloadDto(absoluteQuantity = newQty)
+                val payloadJson = json.encodeToString(setQtyPayload)
+
+                val canonicalOp = CanonicalSyncOperationEntity(
+                    operationId = UUID.randomUUID().toString(),
+                    deviceId = mainDeviceId,
+                    deviceSequence = allocatedSequence,
+                    protocolVersion = SYNC_PROTOCOL_VERSION,
+                    operationType = SyncOperationType.SET_QUANTITY.name,
+                    targetItemId = updatedItem.id,
+                    baseRevision = item.revision,
+                    payloadJson = payloadJson,
+                    createdAt = updatedItem.updatedAt,
+                    canonicalSequence = allocatedSequence,
+                    receivedAt = updatedItem.updatedAt,
+                    status = SyncOperationStatus.APPLIED.name,
+                    resultCode = "APPLIED",
+                    resultPayloadJson = null
+                )
+                canonicalSyncDao.insertCanonicalOperation(canonicalOp)
+            }
+
             inventoryDao.updateItem(updatedItem.toEntity())
 
             val transaction = InventoryTransactionEntity(

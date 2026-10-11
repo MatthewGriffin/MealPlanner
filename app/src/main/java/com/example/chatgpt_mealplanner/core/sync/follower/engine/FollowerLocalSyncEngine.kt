@@ -358,6 +358,64 @@ open class FollowerLocalSyncEngine @Inject constructor(
         return result
     }
 
+    open suspend fun recordLocalRestock(
+        deviceId: String,
+        targetItemId: String,
+        addedQuantity: Double
+    ): FollowerSyncOutboxEntity {
+        if (addedQuantity <= 0.0 || addedQuantity.isNaN() || addedQuantity.isInfinite()) {
+            throw IllegalArgumentException("Invalid added quantity: $addedQuantity")
+        }
+
+        val result = runTransaction { dao ->
+            val now = System.currentTimeMillis()
+
+            val existingItem = dao.getItemById(targetItemId)
+                ?: throw IllegalArgumentException("Target item $targetItemId not found in local projection")
+
+            val unresolved = dao.getUnresolvedOutboxOpsForTargetItem(targetItemId)
+            if (unresolved.isNotEmpty()) {
+                throw IllegalStateException("Restock blocked: item $targetItemId has unresolved pending operations in progress")
+            }
+
+            val currentQty = existingItem.quantity ?: 0.0
+            val newQty = currentQty + addedQuantity
+            if (newQty < 0.0 || newQty.isNaN() || newQty.isInfinite()) {
+                throw IllegalArgumentException("Invalid resulting quantity: $newQty")
+            }
+
+            val seqEntity = dao.getSequenceEntity() ?: FollowerDeviceSequenceEntity(singletonId = 1, nextSequence = 1L)
+            val allocatedSeq = seqEntity.nextSequence
+            dao.updateSequenceEntity(seqEntity.copy(nextSequence = allocatedSeq + 1L))
+
+            val operationId = UUID.randomUUID().toString()
+
+            val payload = SetQuantityPayloadDto(absoluteQuantity = newQty)
+            val payloadJson = json.encodeToString(payload)
+
+            val outboxEntity = FollowerSyncOutboxEntity(
+                operationId = operationId,
+                deviceId = deviceId,
+                deviceSequence = allocatedSeq,
+                protocolVersion = SYNC_PROTOCOL_VERSION,
+                operationType = SyncOperationType.SET_QUANTITY.name,
+                targetItemId = targetItemId,
+                baseRevision = existingItem.mainConfirmedRevision,
+                payloadJson = payloadJson,
+                createdAt = now,
+                status = "PENDING",
+                createdLocallyAt = now
+            )
+            dao.insertOutboxOperation(outboxEntity)
+
+            recomputeItemWorkingProjection(dao, targetItemId)
+
+            outboxEntity
+        }
+        notifyOutboxCommitted()
+        return result
+    }
+
     open suspend fun recordLocalAdjustQuantity(
         deviceId: String,
         targetItemId: String,
