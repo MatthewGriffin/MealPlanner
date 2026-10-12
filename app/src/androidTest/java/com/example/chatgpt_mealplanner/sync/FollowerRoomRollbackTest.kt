@@ -134,7 +134,7 @@ class FollowerRoomRollbackTest {
         db.execSQL("""
             CREATE TRIGGER fail_on_second_snapshot_item
             BEFORE INSERT ON follower_inventory_items
-            WHEN (SELECT COUNT(*) FROM follower_inventory_items) >= 2
+            WHEN (SELECT COUNT(*) FROM follower_inventory_items) >= 1
             BEGIN
                 SELECT RAISE(ABORT, 'Injected SQLite exception after first snapshot item write');
             END;
@@ -162,7 +162,8 @@ class FollowerRoomRollbackTest {
             followerDeviceId = followerDeviceId
         )
 
-        assertFalse("Fault during install MUST cause pass to fail", summary.success)
+        println("BOOTSTRAP SUMMARY RESULT: $summary")
+        assertFalse("Fault during install MUST cause pass to fail (summary=$summary)", summary.success)
         assertEquals("DATABASE_INSTALL_FAILED", summary.resultCode)
 
         // 6. Query the REAL Room database and prove full transaction rollback
