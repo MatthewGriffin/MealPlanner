@@ -10,7 +10,19 @@ import com.example.chatgpt_mealplanner.core.database.entity.InventoryTransaction
 import com.example.chatgpt_mealplanner.core.database.entity.LeftoverEntity
 import com.example.chatgpt_mealplanner.core.database.entity.toDomainModel
 import com.example.chatgpt_mealplanner.core.database.entity.toEntity
+import com.example.chatgpt_mealplanner.core.database.dao.CanonicalSyncDao
+import com.example.chatgpt_mealplanner.core.database.entity.CanonicalSyncOperationEntity
+import com.example.chatgpt_mealplanner.core.database.entity.CanonicalSyncSequenceEntity
 import com.example.chatgpt_mealplanner.core.model.ActualIngredientOverride
+import com.example.chatgpt_mealplanner.core.sync.AppRole
+import com.example.chatgpt_mealplanner.core.sync.AppRoleResolver
+import com.example.chatgpt_mealplanner.core.sync.HouseholdIdentityManager
+import com.example.chatgpt_mealplanner.sync.contract.SetQuantityPayloadDto
+import com.example.chatgpt_mealplanner.sync.contract.SYNC_PROTOCOL_VERSION
+import com.example.chatgpt_mealplanner.sync.contract.SyncOperationStatus
+import com.example.chatgpt_mealplanner.sync.contract.SyncOperationType
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import com.example.chatgpt_mealplanner.core.model.DomainError
 import com.example.chatgpt_mealplanner.core.model.DomainResult
 import com.example.chatgpt_mealplanner.core.model.IngredientSubstitution
@@ -51,8 +63,13 @@ class MealDomainServiceImpl @Inject constructor(
     private val inventoryDao: InventoryDao,
     private val transactionDao: TransactionDao,
     private val leftoverDao: LeftoverDao,
-    private val transactionRunner: DatabaseTransactionRunner
+    private val transactionRunner: DatabaseTransactionRunner,
+    private val appRoleResolver: AppRoleResolver? = null,
+    private val canonicalSyncDao: CanonicalSyncDao? = null,
+    private val householdIdentityManager: HouseholdIdentityManager? = null
 ) : MealDomainService {
+
+    private val json = Json { ignoreUnknownKeys = true }
 
     override suspend fun createPlannedMeal(
         meal: Meal,
@@ -374,8 +391,59 @@ class MealDomainServiceImpl @Inject constructor(
         }
 
         // Phase B: Execution (MUTATION inside guaranteed atomic rollback transaction)
+        val appRole = appRoleResolver?.getAppRoleAsync()
+        if (appRole == AppRole.FOLLOWER) {
+            return DomainResult.Failure(DomainError.TransactionFailed("Follower meal deduction not supported directly on Main storage"))
+        }
+
+        val syncDao = canonicalSyncDao
+        val identityMgr = householdIdentityManager
+        val mainDeviceId = identityMgr?.getOrCreateHouseholdIdentity()?.mainDeviceId.orEmpty()
+
+        if (appRole == AppRole.MAIN) {
+            if (syncDao == null) {
+                return DomainResult.Failure(DomainError.TransactionFailed("CanonicalSyncDao unavailable on Main"))
+            }
+            if (identityMgr == null || mainDeviceId.isBlank()) {
+                return DomainResult.Failure(DomainError.TransactionFailed("Household identity dependencies unavailable on Main"))
+            }
+        }
+
         return transactionRunner.runInDomainTransaction {
             val now = System.currentTimeMillis()
+
+            suspend fun publishSetQuantity(oldLot: InventoryItemEntity, newQty: Double) {
+                if (newQty.isNaN() || newQty.isInfinite() || newQty < 0.0) {
+                    throw TransactionAbortException(DomainError.InvalidQuantity(newQty))
+                }
+
+                if (syncDao != null && mainDeviceId.isNotBlank()) {
+                    val seqEntity = syncDao.getSequenceEntity() ?: CanonicalSyncSequenceEntity(singletonId = 1, nextSequence = 1L)
+                    val allocatedSequence = seqEntity.nextSequence
+                    syncDao.updateSequenceEntity(seqEntity.copy(nextSequence = allocatedSequence + 1L))
+
+                    val setQtyPayload = SetQuantityPayloadDto(absoluteQuantity = newQty)
+                    val payloadJson = json.encodeToString(setQtyPayload)
+
+                    val canonicalOp = CanonicalSyncOperationEntity(
+                        operationId = UUID.randomUUID().toString(),
+                        deviceId = mainDeviceId,
+                        deviceSequence = allocatedSequence,
+                        protocolVersion = SYNC_PROTOCOL_VERSION,
+                        operationType = SyncOperationType.SET_QUANTITY.name,
+                        targetItemId = oldLot.id,
+                        baseRevision = oldLot.revision,
+                        payloadJson = payloadJson,
+                        createdAt = now,
+                        canonicalSequence = allocatedSequence,
+                        receivedAt = now,
+                        status = SyncOperationStatus.APPLIED.name,
+                        resultCode = "APPLIED",
+                        resultPayloadJson = null
+                    )
+                    syncDao.insertCanonicalOperation(canonicalOp)
+                }
+            }
 
             for (step in planSteps) {
                 var remainingToDeduct = step.requirement.effectiveQty
@@ -412,6 +480,7 @@ class MealDomainServiceImpl @Inject constructor(
                             revision = lot.revision + 1L
                         )
                         inventoryDao.updateItem(updatedLot)
+                        publishSetQuantity(lot, newQty)
 
                         val tx = InventoryTransactionEntity(
                             id = UUID.randomUUID().toString(),
@@ -452,6 +521,7 @@ class MealDomainServiceImpl @Inject constructor(
                                 revision = lot.revision + 1L
                             )
                             inventoryDao.updateItem(updatedLot)
+                            publishSetQuantity(lot, 0.0)
 
                             val tx = InventoryTransactionEntity(
                                 id = UUID.randomUUID().toString(),
@@ -485,6 +555,7 @@ class MealDomainServiceImpl @Inject constructor(
                                     revision = lot.revision + 1L
                                 )
                                 inventoryDao.updateItem(updatedLot)
+                                publishSetQuantity(lot, newUnopenedQty)
 
                                 val tx = InventoryTransactionEntity(
                                     id = UUID.randomUUID().toString(),
@@ -512,6 +583,7 @@ class MealDomainServiceImpl @Inject constructor(
                                     revision = lot.revision + 1L
                                 )
                                 inventoryDao.updateItem(updatedLot)
+                                publishSetQuantity(lot, newUnopenedQty)
 
                                 val tx = InventoryTransactionEntity(
                                     id = UUID.randomUUID().toString(),
