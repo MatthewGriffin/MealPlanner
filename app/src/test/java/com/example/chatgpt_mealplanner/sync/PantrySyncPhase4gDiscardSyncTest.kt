@@ -4,8 +4,10 @@ import com.example.chatgpt_mealplanner.core.database.dao.CanonicalSyncDao
 import com.example.chatgpt_mealplanner.core.database.dao.HouseholdIdentityDao
 import com.example.chatgpt_mealplanner.core.database.dao.InventoryDao
 import com.example.chatgpt_mealplanner.core.database.dao.TransactionDao
+import com.example.chatgpt_mealplanner.core.database.dao.PairedDeviceDao
 import com.example.chatgpt_mealplanner.core.database.entity.CanonicalSyncOperationEntity
 import com.example.chatgpt_mealplanner.core.database.entity.CanonicalSyncSequenceEntity
+import com.example.chatgpt_mealplanner.core.database.entity.SyncPendingApprovalEntity
 import com.example.chatgpt_mealplanner.core.database.entity.HouseholdIdentityEntity
 import com.example.chatgpt_mealplanner.core.database.entity.InventoryItemEntity
 import com.example.chatgpt_mealplanner.core.database.entity.InventoryTransactionEntity
@@ -21,6 +23,8 @@ import com.example.chatgpt_mealplanner.core.service.InventoryDomainServiceImpl
 import com.example.chatgpt_mealplanner.core.sync.AppRole
 import com.example.chatgpt_mealplanner.core.sync.AppRoleResolver
 import com.example.chatgpt_mealplanner.core.sync.HouseholdIdentityManager
+import com.example.chatgpt_mealplanner.core.sync.repository.ResolutionResult
+import com.example.chatgpt_mealplanner.core.sync.repository.SyncConflictApprovalRepository
 import com.example.chatgpt_mealplanner.core.sync.enrollment.FollowerIdentityStore
 import com.example.chatgpt_mealplanner.core.sync.follower.config.FollowerPairingStore
 import com.example.chatgpt_mealplanner.core.sync.follower.database.FollowerDatabase
@@ -353,5 +357,175 @@ class PantrySyncPhase4gDiscardSyncTest {
 
         assertTrue(result is DomainResult.Failure)
         assertTrue((result as DomainResult.Failure).error is DomainError.ItemNotFound)
+    }
+
+    @Test
+    fun testApprovePendingDiscard_setsQuantityZeroAndStatusDiscardedOnMain() = runTest {
+        val itemsMap = mutableMapOf<String, InventoryItemEntity>()
+        val ops = mutableListOf<CanonicalSyncOperationEntity>()
+        var seqEntity: CanonicalSyncSequenceEntity? = null
+        var approvalStatus = "PENDING_APPROVAL"
+
+        val sample = createSampleItemEntity(id = "item-approval-1", quantity = 1.0, status = ItemStatus.AVAILABLE, revision = 1L)
+        itemsMap[sample.id] = sample
+
+        val pendingApproval = SyncPendingApprovalEntity(
+            approvalId = "app-123",
+            operationId = "op-follower-777",
+            deviceId = "follower-dev-1",
+            targetItemId = "item-approval-1",
+            operationType = SyncOperationType.REQUEST_DISCARD_ITEM.name,
+            requestedBaseRevision = 1L,
+            currentRevisionAtRequest = 1L,
+            currentItemSnapshotJson = "{}",
+            payloadJson = "{\"reason\":\"Spoiled\"}",
+            status = "PENDING_APPROVAL",
+            createdAt = 1000L
+        )
+
+        val inventoryDao: InventoryDao = mock {
+            onBlocking { getItemById(any()) } doAnswer { invocation ->
+                itemsMap[invocation.getArgument<String>(0)]
+            }
+            onBlocking { updateItem(any()) } doAnswer { invocation ->
+                val item = invocation.getArgument<InventoryItemEntity>(0)
+                itemsMap[item.id] = item
+                Unit
+            }
+        }
+
+        val canonicalSyncDao: CanonicalSyncDao = mock {
+            onBlocking { getApprovalById("app-123") } doAnswer { pendingApproval.copy(status = approvalStatus) }
+            onBlocking { updateApprovalStatus(any(), any()) } doAnswer { invocation ->
+                approvalStatus = invocation.getArgument(1)
+                Unit
+            }
+            onBlocking { getSequenceEntity() } doAnswer { seqEntity }
+            onBlocking { updateSequenceEntity(any()) } doAnswer { invocation ->
+                seqEntity = invocation.getArgument(0)
+                Unit
+            }
+            onBlocking { insertCanonicalOperation(any()) } doAnswer { invocation ->
+                ops.add(invocation.getArgument(0))
+                Unit
+            }
+        }
+
+        val identityDao: HouseholdIdentityDao = mock {
+            onBlocking { getHouseholdIdentity() } doAnswer {
+                HouseholdIdentityEntity("house-1", "Main Household", "main-device-100", System.currentTimeMillis())
+            }
+        }
+
+        val approvalRepo = SyncConflictApprovalRepository(
+            canonicalSyncDao = canonicalSyncDao,
+            pairedDeviceDao = mock(),
+            inventoryDao = inventoryDao,
+            householdIdentityDao = identityDao,
+            transactionRunner = TestTransactionRunner()
+        )
+
+        val result = approvalRepo.approvePendingDiscard("app-123")
+
+        assertTrue(result is ResolutionResult.Success)
+
+        // 1. Item updated on Main with quantity 0.0, status DISCARDED, revision 2
+        val updated = itemsMap["item-approval-1"]
+        assertNotNull(updated)
+        assertEquals(0.0, updated!!.quantity!!, 0.001)
+        assertEquals(ItemStatus.DISCARDED, updated.status)
+        assertEquals(2L, updated.revision)
+
+        // 2. Exactly 1 canonical APPROVED_DISCARD operation emitted
+        assertEquals(1, ops.size)
+        val op = ops[0]
+        assertEquals(SyncOperationType.REQUEST_DISCARD_ITEM.name, op.operationType)
+        assertEquals("APPROVED_DISCARD", op.resultCode)
+        assertEquals("item-approval-1", op.targetItemId)
+        assertEquals(1L, op.baseRevision)
+
+        // 3. Approval status updated to APPROVED
+        assertEquals("APPROVED", approvalStatus)
+    }
+
+    @Test
+    fun testRejectPendingDiscard_preservesMainQuantityAndStatus() = runTest {
+        val itemsMap = mutableMapOf<String, InventoryItemEntity>()
+        val ops = mutableListOf<CanonicalSyncOperationEntity>()
+        var seqEntity: CanonicalSyncSequenceEntity? = null
+        var approvalStatus = "PENDING_APPROVAL"
+
+        val sample = createSampleItemEntity(id = "item-approval-1", quantity = 1.0, status = ItemStatus.AVAILABLE, revision = 1L)
+        itemsMap[sample.id] = sample
+
+        val pendingApproval = SyncPendingApprovalEntity(
+            approvalId = "app-123",
+            operationId = "op-follower-777",
+            deviceId = "follower-dev-1",
+            targetItemId = "item-approval-1",
+            operationType = SyncOperationType.REQUEST_DISCARD_ITEM.name,
+            requestedBaseRevision = 1L,
+            currentRevisionAtRequest = 1L,
+            currentItemSnapshotJson = "{}",
+            payloadJson = "{\"reason\":\"Spoiled\"}",
+            status = "PENDING_APPROVAL",
+            createdAt = 1000L
+        )
+
+        val inventoryDao: InventoryDao = mock {
+            onBlocking { getItemById(any()) } doAnswer { invocation ->
+                itemsMap[invocation.getArgument<String>(0)]
+            }
+            onBlocking { updateItem(any()) } doAnswer { invocation ->
+                val item = invocation.getArgument<InventoryItemEntity>(0)
+                itemsMap[item.id] = item
+                Unit
+            }
+        }
+
+        val canonicalSyncDao: CanonicalSyncDao = mock {
+            onBlocking { getApprovalById("app-123") } doAnswer { pendingApproval.copy(status = approvalStatus) }
+            onBlocking { updateApprovalStatus(any(), any()) } doAnswer { invocation ->
+                approvalStatus = invocation.getArgument(1)
+                Unit
+            }
+            onBlocking { getSequenceEntity() } doAnswer { seqEntity }
+            onBlocking { updateSequenceEntity(any()) } doAnswer { invocation ->
+                seqEntity = invocation.getArgument(0)
+                Unit
+            }
+            onBlocking { insertCanonicalOperation(any()) } doAnswer { invocation ->
+                ops.add(invocation.getArgument(0))
+                Unit
+            }
+        }
+
+        val identityDao: HouseholdIdentityDao = mock {
+            onBlocking { getHouseholdIdentity() } doAnswer {
+                HouseholdIdentityEntity("house-1", "Main Household", "main-device-100", System.currentTimeMillis())
+            }
+        }
+
+        val approvalRepo = SyncConflictApprovalRepository(
+            canonicalSyncDao = canonicalSyncDao,
+            pairedDeviceDao = mock(),
+            inventoryDao = inventoryDao,
+            householdIdentityDao = identityDao,
+            transactionRunner = TestTransactionRunner()
+        )
+
+        val result = approvalRepo.rejectPendingDiscard("app-123")
+
+        assertTrue(result is ResolutionResult.Success)
+
+        // Item quantity and status on Main REMAIN UNCHANGED
+        val itemAfterReject = itemsMap["item-approval-1"]
+        assertNotNull(itemAfterReject)
+        assertEquals(1.0, itemAfterReject!!.quantity!!, 0.001)
+        assertEquals(ItemStatus.AVAILABLE, itemAfterReject.status)
+        assertEquals(1L, itemAfterReject.revision)
+
+        // Approval status updated to REJECTED
+        assertEquals("REJECTED", approvalStatus)
     }
 }

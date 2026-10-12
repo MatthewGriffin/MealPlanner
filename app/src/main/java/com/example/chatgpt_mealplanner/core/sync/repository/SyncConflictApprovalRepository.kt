@@ -227,6 +227,7 @@ open class SyncConflictApprovalRepository @Inject constructor(
 
             // Destructive discard mutation executed ONCE
             val updated = item.copy(
+                quantity = 0.0,
                 status = ItemStatus.DISCARDED,
                 updatedAt = now,
                 revision = newRev
