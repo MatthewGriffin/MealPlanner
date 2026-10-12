@@ -596,6 +596,65 @@ val MIGRATION_14_15 = object : Migration(14, 15) {
 
 val MIGRATION_15_16 = object : Migration(15, 16) {
     override fun migrate(db: SupportSQLiteDatabase) {
+        // Rebuild inventory_items table to match Room v16 schema (removing SQLite column default on revision)
+        db.execSQL("""
+            CREATE TABLE IF NOT EXISTS `inventory_items_new` (
+                `id` TEXT NOT NULL,
+                `barcode` TEXT,
+                `canonicalIngredientId` TEXT,
+                `canonicalName` TEXT NOT NULL,
+                `displayName` TEXT NOT NULL,
+                `brand` TEXT,
+                `category` TEXT NOT NULL,
+                `storageLocation` TEXT NOT NULL,
+                `quantity` REAL,
+                `quantityUnit` TEXT,
+                `packCount` INTEGER,
+                `packSize` REAL,
+                `packSizeUnit` TEXT,
+                `quantityConfidence` TEXT NOT NULL,
+                `status` TEXT NOT NULL,
+                `opened` INTEGER,
+                `frozen` INTEGER NOT NULL,
+                `staple` INTEGER NOT NULL,
+                `purchaseDate` TEXT,
+                `openedDate` TEXT,
+                `useByDate` TEXT,
+                `bestBeforeDate` TEXT,
+                `notes` TEXT,
+                `createdAt` INTEGER NOT NULL,
+                `updatedAt` INTEGER NOT NULL,
+                `revision` INTEGER NOT NULL,
+                PRIMARY KEY(`id`)
+            )
+        """.trimIndent())
+
+        db.execSQL("""
+            INSERT INTO `inventory_items_new` (
+                `id`, `barcode`, `canonicalIngredientId`, `canonicalName`, `displayName`,
+                `brand`, `category`, `storageLocation`, `quantity`, `quantityUnit`,
+                `packCount`, `packSize`, `packSizeUnit`, `quantityConfidence`, `status`,
+                `opened`, `frozen`, `staple`, `purchaseDate`, `openedDate`,
+                `useByDate`, `bestBeforeDate`, `notes`, `createdAt`, `updatedAt`, `revision`
+            )
+            SELECT
+                `id`, `barcode`, `canonicalIngredientId`, `canonicalName`, `displayName`,
+                `brand`, `category`, `storageLocation`, `quantity`, `quantityUnit`,
+                `packCount`, `packSize`, `packSizeUnit`, `quantityConfidence`, `status`,
+                `opened`, `frozen`, `staple`, `purchaseDate`, `openedDate`,
+                `useByDate`, `bestBeforeDate`, `notes`, `createdAt`, `updatedAt`, `revision`
+            FROM `inventory_items`
+        """.trimIndent())
+
+        db.execSQL("DROP TABLE `inventory_items` ")
+        db.execSQL("ALTER TABLE `inventory_items_new` RENAME TO `inventory_items` ")
+
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_inventory_items_barcode` ON `inventory_items` (`barcode`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_inventory_items_canonicalIngredientId` ON `inventory_items` (`canonicalIngredientId`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_inventory_items_category` ON `inventory_items` (`category`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_inventory_items_storageLocation` ON `inventory_items` (`storageLocation`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_inventory_items_status` ON `inventory_items` (`status`)")
+
         db.execSQL("""
             CREATE TABLE IF NOT EXISTS `canonical_sync_sequence` (
                 `singletonId` INTEGER NOT NULL,

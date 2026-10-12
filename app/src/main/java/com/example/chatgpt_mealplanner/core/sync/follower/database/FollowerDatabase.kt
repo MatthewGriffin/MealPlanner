@@ -55,6 +55,17 @@ val FOLLOWER_MIGRATION_3_4 = object : Migration(3, 4) {
         db.execSQL("ALTER TABLE `follower_sync_metadata` ADD COLUMN `bootstrapCompletedAt` INTEGER")
         db.execSQL("ALTER TABLE `follower_sync_metadata` ADD COLUMN `bootstrapCanonicalSequence` INTEGER")
 
+        try {
+            db.execSQL("ALTER TABLE `follower_sync_outbox` ADD COLUMN `mainCanonicalSequence` INTEGER")
+            db.execSQL("ALTER TABLE `follower_sync_outbox` ADD COLUMN `mainResultCode` TEXT")
+            db.execSQL("ALTER TABLE `follower_sync_outbox` ADD COLUMN `mainResultingRevision` INTEGER")
+            db.execSQL("ALTER TABLE `follower_sync_outbox` ADD COLUMN `conflictId` TEXT")
+            db.execSQL("ALTER TABLE `follower_sync_outbox` ADD COLUMN `approvalId` TEXT")
+            db.execSQL("ALTER TABLE `follower_sync_outbox` ADD COLUMN `completedAt` INTEGER")
+        } catch (_: Exception) {}
+
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_follower_sync_outbox_deviceId_deviceSequence` ON `follower_sync_outbox` (`deviceId`, `deviceSequence`)")
+
         val hasItemsTable = db.compileStatement("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='follower_inventory_items'").simpleQueryForLong() > 0
         val hasOutboxTable = db.compileStatement("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='follower_sync_outbox'").simpleQueryForLong() > 0
 
