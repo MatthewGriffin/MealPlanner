@@ -582,14 +582,18 @@ class PantrySyncPhase4gDiscardSyncTest {
             onBlocking { getUnresolvedOutboxOpsForTargetItem("item-dup-1") } doAnswer { followerOutbox.toList() }
         }
 
-        val engine = FollowerLocalSyncEngine(
+        val engine = object : FollowerLocalSyncEngine(
             followerDatabase = object : FollowerDatabase() {
                 override fun followerDao(): FollowerDao = followerDao
                 override fun clearAllTables() {}
                 override fun createInvalidationTracker(): androidx.room.InvalidationTracker = mock()
                 override fun createOpenHelper(config: androidx.room.DatabaseConfiguration): androidx.sqlite.db.SupportSQLiteOpenHelper = mock()
             }
-        )
+        ) {
+            override suspend fun <T> runTransaction(block: suspend (FollowerDao) -> T): T {
+                return block(followerDao)
+            }
+        }
 
         var thrownException: Throwable? = null
         try {
@@ -655,14 +659,18 @@ class PantrySyncPhase4gDiscardSyncTest {
             onBlocking { getUnresolvedOutboxOpsForTargetItem("item-dup-2") } doAnswer { followerOutbox.toList() }
         }
 
-        val engine = FollowerLocalSyncEngine(
+        val engine = object : FollowerLocalSyncEngine(
             followerDatabase = object : FollowerDatabase() {
                 override fun followerDao(): FollowerDao = followerDao
                 override fun clearAllTables() {}
                 override fun createInvalidationTracker(): androidx.room.InvalidationTracker = mock()
                 override fun createOpenHelper(config: androidx.room.DatabaseConfiguration): androidx.sqlite.db.SupportSQLiteOpenHelper = mock()
             }
-        )
+        ) {
+            override suspend fun <T> runTransaction(block: suspend (FollowerDao) -> T): T {
+                return block(followerDao)
+            }
+        }
 
         val domainService = InventoryDomainServiceImpl(
             inventoryDao = mock(),

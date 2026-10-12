@@ -567,9 +567,13 @@ class PantrySyncPhase4gHostLifecycleTest {
 
         val localMainDao = com.example.chatgpt_mealplanner.core.service.FakeInventoryDao()
         val followerDb = TestFakeFollowerDatabase()
-        val followerEngine = com.example.chatgpt_mealplanner.core.sync.follower.engine.FollowerLocalSyncEngine(
+        val followerEngine = object : com.example.chatgpt_mealplanner.core.sync.follower.engine.FollowerLocalSyncEngine(
             followerDatabase = followerDb
-        )
+        ) {
+            override suspend fun <T> runTransaction(block: suspend (com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerDao) -> T): T {
+                return block(followerDb.followerDao())
+            }
+        }
         val identityStore = object : com.example.chatgpt_mealplanner.core.sync.enrollment.FollowerIdentityStore(null) {
             override fun getOrCreateDeviceId(): String = "follower_device_1"
         }
@@ -617,9 +621,13 @@ class PantrySyncPhase4gHostLifecycleTest {
 
         val localMainDao = com.example.chatgpt_mealplanner.core.service.FakeInventoryDao()
         val followerDb = TestFakeFollowerDatabase()
-        val followerEngine = com.example.chatgpt_mealplanner.core.sync.follower.engine.FollowerLocalSyncEngine(
+        val followerEngine = object : com.example.chatgpt_mealplanner.core.sync.follower.engine.FollowerLocalSyncEngine(
             followerDatabase = followerDb
-        )
+        ) {
+            override suspend fun <T> runTransaction(block: suspend (com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerDao) -> T): T {
+                return block(followerDb.followerDao())
+            }
+        }
         val identityStore = object : com.example.chatgpt_mealplanner.core.sync.enrollment.FollowerIdentityStore(null) {
             override fun getOrCreateDeviceId(): String = "follower_device_1"
         }
@@ -1561,7 +1569,13 @@ class PantrySyncPhase4gHostLifecycleTest {
             )
         )
 
-        val followerEngine = com.example.chatgpt_mealplanner.core.sync.follower.engine.FollowerLocalSyncEngine(followerDatabase = followerDb)
+        val followerEngine = object : com.example.chatgpt_mealplanner.core.sync.follower.engine.FollowerLocalSyncEngine(
+            followerDatabase = followerDb
+        ) {
+            override suspend fun <T> runTransaction(block: suspend (com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerDao) -> T): T {
+                return block(followerDb.followerDao())
+            }
+        }
         val identityStore = object : com.example.chatgpt_mealplanner.core.sync.enrollment.FollowerIdentityStore(null) {
             override fun getOrCreateDeviceId(): String = "follower_device_1"
         }

@@ -43,11 +43,7 @@ open class FollowerLocalSyncEngine @Inject constructor(
 
     protected open suspend fun <T> runTransaction(block: suspend (FollowerDao) -> T): T {
         val db = followerDatabase ?: throw IllegalStateException("FollowerDatabase required for transactions")
-        return try {
-            db.withTransaction {
-                block(db.followerDao())
-            }
-        } catch (_: Exception) {
+        return db.withTransaction {
             block(db.followerDao())
         }
     }
