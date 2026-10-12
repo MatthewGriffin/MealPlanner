@@ -23,6 +23,9 @@ import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
+class DuplicateDiscardRequestException(val targetItemId: String) :
+    IllegalStateException("Discard request for item $targetItemId is already pending approval")
+
 @Singleton
 open class FollowerLocalSyncEngine @Inject constructor(
     private val followerDatabase: FollowerDatabase?,
@@ -469,6 +472,12 @@ open class FollowerLocalSyncEngine @Inject constructor(
 
             val existingItem = dao.getItemById(targetItemId)
                 ?: throw IllegalArgumentException("Target item $targetItemId not found in local projection")
+
+            val unresolvedOps = dao.getUnresolvedOutboxOpsForTargetItem(targetItemId)
+            val existingDiscardRequest = unresolvedOps.find { it.operationType == SyncOperationType.REQUEST_DISCARD_ITEM.name }
+            if (existingDiscardRequest != null) {
+                throw DuplicateDiscardRequestException(targetItemId)
+            }
 
             val seqEntity = dao.getSequenceEntity() ?: FollowerDeviceSequenceEntity(singletonId = 1, nextSequence = 1L)
             val allocatedSeq = seqEntity.nextSequence

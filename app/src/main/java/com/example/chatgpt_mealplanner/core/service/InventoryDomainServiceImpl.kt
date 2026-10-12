@@ -33,6 +33,7 @@ import com.example.chatgpt_mealplanner.core.sync.HouseholdIdentityManager
 import com.example.chatgpt_mealplanner.core.sync.enrollment.FollowerIdentityStore
 import com.example.chatgpt_mealplanner.core.sync.follower.database.FollowerDatabase
 import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.toDomainModel
+import com.example.chatgpt_mealplanner.core.sync.follower.engine.DuplicateDiscardRequestException
 import com.example.chatgpt_mealplanner.core.sync.follower.engine.FollowerLocalSyncEngine
 import com.example.chatgpt_mealplanner.sync.contract.AddItemPayloadDto
 import com.example.chatgpt_mealplanner.sync.contract.EditItemPayloadDto
@@ -793,12 +794,6 @@ class InventoryDomainServiceImpl @Inject constructor(
                 return DomainResult.Success(Unit)
             }
 
-            val unresolvedOps = dao.getUnresolvedOutboxOpsForTargetItem(itemId)
-            val existingDiscardRequest = unresolvedOps.find { it.operationType == SyncOperationType.REQUEST_DISCARD_ITEM.name }
-            if (existingDiscardRequest != null) {
-                return DomainResult.Failure(DomainError.DuplicateOperation("Discard request for item $itemId is already pending approval"))
-            }
-
             val engine = followerLocalSyncEngine
                 ?: return DomainResult.Failure(DomainError.TransactionFailed("Follower sync engine unavailable"))
             val deviceId = followerIdentityStore?.getOrCreateDeviceId()
@@ -812,6 +807,8 @@ class InventoryDomainServiceImpl @Inject constructor(
                 )
             } catch (_: IllegalArgumentException) {
                 return DomainResult.Failure(DomainError.ItemNotFound(itemId))
+            } catch (e: DuplicateDiscardRequestException) {
+                return DomainResult.Failure(DomainError.DuplicateOperation(e.message ?: "Discard request for item $itemId is already pending approval"))
             } catch (e: Throwable) {
                 return DomainResult.Failure(DomainError.TransactionFailed(e.message ?: "Failed to record local discard request"))
             }

@@ -31,6 +31,7 @@ import com.example.chatgpt_mealplanner.core.sync.follower.database.FollowerDatab
 import com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerDao
 import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerInventoryItemEntity
 import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerSyncOutboxEntity
+import com.example.chatgpt_mealplanner.core.sync.follower.engine.DuplicateDiscardRequestException
 import com.example.chatgpt_mealplanner.core.sync.follower.engine.FollowerLocalSyncEngine
 import com.example.chatgpt_mealplanner.sync.contract.RequestDiscardPayloadDto
 import com.example.chatgpt_mealplanner.sync.contract.SyncOperationType
@@ -527,5 +528,252 @@ class PantrySyncPhase4gDiscardSyncTest {
 
         // Approval status updated to REJECTED
         assertEquals("REJECTED", approvalStatus)
+    }
+
+    @Test
+    fun testRecordLocalRequestDiscard_duplicatePendingRequest_throwsIllegalStateException() = runTest {
+        val followerItemsMap = mutableMapOf<String, FollowerInventoryItemEntity>()
+        val followerOutbox = mutableListOf<FollowerSyncOutboxEntity>()
+
+        val sample = FollowerInventoryItemEntity(
+            itemId = "item-dup-1",
+            barcode = null,
+            canonicalName = "butter",
+            confirmedDisplayName = "Butter",
+            confirmedBrand = null,
+            confirmedCategory = "REFRIGERATED",
+            confirmedStorageLocation = "FRIDGE",
+            confirmedQuantity = 1.0,
+            confirmedQuantityUnit = "UNIT",
+            confirmedNotes = null,
+            confirmedStatus = "AVAILABLE",
+            mainConfirmedRevision = 1L,
+            displayName = "Butter",
+            brand = null,
+            category = "REFRIGERATED",
+            storageLocation = "FRIDGE",
+            quantity = 1.0,
+            quantityUnit = "UNIT",
+            notes = null,
+            status = "AVAILABLE",
+            optimisticRevision = 1L,
+            isPendingSync = false,
+            updatedAt = 1000L
+        )
+        followerItemsMap[sample.itemId] = sample
+
+        val existingOp = FollowerSyncOutboxEntity(
+            operationId = "op-dup-1",
+            deviceId = "follower-1",
+            deviceSequence = 1L,
+            protocolVersion = 1,
+            operationType = SyncOperationType.REQUEST_DISCARD_ITEM.name,
+            targetItemId = "item-dup-1",
+            baseRevision = 1L,
+            payloadJson = "{}",
+            createdAt = 1000L,
+            status = "PENDING",
+            createdLocallyAt = 1000L
+        )
+        followerOutbox.add(existingOp)
+
+        val followerDao: FollowerDao = mock {
+            onBlocking { getItemById("item-dup-1") } doAnswer { followerItemsMap["item-dup-1"] }
+            onBlocking { getUnresolvedOutboxOpsForTargetItem("item-dup-1") } doAnswer { followerOutbox.toList() }
+        }
+
+        val engine = FollowerLocalSyncEngine(
+            followerDatabase = object : FollowerDatabase() {
+                override fun followerDao(): FollowerDao = followerDao
+                override fun clearAllTables() {}
+                override fun createInvalidationTracker(): androidx.room.InvalidationTracker = mock()
+                override fun createOpenHelper(config: androidx.room.DatabaseConfiguration): androidx.sqlite.db.SupportSQLiteOpenHelper = mock()
+            }
+        )
+
+        var thrownException: Throwable? = null
+        try {
+            engine.recordLocalRequestDiscard("follower-1", "item-dup-1", "Duplicate test")
+        } catch (e: Throwable) {
+            thrownException = e
+        }
+
+        assertNotNull(thrownException)
+        assertTrue(thrownException is DuplicateDiscardRequestException)
+        assertEquals("Discard request for item item-dup-1 is already pending approval", thrownException!!.message)
+    }
+
+    @Test
+    fun testDiscardItem_onFollower_duplicatePendingRequest_returnsDuplicateOperation() = runTest {
+        val followerItemsMap = mutableMapOf<String, FollowerInventoryItemEntity>()
+        val followerOutbox = mutableListOf<FollowerSyncOutboxEntity>()
+
+        val sample = FollowerInventoryItemEntity(
+            itemId = "item-dup-2",
+            barcode = null,
+            canonicalName = "milk",
+            confirmedDisplayName = "Milk",
+            confirmedBrand = null,
+            confirmedCategory = "REFRIGERATED",
+            confirmedStorageLocation = "FRIDGE",
+            confirmedQuantity = 1.0,
+            confirmedQuantityUnit = "LITRE",
+            confirmedNotes = null,
+            confirmedStatus = "AVAILABLE",
+            mainConfirmedRevision = 1L,
+            displayName = "Milk",
+            brand = null,
+            category = "REFRIGERATED",
+            storageLocation = "FRIDGE",
+            quantity = 1.0,
+            quantityUnit = "LITRE",
+            notes = null,
+            status = "AVAILABLE",
+            optimisticRevision = 1L,
+            isPendingSync = false,
+            updatedAt = 1000L
+        )
+        followerItemsMap[sample.itemId] = sample
+
+        val existingOp = FollowerSyncOutboxEntity(
+            operationId = "op-dup-2",
+            deviceId = "follower-1",
+            deviceSequence = 1L,
+            protocolVersion = 1,
+            operationType = SyncOperationType.REQUEST_DISCARD_ITEM.name,
+            targetItemId = "item-dup-2",
+            baseRevision = 1L,
+            payloadJson = "{}",
+            createdAt = 1000L,
+            status = "PENDING",
+            createdLocallyAt = 1000L
+        )
+        followerOutbox.add(existingOp)
+
+        val followerDao: FollowerDao = mock {
+            onBlocking { getItemById("item-dup-2") } doAnswer { followerItemsMap["item-dup-2"] }
+            onBlocking { getUnresolvedOutboxOpsForTargetItem("item-dup-2") } doAnswer { followerOutbox.toList() }
+        }
+
+        val engine = FollowerLocalSyncEngine(
+            followerDatabase = object : FollowerDatabase() {
+                override fun followerDao(): FollowerDao = followerDao
+                override fun clearAllTables() {}
+                override fun createInvalidationTracker(): androidx.room.InvalidationTracker = mock()
+                override fun createOpenHelper(config: androidx.room.DatabaseConfiguration): androidx.sqlite.db.SupportSQLiteOpenHelper = mock()
+            }
+        )
+
+        val domainService = InventoryDomainServiceImpl(
+            inventoryDao = mock(),
+            inventoryBarcodeDao = mock(),
+            transactionDao = mock(),
+            stapleRuleDao = mock(),
+            transactionRunner = TestTransactionRunner(),
+            appRoleResolver = object : AppRoleResolver(TestPairingStore(paired = true)) {
+                override suspend fun getAppRoleAsync(): AppRole = AppRole.FOLLOWER
+                override suspend fun isMainAsync(): Boolean = false
+            },
+            canonicalSyncDao = mock(),
+            householdIdentityManager = HouseholdIdentityManager(mock()),
+            followerDatabase = object : FollowerDatabase() {
+                override fun followerDao(): FollowerDao = followerDao
+                override fun clearAllTables() {}
+                override fun createInvalidationTracker(): androidx.room.InvalidationTracker = mock()
+                override fun createOpenHelper(config: androidx.room.DatabaseConfiguration): androidx.sqlite.db.SupportSQLiteOpenHelper = mock()
+            },
+            followerLocalSyncEngine = engine,
+            followerIdentityStore = object : FollowerIdentityStore(null) {
+                override fun getOrCreateDeviceId(): String = "follower-1"
+            }
+        )
+
+        val result = domainService.discardItem("item-dup-2", reason = "Second discard attempt")
+
+        assertTrue(result is DomainResult.Failure)
+        assertTrue((result as DomainResult.Failure).error is DomainError.DuplicateOperation)
+    }
+
+    @Test
+    fun testDiscardItem_onFollower_unrelatedIllegalStateException_returnsTransactionFailed() = runTest {
+        val followerItemsMap = mutableMapOf<String, FollowerInventoryItemEntity>()
+
+        val sample = FollowerInventoryItemEntity(
+            itemId = "item-unrelated-err",
+            barcode = null,
+            canonicalName = "cheese",
+            confirmedDisplayName = "Cheese",
+            confirmedBrand = null,
+            confirmedCategory = "REFRIGERATED",
+            confirmedStorageLocation = "FRIDGE",
+            confirmedQuantity = 1.0,
+            confirmedQuantityUnit = "UNIT",
+            confirmedNotes = null,
+            confirmedStatus = "AVAILABLE",
+            mainConfirmedRevision = 1L,
+            displayName = "Cheese",
+            brand = null,
+            category = "REFRIGERATED",
+            storageLocation = "FRIDGE",
+            quantity = 1.0,
+            quantityUnit = "UNIT",
+            notes = null,
+            status = "AVAILABLE",
+            optimisticRevision = 1L,
+            isPendingSync = false,
+            updatedAt = 1000L
+        )
+        followerItemsMap[sample.itemId] = sample
+
+        val followerDao: FollowerDao = mock {
+            onBlocking { getItemById("item-unrelated-err") } doAnswer { followerItemsMap["item-unrelated-err"] }
+        }
+
+        val failingEngine = object : FollowerLocalSyncEngine(
+            followerDatabase = object : FollowerDatabase() {
+                override fun followerDao(): FollowerDao = followerDao
+                override fun clearAllTables() {}
+                override fun createInvalidationTracker(): androidx.room.InvalidationTracker = mock()
+                override fun createOpenHelper(config: androidx.room.DatabaseConfiguration): androidx.sqlite.db.SupportSQLiteOpenHelper = mock()
+            }
+        ) {
+            override suspend fun recordLocalRequestDiscard(
+                deviceId: String,
+                targetItemId: String,
+                reason: String?
+            ): FollowerSyncOutboxEntity {
+                throw IllegalStateException("Unrelated database state error")
+            }
+        }
+
+        val domainService = InventoryDomainServiceImpl(
+            inventoryDao = mock(),
+            inventoryBarcodeDao = mock(),
+            transactionDao = mock(),
+            stapleRuleDao = mock(),
+            transactionRunner = TestTransactionRunner(),
+            appRoleResolver = object : AppRoleResolver(TestPairingStore(paired = true)) {
+                override suspend fun getAppRoleAsync(): AppRole = AppRole.FOLLOWER
+                override suspend fun isMainAsync(): Boolean = false
+            },
+            canonicalSyncDao = mock(),
+            householdIdentityManager = HouseholdIdentityManager(mock()),
+            followerDatabase = object : FollowerDatabase() {
+                override fun followerDao(): FollowerDao = followerDao
+                override fun clearAllTables() {}
+                override fun createInvalidationTracker(): androidx.room.InvalidationTracker = mock()
+                override fun createOpenHelper(config: androidx.room.DatabaseConfiguration): androidx.sqlite.db.SupportSQLiteOpenHelper = mock()
+            },
+            followerLocalSyncEngine = failingEngine,
+            followerIdentityStore = object : FollowerIdentityStore(null) {
+                override fun getOrCreateDeviceId(): String = "follower-1"
+            }
+        )
+
+        val result = domainService.discardItem("item-unrelated-err", reason = "Test error")
+
+        assertTrue(result is DomainResult.Failure)
+        val error = (result as DomainResult.Failure).error
+        assertTrue("Error should be TransactionFailed, but was $error", error is DomainError.TransactionFailed)
     }
 }
