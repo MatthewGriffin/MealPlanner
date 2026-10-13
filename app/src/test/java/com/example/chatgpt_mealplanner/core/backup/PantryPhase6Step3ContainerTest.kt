@@ -315,6 +315,66 @@ class PantryPhase6Step3ContainerTest {
     }
 
     @Test
+    fun decodeAndValidate_negativeDeclaredBodyLength_rejectsNegativeLength() = runTest {
+        val bytes = ByteArray(48)
+        ByteBuffer.wrap(bytes).apply {
+            order(ByteOrder.BIG_ENDIAN)
+            put("PANTRYBK".toByteArray(Charsets.US_ASCII))
+            putInt(1) // wire version
+            putInt(-100) // negative length
+        }
+
+        val result = encoderDecoder.decodeAndValidateContainer(bytes)
+        assertTrue("Negative body length MUST fail validation", result is DomainResult.Failure)
+
+        val errorMsg = ((result as DomainResult.Failure).error as DomainError.TransactionFailed).cause
+        assertTrue("Error MUST mention negative body length", errorMsg.contains("negative"))
+    }
+
+    @Test
+    fun decodeAndValidate_truncatedDigest_rejectsTruncatedDigest() = runTest {
+        val snapshot = createSampleSnapshot()
+        val fullBytes = encoderDecoder.encodeContainer(snapshot, currentTimeMs = 2000000L)
+
+        // Truncate the trailing 32-byte digest by 16 bytes
+        val truncatedBytes = fullBytes.copyOf(fullBytes.size - 16)
+
+        val result = encoderDecoder.decodeAndValidateContainer(truncatedBytes)
+        assertTrue("Truncated digest MUST fail validation", result is DomainResult.Failure)
+
+        val errorMsg = ((result as DomainResult.Failure).error as DomainError.TransactionFailed).cause
+        assertTrue("Error MUST mention length mismatch", errorMsg.contains("length mismatch"))
+    }
+
+    @Test
+    fun decodeAndValidate_invalidUtf8InBody_rejectsMalformedUtf8() = runTest {
+        val invalidUtf8Body = byteArrayOf(0x7B, 0x22, 0x80.toByte(), 0x81.toByte(), 0xFF.toByte(), 0x7D) // Invalid UTF-8 bytes
+        val bodyLength = invalidUtf8Body.size
+
+        val framedBuffer = ByteBuffer.allocate(CONTAINER_HEADER_SIZE + bodyLength).apply {
+            order(ByteOrder.BIG_ENDIAN)
+            put(CONTAINER_MAGIC)
+            putInt(CONTAINER_WIRE_VERSION)
+            putInt(bodyLength)
+            put(invalidUtf8Body)
+        }
+        val framedBytes = framedBuffer.array()
+        val rawSha256 = MessageDigest.getInstance("SHA-256").digest(framedBytes)
+
+        val outputBuffer = ByteBuffer.allocate(framedBytes.size + CONTAINER_DIGEST_SIZE).apply {
+            order(ByteOrder.BIG_ENDIAN)
+            put(framedBytes)
+            put(rawSha256)
+        }
+
+        val result = encoderDecoder.decodeAndValidateContainer(outputBuffer.array())
+        assertTrue("Invalid UTF-8 body MUST fail validation", result is DomainResult.Failure)
+
+        val errorMsg = ((result as DomainResult.Failure).error as DomainError.TransactionFailed).cause
+        assertTrue("Error MUST mention UTF-8 encoding", errorMsg.contains("UTF-8"))
+    }
+
+    @Test
     fun decodeAndValidate_oversizedContainer_rejectsSizeLimit() = runTest {
         val oversizedBytes = ByteArray((51 * 1024 * 1024)) // 51 MB > 50 MB limit
 
