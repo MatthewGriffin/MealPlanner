@@ -53,7 +53,8 @@ open class BackupManager @Inject constructor(
                 bestBeforeDate = it.bestBeforeDate,
                 notes = it.notes,
                 createdAt = it.createdAt,
-                updatedAt = it.updatedAt
+                updatedAt = it.updatedAt,
+                revision = it.revision
             )
         }
 

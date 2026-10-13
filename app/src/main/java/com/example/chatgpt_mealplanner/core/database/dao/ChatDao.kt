@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import com.example.chatgpt_mealplanner.core.database.entity.ActiveProposalEntity
 import com.example.chatgpt_mealplanner.core.database.entity.AiToolExecutionLogEntity
 import com.example.chatgpt_mealplanner.core.database.entity.ChatConversationEntity
@@ -11,11 +12,24 @@ import com.example.chatgpt_mealplanner.core.database.entity.ChatMessageEntity
 import com.example.chatgpt_mealplanner.core.database.entity.PendingAiMutationEntity
 import kotlinx.coroutines.flow.Flow
 
+data class ChatConversationWithMessages(
+    @androidx.room.Embedded val conversation: ChatConversationEntity,
+    @androidx.room.Relation(
+        parentColumn = "id",
+        entityColumn = "conversationId"
+    )
+    val messages: List<ChatMessageEntity>
+)
+
 @Dao
 interface ChatDao {
 
     @Query("SELECT * FROM chat_conversations ORDER BY updatedAt DESC")
     fun observeAllConversations(): Flow<List<ChatConversationEntity>>
+
+    @Transaction
+    @Query("SELECT * FROM chat_conversations ORDER BY createdAt ASC")
+    suspend fun getAllConversationsWithMessagesSync(): List<ChatConversationWithMessages>
 
     @Query("SELECT * FROM chat_conversations WHERE id = :id")
     suspend fun getConversationById(id: String): ChatConversationEntity?

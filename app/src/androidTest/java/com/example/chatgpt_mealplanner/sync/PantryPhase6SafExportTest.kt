@@ -52,6 +52,7 @@ class PantryPhase6SafExportTest {
 
     private class FakeChatDao : ChatDao {
         override fun observeAllConversations(): Flow<List<com.example.chatgpt_mealplanner.core.database.entity.ChatConversationEntity>> = flowOf(emptyList())
+        override suspend fun getAllConversationsWithMessagesSync(): List<com.example.chatgpt_mealplanner.core.database.dao.ChatConversationWithMessages> = emptyList()
         override suspend fun getConversationById(id: String) = null
         override suspend fun insertOrUpdateConversation(conversation: com.example.chatgpt_mealplanner.core.database.entity.ChatConversationEntity) {}
         override suspend fun deleteConversation(id: String) {}

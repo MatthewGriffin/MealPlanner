@@ -34,6 +34,10 @@ interface MealDao {
     suspend fun getMealWithIngredients(mealId: String): MealWithIngredientEntities?
 
     @Transaction
+    @Query("SELECT * FROM meals ORDER BY createdAt ASC")
+    suspend fun getAllMealsWithIngredientsSync(): List<MealWithIngredientEntities>
+
+    @Transaction
     @Query("SELECT * FROM meals WHERE status = 'COOKED' AND cookedAt >= :sinceTimestamp ORDER BY cookedAt DESC")
     suspend fun getRecentCookedMeals(sinceTimestamp: Long): List<MealWithIngredientEntities>
 

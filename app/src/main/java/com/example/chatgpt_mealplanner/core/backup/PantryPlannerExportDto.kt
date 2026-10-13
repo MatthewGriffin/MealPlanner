@@ -32,7 +32,8 @@ data class InventoryItemExportDto(
     val bestBeforeDate: String?,
     val notes: String?,
     val createdAt: Long,
-    val updatedAt: Long
+    val updatedAt: Long,
+    val revision: Long = 1L
 )
 
 @Serializable

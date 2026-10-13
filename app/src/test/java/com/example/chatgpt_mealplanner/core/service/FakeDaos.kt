@@ -158,6 +158,8 @@ class FakeTransactionDao : TransactionDao {
 
     override fun getAllTransactions(): Flow<List<InventoryTransactionEntity>> = flow
 
+    override suspend fun getAllTransactionsSync(): List<InventoryTransactionEntity> = transactions.toList()
+
     override suspend fun hasCookedTransactionForMeal(mealId: String): Boolean =
         transactions.any { it.mealId == mealId && it.type == com.example.chatgpt_mealplanner.core.model.TransactionType.COOKED }
 
@@ -179,6 +181,8 @@ class FakeBarcodeMappingDao : BarcodeMappingDao {
     val mappings = mutableMapOf<String, ProductBarcodeMappingEntity>()
 
     override suspend fun getMappingByBarcode(barcode: String): ProductBarcodeMappingEntity? = mappings[barcode]
+
+    override suspend fun getAllMappingsSync(): List<ProductBarcodeMappingEntity> = mappings.values.toList()
 
     override suspend fun insertMapping(mapping: ProductBarcodeMappingEntity) {
         mappings[mapping.barcode] = mapping
@@ -209,6 +213,10 @@ class FakeMealDao : MealDao {
         return MealWithIngredientEntities(meal, ings)
     }
 
+    override suspend fun getAllMealsWithIngredientsSync(): List<MealWithIngredientEntities> {
+        return mealsMap.values.map { MealWithIngredientEntities(it, ingredientsMap[it.id] ?: emptyList()) }
+    }
+
     override suspend fun getRecentCookedMeals(sinceTimestamp: Long): List<MealWithIngredientEntities> {
         return mealsMap.values
             .filter { it.status == com.example.chatgpt_mealplanner.core.model.MealStatus.COOKED && (it.cookedAt ?: 0L) >= sinceTimestamp }
@@ -235,6 +243,7 @@ class FakeLeftoverDao : LeftoverDao {
 
     override fun observeAvailableLeftovers(): Flow<List<LeftoverEntity>> = MutableStateFlow(leftoversMap.values.filter { it.status == LeftoverStatus.AVAILABLE && it.portions > 0 })
     override suspend fun getLeftoverById(id: String): LeftoverEntity? = leftoversMap[id]
+    override suspend fun getAllLeftoversSync(): List<LeftoverEntity> = leftoversMap.values.toList()
     override suspend fun insertLeftover(leftover: LeftoverEntity) { leftoversMap[leftover.id] = leftover }
     override suspend fun deleteLeftover(id: String) { leftoversMap.remove(id) }
 }
@@ -252,6 +261,14 @@ class FakeShoppingDao : ShoppingDao {
             ShoppingListItemWithSourceEntities(item, sourcesMap[item.id] ?: emptyList())
         }
         return ShoppingListWithItemEntities(list, items)
+    }
+    override suspend fun getAllListsWithItemsAndSourcesSync(): List<ShoppingListWithItemEntities> {
+        return listsMap.values.map { list ->
+            val items = itemsMap.values.filter { it.shoppingListId == list.id }.map { item ->
+                ShoppingListItemWithSourceEntities(item, sourcesMap[item.id] ?: emptyList())
+            }
+            ShoppingListWithItemEntities(list, items)
+        }
     }
     override suspend fun getShoppingListItemById(itemId: String): ShoppingListItemEntity? = itemsMap[itemId]
     override suspend fun insertShoppingList(list: ShoppingListEntity) { listsMap[list.id] = list }
@@ -283,6 +300,7 @@ class FakeStapleRuleDao : StapleRuleDao {
 
     override fun observeAllStapleRules(): Flow<List<StapleRuleEntity>> = MutableStateFlow(rulesMap.values.filter { !it.archivedByMerge })
     override suspend fun getEnabledStapleRules(): List<StapleRuleEntity> = rulesMap.values.filter { it.enabled && !it.archivedByMerge }
+    override suspend fun getAllRulesSync(): List<StapleRuleEntity> = rulesMap.values.toList()
     override suspend fun getStapleRuleByCanonicalIngredientId(canonicalId: String): StapleRuleEntity? =
         rulesMap.values.firstOrNull { it.canonicalIngredientId == canonicalId }
 
@@ -309,6 +327,12 @@ class FakeChatDao : ChatDao {
     val conversations = mutableListOf<ChatConversationEntity>()
     val messages = mutableListOf<ChatMessageEntity>()
     val toolLogs = mutableListOf<AiToolExecutionLogEntity>()
+
+    override suspend fun getAllConversationsWithMessagesSync(): List<com.example.chatgpt_mealplanner.core.database.dao.ChatConversationWithMessages> {
+        return conversations.map { conv ->
+            com.example.chatgpt_mealplanner.core.database.dao.ChatConversationWithMessages(conv, messages.filter { it.conversationId == conv.id })
+        }
+    }
 
     override fun observeAllConversations(): Flow<List<ChatConversationEntity>> = MutableStateFlow(conversations)
     override suspend fun getConversationById(id: String): ChatConversationEntity? = conversations.firstOrNull { it.id == id }

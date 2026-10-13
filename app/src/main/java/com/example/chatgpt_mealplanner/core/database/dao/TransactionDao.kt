@@ -16,6 +16,9 @@ interface TransactionDao {
     @Query("SELECT * FROM inventory_transactions ORDER BY timestamp DESC")
     fun getAllTransactions(): Flow<List<InventoryTransactionEntity>>
 
+    @Query("SELECT * FROM inventory_transactions ORDER BY timestamp ASC")
+    suspend fun getAllTransactionsSync(): List<InventoryTransactionEntity>
+
     @Query("SELECT EXISTS(SELECT 1 FROM inventory_transactions WHERE mealId = :mealId AND type = 'COOKED')")
     suspend fun hasCookedTransactionForMeal(mealId: String): Boolean
 

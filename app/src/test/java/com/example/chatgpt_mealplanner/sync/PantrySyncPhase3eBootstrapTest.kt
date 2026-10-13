@@ -857,6 +857,7 @@ open class FakeAppDatabase : AppDatabase() {
 
 open class FakeChatDao : com.example.chatgpt_mealplanner.core.database.dao.ChatDao {
     override fun observeAllConversations() = kotlinx.coroutines.flow.flowOf(emptyList<com.example.chatgpt_mealplanner.core.database.entity.ChatConversationEntity>())
+    override suspend fun getAllConversationsWithMessagesSync(): List<com.example.chatgpt_mealplanner.core.database.dao.ChatConversationWithMessages> = emptyList()
     override suspend fun getConversationById(id: String) = null
     override suspend fun insertOrUpdateConversation(conversation: com.example.chatgpt_mealplanner.core.database.entity.ChatConversationEntity) {}
     override suspend fun deleteConversation(id: String) {}

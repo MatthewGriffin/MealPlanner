@@ -16,6 +16,9 @@ interface StapleRuleDao {
     @Query("SELECT * FROM staple_rules WHERE enabled = 1 AND archivedByMerge = 0")
     suspend fun getEnabledStapleRules(): List<StapleRuleEntity>
 
+    @Query("SELECT * FROM staple_rules ORDER BY createdAt ASC")
+    suspend fun getAllRulesSync(): List<StapleRuleEntity>
+
     @Query("SELECT * FROM staple_rules WHERE canonicalIngredientId = :canonicalId LIMIT 1")
     suspend fun getStapleRuleByCanonicalIngredientId(canonicalId: String): StapleRuleEntity?
 

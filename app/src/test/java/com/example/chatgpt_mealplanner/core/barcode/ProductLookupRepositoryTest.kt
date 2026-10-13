@@ -23,6 +23,8 @@ class FakeBarcodeMappingDao : BarcodeMappingDao {
 
     override suspend fun getMappingByBarcode(barcode: String): ProductBarcodeMappingEntity? = map[barcode]
 
+    override suspend fun getAllMappingsSync(): List<ProductBarcodeMappingEntity> = map.values.toList()
+
     override suspend fun insertMapping(mapping: ProductBarcodeMappingEntity) {
         map[mapping.barcode] = mapping
     }

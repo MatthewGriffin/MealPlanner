@@ -16,6 +16,9 @@ interface LeftoverDao {
     @Query("SELECT * FROM leftovers WHERE id = :id")
     suspend fun getLeftoverById(id: String): LeftoverEntity?
 
+    @Query("SELECT * FROM leftovers ORDER BY createdAt ASC")
+    suspend fun getAllLeftoversSync(): List<LeftoverEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertLeftover(leftover: LeftoverEntity)
 

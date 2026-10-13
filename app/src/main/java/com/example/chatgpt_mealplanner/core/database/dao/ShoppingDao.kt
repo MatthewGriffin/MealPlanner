@@ -44,6 +44,10 @@ interface ShoppingDao {
     @Query("SELECT * FROM shopping_lists WHERE id = :listId")
     suspend fun getShoppingListWithItems(listId: String): ShoppingListWithItemEntities?
 
+    @Transaction
+    @Query("SELECT * FROM shopping_lists ORDER BY createdAt ASC")
+    suspend fun getAllListsWithItemsAndSourcesSync(): List<ShoppingListWithItemEntities>
+
     @Query("SELECT * FROM shopping_list_items WHERE id = :itemId")
     suspend fun getShoppingListItemById(itemId: String): ShoppingListItemEntity?
 
