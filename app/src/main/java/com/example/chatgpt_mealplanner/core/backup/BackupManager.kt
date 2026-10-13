@@ -20,7 +20,7 @@ open class BackupManager @Inject constructor(
     private val database: AppDatabase?,
     private val transactionRunner: DatabaseTransactionRunner
 ) {
-    private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
+    private val json = Json { ignoreUnknownKeys = true; prettyPrint = true; encodeDefaults = true }
 
     suspend fun createExportJson(
         includeChatHistory: Boolean = false,

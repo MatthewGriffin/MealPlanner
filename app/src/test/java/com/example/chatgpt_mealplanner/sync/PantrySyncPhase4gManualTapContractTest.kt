@@ -340,7 +340,8 @@ class PantrySyncPhase4gManualTapContractTest {
             provider = dummyAiProvider,
             chatDao = FakeChatDao(),
             backupManager = FakeBackupManager(),
-            followerSyncScheduler = testScheduler
+            followerSyncScheduler = testScheduler,
+            appRoleResolver = FakeAppRoleResolver()
         )
 
         val (reqBeforeSettings, _) = coordinator.getGenerations()

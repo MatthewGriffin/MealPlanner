@@ -38,6 +38,12 @@ fun SettingsScreen(
     modifier: Modifier = Modifier,
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val createDocumentLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        viewModel.exportInventoryToUri(context, uri)
+    }
     val uiState by viewModel.uiState.collectAsState()
     var apiKeyInput by remember { mutableStateOf("") }
 
@@ -172,9 +178,27 @@ fun SettingsScreen(
                     Text("Clear Chat History")
                 }
                 Spacer(modifier = Modifier.height(8.dp))
-                Button(onClick = { viewModel.exportData() }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Export Data (Backup)")
+                Button(
+                    onClick = {
+                        val timestamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())
+                        val suggestedFileName = "pantry_inventory_export_$timestamp.json"
+                        createDocumentLauncher.launch(suggestedFileName)
+                    },
+                    enabled = uiState.isMainRole,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Export Inventory (JSON)")
                 }
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = if (uiState.isMainRole) {
+                        "Saves current inventory items as a JSON document to a location you choose. This is an inventory export, not a full household backup."
+                    } else {
+                        "Inventory export is available on the Main device only."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 if (uiState.exportMessage != null) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(uiState.exportMessage!!, color = MaterialTheme.colorScheme.primary)

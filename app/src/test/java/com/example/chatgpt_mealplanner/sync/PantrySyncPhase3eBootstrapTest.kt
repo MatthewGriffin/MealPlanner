@@ -707,7 +707,8 @@ class PantrySyncPhase3eBootstrapTest {
                 provider = dummyAiProvider,
                 chatDao = FakeChatDao(),
                 backupManager = FakeBackupManager(),
-                followerSyncScheduler = testScheduler
+                followerSyncScheduler = testScheduler,
+                appRoleResolver = FakeAppRoleResolver()
             )
 
             viewModel.triggerManualSync()
@@ -823,6 +824,15 @@ open class FakeBackupManager : com.example.chatgpt_mealplanner.core.backup.Backu
     database = null,
     transactionRunner = FakeTransactionRunner()
 )
+
+open class FakeAppRoleResolver : com.example.chatgpt_mealplanner.core.sync.AppRoleResolver(
+    com.example.chatgpt_mealplanner.core.sync.follower.config.FollowerPairingStore(null)
+) {
+    override suspend fun isMainAsync(): Boolean = true
+    override fun isMain(): Boolean = true
+    override suspend fun isFollowerAsync(): Boolean = false
+    override fun isFollower(): Boolean = false
+}
 
 open class FakeAppDatabase : AppDatabase() {
     override fun inventoryDao(): com.example.chatgpt_mealplanner.core.database.dao.InventoryDao = FakeInventoryDao()

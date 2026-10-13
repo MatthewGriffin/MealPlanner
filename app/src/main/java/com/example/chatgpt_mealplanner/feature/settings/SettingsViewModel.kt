@@ -24,7 +24,9 @@ data class SettingsUiState(
     val connectionTestResult: String? = null,
     val minimumSavingsInput: String = "3.00",
     val exportMessage: String? = null,
-    val syncStatusMessage: String? = null
+    val syncStatusMessage: String? = null,
+    val isMainRole: Boolean = false,
+    val isRoleResolved: Boolean = false
 )
 
 @HiltViewModel
@@ -34,7 +36,8 @@ class SettingsViewModel @Inject constructor(
     private val provider: MealPlannerAiProvider,
     private val chatDao: ChatDao,
     private val backupManager: BackupManager,
-    private val followerSyncScheduler: FollowerSyncScheduler
+    private val followerSyncScheduler: FollowerSyncScheduler,
+    private val appRoleResolver: com.example.chatgpt_mealplanner.core.sync.AppRoleResolver
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -42,10 +45,18 @@ class SettingsViewModel @Inject constructor(
 
     init {
         checkCredentialStatus()
+        resolveAppRole()
     }
 
     private fun checkCredentialStatus() {
         _uiState.update { it.copy(isApiKeyConfigured = credentialStore.hasKey()) }
+    }
+
+    private fun resolveAppRole() {
+        viewModelScope.launch {
+            val isMain = appRoleResolver.isMainAsync()
+            _uiState.update { it.copy(isMainRole = isMain, isRoleResolved = true) }
+        }
     }
 
     fun triggerManualSync() {
@@ -104,15 +115,59 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun exportData() {
-        viewModelScope.launch {
-            _uiState.update { it.copy(exportMessage = "Exporting...") }
-            try {
-                val json = backupManager.createExportJson(includeChatHistory = true)
-                _uiState.update { it.copy(exportMessage = "Export successful. Size: ${json.length} bytes.") }
-            } catch (e: Exception) {
-                _uiState.update { it.copy(exportMessage = "Export failed: ${e.message}") }
+    fun exportInventoryToUri(
+        appContext: Context,
+        uri: android.net.Uri?,
+        ioDispatcher: kotlinx.coroutines.CoroutineDispatcher = kotlinx.coroutines.Dispatchers.IO
+    ) {
+        if (!appRoleResolver.isMain()) {
+            _uiState.update {
+                it.copy(exportMessage = "Export failed: Inventory export is available on Main device only.")
             }
+            return
+        }
+
+        if (uri == null) {
+            _uiState.update { it.copy(exportMessage = "Export cancelled.") }
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(exportMessage = "Saving inventory export...") }
+            try {
+                kotlinx.coroutines.withContext(ioDispatcher) {
+                    val jsonContent = backupManager.createExportJson(includeChatHistory = false)
+                    val outputStream = appContext.contentResolver.openOutputStream(uri)
+                        ?: throw java.io.IOException("Unable to open selected document for writing.")
+
+                    outputStream.use { stream ->
+                        stream.write(jsonContent.toByteArray(Charsets.UTF_8))
+                        stream.flush()
+                    }
+                }
+
+                val displayName = getDocumentDisplayName(appContext, uri) ?: "Selected file"
+                _uiState.update {
+                    it.copy(exportMessage = "Inventory export saved successfully to $displayName.")
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(exportMessage = "Export failed: ${e.message ?: "Unknown error"}")
+                }
+            }
+        }
+    }
+
+    private fun getDocumentDisplayName(appContext: Context, uri: android.net.Uri): String? {
+        return try {
+            appContext.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (nameIndex != -1) cursor.getString(nameIndex) else null
+                } else null
+            }
+        } catch (_: Exception) {
+            null
         }
     }
 }
