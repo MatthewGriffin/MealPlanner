@@ -80,6 +80,7 @@ class InventoryDomainServiceImpl @Inject constructor(
             override suspend fun getByOperationId(operationId: String) = null
             override suspend fun getByDeviceSequence(deviceId: String, deviceSequence: Long) = null
             override suspend fun getFeedOperationsSince(sinceSeq: Long, limit: Int) = emptyList<CanonicalSyncOperationEntity>()
+            override suspend fun getAllOperationsSync() = emptyList<CanonicalSyncOperationEntity>()
             override suspend fun getLatestCanonicalSequence() = null
             override suspend fun insertCanonicalOperation(op: CanonicalSyncOperationEntity) {}
             override suspend fun getSequenceEntity() = null

@@ -59,6 +59,7 @@ class StapleTest {
             transactionDao = object : TransactionDao {
                 override fun getTransactionsForItem(itemId: String): Flow<List<InventoryTransactionEntity>> = MutableStateFlow(emptyList())
                 override fun getAllTransactions(): Flow<List<InventoryTransactionEntity>> = MutableStateFlow(emptyList())
+                override suspend fun getAllTransactionsSync(): List<InventoryTransactionEntity> = emptyList()
                 override suspend fun hasCookedTransactionForMeal(mealId: String): Boolean = false
                 override suspend fun getTransactionsForMeal(mealId: String): List<InventoryTransactionEntity> = emptyList()
                 override suspend fun insertTransaction(transaction: InventoryTransactionEntity) {}
