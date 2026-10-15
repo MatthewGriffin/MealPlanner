@@ -7,16 +7,24 @@ import com.example.chatgpt_mealplanner.contract.AiProviderResponse
 import com.example.chatgpt_mealplanner.core.ai.provider.GEMINI_MODEL_ID
 import com.example.chatgpt_mealplanner.core.ai.provider.MealPlannerAiProvider
 import com.example.chatgpt_mealplanner.core.backup.BackupManager
+import com.example.chatgpt_mealplanner.core.backup.MainEncryptedBackupSaveCoordinator
+import com.example.chatgpt_mealplanner.core.backup.SafBackupOutcome
 import com.example.chatgpt_mealplanner.core.database.dao.ChatDao
 import com.example.chatgpt_mealplanner.core.security.CredentialStore
+import com.example.chatgpt_mealplanner.core.sync.AppRoleResolver
 import com.example.chatgpt_mealplanner.core.sync.follower.worker.FollowerSyncScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.IOException
+import java.util.Arrays
 import javax.inject.Inject
 
 data class SettingsUiState(
@@ -26,7 +34,11 @@ data class SettingsUiState(
     val exportMessage: String? = null,
     val syncStatusMessage: String? = null,
     val isMainRole: Boolean = false,
-    val isRoleResolved: Boolean = false
+    val isRoleResolved: Boolean = false,
+    val backupStatusMessage: String? = null,
+    val isBackupInProgress: Boolean = false,
+    val isPassphraseDialogVisible: Boolean = false,
+    val pendingBackupUri: android.net.Uri? = null
 )
 
 @HiltViewModel
@@ -37,7 +49,8 @@ class SettingsViewModel @Inject constructor(
     private val chatDao: ChatDao,
     private val backupManager: BackupManager,
     private val followerSyncScheduler: FollowerSyncScheduler,
-    private val appRoleResolver: com.example.chatgpt_mealplanner.core.sync.AppRoleResolver
+    private val appRoleResolver: AppRoleResolver,
+    private val mainBackupSaveCoordinator: MainEncryptedBackupSaveCoordinator
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -118,7 +131,7 @@ class SettingsViewModel @Inject constructor(
     fun exportInventoryToUri(
         appContext: Context,
         uri: android.net.Uri?,
-        ioDispatcher: kotlinx.coroutines.CoroutineDispatcher = kotlinx.coroutines.Dispatchers.IO
+        ioDispatcher: CoroutineDispatcher = Dispatchers.IO
     ) {
         if (!appRoleResolver.isMain()) {
             _uiState.update {
@@ -135,10 +148,10 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(exportMessage = "Saving inventory export...") }
             try {
-                kotlinx.coroutines.withContext(ioDispatcher) {
+                withContext(ioDispatcher) {
                     val jsonContent = backupManager.createExportJson(includeChatHistory = false)
                     val outputStream = appContext.contentResolver.openOutputStream(uri)
-                        ?: throw java.io.IOException("Unable to open selected document for writing.")
+                        ?: throw IOException("Unable to open selected document for writing.")
 
                     outputStream.use { stream ->
                         stream.write(jsonContent.toByteArray(Charsets.UTF_8))
@@ -158,7 +171,142 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    private fun getDocumentDisplayName(appContext: Context, uri: android.net.Uri): String? {
+    fun onBackupDestinationSelected(uri: android.net.Uri?) {
+        if (!appRoleResolver.isMain()) {
+            _uiState.update {
+                it.copy(backupStatusMessage = "No document I/O attempted: Backup creation is available on Main device only.")
+            }
+            return
+        }
+
+        if (uri == null) {
+            _uiState.update {
+                it.copy(
+                    backupStatusMessage = "No document I/O attempted: Backup cancelled (no document destination selected).",
+                    isPassphraseDialogVisible = false,
+                    pendingBackupUri = null
+                )
+            }
+            return
+        }
+
+        _uiState.update {
+            it.copy(
+                pendingBackupUri = uri,
+                isPassphraseDialogVisible = true,
+                backupStatusMessage = null
+            )
+        }
+    }
+
+    fun dismissPassphraseDialog() {
+        _uiState.update {
+            it.copy(
+                isPassphraseDialogVisible = false,
+                pendingBackupUri = null
+            )
+        }
+    }
+
+    fun executeEncryptedBackup(
+        appContext: Context?,
+        passphraseCharArray: CharArray,
+        ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+    ) {
+        val destinationUri = _uiState.value.pendingBackupUri
+        if (!appRoleResolver.isMain()) {
+            Arrays.fill(passphraseCharArray, ' ')
+            _uiState.update {
+                it.copy(
+                    backupStatusMessage = "No document I/O attempted: Backup creation is available on Main device only.",
+                    isPassphraseDialogVisible = false,
+                    pendingBackupUri = null
+                )
+            }
+            return
+        }
+
+        if (passphraseCharArray.size < 8) {
+            Arrays.fill(passphraseCharArray, ' ')
+            _uiState.update {
+                it.copy(backupStatusMessage = "No document I/O attempted: Backup passphrase MUST be at least 8 characters long.")
+            }
+            return
+        }
+
+        if (destinationUri == null) {
+            Arrays.fill(passphraseCharArray, ' ')
+            _uiState.update {
+                it.copy(
+                    backupStatusMessage = "No document I/O attempted: Backup cancelled (no document destination selected).",
+                    isPassphraseDialogVisible = false,
+                    pendingBackupUri = null
+                )
+            }
+            return
+        }
+
+        if (_uiState.value.isBackupInProgress) {
+            Arrays.fill(passphraseCharArray, ' ')
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isBackupInProgress = true,
+                    isPassphraseDialogVisible = false,
+                    backupStatusMessage = "Encrypting and saving household backup..."
+                )
+            }
+
+            try {
+                val outcome = withContext(ioDispatcher) {
+                    mainBackupSaveCoordinator.executeMainBackupSave(
+                        appContext = appContext,
+                        destinationUri = destinationUri,
+                        passphrase = passphraseCharArray
+                    )
+                }
+
+                val displayName = getDocumentDisplayName(appContext, destinationUri) ?: "Selected file"
+                val resultText = when (outcome) {
+                    is SafBackupOutcome.VerifiedSuccess -> {
+                        "Household backup encrypted and verified successfully saved to $displayName!"
+                    }
+                    is SafBackupOutcome.NoDocumentIoAttempted -> {
+                        outcome.cause.cause
+                    }
+                    is SafBackupOutcome.DocumentIoAttemptedUnverified -> {
+                        val causeText = outcome.cause.cause
+                        "$causeText. Warning: An incomplete or unverified backup document may remain at $displayName."
+                    }
+                }
+
+                _uiState.update {
+                    it.copy(
+                        backupStatusMessage = resultText,
+                        isBackupInProgress = false,
+                        pendingBackupUri = null
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        backupStatusMessage = "Backup failed: ${e.message ?: "Unknown error"}",
+                        isBackupInProgress = false,
+                        pendingBackupUri = null
+                    )
+                }
+            } finally {
+                // Immediate zeroization of sensitive passphrase array
+                Arrays.fill(passphraseCharArray, ' ')
+            }
+        }
+    }
+
+    private fun getDocumentDisplayName(appContext: Context?, uri: android.net.Uri): String? {
+        if (appContext == null) return null
         return try {
             appContext.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
                 if (cursor.moveToFirst()) {

@@ -100,6 +100,20 @@ class PantryPhase6SafExportTest {
         val noOpRunner = object : DatabaseTransactionRunner {
             override suspend fun <T> runInTransaction(block: suspend () -> T): T = block()
         }
+        val fakeSafWriter = com.example.chatgpt_mealplanner.core.backup.MainEncryptedBackupSafWriter(
+            object : com.example.chatgpt_mealplanner.core.backup.SafDocumentStreamProvider {
+                override fun openOutputStream(appContext: Context?, uri: android.net.Uri?): java.io.OutputStream? = null
+                override fun openInputStream(appContext: Context?, uri: android.net.Uri?): java.io.InputStream? = null
+            }
+        )
+        val fakeSaveCoordinator = com.example.chatgpt_mealplanner.core.backup.MainEncryptedBackupSaveCoordinator(
+            FakeAppRoleResolver(isMainRole),
+            com.example.chatgpt_mealplanner.core.backup.MainBackupSnapshotBuilder(null, noOpRunner),
+            com.example.chatgpt_mealplanner.core.backup.MainBackupEncryptionCodec(
+                com.example.chatgpt_mealplanner.core.backup.MainBackupContainerEncoderDecoder()
+            ),
+            fakeSafWriter
+        )
         return SettingsViewModel(
             context = context,
             credentialStore = FakeCredentialStore(),
@@ -107,7 +121,8 @@ class PantryPhase6SafExportTest {
             chatDao = FakeChatDao(),
             backupManager = BackupManager(null, noOpRunner),
             followerSyncScheduler = FollowerSyncScheduler(dagger.Lazy { error("Not called") }),
-            appRoleResolver = FakeAppRoleResolver(isMainRole)
+            appRoleResolver = FakeAppRoleResolver(isMainRole),
+            mainBackupSaveCoordinator = fakeSaveCoordinator
         )
     }
 

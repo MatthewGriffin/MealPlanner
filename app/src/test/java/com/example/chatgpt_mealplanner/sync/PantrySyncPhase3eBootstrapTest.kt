@@ -701,6 +701,23 @@ class PantrySyncPhase3eBootstrapTest {
                 override suspend fun continueWithToolResults(request: com.example.chatgpt_mealplanner.contract.AiContinueWithToolsRequest): com.example.chatgpt_mealplanner.contract.AiProviderResponse = com.example.chatgpt_mealplanner.contract.AiProviderResponse.Error("DUMMY", "Dummy")
             }
 
+            val fakeSafWriter = com.example.chatgpt_mealplanner.core.backup.MainEncryptedBackupSafWriter(
+                object : com.example.chatgpt_mealplanner.core.backup.SafDocumentStreamProvider {
+                    override fun openOutputStream(appContext: android.content.Context?, uri: android.net.Uri?): java.io.OutputStream? = null
+                    override fun openInputStream(appContext: android.content.Context?, uri: android.net.Uri?): java.io.InputStream? = null
+                }
+            )
+            val fakeSaveCoordinator = com.example.chatgpt_mealplanner.core.backup.MainEncryptedBackupSaveCoordinator(
+                FakeAppRoleResolver(),
+                com.example.chatgpt_mealplanner.core.backup.MainBackupSnapshotBuilder(null, object : com.example.chatgpt_mealplanner.core.database.DatabaseTransactionRunner {
+                    override suspend fun <T> runInTransaction(block: suspend () -> T): T = block()
+                }),
+                com.example.chatgpt_mealplanner.core.backup.MainBackupEncryptionCodec(
+                    com.example.chatgpt_mealplanner.core.backup.MainBackupContainerEncoderDecoder()
+                ),
+                fakeSafWriter
+            )
+
             val viewModel = SettingsViewModel(
                 context = null,
                 credentialStore = dummyCredentialStore,
@@ -708,7 +725,8 @@ class PantrySyncPhase3eBootstrapTest {
                 chatDao = FakeChatDao(),
                 backupManager = FakeBackupManager(),
                 followerSyncScheduler = testScheduler,
-                appRoleResolver = FakeAppRoleResolver()
+                appRoleResolver = FakeAppRoleResolver(),
+                mainBackupSaveCoordinator = fakeSaveCoordinator
             )
 
             viewModel.triggerManualSync()

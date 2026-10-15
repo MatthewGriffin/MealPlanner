@@ -94,6 +94,12 @@ abstract class DomainModule {
         impl: GeminiMealPlannerAiProvider
     ): MealPlannerAiProvider
 
+    @Binds
+    @Singleton
+    abstract fun bindSafDocumentStreamProvider(
+        impl: com.example.chatgpt_mealplanner.core.backup.DefaultSafDocumentStreamProvider
+    ): com.example.chatgpt_mealplanner.core.backup.SafDocumentStreamProvider
+
     companion object {
         @Provides
         @Singleton

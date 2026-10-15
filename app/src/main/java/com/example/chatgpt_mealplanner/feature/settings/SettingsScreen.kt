@@ -11,6 +11,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -19,6 +20,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -44,8 +46,24 @@ fun SettingsScreen(
     ) { uri ->
         viewModel.exportInventoryToUri(context, uri)
     }
+
+    val createBackupDocumentLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/octet-stream")
+    ) { uri ->
+        viewModel.onBackupDestinationSelected(uri)
+    }
+
     val uiState by viewModel.uiState.collectAsState()
     var apiKeyInput by remember { mutableStateOf("") }
+
+    if (uiState.isPassphraseDialogVisible) {
+        EncryptedBackupPassphraseDialog(
+            onDismiss = { viewModel.dismissPassphraseDialog() },
+            onConfirm = { passChars ->
+                viewModel.executeEncryptedBackup(context, passChars)
+            }
+        )
+    }
 
     Column(
         modifier = modifier
@@ -203,7 +221,134 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(uiState.exportMessage!!, color = MaterialTheme.colorScheme.primary)
                 }
+
+                Spacer(modifier = Modifier.height(16.dp))
+                Button(
+                    onClick = {
+                        val timestamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())
+                        val suggestedFileName = "pantry_household_backup_$timestamp.pantryenc"
+                        createBackupDocumentLauncher.launch(suggestedFileName)
+                    },
+                    enabled = uiState.isMainRole && !uiState.isBackupInProgress,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(if (uiState.isBackupInProgress) "Encrypting Backup..." else "Save Encrypted Household Backup")
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = if (uiState.isMainRole) {
+                        "Saves a passphrase-protected, encrypted backup of all household items, staples, categories, and canonical sync operations to a location you choose."
+                    } else {
+                        "Household backup is available on the Main device only."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (uiState.backupStatusMessage != null) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(uiState.backupStatusMessage!!, color = MaterialTheme.colorScheme.primary)
+                }
             }
         }
     }
+}
+
+@Composable
+fun EncryptedBackupPassphraseDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (CharArray) -> Unit
+) {
+    var passphraseInput by remember { mutableStateOf("") }
+    var confirmPassphraseInput by remember { mutableStateOf("") }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Enter Backup Passphrase", fontWeight = FontWeight.Bold) },
+        text = {
+            Column {
+                Text(
+                    "Create a strong passphrase to encrypt your household backup archive.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedTextField(
+                    value = passphraseInput,
+                    onValueChange = {
+                        passphraseInput = it
+                        errorMessage = null
+                    },
+                    label = { Text("Backup Passphrase (min 8 chars)") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedTextField(
+                    value = confirmPassphraseInput,
+                    onValueChange = {
+                        confirmPassphraseInput = it
+                        errorMessage = null
+                    },
+                    label = { Text("Confirm Passphrase") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+
+                if (errorMessage != null) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(errorMessage!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        Icon(Icons.Default.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            "IMPORTANT: Remember this passphrase! If lost or forgotten, your encrypted backup CANNOT be recovered or decrypted.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (passphraseInput.length < 8) {
+                        errorMessage = "Passphrase must be at least 8 characters long."
+                    } else if (passphraseInput != confirmPassphraseInput) {
+                        errorMessage = "Passphrases do not match."
+                    } else {
+                        val passChars = passphraseInput.toCharArray()
+                        passphraseInput = ""
+                        confirmPassphraseInput = ""
+                        onConfirm(passChars)
+                    }
+                }
+            ) {
+                Text("Encrypt & Save")
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = {
+                    passphraseInput = ""
+                    confirmPassphraseInput = ""
+                    onDismiss()
+                }
+            ) {
+                Text("Cancel")
+            }
+        }
+    )
 }
