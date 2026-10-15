@@ -291,6 +291,7 @@ class SettingsViewModel @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 _uiState.update {
                     it.copy(
                         backupStatusMessage = "Backup failed: ${e.message ?: "Unknown error"}",

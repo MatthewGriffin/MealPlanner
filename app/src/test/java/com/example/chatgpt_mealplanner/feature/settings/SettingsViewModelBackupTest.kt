@@ -230,4 +230,41 @@ class SettingsViewModelBackupTest {
         assertTrue("Status message MUST contain unverified warning", state.backupStatusMessage?.contains("Warning: An incomplete or unverified backup document may remain") == true)
         assertTrue("Passphrase array MUST be zeroed out", validPassphrase.all { it == ' ' })
     }
+
+    @Test
+    fun dismissPassphraseDialog_clearsPendingUriAndDialogVisibility() = runTest(testDispatcher) {
+        viewModel = createViewModel(isMain = true)
+        testScheduler.advanceUntilIdle()
+
+        viewModel.onBackupDestinationSelected(dummyUri)
+        assertTrue(viewModel.uiState.value.isPassphraseDialogVisible)
+
+        viewModel.dismissPassphraseDialog()
+
+        val state = viewModel.uiState.value
+        assertFalse("Passphrase dialog MUST NOT be visible after dismiss", state.isPassphraseDialogVisible)
+        assertNull("Pending URI MUST be cleared on dismiss", state.pendingBackupUri)
+    }
+
+    @Test
+    fun executeEncryptedBackup_noIoFailure_displaysNoIoAttemptedMessage() = runTest(testDispatcher) {
+        viewModel = createViewModel(isMain = true)
+        testScheduler.advanceUntilIdle()
+
+        fakeSaveCoordinator.outcomeToReturn = SafBackupOutcome.NoDocumentIoAttempted(
+            DomainError.TransactionFailed("No document I/O attempted: Failed generating Main household snapshot: Database locked.")
+        )
+        testScheduler.advanceUntilIdle()
+
+        viewModel.onBackupDestinationSelected(dummyUri)
+        val validPassphrase = "MasterPassphrase#2026".toCharArray()
+
+        viewModel.executeEncryptedBackup(null, validPassphrase, testDispatcher)
+        testScheduler.advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertFalse("Backup MUST no longer be in progress", state.isBackupInProgress)
+        assertTrue("Status message MUST mention No document I/O attempted", state.backupStatusMessage?.contains("No document I/O attempted") == true)
+        assertTrue("Passphrase array MUST be zeroed out", validPassphrase.all { it == ' ' })
+    }
 }
