@@ -2,9 +2,17 @@ package com.example.chatgpt_mealplanner.core.backup
 
 import android.content.Context
 import android.net.Uri
+import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.example.chatgpt_mealplanner.core.database.AppDatabase
 import com.example.chatgpt_mealplanner.core.database.DatabaseTransactionRunner
+import com.example.chatgpt_mealplanner.core.database.entity.InventoryItemEntity
+import com.example.chatgpt_mealplanner.core.model.FoodCategory
+import com.example.chatgpt_mealplanner.core.model.ItemStatus
+import com.example.chatgpt_mealplanner.core.model.QuantityConfidence
+import com.example.chatgpt_mealplanner.core.model.QuantityUnit
+import com.example.chatgpt_mealplanner.core.model.StorageLocation
 import com.example.chatgpt_mealplanner.core.sync.AppRoleResolver
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -118,6 +126,85 @@ class PantryPhase6Step6cAndroidSafIntegrationTest {
             assertTrue("Saved file size MUST be non-empty", testFile.length() > 0)
         } finally {
             if (testFile.exists()) testFile.delete()
+        }
+    }
+
+    @Test
+    fun inMemoryRoomDatabase_createsAndEncryptsMainSnapshotAndVerifiesReadback() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(targetContext, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+
+        try {
+            val itemEntity = InventoryItemEntity(
+                id = "item-room-1",
+                barcode = "987654321",
+                canonicalIngredientId = "ING_MILK",
+                canonicalName = "whole milk",
+                displayName = "Organic Whole Milk",
+                brand = "Arla",
+                category = FoodCategory.FRIDGE,
+                storageLocation = StorageLocation.FRIDGE,
+                quantity = 2.0,
+                quantityUnit = QuantityUnit.LITRE,
+                packCount = 1,
+                packSize = 2.0,
+                packSizeUnit = QuantityUnit.LITRE,
+                quantityConfidence = QuantityConfidence.EXACT,
+                status = ItemStatus.AVAILABLE,
+                opened = false,
+                frozen = false,
+                staple = true,
+                purchaseDate = "2026-10-10",
+                openedDate = null,
+                useByDate = "2026-10-25",
+                bestBeforeDate = null,
+                notes = "Room test milk",
+                createdAt = 1000L,
+                updatedAt = 2000L,
+                revision = 1L
+            )
+            db.inventoryDao().insertItem(itemEntity)
+
+            val roomRunner = object : DatabaseTransactionRunner {
+                override suspend fun <T> runInTransaction(block: suspend () -> T): T {
+                    return block()
+                }
+            }
+
+            val realSnapshotBuilder = MainBackupSnapshotBuilder(db, roomRunner)
+            val roleResolver = FakeAppRoleResolver(isMainRole = true)
+            val defaultStreamProvider = DefaultSafDocumentStreamProvider()
+            val safWriter = MainEncryptedBackupSafWriter(defaultStreamProvider)
+            val coordinator = MainEncryptedBackupSaveCoordinator(roleResolver, realSnapshotBuilder, codec, safWriter)
+
+            val testFile = File(targetContext.cacheDir, "test_room_snapshot_backup.pantrybak")
+            if (testFile.exists()) testFile.delete()
+
+            try {
+                val fileUri = Uri.fromFile(testFile)
+                val passphrase = "RoomSnapshotMasterPassword#2026!".toCharArray()
+
+                val outcome = coordinator.executeMainBackupSave(
+                    appContext = targetContext,
+                    destinationUri = fileUri,
+                    passphrase = passphrase,
+                    currentTimeMs = 3000000L
+                )
+
+                assertTrue("Room transactional snapshot backup save MUST succeed", outcome is SafBackupOutcome.VerifiedSuccess)
+                val snapshot = (outcome as SafBackupOutcome.VerifiedSuccess).snapshot
+                assertEquals("pantry-household-backup-v1", snapshot.backupFormatVersion)
+                assertEquals(1, snapshot.inventory.size)
+                assertEquals("Organic Whole Milk", snapshot.inventory[0].displayName)
+                assertEquals("987654321", snapshot.inventory[0].barcode)
+                assertTrue("Saved file MUST exist on disk", testFile.exists())
+                assertTrue("Saved file size MUST be non-empty", testFile.length() > 0)
+            } finally {
+                if (testFile.exists()) testFile.delete()
+            }
+        } finally {
+            db.close()
         }
     }
 }
