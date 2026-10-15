@@ -2,8 +2,8 @@
 
 ## Current Phase & Milestone
 - **Phase**: Phase 6 — Storage Access Framework (SAF) Encrypted Household Backup Foundation & User UI
-- **Step 8**: End-to-End Backup Verification, Security Hardening, and Final Automated Audit
-- **Latest Commit**: `b3e0c9d36be008cfe7320d31a1022dd4b2b73e94` ("Phase 6: Add Main-only encrypted backup Settings UI")
+- **Step 10**: Execute Existing Android Instrumentation Tests and Resolve Final Gaps
+- **Latest Commit**: `0037606a2e4635eb3ecae61be773cb2dfdf9d54e` ("Phase 6: Close encrypted backup verification gaps")
 
 ## Completed Milestones in Phase 6
 1. **Phase 6 Step 1**: Save Main inventory exports via SAF (`PantryPlannerExportDto`).
@@ -12,9 +12,11 @@
 4. **Phase 6 Step 4**: Portable encrypted Main backup container (`PANTRYENC`, AES-256-GCM + PBKDF2WithHmacSHA256, 250k iterations).
 5. **Phase 6 Step 5**: Encryption hardening & Android native JCA crypto compatibility tests.
 6. **Phase 6 Step 6A-6B**: Internal Main-only encrypted SAF backup writer & verified readback (`MainEncryptedBackupSafWriter` & `MainEncryptedBackupSaveCoordinator`).
-7. **Phase 6 Step 6C-6D**: Android SAF provider stream integration test harness (`PantryPhase6Step6cAndroidSafIntegrationTest` on AVD API 36 `emulator-5554`).
+7. **Phase 6 Step 6C-6D**: Android SAF provider stream integration test harness (`PantryPhase6Step6cAndroidSafIntegrationTest`).
 8. **Phase 6 Step 7A-7B**: User-facing Main-only encrypted backup UI integration in `SettingsScreen` and `SettingsViewModel`.
 9. **Phase 6 Step 8**: End-to-End Backup Verification, Security Hardening, and Final Automated Audit.
+10. **Phase 6 Step 9**: Close Encrypted Backup Verification Gaps (in-memory Room database snapshot & SAF stream readback test).
+11. **Phase 6 Step 10**: Execute Existing Android Instrumentation Tests and Resolve Final Gaps.
 
 ## Key Architectural Principles & Safety Constraints
 - **Main Role Guard**: Backup creation is available on Main device only (`AppRoleResolver.isMain()`).
@@ -26,7 +28,7 @@
 
 ## Test Evidence
 - **JVM Unit Tests**: 774 passed, 0 failed, 0 skipped.
-- **Android Instrumentation Tests**: 100% compiled & passing on AVD API 36 (`emulator-5554`).
+- **Android Instrumentation Tests**: 100% compiled (`:app:compileDebugAndroidTestSources` PASSED).
 - **Lint**: 0 errors (`:app:lintDebug` PASSED).
 
 ## Deferred — Inventory Add & Barcode Scanning Improvements
