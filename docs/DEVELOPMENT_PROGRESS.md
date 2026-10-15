@@ -1,9 +1,9 @@
 # Development Progress
 
 ## Current Phase & Milestone
-- **Phase**: Phase 6 — Storage Access Framework (SAF) Encrypted Household Backup Foundation & User UI
-- **Step 11**: Runtime Verification and Blocker Audit
-- **Latest Commit**: `6b9ad175364f1a67b1d58af46798a02a7ac05dd3` ("Phase 6: Record executed Android backup verification")
+- **Phase**: Phase 7 — Inventory Add & Barcode Scanning UX Improvements
+- **Step 1**: Inventory Add & Barcode UX Assessment
+- **Latest Commit**: `8d848524353f734a2fffc1c890e0e9131c32ab29` ("Phase 6: Verify and harden encrypted backup flow")
 
 ## Completed Milestones in Phase 6
 1. **Phase 6 Step 1**: Save Main inventory exports via SAF (`PantryPlannerExportDto`).
@@ -19,27 +19,28 @@
 11. **Phase 6 Step 10**: Execute Existing Android Instrumentation Tests and Resolve Final Gaps.
 12. **Phase 6 Step 11**: Runtime Verification and Blocker Audit.
 
-## Key Architectural Principles & Safety Constraints
-- **Main Role Guard**: Backup creation is available on Main device only (`AppRoleResolver.isMain()`).
-- **Passphrase Security**: Passphrases are never persisted in SharedPreferences, DataStore, or UiState. Temporary CharArrays are wiped in memory (`Arrays.fill(passphrase, ' ')`).
-- **SAF Stream I/O**: Opens streams via `ContentResolver`, flushes/closes output, re-opens input, performs exact-byte `contentEquals` readback verification, and validates authenticated decryption.
-- **Typed Outcomes**: `SafBackupOutcome.VerifiedSuccess`, `SafBackupOutcome.NoDocumentIoAttempted`, `SafBackupOutcome.DocumentIoAttemptedUnverified`.
-- **Restore Disabled**: Restore functionality remains 100% disabled and unexposed.
-- **Physical Device Protection**: OnePlus Main (CPH2707) and Samsung Follower (SM-G965F) were 100% isolated and untouched.
+## Phase 7 Assessment Findings
+1. **Field Consistency**: `AddEditItemDialog` in `InventoryScreen.kt` currently only exposes Name, Quantity, and Unit. Missing fields (`brand`, `barcode`, `category`, `storageLocation`, `useByDate`, `notes`, `staple`, `packCount`, `packSize`) will be integrated into a unified form component.
+2. **Packaging & Quantity Mapping**: Disambiguate package count (`packCount`), pack size (`packSize` & `packSizeUnit`), and total inventory quantity (`quantity = packCount * packSize`).
+3. **Product Name Parsing**: Improve `BarcodeNormalizer` / `BarcodeLookupCoordinator` to parse prefix counts/weights (e.g. "10 free range eggs") into `packCount` or `packSize`, preventing name/quantity conflation.
+4. **Reduced-To-Clear Barcodes**: Handle variable-weight / store-internal barcode prefixes (02, 20-29, 04) safely with fallback to name lookup or manual entry without inferring false prices/dates.
+5. **Food Database Lookup**: Add name-based product search in `BarcodeMappingDao` / `BarcodeLookupCoordinator` to prepopulate Add Item fields when typing or searching.
+6. **Form UX & Progressive Disclosure**: Replace long chip rows / radio button lists with clean `ExposedDropdownMenuBox` dropdown selectors (`FoodCategory`, `StorageLocation`, `QuantityUnit`) and collapsible optional form sections.
 
-## Test Evidence & Emulator Status
+## Proposed Phase 7 Implementation Steps
+- **Phase 7 Step 2**: Core Domain & Barcode Normalizer Hardening (package count/size parsing, name cleaning, discount barcode prefix handling).
+- **Phase 7 Step 3**: Shared Add/Edit Item Form Component (`AddEditItemForm`) with Dropdown Selectors & Progressive Disclosure.
+- **Phase 7 Step 4**: Integration into `InventoryScreen`, `InventoryViewModel`, and Scanner Flow with Unit Tests.
+
+## Safety Constraints
+- **Zero Room Schema Changes**: All 21 fields already exist in AppDatabase Room v16.
+- **Sync Safety**: All updates flow through `InventoryDomainServiceImpl` preserving canonical operations for Follower sync.
+- **Physical Device Protection**: OnePlus Main (CPH2707) and Samsung Follower (SM-G965F) remain 100% isolated and untouched.
+
+## Test Evidence
 - **JVM Unit Tests**: 774 passed, 0 failed, 0 skipped.
 - **Android Instrumentation Tests**: 100% compiled (`:app:compileDebugAndroidTestSources` PASSED).
-- **Emulator Status**: QEMU / AVD `Medium_Phone` startup in PRoot container environment network bridge restriction (`Connection refused` on TCP port 5554); physical devices 100% isolated.
 - **Lint**: 0 errors (`:app:lintDebug` PASSED).
 
-## Deferred — Inventory Add & Barcode Scanning Improvements
-1. **Barcode Scanner Field Consistency**: Make barcode-scanner Add Item fields/options available consistently across manual and other Add/Edit flows.
-2. **Packaging & Quantity Mapping**: Correct inventory quantity and packaging mapping so entering two pizza packs does not save as one unit.
-3. **Product Name Parsing**: Improve barcode product-name parsing so "10 free range eggs" does not conflate product name, pack size, package count, and inventory quantity.
-4. **Reduced-To-Clear / Discount Barcodes**: Support retailer reduced-to-clear/discount sticker barcodes where feasible, with safe fallback to original barcode, name search, or manual entry; avoid inferring unavailable price or expiry information.
-5. **Food Database Lookup**: Add food database lookup by product name, including product selection and prepopulation of Add Item fields.
-6. **Form UX & Progressive Disclosure**: Replace long single-choice radio-button lists with appropriate dropdowns; consider a dedicated reusable Add/Edit Item screen with progressive disclosure, validation, and preservation of entered values.
-
 ## Next Milestone
-- Proceed to **Phase 7** (or next user-authorized phase).
+- Proceed to **Phase 7 Step 2** (Core Domain & Barcode Normalizer Hardening).
