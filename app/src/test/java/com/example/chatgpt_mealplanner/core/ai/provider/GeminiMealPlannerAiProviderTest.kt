@@ -632,4 +632,9 @@ class GeminiMealPlannerAiProviderTest {
 
         assertFalse("Normal provider request MUST NOT contain tool_config", capturedPayload!!.containsKey("tool_config"))
     }
+
+    @Test
+    fun globalTimeoutCap_constants_definedAt45Seconds() {
+        assertEquals(45_000L, com.example.chatgpt_mealplanner.core.ai.provider.GLOBAL_TIMEOUT_CAP_MS)
+    }
 }

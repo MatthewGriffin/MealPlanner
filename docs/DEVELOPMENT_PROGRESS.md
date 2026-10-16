@@ -2,8 +2,8 @@
 
 ## Current Phase & Milestone
 - **Phase**: Phase 9 — AI Assistant Timeout, Background Execution, and Intelligent Retry Improvements
-- **Step 3**: AI Request Lifecycle, Background Continuity, and Visible Progress
-- **Latest Commit**: `3bdf9083bb0c6b1fc29620cef67a43a39e65212e` ("Phase 9: Fix AI failure classification and retry")
+- **Step 4**: AI Latency, Bounded Waiting, and Idempotency Safeguards
+- **Latest Commit**: `49d5dbfc2f1a5fb38a45735bcbaa35a0f08a4e59` ("Phase 9: Improve AI request lifecycle and progress")
 
 ## Completed Milestones in Phase 6, 7, 8 & 9
 1. **Phase 6 Step 1-11**: Complete SAF Encrypted Backup Foundation & Settings UI.
@@ -12,8 +12,10 @@
 4. **Phase 9 Step 1**: AI Request Reliability Diagnostic & Architecture Analysis.
 5. **Phase 9 Step 2**: AI Error Classification and Retry UI Fixes (`AiMealPlannerOrchestrator` & `ChatViewModel` error reclassification fix).
 6. **Phase 9 Step 3**: AI Request Lifecycle, Background Continuity, and Visible Progress (`ChatViewModel` progress ticker & stage status).
+7. **Phase 9 Step 4**: AI Latency, Bounded Waiting, and Idempotency Safeguards (`GLOBAL_TIMEOUT_CAP_MS = 45_000L` global timeout cap).
 
 ## Key Architectural Principles & Safety Constraints
+- **Global 45s Request Timeout Cap**: Enforced `GLOBAL_TIMEOUT_CAP_MS = 45_000L` in `GeminiMealPlannerAiProvider.kt` using `withTimeoutOrNull` across the model fallback chain, stopping stacked network delays and returning typed `REQUEST_TIMEOUT` error with a Retry card after 45 seconds.
 - **Request Lifecycle Progress Ticker**: `ChatViewModel` executes a 1-second coroutine ticker during in-flight requests, updating `elapsedSeconds` and stage status text ("Reading pantry context...", "Calling AI assistant...", "Processing meal actions...", "Still waiting for AI response...").
 - **Background Continuity**: AI requests are owned by `ChatViewModel`'s `viewModelScope` on `Dispatchers.IO`. Switching apps puts `MainActivity` into STOPPED state while `viewModelScope` continues running off-UI-thread. Returning to `ChatScreen` shows current progress status, elapsed time, completed response, or Retry card without losing state.
 - **Duplicate Submission Guard**: `ChatViewModel.sendMessage()` & `retryLastFailedMessage()` guard against `IN_FLIGHT` state, ignoring duplicate user taps while a request is active.
@@ -25,4 +27,4 @@
 - **Lint**: 0 errors (`:app:lintDebug` PASSED).
 
 ## Next Milestone
-- Proceed to **Phase 9 Step 4** (Latency Optimization & Idempotency Safeguards).
+- Proceed to **Phase 9 Step 5** (Physical Device Verification on OnePlus Main & Samsung Follower).

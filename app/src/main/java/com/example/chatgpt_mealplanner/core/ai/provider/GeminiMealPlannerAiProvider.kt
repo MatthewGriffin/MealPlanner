@@ -44,6 +44,7 @@ const val GEMINI_PRIMARY_MODEL = "gemini-3.7-flash"
 const val GEMINI_SECONDARY_MODEL = "gemini-3.6-flash"
 const val GEMINI_TERTIARY_MODEL = "gemini-3.5-flash-lite"
 const val GEMINI_MODEL_ID = GEMINI_PRIMARY_MODEL
+const val GLOBAL_TIMEOUT_CAP_MS = 45_000L
 
 val GEMINI_MODEL_CHAIN = listOf(
     GEMINI_PRIMARY_MODEL,
@@ -236,6 +237,22 @@ class GeminiMealPlannerAiProvider @Inject constructor(
     }
 
     private suspend fun executeGeminiChainWithFallback(
+        activeKey: String,
+        conversationId: String,
+        payloadBuilder: (modelId: String) -> JsonObject,
+        historyContents: JsonArray
+    ): AiProviderResponse {
+        val result = kotlinx.coroutines.withTimeoutOrNull(GLOBAL_TIMEOUT_CAP_MS) {
+            executeGeminiChainLoop(activeKey, conversationId, payloadBuilder, historyContents)
+        }
+
+        return result ?: AiProviderResponse.Error(
+            "REQUEST_TIMEOUT",
+            "Gemini request timed out after ${GLOBAL_TIMEOUT_CAP_MS / 1000}s. Please check network connection and try again."
+        )
+    }
+
+    private suspend fun executeGeminiChainLoop(
         activeKey: String,
         conversationId: String,
         payloadBuilder: (modelId: String) -> JsonObject,
