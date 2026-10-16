@@ -68,4 +68,24 @@ class BarcodeLookupCoordinatorTest {
         assertEquals(QuantityConfidence.APPROXIMATE, res.quantityConfidence)
         assertEquals("VARIABLE_WEIGHT_STORE_INTERNAL", res.sourceName)
     }
+
+    @Test
+    fun searchProductsByName_returnsMatchingProducts() = runTest {
+        val input = ConfirmedProductInput(
+            barcode = "50123456789",
+            displayName = "Monster Energy 500ml",
+            brand = "Monster",
+            category = FoodCategory.SNACKS,
+            storageLocation = StorageLocation.FRIDGE,
+            netQuantity = 500.0,
+            netQuantityUnit = QuantityUnit.MILLILITRE
+        )
+        coordinator.confirmAndSaveBarcodeMapping(input)
+
+        val searchResults = coordinator.searchProductsByName("Monster")
+        assertEquals(1, searchResults.size)
+        assertEquals("Monster Energy 500ml", searchResults[0].displayName)
+        assertEquals("50123456789", searchResults[0].barcode)
+        assertEquals("PRODUCT_SEARCH_MATCH", searchResults[0].sourceName)
+    }
 }

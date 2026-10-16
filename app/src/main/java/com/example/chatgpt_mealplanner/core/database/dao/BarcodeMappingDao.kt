@@ -12,6 +12,9 @@ interface BarcodeMappingDao {
     @Query("SELECT * FROM product_barcode_mappings WHERE barcode = :barcode")
     suspend fun getMappingByBarcode(barcode: String): ProductBarcodeMappingEntity?
 
+    @Query("SELECT * FROM product_barcode_mappings WHERE displayName LIKE '%' || :query || '%' OR brand LIKE '%' || :query || '%' LIMIT 10")
+    suspend fun searchMappingsByName(query: String): List<ProductBarcodeMappingEntity>
+
     @Query("SELECT * FROM product_barcode_mappings ORDER BY createdAt ASC")
     suspend fun getAllMappingsSync(): List<ProductBarcodeMappingEntity>
 

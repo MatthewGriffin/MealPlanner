@@ -182,6 +182,13 @@ class FakeBarcodeMappingDao : BarcodeMappingDao {
 
     override suspend fun getMappingByBarcode(barcode: String): ProductBarcodeMappingEntity? = mappings[barcode]
 
+    override suspend fun searchMappingsByName(query: String): List<ProductBarcodeMappingEntity> {
+        val q = query.lowercase()
+        return mappings.values.filter {
+            (it.displayName?.lowercase()?.contains(q) == true) || (it.brand?.lowercase()?.contains(q) == true)
+        }
+    }
+
     override suspend fun getAllMappingsSync(): List<ProductBarcodeMappingEntity> = mappings.values.toList()
 
     override suspend fun insertMapping(mapping: ProductBarcodeMappingEntity) {

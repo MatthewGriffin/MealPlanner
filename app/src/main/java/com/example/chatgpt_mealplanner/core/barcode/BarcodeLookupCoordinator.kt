@@ -72,6 +72,30 @@ class BarcodeLookupCoordinator @Inject constructor(
         )
     }
 
+    suspend fun searchProductsByName(query: String): List<BarcodeLookupResult> {
+        if (query.isBlank()) return emptyList()
+        val mappings = barcodeMappingDao.searchMappingsByName(query.trim())
+        return mappings.map { mapping ->
+            val parsedInfo = BarcodeNormalizer.parseProductTitle(mapping.displayName ?: "Scanned Product")
+            BarcodeLookupResult(
+                barcode = mapping.barcode,
+                displayName = parsedInfo.cleanName,
+                brand = mapping.brand,
+                canonicalIngredientId = mapping.canonicalIngredientId,
+                canonicalName = mapping.canonicalName,
+                category = mapping.category ?: FoodCategory.CUPBOARD,
+                storageLocation = mapping.defaultStorageLocation ?: StorageLocation.CUPBOARD,
+                netQuantity = mapping.netQuantity,
+                netQuantityUnit = mapping.netQuantityUnit,
+                packCount = mapping.packCount ?: parsedInfo.extractedPackCount,
+                packSize = mapping.packSize ?: parsedInfo.extractedPackSize,
+                packSizeUnit = mapping.packSizeUnit ?: parsedInfo.extractedPackSizeUnit,
+                quantityConfidence = if (mapping.netQuantity != null) QuantityConfidence.EXACT else QuantityConfidence.UNKNOWN,
+                sourceName = "PRODUCT_SEARCH_MATCH"
+            )
+        }
+    }
+
     suspend fun confirmAndSaveBarcodeMapping(input: ConfirmedProductInput) {
         if (input.barcode.isNullOrBlank()) return
 
