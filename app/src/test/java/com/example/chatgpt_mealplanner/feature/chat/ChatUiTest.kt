@@ -123,4 +123,28 @@ class ChatUiTest {
         org.junit.Assert.assertNull(userMsg.modelId)
         assertEquals("gemini-3.7-flash", assistantMsg.modelId)
     }
+
+    @Test
+    fun chatRequestState_failedRetryable_makesRetryAvailable() {
+        val failedState = ChatUiState(
+            requestState = ChatRequestState.FAILED_RETRYABLE,
+            retainedUserMessage = "I'm eating the Pizza Express pizzas tonight",
+            errorMessage = "Gemini is temporarily busy (HTTP 503)."
+        )
+
+        assertTrue("Retry MUST be available on FAILED_RETRYABLE", failedState.isRetryAvailable)
+        assertEquals("I'm eating the Pizza Express pizzas tonight", failedState.failedUserMessage)
+        assertEquals("Gemini is temporarily busy (HTTP 503).", failedState.errorMessage)
+    }
+
+    @Test
+    fun chatRequestState_succeeded_clearsRetry() {
+        val succeededState = ChatUiState(
+            requestState = ChatRequestState.SUCCEEDED,
+            retainedUserMessage = null
+        )
+
+        assertFalse("Retry MUST NOT be available on SUCCEEDED", succeededState.isRetryAvailable)
+        org.junit.Assert.assertNull(succeededState.failedUserMessage)
+    }
 }

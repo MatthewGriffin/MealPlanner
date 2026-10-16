@@ -245,11 +245,9 @@ class AiOrchestratorIntegrationTest {
         )
 
         val result = orchestrator.processUserMessage("conv_1", "what is for dinner")
-        assertTrue(result is AiOrchestrationResult.Final)
-
-        val assistantText = (result as AiOrchestrationResult.Final).assistantText
-        assertEquals("Gemini is temporarily unavailable. Your meal-plan data was not changed.", assistantText)
-        assertFalse("Must not claim action applied", assistantText.contains("action was applied"))
+        assertTrue("Provider error without write MUST return AiOrchestrationResult.Error", result is AiOrchestrationResult.Error)
+        val userFacingMsg = (result as AiOrchestrationResult.Error).userFacingMessage
+        assertTrue("User facing message MUST contain provider error detail", userFacingMsg.contains("Gemini busy"))
     }
 
     @Test
@@ -281,8 +279,9 @@ class AiOrchestratorIntegrationTest {
         )
 
         val result = orchestrator.processUserMessage("conv_1", "what is for dinner")
-        val assistantText = (result as AiOrchestrationResult.Final).assistantText
-        assertEquals("Gemini is temporarily unavailable. Your meal-plan data was not changed.", assistantText)
+        assertTrue(result is AiOrchestrationResult.Error)
+        val userFacingMsg = (result as AiOrchestrationResult.Error).userFacingMessage
+        assertTrue(userFacingMsg.contains("503 Service Unavailable"))
     }
 
     @Test
@@ -441,10 +440,7 @@ class AiOrchestratorIntegrationTest {
 
         // Turn 2: Read
         val turn2Res = orchestrator.processUserMessage("conv_1", "what is for dinner")
-        val turn2Text = (turn2Res as AiOrchestrationResult.Final).assistantText
-
-        assertEquals("Gemini is temporarily unavailable. Your meal-plan data was not changed.", turn2Text)
-        assertFalse("Turn 1 mutation state must NOT leak into Turn 2", turn2Text.contains("action was applied"))
+        assertTrue("Provider error without write MUST return AiOrchestrationResult.Error", turn2Res is AiOrchestrationResult.Error)
     }
 
     @Test
@@ -477,10 +473,9 @@ class AiOrchestratorIntegrationTest {
         )
 
         val result = orchestrator.processUserMessage("conv_1", "check inventory and cancel meal")
-        val assistantText = (result as AiOrchestrationResult.Final).assistantText
-
-        assertFalse("Failed write in mixed turn must NOT claim action applied", assistantText.contains("action was applied"))
-        assertEquals("Gemini is temporarily unavailable. Your meal-plan data was not changed.", assistantText)
+        assertTrue("Provider error without committed write MUST return Error", result is AiOrchestrationResult.Error)
+        val userFacingMsg = (result as AiOrchestrationResult.Error).userFacingMessage
+        assertTrue(userFacingMsg.contains("Busy"))
     }
 
     @Test
@@ -547,10 +542,9 @@ class AiOrchestratorIntegrationTest {
         )
 
         val result = orchestrator.processUserMessage("conv_1", "what is for dinner")
-        val assistantText = (result as AiOrchestrationResult.Final).assistantText
-
-        assertFalse("Cross-model fallback failure after READ must NOT claim action applied", assistantText.contains("action was applied"))
-        assertEquals("Gemini is temporarily unavailable. Your meal-plan data was not changed.", assistantText)
+        assertTrue("Cross-model fallback failure after READ MUST return Error", result is AiOrchestrationResult.Error)
+        val userFacingMsg = (result as AiOrchestrationResult.Error).userFacingMessage
+        assertTrue(userFacingMsg.contains("All models busy"))
     }
 
     @Test
@@ -582,11 +576,9 @@ class AiOrchestratorIntegrationTest {
         )
 
         val result = orchestrator.processUserMessage("conv_1", "what is for dinner")
-        val assistantText = (result as AiOrchestrationResult.Final).assistantText
-
-        assertFalse("what is for dinner MUST NEVER say action was applied", assistantText.contains("action was applied"))
-        assertFalse("what is for dinner MUST NEVER say applied successfully", assistantText.contains("applied successfully"))
-        assertEquals("Gemini is temporarily unavailable. Your meal-plan data was not changed.", assistantText)
+        assertTrue("Read-only continuation error MUST return Error", result is AiOrchestrationResult.Error)
+        val userFacingMsg = (result as AiOrchestrationResult.Error).userFacingMessage
+        assertTrue(userFacingMsg.contains("Service Unavailable"))
     }
 
     @Test

@@ -472,26 +472,6 @@ class AiMealPlannerOrchestrator @Inject constructor(
                         validatedProposal = null,
                         proposedAction = null
                     )
-                } else if (readSucceeded) {
-                    val fallbackText = "Gemini is temporarily unavailable. Your meal-plan data was not changed."
-                    val assistantMsgId = "msg_${System.currentTimeMillis()}"
-                    try {
-                        chatRepository.saveMessage(
-                            ChatMessageEntity(
-                                id = assistantMsgId,
-                                conversationId = conversationId,
-                                role = "ASSISTANT",
-                                content = fallbackText,
-                                timestamp = System.currentTimeMillis()
-                            )
-                        )
-                    } catch (_: Exception) {}
-
-                    AiOrchestrationResult.Final(
-                        assistantText = fallbackText,
-                        validatedProposal = null,
-                        proposedAction = null
-                    )
                 } else {
                     AiOrchestrationResult.Error(
                         code = errRes.code,
@@ -503,12 +483,6 @@ class AiMealPlannerOrchestrator @Inject constructor(
                 if (writeCommitted) {
                     AiOrchestrationResult.Final(
                         assistantText = "Your action was applied successfully.",
-                        validatedProposal = null,
-                        proposedAction = null
-                    )
-                } else if (readSucceeded) {
-                    AiOrchestrationResult.Final(
-                        assistantText = "Gemini is temporarily unavailable. Your meal-plan data was not changed.",
                         validatedProposal = null,
                         proposedAction = null
                     )
