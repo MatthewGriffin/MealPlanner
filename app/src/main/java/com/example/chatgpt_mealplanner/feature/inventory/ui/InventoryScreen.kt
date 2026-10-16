@@ -392,70 +392,28 @@ fun InventoryItemCard(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun AddEditItemDialog(
     item: InventoryItem?,
     onDismiss: () -> Unit,
     onSave: (InventoryItem) -> Unit
 ) {
-    var name by remember { mutableStateOf(item?.displayName ?: "") }
-    var quantityText by remember { mutableStateOf(item?.quantity?.toString() ?: "1.0") }
-    var selectedUnit by remember { mutableStateOf(item?.quantityUnit ?: QuantityUnit.UNIT) }
+    var formState by remember { mutableStateOf(AddEditItemFormState.fromInventoryItem(item)) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (item == null) "Add Inventory Item" else "Edit Inventory Item") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("Item Name *") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = quantityText,
-                    onValueChange = { quantityText = it },
-                    label = { Text("Quantity") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Text("Unit", style = MaterialTheme.typography.labelMedium)
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    QuantityUnit.entries.forEach { unit ->
-                        FilterChip(
-                            selected = selectedUnit == unit,
-                            onClick = { selectedUnit = unit },
-                            label = { Text(unit.name) }
-                        )
-                    }
-                }
-            }
+            AddEditItemForm(
+                formState = formState,
+                onFormStateChange = { formState = it }
+            )
         },
         confirmButton = {
             Button(
                 onClick = {
-                    if (name.isBlank()) return@Button
-                    val qty = quantityText.toDoubleOrNull() ?: 1.0
-                    val updated = item?.copy(
-                        displayName = name,
-                        quantity = qty,
-                        quantityUnit = selectedUnit
-                    ) ?: InventoryItem(
-                        canonicalName = name,
-                        displayName = name,
-                        category = FoodCategory.CUPBOARD,
-                        storageLocation = StorageLocation.CUPBOARD,
-                        quantity = qty,
-                        quantityUnit = selectedUnit,
-                        quantityConfidence = QuantityConfidence.EXACT
-                    )
+                    if (formState.displayName.isBlank()) return@Button
+                    val updated = formState.toInventoryItem()
                     onSave(updated)
                 }
             ) {

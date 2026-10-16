@@ -2,24 +2,26 @@
 
 ## Current Phase & Milestone
 - **Phase**: Phase 7 — Inventory Add & Barcode Scanning UX Improvements
-- **Step 2**: Barcode Normalization and Quantity/Packaging Correctness
-- **Latest Commit**: `18c287ccef11552a8eec700cf1304f6170ef3da5` ("Phase 6: Record Android runtime verification results")
+- **Step 3**: Shared Add/Edit Item Form Component, Dropdown Selectors, and Progressive Disclosure
+- **Latest Commit**: `89512e1758a769ddb815c5aa66b29e03ebff0cc0` ("Phase 7: Harden barcode mapping and quantity handling")
 
 ## Completed Milestones in Phase 6 & 7
 1. **Phase 6 Step 1-11**: Complete SAF Encrypted Backup Foundation & Settings UI.
 2. **Phase 7 Step 1**: Inventory Add & Barcode UX Assessment.
 3. **Phase 7 Step 2**: Barcode Normalization and Quantity/Packaging Correctness (`BarcodeNormalizer`, `BarcodeLookupCoordinator`).
+4. **Phase 7 Step 3**: Shared Add/Edit Item Form Component (`AddEditItemForm`), Dropdown Selectors (`ExposedDropdownMenuBox`), and Progressive Disclosure.
 
 ## Key Architectural Principles & Safety Constraints
-- **Barcode Name Normalization**: `BarcodeNormalizer.parseProductTitle` extracts leading quantity/pack size prefixes (e.g. "10 free range eggs" -> "Free Range Eggs" + pack size 10) without corrupting brand names with numbers (e.g. "7UP Zero", "3M Command Hooks").
-- **Variable-Weight / Store-Internal Barcodes**: `BarcodeNormalizer.isVariableWeightOrInternalBarcode` detects store-internal barcode prefixes (02, 04, 20-29), marking quantity confidence as `APPROXIMATE` so users verify weights without inferring false prices/dates.
-- **Packaging Disambiguation**: Package count (`packCount`), pack size (`packSize` & `packSizeUnit`), and total quantity (`quantity`) remain distinct and mapped without overwriting user inputs.
+- **Shared Form Component**: Created `AddEditItemForm.kt` exposing all 21 `InventoryItem` domain fields across manual and barcode Add/Edit entry flows.
+- **Material 3 Dropdown Selectors**: Replaced unwieldy chip rows with clean `ExposedDropdownMenuBox` selectors for `QuantityUnit`, `FoodCategory`, and `StorageLocation`.
+- **Progressive Disclosure**: Primary essential fields stay visible; optional fields are grouped into collapsible cards ("Packaging & Brand Details", "Dates & Attributes", "Additional Notes") preserving entered state across toggles.
+- **Two-Pack Scenario Verification**: Unit test `toInventoryItem_preservesPackageCountAndSize_twoPackScenario` verifies `packCount = 2`, `packSize = 1.0`, `packSizeUnit = QuantityUnit.UNIT`, `quantity = 2.0` mapping without data loss or defaulting.
 - **Zero Room Schema Changes**: All 21 fields already exist in AppDatabase Room v16 and FollowerDatabase v4.
 - **Sync Safety**: All updates flow through `InventoryDomainServiceImpl` preserving canonical operations for Follower sync.
 - **Physical Device Protection**: OnePlus Main (CPH2707) and Samsung Follower (SM-G965F) remain 100% isolated and untouched.
 
 ## Test Evidence
-- **JVM Unit Tests**: 779 passed, 0 failed, 0 skipped.
+- **JVM Unit Tests**: 782 passed, 0 failed, 0 skipped.
 - **Android Instrumentation Tests**: 100% compiled (`:app:compileDebugAndroidTestSources` PASSED).
 - **Lint**: 0 errors (`:app:lintDebug` PASSED).
 
@@ -32,4 +34,4 @@
 6. **Form UX & Progressive Disclosure**: Replace long single-choice radio-button lists with appropriate dropdowns; consider a dedicated reusable Add/Edit Item screen with progressive disclosure, validation, and preservation of entered values.
 
 ## Next Milestone
-- Proceed to **Phase 7 Step 3** (Shared Add/Edit Item Form Component `AddEditItemForm` with Dropdown Selectors & Progressive Disclosure).
+- Proceed to **Phase 7 Step 4** (Integration into Scanner Flow & Final Phase 7 Audit).
