@@ -80,4 +80,33 @@ class InventoryViewModelTest {
         org.junit.Assert.assertEquals(1.0, updated?.quantity ?: 0.0, 0.001)
         org.junit.Assert.assertEquals(com.example.chatgpt_mealplanner.core.model.QuantityUnit.KILOGRAM, updated?.quantityUnit)
     }
+
+    @org.junit.Test
+    fun searchProductsByName_queriesBarcodeLookupCoordinator_whenAvailable() = kotlinx.coroutines.test.runTest {
+        val fakeBarcodeMappingDao = com.example.chatgpt_mealplanner.core.service.FakeBarcodeMappingDao()
+        val coordinator = com.example.chatgpt_mealplanner.core.barcode.BarcodeLookupCoordinator(fakeBarcodeMappingDao)
+
+        val vm = InventoryViewModel(
+            inventoryRepository = fakeRepository,
+            inventoryDomainService = domainService,
+            barcodeLookupCoordinator = coordinator
+        )
+
+        coordinator.confirmAndSaveBarcodeMapping(
+            com.example.chatgpt_mealplanner.core.barcode.model.ConfirmedProductInput(
+                barcode = "50123456789",
+                displayName = "Monster Energy 500ml",
+                brand = "Monster",
+                category = com.example.chatgpt_mealplanner.core.model.FoodCategory.SNACKS,
+                storageLocation = com.example.chatgpt_mealplanner.core.model.StorageLocation.FRIDGE,
+                netQuantity = 500.0,
+                netQuantityUnit = com.example.chatgpt_mealplanner.core.model.QuantityUnit.MILLILITRE
+            )
+        )
+
+        val results = vm.searchProductsByName("Monster")
+        org.junit.Assert.assertEquals(1, results.size)
+        org.junit.Assert.assertEquals("Monster Energy 500ml", results[0].displayName)
+        org.junit.Assert.assertEquals("50123456789", results[0].barcode)
+    }
 }

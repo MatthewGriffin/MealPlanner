@@ -221,6 +221,7 @@ fun SearchProductDialog(
     var searchQuery by remember { mutableStateOf("") }
     var searchResults by remember { mutableStateOf<List<BarcodeLookupResult>>(emptyList()) }
     var isSearching by remember { mutableStateOf(false) }
+    var searchJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     val coroutineScope = rememberCoroutineScope()
 
     AlertDialog(
@@ -238,14 +239,19 @@ fun SearchProductDialog(
                     value = searchQuery,
                     onValueChange = { query ->
                         searchQuery = query
+                        searchJob?.cancel()
                         if (query.trim().length >= 2) {
                             isSearching = true
-                            coroutineScope.launch {
-                                searchResults = onSearchQuery(query.trim())
-                                isSearching = false
+                            searchJob = coroutineScope.launch {
+                                val results = onSearchQuery(query.trim())
+                                if (searchQuery.trim() == query.trim()) {
+                                    searchResults = results
+                                    isSearching = false
+                                }
                             }
                         } else {
                             searchResults = emptyList()
+                            isSearching = false
                         }
                     },
                     label = { Text("Search Product Name") },
