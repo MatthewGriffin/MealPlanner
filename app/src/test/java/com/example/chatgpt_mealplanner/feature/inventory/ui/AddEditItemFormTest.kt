@@ -106,4 +106,31 @@ class AddEditItemFormTest {
         assertNull(item.purchaseDate)
         assertNull(item.notes)
     }
+
+    @Test
+    fun applyProductTemplate_prepopulatesFields_andPreservesUserQuantity() {
+        val initialForm = AddEditItemFormState(
+            displayName = "Monst",
+            quantityText = "4.0",
+            selectedUnit = QuantityUnit.PACK
+        )
+
+        val updatedForm = initialForm.applyProductTemplate(
+            displayName = "Monster Energy 500ml",
+            brand = "Monster",
+            barcode = "5012345678900",
+            category = FoodCategory.SNACKS,
+            storageLocation = StorageLocation.FRIDGE,
+            netQuantityUnit = QuantityUnit.MILLILITRE
+        )
+
+        assertEquals("Monster Energy 500ml", updatedForm.displayName)
+        assertEquals("Monster", updatedForm.brand)
+        assertEquals("5012345678900", updatedForm.barcode)
+        assertEquals(FoodCategory.SNACKS, updatedForm.category)
+        assertEquals(StorageLocation.FRIDGE, updatedForm.storageLocation)
+        // VERIFY: User-entered quantity 4.0 is PRESERVED!
+        assertEquals("4.0", updatedForm.quantityText)
+        assertTrue("Packaging section MUST be expanded", updatedForm.isPackagingExpanded)
+    }
 }

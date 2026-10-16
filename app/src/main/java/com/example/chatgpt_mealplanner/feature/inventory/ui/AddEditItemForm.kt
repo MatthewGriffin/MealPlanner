@@ -100,6 +100,31 @@ data class AddEditItemFormState(
         )
     }
 
+    fun applyProductTemplate(
+        displayName: String,
+        brand: String? = null,
+        barcode: String? = null,
+        category: FoodCategory = FoodCategory.CUPBOARD,
+        storageLocation: StorageLocation = StorageLocation.CUPBOARD,
+        packCount: Int? = null,
+        packSize: Double? = null,
+        packSizeUnit: QuantityUnit? = null,
+        netQuantityUnit: QuantityUnit? = null
+    ): AddEditItemFormState {
+        return copy(
+            displayName = displayName,
+            brand = brand ?: this.brand,
+            barcode = barcode ?: this.barcode,
+            category = category,
+            storageLocation = storageLocation,
+            packCountText = packCount?.toString() ?: this.packCountText,
+            packSizeText = packSize?.toString() ?: this.packSizeText,
+            packSizeUnit = packSizeUnit ?: this.packSizeUnit,
+            selectedUnit = netQuantityUnit ?: this.selectedUnit,
+            isPackagingExpanded = brand != null || barcode != null || packCount != null || packSize != null
+        )
+    }
+
     companion object {
         fun fromInventoryItem(item: InventoryItem?): AddEditItemFormState {
             if (item == null) return AddEditItemFormState()
