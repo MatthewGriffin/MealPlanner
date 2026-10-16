@@ -242,10 +242,20 @@ fun ChatScreen(
                 if (uiState.isLoading) {
                     item(key = "loading_indicator") {
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.Center
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             CircularProgressIndicator()
+                            val statusText = uiState.progressStatusText ?: "Processing AI request..."
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = statusText,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
                 }

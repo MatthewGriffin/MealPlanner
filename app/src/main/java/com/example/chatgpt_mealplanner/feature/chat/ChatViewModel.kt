@@ -17,9 +17,12 @@ import com.example.chatgpt_mealplanner.core.model.MealTag
 import com.example.chatgpt_mealplanner.core.repository.ChatRepository
 import com.example.chatgpt_mealplanner.core.service.MealDomainService
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -44,6 +47,10 @@ class ChatViewModel @Inject constructor(
     private val errorMessageFlow = MutableStateFlow<String?>(null)
     private val requestStateHolderFlow = MutableStateFlow(RequestStateHolder())
 
+    private val elapsedSecondsFlow = MutableStateFlow(0)
+    private val progressStatusTextFlow = MutableStateFlow<String?>(null)
+    private var progressTickerJob: Job? = null
+
     private val latestProposalFlow = MutableStateFlow<ValidatedMealProposal?>(null)
     private val latestProposedActionFlow = MutableStateFlow<AiProposedAction?>(null)
 
@@ -61,6 +68,8 @@ class ChatViewModel @Inject constructor(
         requestStateHolderFlow,
         userMessageTextFlow,
         errorMessageFlow,
+        elapsedSecondsFlow,
+        progressStatusTextFlow,
         showCookConfirmationDialogFlow,
         cookConfirmationMealIdFlow,
         cookConfirmationMealTitleFlow
@@ -75,13 +84,15 @@ class ChatViewModel @Inject constructor(
             latestProposal = flows[2] as ValidatedMealProposal?,
             latestProposedAction = flows[3] as AiProposedAction?,
             isLoading = isReqInFlight,
+            elapsedSeconds = flows[7] as Int,
+            progressStatusText = flows[8] as String?,
             userMessageText = flows[5] as String,
             errorMessage = flows[6] as String?,
             requestState = reqHolder.requestState,
             retainedUserMessage = reqHolder.retainedUserMessage,
-            showCookConfirmationDialog = flows[7] as Boolean,
-            cookConfirmationMealId = flows[8] as String?,
-            cookConfirmationMealTitle = flows[9] as String?
+            showCookConfirmationDialog = flows[9] as Boolean,
+            cookConfirmationMealId = flows[10] as String?,
+            cookConfirmationMealTitle = flows[11] as String?
         )
     }.stateIn(
         scope = viewModelScope,
@@ -127,6 +138,32 @@ class ChatViewModel @Inject constructor(
         } catch (_: Throwable) {}
     }
 
+    private fun startProgressTicker() {
+        progressTickerJob?.cancel()
+        elapsedSecondsFlow.value = 0
+        progressStatusTextFlow.value = "Reading pantry context..."
+        progressTickerJob = viewModelScope.launch {
+            while (true) {
+                delay(1000L)
+                val current = elapsedSecondsFlow.value + 1
+                elapsedSecondsFlow.value = current
+                progressStatusTextFlow.value = when {
+                    current < 5 -> "Reading pantry context (${current}s)..."
+                    current < 25 -> "Calling AI assistant (${current}s)..."
+                    current < 45 -> "Processing meal actions (${current}s)..."
+                    else -> "Still waiting for AI response (${current}s)..."
+                }
+            }
+        }
+    }
+
+    private fun stopProgressTicker() {
+        progressTickerJob?.cancel()
+        progressTickerJob = null
+        elapsedSecondsFlow.value = 0
+        progressStatusTextFlow.value = null
+    }
+
     private fun transitionRequestState(
         toState: ChatRequestState,
         retainedMessage: String? = null,
@@ -135,6 +172,9 @@ class ChatViewModel @Inject constructor(
     ) {
         val fromState = requestStateHolderFlow.value.requestState
         requestStateHolderFlow.value = RequestStateHolder(toState, retainedMessage, retainedMessageId)
+        if (toState != ChatRequestState.IN_FLIGHT) {
+            stopProgressTicker()
+        }
         if (reason != null) {
             safeLog("[CHAT_REQUEST_STATE] from=$fromState to=$toState reason=\"$reason\"")
         } else {
@@ -145,12 +185,14 @@ class ChatViewModel @Inject constructor(
     private fun sendMessage() {
         val text = userMessageTextFlow.value.trim()
         if (text.isBlank()) return
+        if (requestStateHolderFlow.value.requestState == ChatRequestState.IN_FLIGHT) return
 
         safeLog("[CHAT_SEND] text=\"$text\"")
 
         val userMsgId = "msg_${System.currentTimeMillis()}"
         userMessageTextFlow.value = ""
         errorMessageFlow.value = null
+        startProgressTicker()
         transitionRequestState(ChatRequestState.IN_FLIGHT, retainedMessage = text, retainedMessageId = userMsgId)
 
         viewModelScope.launch {
@@ -187,6 +229,7 @@ class ChatViewModel @Inject constructor(
         safeLog("[CHAT_RETRY] text=\"$text\" messageId=\"$messageId\"")
 
         errorMessageFlow.value = null
+        startProgressTicker()
         transitionRequestState(ChatRequestState.IN_FLIGHT, retainedMessage = text, retainedMessageId = messageId)
 
         viewModelScope.launch {
@@ -294,11 +337,11 @@ class ChatViewModel @Inject constructor(
             is DomainError.InsufficientQuantity -> "Insufficient stock: ${error.requested}"
             is DomainError.InvalidUnitConversion -> "Unit conversion error"
             is DomainError.NeedsConfirmation -> "Confirmation required: ${error.displayName}"
-            is DomainError.DuplicateOperation -> "Already completed: ${error.message}"
             is DomainError.TransactionFailed -> "Transaction error: ${error.cause}"
             is DomainError.ItemNotFound -> "Item not found: ${error.itemId}"
             is DomainError.InvalidQuantity -> "Invalid quantity: ${error.quantity}"
             is DomainError.ItemNotUsable -> "Item not available: ${error.itemId}"
+            else -> "Operation failed"
         }
     }
 }

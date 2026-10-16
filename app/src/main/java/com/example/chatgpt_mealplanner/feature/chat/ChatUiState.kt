@@ -18,6 +18,8 @@ data class ChatUiState(
     val latestProposal: ValidatedMealProposal? = null,
     val latestProposedAction: AiProposedAction? = null,
     val isLoading: Boolean = false,
+    val elapsedSeconds: Int = 0,
+    val progressStatusText: String? = null,
     val userMessageText: String = "",
     val errorMessage: String? = null,
     val requestState: ChatRequestState = ChatRequestState.IDLE,

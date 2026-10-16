@@ -147,4 +147,18 @@ class ChatUiTest {
         assertFalse("Retry MUST NOT be available on SUCCEEDED", succeededState.isRetryAvailable)
         org.junit.Assert.assertNull(succeededState.failedUserMessage)
     }
+
+    @Test
+    fun chatUiState_progressAndElapsedTime_supportedInFlight() {
+        val inFlightState = ChatUiState(
+            requestState = ChatRequestState.IN_FLIGHT,
+            isLoading = true,
+            elapsedSeconds = 12,
+            progressStatusText = "Calling AI assistant (12s)..."
+        )
+
+        assertTrue(inFlightState.isLoading)
+        assertEquals(12, inFlightState.elapsedSeconds)
+        assertEquals("Calling AI assistant (12s)...", inFlightState.progressStatusText)
+    }
 }
