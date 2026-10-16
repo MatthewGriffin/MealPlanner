@@ -59,4 +59,13 @@ class BarcodeLookupCoordinatorTest {
         assertEquals(QuantityConfidence.EXACT, res.quantityConfidence)
         assertEquals("USER_CONFIRMED_MAPPING", res.sourceName)
     }
+
+    @Test
+    fun variableWeightBarcodeScan_flagsQuantityConfidenceApproximate() = runTest {
+        val res = coordinator.lookupBarcode("0201234567890")
+
+        assertEquals("0201234567890", res.barcode)
+        assertEquals(QuantityConfidence.APPROXIMATE, res.quantityConfidence)
+        assertEquals("VARIABLE_WEIGHT_STORE_INTERNAL", res.sourceName)
+    }
 }
