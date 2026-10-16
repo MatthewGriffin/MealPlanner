@@ -83,6 +83,7 @@ fun InventoryScreen(
     state: InventoryUiState,
     onEvent: (InventoryUiEvent) -> Unit,
     onScanBarcodeClicked: () -> Unit = {},
+    onSearchProducts: (suspend (String) -> List<com.example.chatgpt_mealplanner.core.barcode.BarcodeLookupResult>)? = null,
     modifier: Modifier = Modifier
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
@@ -195,7 +196,8 @@ fun InventoryScreen(
             onSave = { newItem ->
                 onEvent(InventoryUiEvent.AddItemRequested(newItem))
                 showAddDialog = false
-            }
+            },
+            onSearchProducts = onSearchProducts
         )
     }
 
@@ -205,7 +207,8 @@ fun InventoryScreen(
             onDismiss = { onEvent(InventoryUiEvent.SelectItemForEdit(null)) },
             onSave = { updatedItem ->
                 onEvent(InventoryUiEvent.UpdateItemRequested(updatedItem))
-            }
+            },
+            onSearchProducts = onSearchProducts
         )
     }
 
@@ -396,7 +399,8 @@ fun InventoryItemCard(
 fun AddEditItemDialog(
     item: InventoryItem?,
     onDismiss: () -> Unit,
-    onSave: (InventoryItem) -> Unit
+    onSave: (InventoryItem) -> Unit,
+    onSearchProducts: (suspend (String) -> List<com.example.chatgpt_mealplanner.core.barcode.BarcodeLookupResult>)? = null
 ) {
     var formState by remember { mutableStateOf(AddEditItemFormState.fromInventoryItem(item)) }
 
@@ -406,7 +410,8 @@ fun AddEditItemDialog(
         text = {
             AddEditItemForm(
                 formState = formState,
-                onFormStateChange = { formState = it }
+                onFormStateChange = { formState = it },
+                onSearchProducts = onSearchProducts
             )
         },
         confirmButton = {

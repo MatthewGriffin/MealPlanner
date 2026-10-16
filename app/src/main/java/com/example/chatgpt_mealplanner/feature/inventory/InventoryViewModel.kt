@@ -5,6 +5,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
+import com.example.chatgpt_mealplanner.core.barcode.BarcodeLookupCoordinator
+import com.example.chatgpt_mealplanner.core.barcode.BarcodeLookupResult
 import com.example.chatgpt_mealplanner.core.model.DomainError
 import com.example.chatgpt_mealplanner.core.model.DomainResult
 import com.example.chatgpt_mealplanner.core.model.InventoryItem
@@ -33,7 +35,8 @@ class InventoryViewModel @Inject constructor(
     private val followerPairingStore: FollowerPairingStore? = null,
     private val followerSyncStatusRepository: FollowerSyncStatusRepository? = null,
     private val followerSyncScheduler: FollowerSyncScheduler? = null,
-    private val followerDatabase: FollowerDatabase? = null
+    private val followerDatabase: FollowerDatabase? = null,
+    private val barcodeLookupCoordinator: BarcodeLookupCoordinator? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(InventoryUiState())
@@ -44,6 +47,11 @@ class InventoryViewModel @Inject constructor(
     init {
         loadInventory()
         observeWorkManagerAndSyncStatus()
+    }
+
+    suspend fun searchProductsByName(query: String): List<BarcodeLookupResult> {
+        val coordinator = barcodeLookupCoordinator ?: return emptyList()
+        return coordinator.searchProductsByName(query)
     }
 
     fun triggerManualSync() {

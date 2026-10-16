@@ -3,21 +3,28 @@ package com.example.chatgpt_mealplanner.feature.inventory.ui
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -27,22 +34,26 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.example.chatgpt_mealplanner.core.barcode.BarcodeLookupResult
 import com.example.chatgpt_mealplanner.core.model.FoodCategory
 import com.example.chatgpt_mealplanner.core.model.InventoryItem
 import com.example.chatgpt_mealplanner.core.model.ItemStatus
 import com.example.chatgpt_mealplanner.core.model.QuantityConfidence
 import com.example.chatgpt_mealplanner.core.model.QuantityUnit
 import com.example.chatgpt_mealplanner.core.model.StorageLocation
+import kotlinx.coroutines.launch
 
 data class AddEditItemFormState(
     val id: String? = null,
@@ -202,11 +213,131 @@ fun <T> EnumDropdownSelector(
 }
 
 @Composable
+fun SearchProductDialog(
+    onDismiss: () -> Unit,
+    onSearchQuery: suspend (String) -> List<BarcodeLookupResult>,
+    onSelectProduct: (BarcodeLookupResult) -> Unit
+) {
+    var searchQuery by remember { mutableStateOf("") }
+    var searchResults by remember { mutableStateOf<List<BarcodeLookupResult>>(emptyList()) }
+    var isSearching by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Search Saved Products", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    "Type a product name to search your confirmed product database:",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { query ->
+                        searchQuery = query
+                        if (query.trim().length >= 2) {
+                            isSearching = true
+                            coroutineScope.launch {
+                                searchResults = onSearchQuery(query.trim())
+                                isSearching = false
+                            }
+                        } else {
+                            searchResults = emptyList()
+                        }
+                    },
+                    label = { Text("Search Product Name") },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                if (isSearching) {
+                    Box(modifier = Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
+                } else if (searchQuery.trim().length >= 2 && searchResults.isEmpty()) {
+                    Text(
+                        "No matching products found. You can enter details manually.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    )
+                } else if (searchResults.isNotEmpty()) {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(180.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        items(searchResults) { result ->
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        onSelectProduct(result)
+                                        onDismiss()
+                                    },
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp)) {
+                                    Text(result.displayName, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                    val subText = listOfNotNull(
+                                        result.brand,
+                                        result.category.name.lowercase().replaceFirstChar { it.uppercase() },
+                                        result.barcode
+                                    ).joinToString(" • ")
+                                    if (subText.isNotBlank()) {
+                                        Text(subText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Close") }
+        }
+    )
+}
+
+@Composable
 fun AddEditItemForm(
     formState: AddEditItemFormState,
     onFormStateChange: (AddEditItemFormState) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onSearchProducts: (suspend (String) -> List<BarcodeLookupResult>)? = null
 ) {
+    var showSearchDialog by remember { mutableStateOf(false) }
+
+    if (showSearchDialog && onSearchProducts != null) {
+        SearchProductDialog(
+            onDismiss = { showSearchDialog = false },
+            onSearchQuery = onSearchProducts,
+            onSelectProduct = { result ->
+                val updated = formState.applyProductTemplate(
+                    displayName = result.displayName,
+                    brand = result.brand,
+                    barcode = result.barcode,
+                    category = result.category,
+                    storageLocation = result.storageLocation,
+                    packCount = result.packCount,
+                    packSize = result.packSize,
+                    packSizeUnit = result.packSizeUnit,
+                    netQuantityUnit = result.netQuantityUnit
+                )
+                onFormStateChange(updated)
+            }
+        )
+    }
+
     Column(
         modifier = modifier
             .verticalScroll(rememberScrollState())
@@ -214,13 +345,27 @@ fun AddEditItemForm(
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         // Essential Primary Fields
-        OutlinedTextField(
-            value = formState.displayName,
-            onValueChange = { onFormStateChange(formState.copy(displayName = it)) },
-            label = { Text("Item Name *") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedTextField(
+                value = formState.displayName,
+                onValueChange = { onFormStateChange(formState.copy(displayName = it)) },
+                label = { Text("Item Name *") },
+                singleLine = true,
+                modifier = Modifier.weight(1f)
+            )
+
+            if (onSearchProducts != null) {
+                TextButton(onClick = { showSearchDialog = true }) {
+                    Icon(Icons.Default.Search, contentDescription = null)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Search")
+                }
+            }
+        }
 
         Row(
             modifier = Modifier.fillMaxWidth(),
