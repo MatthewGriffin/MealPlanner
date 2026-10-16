@@ -1,20 +1,27 @@
 # Development Progress
 
 ## Current Phase & Milestone
-- **Phase**: Phase 6 & Phase 7 — Final Evidence Reconciliation
-- **Latest Commit**: `6796a6fcf7c7c348d88e041d5b7cb5f98cf7c2e9` ("Record Phase 6 and 7 physical UI acceptance results")
+- **Phase**: Phase 8 — Online Food Product Search Provider Integration
+- **Step 1**: Online Food Product Search Provider Assessment and Implementation Plan
+- **Latest Commit**: `bb051846e6ac4d54fe18be0fff4b55d489f1ab38` ("Document final Phase 6 and 7 acceptance evidence")
 
-## Final Reconciled Phase 6 & Phase 7 Evidence Matrix
+## Completed Milestones in Phase 6, 7 & 8
+1. **Phase 6 Step 1-11**: Complete SAF Encrypted Backup Foundation & Settings UI.
+2. **Phase 7 Step 1-7**: Complete Inventory Add & Barcode Scanning UX Improvements.
+3. **Phase 8 Step 1**: Online Food Product Search Provider Assessment and Implementation Plan.
 
-| Area / Feature Scenario | Classification | Evidence Source & Verified Runtime Behavior |
-|---|---|---|
-| **1. Shared Add/Edit Form** | **PASS** | `AddEditItemForm.kt` exposes all 21 `InventoryItem` domain fields with Material 3 `ExposedDropdownMenuBox` selectors and 3 collapsible cards. Tested in `AddEditItemFormTest` (3/3 pass). |
-| **2. Product Name Search** | **PASS** | `SearchProductDialog` in `AddEditItemForm.kt` queries local confirmed product database (`BarcodeMappingDao.searchMappingsByName`), prepopulates template fields, and preserves user-entered quantity (`quantityText`). Tested in `BarcodeLookupCoordinatorTest` & `InventoryViewModelTest` (786/786 JVM pass). |
-| **3. Two-Pack Persistence** | **PASS** | `packCount = 2`, `packSize = 1.0`, `packSizeUnit = UNIT`, `quantity = 2.0`, `quantityUnit = PACK` (or `UNIT`) preserved without data loss or default resetting (`AddEditItemFormTest.toInventoryItem_preservesPackageCountAndSize_twoPackScenario` & `InventoryDaoContractTest.entityFields_twoPackScenario_preservesQuantityAndPackaging`). |
-| **4. Product Name Parsing** | **PASS** | `BarcodeNormalizer.parseProductTitle` cleans quantity/pack prefixes ("10 free range eggs" -> "Free Range Eggs") while protecting brand names with leading numbers ("7UP Zero", "3M Command Hooks"). Tested in `BarcodeNormalizerTest` (8/8 pass). |
-| **5. Reduced-To-Clear Barcodes** | **PASS** | `BarcodeNormalizer.isVariableWeightOrInternalBarcode` flags store-internal prefixes (02, 04, 20-29), marking confidence `APPROXIMATE` without inferring false prices/dates. Tested in `BarcodeLookupCoordinatorTest`. |
-| **6. Phase 6 SAF Encrypted Backup** | **PASS** | Settings screen "Save Encrypted Household Backup" action launches `ActivityResultContracts.CreateDocument("application/octet-stream")`, prompts for passphrase via `EncryptedBackupPassphraseDialog`, executes `MainEncryptedBackupSaveCoordinator`, writes through `DefaultSafDocumentStreamProvider`, performs ContentResolver readback, exact-byte check, authenticated decryption, and reports `SafBackupOutcome.VerifiedSuccess`. Tested on-device (`PantryPhase6Step6cAndroidSafIntegrationTest` 2/2 pass on OnePlus Main & Samsung Follower). |
-| **7. Follower Safety & Sync** | **PASS** | Samsung SM-G965F Follower updated safely in place with 100% pairing, cursor, outbox, and bootstrap state preserved; Main-only backup action is hidden / disabled for Follower role. |
+## Phase 8 Step 1 Assessment Findings
+- **Existing Remote Provider**: OpenFoodFacts API (`OpenFoodFactsProductDataProvider` & `OpenFoodFactsApi` via Retrofit).
+- **Public API Capabilities**: OpenFoodFacts provides a public, open-data search endpoint (`https://world.openfoodfacts.org/cgi/search.pl?search_terms={query}&search_simple=1&action=process&json=1&page=1&page_size=20` / `api/v2/search`) requiring ZERO API keys or paid credentials.
+- **Metadata Returned**: `code` (barcode), `product_name`, `product_name_en`, `brands`, `quantity` (parsed via `QuantityParser`), `categories_tags` (derived via `HouseholdConceptDeriver`), `image_front_url`.
+- **Hybrid Search Architecture**: Merge local confirmed product mappings (`BarcodeMappingDao.searchMappingsByName`) with remote OpenFoodFacts search results (`OpenFoodFactsApi`), placing local confirmed product matches first.
+- **Form Integration**: Selected search results apply product template fields (`displayName`, `brand`, `barcode`, `category`, `storageLocation`, `packCount`, `packSize`, `packSizeUnit`) via `AddEditItemFormState.applyProductTemplate()`, while **PRESERVING user-entered inventory quantity (`quantityText`)**.
+- **Data Safety & Zero Schema Changes**: All 21 domain fields already exist in AppDatabase Room v16 and FollowerDatabase v4.
+
+## Proposed Phase 8 Implementation Sequence
+- **Phase 8 Step 2**: OpenFoodFacts Remote Search API Client & DTOs (`OpenFoodFactsApi.searchProductsByName()`, `OpenFoodFactsSearchResponse`).
+- **Phase 8 Step 3**: Hybrid Search Coordinator & Repository (`ProductLookupRepository.searchProductsByName()` & `BarcodeLookupCoordinator.searchProductsByName()`).
+- **Phase 8 Step 4**: UI Search Integration, Unit Tests, and Final Phase 8 Checkpoint Commit.
 
 ## Key Architectural Principles & Safety Constraints
 - **Main Role Guard**: Backup creation is available on Main device only (`AppRoleResolver.isMain()`).
@@ -29,10 +36,5 @@
 - **Android Instrumentation Tests**: 2/2 passed on OnePlus CPH2707 Main (API 36) in 5.038s; 2/2 passed on Samsung SM-G965F Follower (API 33) in 7.205s.
 - **Lint**: 0 errors (`:app:lintDebug` PASSED).
 
-## Functional Limitations & Scope Boundaries
-1. **Local-Only Product Search**: Product search queries confirmed local product mappings (`BarcodeMappingDao`). Remote food database lookup remains an external enhancement when external APIs are configured.
-2. **Discount Barcode Decoding**: Store-internal prefixes (02, 04, 20-29) flag quantity confidence as `APPROXIMATE`. Store-specific price/expiry barcode formats are not speculatively decoded without official retailer schemas.
-3. **Restore Disabled**: Restore functionality remains 100% disabled and unexposed.
-
 ## Next Milestone
-- Proceed to **Phase 8** (or next user-authorized phase).
+- Proceed to **Phase 8 Step 2** (OpenFoodFacts Remote Search API Client & DTOs).
