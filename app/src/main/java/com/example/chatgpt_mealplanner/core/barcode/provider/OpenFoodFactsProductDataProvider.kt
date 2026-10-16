@@ -102,4 +102,66 @@ class OpenFoodFactsProductDataProvider @Inject constructor(
             )
         }
     }
+
+    override suspend fun searchProductsByName(query: String, page: Int, pageSize: Int): ProductProviderSearchResult {
+        val trimmed = query.trim()
+        if (trimmed.isBlank()) return ProductProviderSearchResult.Empty
+
+        val result = runCatching {
+            api.searchProductsByName(terms = trimmed, page = page, pageSize = pageSize)
+        }
+
+        if (result.isFailure) {
+            val ex = result.exceptionOrNull()
+            if (ex is kotlinx.coroutines.CancellationException) throw ex
+            return ProductProviderSearchResult.Failure(
+                DomainError.TransactionFailed(ex?.message ?: "Network error searching OpenFoodFacts")
+            )
+        }
+
+        val response = result.getOrNull()
+        val products = response?.products
+        if (products.isNullOrEmpty()) {
+            return ProductProviderSearchResult.Empty
+        }
+
+        val mappedList = products.mapNotNull { product ->
+            val rawName = product.productNameEn.takeUnless { it.isNullOrBlank() }
+                ?: product.productName.takeUnless { it.isNullOrBlank() }
+                ?: return@mapNotNull null
+
+            val parsedTitleInfo = com.example.chatgpt_mealplanner.core.barcode.util.BarcodeNormalizer.parseProductTitle(rawName)
+            val parsedQuantity = QuantityParser.parse(product.quantity)
+
+            val derivedConcept = com.example.chatgpt_mealplanner.core.barcode.util.HouseholdConceptDeriver.deriveConcept(
+                categoriesTags = product.categoriesTags,
+                categoriesString = product.categories,
+                defaultName = parsedTitleInfo.cleanName
+            )
+
+            val productBarcode = product.code ?: ""
+
+            ProductMetadata(
+                barcode = productBarcode,
+                displayName = parsedTitleInfo.cleanName,
+                canonicalName = derivedConcept,
+                brand = product.brands.takeUnless { it.isNullOrBlank() },
+                netQuantity = parsedQuantity.netQuantity,
+                netQuantityUnit = parsedQuantity.netQuantityUnit,
+                packCount = parsedQuantity.packCount ?: parsedTitleInfo.extractedPackCount,
+                packSize = parsedQuantity.packSize ?: parsedTitleInfo.extractedPackSize,
+                packSizeUnit = parsedQuantity.packSizeUnit ?: parsedTitleInfo.extractedPackSizeUnit,
+                imageUrl = product.imageFrontUrl ?: product.imageUrl,
+                source = ProductDataSource.OPEN_FOOD_FACTS,
+                rawSourceId = productBarcode,
+                confidence = ProductMatchConfidence.HIGH
+            )
+        }
+
+        return if (mappedList.isEmpty()) {
+            ProductProviderSearchResult.Empty
+        } else {
+            ProductProviderSearchResult.Success(mappedList)
+        }
+    }
 }

@@ -12,7 +12,16 @@ data class OpenFoodFactsResponse(
 )
 
 @Serializable
+data class OpenFoodFactsSearchResponse(
+    val count: Int? = 0,
+    val page: Int? = 1,
+    @SerialName("page_size") val pageSize: Int? = 20,
+    val products: List<OpenFoodFactsProductDto>? = emptyList()
+)
+
+@Serializable
 data class OpenFoodFactsProductDto(
+    val code: String? = null,
     @SerialName("product_name") val productName: String? = null,
     @SerialName("product_name_en") val productNameEn: String? = null,
     @SerialName("generic_name") val genericName: String? = null,

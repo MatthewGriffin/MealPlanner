@@ -228,4 +228,32 @@ class OpenFoodFactsDataProviderTest {
 
         assertTrue(result is ProductProviderResult.Failure)
     }
+
+    @Test
+    fun searchProductsByName_returnsMappedResults_fromSearchApi() = runTest {
+        val mockSearchResponse = com.example.chatgpt_mealplanner.core.barcode.provider.openfoodfacts.OpenFoodFactsSearchResponse(
+            count = 1,
+            page = 1,
+            pageSize = 20,
+            products = listOf(
+                OpenFoodFactsProductDto(
+                    code = "5012345678900",
+                    productName = "Monster Energy 500ml",
+                    brands = "Monster",
+                    quantity = "500ml"
+                )
+            )
+        )
+
+        whenever(mockApi.searchProductsByName(any(), any(), any())).thenReturn(mockSearchResponse)
+
+        val result = provider.searchProductsByName("Monster")
+        assertTrue("Search result MUST be Success", result is com.example.chatgpt_mealplanner.core.barcode.provider.ProductProviderSearchResult.Success)
+
+        val products = (result as com.example.chatgpt_mealplanner.core.barcode.provider.ProductProviderSearchResult.Success).products
+        assertEquals(1, products.size)
+        assertEquals("Monster Energy 500ml", products[0].displayName)
+        assertEquals("5012345678900", products[0].barcode)
+        assertEquals("Monster", products[0].brand)
+    }
 }
