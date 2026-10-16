@@ -86,6 +86,47 @@ class BarcodeLookupCoordinatorTest {
         assertEquals(1, searchResults.size)
         assertEquals("Monster Energy 500ml", searchResults[0].displayName)
         assertEquals("50123456789", searchResults[0].barcode)
-        assertEquals("PRODUCT_SEARCH_MATCH", searchResults[0].sourceName)
+        assertEquals("USER_CONFIRMED_MAPPING", searchResults[0].sourceName)
+    }
+
+    @Test
+    fun searchProductsByName_hybridSearch_placesLocalMatchesFirstAndDeduplicatesRemote() = runTest {
+        val mockRepo = org.mockito.kotlin.mock<com.example.chatgpt_mealplanner.core.barcode.repository.ProductLookupRepository>()
+        val hybridCoordinator = BarcodeLookupCoordinator(mappingDao, mockRepo)
+
+        val localInput = ConfirmedProductInput(
+            barcode = "50123456789",
+            displayName = "Monster Energy 500ml",
+            brand = "Monster",
+            category = FoodCategory.SNACKS,
+            storageLocation = StorageLocation.FRIDGE
+        )
+        hybridCoordinator.confirmAndSaveBarcodeMapping(localInput)
+
+        val remoteProduct1 = com.example.chatgpt_mealplanner.core.barcode.model.ProductMetadata(
+            barcode = "50123456789", // DUPLICATE BARCODE -> Should be suppressed
+            displayName = "Monster Energy 500ml",
+            brand = "Monster"
+        )
+        val remoteProduct2 = com.example.chatgpt_mealplanner.core.barcode.model.ProductMetadata(
+            barcode = "50999999999", // NEW REMOTE PRODUCT -> Should be included
+            displayName = "Monster Ultra Zero",
+            brand = "Monster"
+        )
+
+        org.mockito.kotlin.whenever(mockRepo.searchProductsByName(org.mockito.kotlin.any(), org.mockito.kotlin.any(), org.mockito.kotlin.any())).thenReturn(
+            com.example.chatgpt_mealplanner.core.barcode.repository.ProductLookupSearchResult.Success(
+                listOf(remoteProduct1, remoteProduct2)
+            )
+        )
+
+        val results = hybridCoordinator.searchProductsByName("Monster")
+        assertEquals(2, results.size)
+        assertEquals("USER_CONFIRMED_MAPPING", results[0].sourceName)
+        assertEquals("50123456789", results[0].barcode)
+
+        assertEquals("OPEN_FOOD_FACTS", results[1].sourceName)
+        assertEquals("Monster Ultra Zero", results[1].displayName)
+        assertEquals("50999999999", results[1].barcode)
     }
 }

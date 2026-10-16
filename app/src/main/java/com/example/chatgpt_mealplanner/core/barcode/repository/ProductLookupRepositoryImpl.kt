@@ -137,6 +137,23 @@ class ProductLookupRepositoryImpl @Inject constructor(
         )
     }
 
+    override suspend fun searchProductsByName(query: String, page: Int, pageSize: Int): ProductLookupSearchResult {
+        val trimmed = query.trim()
+        if (trimmed.isBlank()) return ProductLookupSearchResult.Empty
+
+        return when (val searchResult = productDataProvider.searchProductsByName(trimmed, page, pageSize)) {
+            is com.example.chatgpt_mealplanner.core.barcode.provider.ProductProviderSearchResult.Success -> {
+                ProductLookupSearchResult.Success(searchResult.products)
+            }
+            is com.example.chatgpt_mealplanner.core.barcode.provider.ProductProviderSearchResult.Empty -> {
+                ProductLookupSearchResult.Empty
+            }
+            is com.example.chatgpt_mealplanner.core.barcode.provider.ProductProviderSearchResult.Failure -> {
+                ProductLookupSearchResult.Error(searchResult.error)
+            }
+        }
+    }
+
     override suspend fun getCachedMapping(barcode: String): ProductMetadata? {
         return barcodeMappingDao.getMappingByBarcode(barcode)?.toMetadata()
     }

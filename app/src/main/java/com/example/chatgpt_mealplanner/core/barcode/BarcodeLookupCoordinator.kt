@@ -3,6 +3,8 @@ package com.example.chatgpt_mealplanner.core.barcode
 import com.example.chatgpt_mealplanner.core.barcode.model.ConfirmedProductInput
 import com.example.chatgpt_mealplanner.core.barcode.model.ProductDataSource
 import com.example.chatgpt_mealplanner.core.barcode.model.ProductMatchConfidence
+import com.example.chatgpt_mealplanner.core.barcode.repository.ProductLookupRepository
+import com.example.chatgpt_mealplanner.core.barcode.repository.ProductLookupSearchResult
 import com.example.chatgpt_mealplanner.core.barcode.util.BarcodeNormalizer
 import com.example.chatgpt_mealplanner.core.database.dao.BarcodeMappingDao
 import com.example.chatgpt_mealplanner.core.database.entity.ProductBarcodeMappingEntity
@@ -32,7 +34,8 @@ data class BarcodeLookupResult(
 
 @Singleton
 class BarcodeLookupCoordinator @Inject constructor(
-    private val barcodeMappingDao: BarcodeMappingDao
+    private val barcodeMappingDao: BarcodeMappingDao,
+    private val productLookupRepository: ProductLookupRepository? = null
 ) {
 
     suspend fun lookupBarcode(barcode: String): BarcodeLookupResult {
@@ -73,27 +76,75 @@ class BarcodeLookupCoordinator @Inject constructor(
     }
 
     suspend fun searchProductsByName(query: String): List<BarcodeLookupResult> {
-        if (query.isBlank()) return emptyList()
-        val mappings = barcodeMappingDao.searchMappingsByName(query.trim())
-        return mappings.map { mapping ->
+        val trimmed = query.trim()
+        if (trimmed.isBlank()) return emptyList()
+
+        val resultsList = mutableListOf<BarcodeLookupResult>()
+        val seenBarcodes = mutableSetOf<String>()
+
+        // 1. Local Confirmed Product Mappings (Highest Priority, Saved Local Provenance)
+        val localMappings = barcodeMappingDao.searchMappingsByName(trimmed)
+        for (mapping in localMappings) {
+            val isInternal = BarcodeNormalizer.isVariableWeightOrInternalBarcode(mapping.barcode)
             val parsedInfo = BarcodeNormalizer.parseProductTitle(mapping.displayName ?: "Scanned Product")
-            BarcodeLookupResult(
-                barcode = mapping.barcode,
-                displayName = parsedInfo.cleanName,
-                brand = mapping.brand,
-                canonicalIngredientId = mapping.canonicalIngredientId,
-                canonicalName = mapping.canonicalName,
-                category = mapping.category ?: FoodCategory.CUPBOARD,
-                storageLocation = mapping.defaultStorageLocation ?: StorageLocation.CUPBOARD,
-                netQuantity = mapping.netQuantity,
-                netQuantityUnit = mapping.netQuantityUnit,
-                packCount = mapping.packCount ?: parsedInfo.extractedPackCount,
-                packSize = mapping.packSize ?: parsedInfo.extractedPackSize,
-                packSizeUnit = mapping.packSizeUnit ?: parsedInfo.extractedPackSizeUnit,
-                quantityConfidence = if (mapping.netQuantity != null) QuantityConfidence.EXACT else QuantityConfidence.UNKNOWN,
-                sourceName = "PRODUCT_SEARCH_MATCH"
+            val barcodeKey = mapping.barcode.trim()
+            if (barcodeKey.isNotBlank()) seenBarcodes.add(barcodeKey)
+
+            resultsList.add(
+                BarcodeLookupResult(
+                    barcode = mapping.barcode,
+                    displayName = mapping.displayName ?: parsedInfo.cleanName,
+                    brand = mapping.brand,
+                    canonicalIngredientId = mapping.canonicalIngredientId,
+                    canonicalName = mapping.canonicalName,
+                    category = mapping.category ?: FoodCategory.CUPBOARD,
+                    storageLocation = mapping.defaultStorageLocation ?: StorageLocation.CUPBOARD,
+                    netQuantity = mapping.netQuantity,
+                    netQuantityUnit = mapping.netQuantityUnit,
+                    packCount = mapping.packCount ?: parsedInfo.extractedPackCount,
+                    packSize = mapping.packSize ?: parsedInfo.extractedPackSize,
+                    packSizeUnit = mapping.packSizeUnit ?: parsedInfo.extractedPackSizeUnit,
+                    quantityConfidence = if (isInternal) QuantityConfidence.APPROXIMATE else if (mapping.netQuantity != null) QuantityConfidence.EXACT else QuantityConfidence.UNKNOWN,
+                    sourceName = "USER_CONFIRMED_MAPPING"
+                )
             )
         }
+
+        // 2. Remote OpenFoodFacts Online Product Search (Secondary Priority, Remote Provenance)
+        val repo = productLookupRepository
+        if (repo != null) {
+            val remoteResult = runCatching { repo.searchProductsByName(trimmed) }.getOrNull()
+            if (remoteResult is ProductLookupSearchResult.Success) {
+                for (remoteMeta in remoteResult.products) {
+                    val barcodeKey = remoteMeta.barcode?.trim() ?: ""
+                    if (barcodeKey.isNotBlank() && seenBarcodes.contains(barcodeKey)) {
+                        continue // Suppress duplicate remote result if local confirmed mapping exists
+                    }
+                    if (barcodeKey.isNotBlank()) seenBarcodes.add(barcodeKey)
+
+                    resultsList.add(
+                        BarcodeLookupResult(
+                            barcode = remoteMeta.barcode ?: "",
+                            displayName = remoteMeta.displayName ?: "Remote Product",
+                            brand = remoteMeta.brand,
+                            canonicalIngredientId = remoteMeta.canonicalName,
+                            canonicalName = remoteMeta.canonicalName,
+                            category = FoodCategory.CUPBOARD,
+                            storageLocation = StorageLocation.CUPBOARD,
+                            netQuantity = remoteMeta.netQuantity,
+                            netQuantityUnit = remoteMeta.netQuantityUnit,
+                            packCount = remoteMeta.packCount,
+                            packSize = remoteMeta.packSize,
+                            packSizeUnit = remoteMeta.packSizeUnit,
+                            quantityConfidence = if (remoteMeta.netQuantity != null) QuantityConfidence.EXACT else QuantityConfidence.UNKNOWN,
+                            sourceName = "OPEN_FOOD_FACTS"
+                        )
+                    )
+                }
+            }
+        }
+
+        return resultsList
     }
 
     suspend fun confirmAndSaveBarcodeMapping(input: ConfirmedProductInput) {
