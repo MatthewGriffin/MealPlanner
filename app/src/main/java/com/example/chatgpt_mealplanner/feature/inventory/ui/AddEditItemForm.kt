@@ -33,6 +33,7 @@ import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -226,11 +227,11 @@ fun SearchProductDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Search Saved Products", fontWeight = FontWeight.Bold) },
+        title = { Text("Search Food Products", fontWeight = FontWeight.Bold) },
         text = {
             Column(modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    "Type a product name to search your confirmed product database:",
+                    "Search saved local products and online Open Food Facts database:",
                     style = MaterialTheme.typography.bodyMedium
                 )
                 Spacer(modifier = Modifier.height(8.dp))
@@ -254,7 +255,7 @@ fun SearchProductDialog(
                             isSearching = false
                         }
                     },
-                    label = { Text("Search Product Name") },
+                    label = { Text("Search Product Name or Brand") },
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
@@ -277,7 +278,7 @@ fun SearchProductDialog(
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(180.dp),
+                            .height(200.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         items(searchResults) { result ->
@@ -291,13 +292,44 @@ fun SearchProductDialog(
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                             ) {
                                 Column(modifier = Modifier.padding(10.dp)) {
-                                    Text(result.displayName, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = result.displayName,
+                                            fontWeight = FontWeight.Bold,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            modifier = Modifier.weight(1f)
+                                        )
+
+                                        val (label, containerColor) = when (result.sourceName) {
+                                            "USER_CONFIRMED_MAPPING", "SAVED" -> "Saved Product" to MaterialTheme.colorScheme.primaryContainer
+                                            "OPEN_FOOD_FACTS" -> "Open Food Facts" to MaterialTheme.colorScheme.secondaryContainer
+                                            else -> "External Match" to MaterialTheme.colorScheme.tertiaryContainer
+                                        }
+
+                                        Surface(
+                                            color = containerColor,
+                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                                        ) {
+                                            Text(
+                                                text = label,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
+
                                     val subText = listOfNotNull(
                                         result.brand,
                                         result.category.name.lowercase().replaceFirstChar { it.uppercase() },
-                                        result.barcode
+                                        result.barcode.takeIf { it.isNotBlank() }
                                     ).joinToString(" • ")
+
                                     if (subText.isNotBlank()) {
+                                        Spacer(modifier = Modifier.height(2.dp))
                                         Text(subText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                 }
