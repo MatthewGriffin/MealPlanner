@@ -382,7 +382,15 @@ class AiOrchestratorIdempotencyTest {
     @Test
     fun networkCalls_remainOffMainAcrossRetries() = runTest {
         val credentialStore = FakeCredentialStore("test_key")
-        val provider = GeminiMealPlannerAiProvider(credentialStore = credentialStore, ioDispatcher = testDispatcher)
+        val provider = GeminiMealPlannerAiProvider(credentialStore = credentialStore, ioDispatcher = kotlinx.coroutines.Dispatchers.IO)
+
+        var executedOffMainThread = false
+        provider.httpCallHandler = { _, _ ->
+            if (Thread.currentThread().name != "main") {
+                executedOffMainThread = true
+            }
+            Pair(503, """{"error":{"code":503,"message":"Service Unavailable"}}""")
+        }
 
         val request = AiProviderRequest(
             conversationId = "conv_off_main",
@@ -396,12 +404,19 @@ class AiOrchestratorIdempotencyTest {
         val response = provider.send(request)
         assertTrue(response is AiProviderResponse.Error)
         assertNotEquals("NO_API_KEY", (response as AiProviderResponse.Error).code)
+        assertTrue("HTTP calls MUST execute off the main thread", executedOffMainThread)
     }
 
     @Test
     fun persistedCredential_isUsedAcrossRetries() = runTest {
         val credentialStore = FakeCredentialStore("persisted_key_777")
-        val provider = GeminiMealPlannerAiProvider(credentialStore = credentialStore, ioDispatcher = testDispatcher)
+        val provider = GeminiMealPlannerAiProvider(credentialStore = credentialStore, ioDispatcher = kotlinx.coroutines.Dispatchers.IO)
+
+        var capturedUrl = ""
+        provider.httpCallHandler = { url, _ ->
+            capturedUrl = url
+            Pair(200, """{"candidates":[{"content":{"parts":[{"text":"Success"}]}}]}""")
+        }
 
         val request = AiProviderRequest(
             conversationId = "conv_cred",
@@ -413,6 +428,7 @@ class AiOrchestratorIdempotencyTest {
         )
 
         val response = provider.send(request)
+        assertTrue(capturedUrl.contains("key=persisted_key_777"))
         assertNotEquals("NO_API_KEY", (response as? AiProviderResponse.Error)?.code)
     }
 }
