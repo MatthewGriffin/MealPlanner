@@ -637,4 +637,26 @@ class GeminiMealPlannerAiProviderTest {
     fun globalTimeoutCap_constants_definedAt45Seconds() {
         assertEquals(45_000L, com.example.chatgpt_mealplanner.core.ai.provider.GLOBAL_TIMEOUT_CAP_MS)
     }
+
+    @Test
+    fun send_whenTimeoutError_returnsTypedRequestTimeoutError() = runTest {
+        provider.httpCallHandler = { _, _ ->
+            throw java.net.SocketTimeoutException("Read timed out")
+        }
+
+        val req = AiProviderRequest(
+            conversationId = "conv1",
+            systemPrompt = "Prompt",
+            contextPayloadJson = "{}",
+            contextPayload = emptyPayload,
+            messages = listOf(AiChatMessage("user", "Hello")),
+            availableTools = emptyList()
+        )
+
+        val res = provider.send(req)
+        assertTrue("Timeout MUST return AiProviderResponse.Error", res is AiProviderResponse.Error)
+        val err = res as AiProviderResponse.Error
+        assertEquals("CONNECT_TIMEOUT", err.code)
+        assertTrue("Error message MUST mention timed out", err.message.contains("timed out"))
+    }
 }
