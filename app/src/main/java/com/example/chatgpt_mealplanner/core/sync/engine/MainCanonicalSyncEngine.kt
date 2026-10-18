@@ -2,6 +2,10 @@ package com.example.chatgpt_mealplanner.core.sync.engine
 
 import com.example.chatgpt_mealplanner.core.database.DatabaseTransactionRunner
 import com.example.chatgpt_mealplanner.core.database.dao.CanonicalSyncDao
+import com.example.chatgpt_mealplanner.core.database.dao.MealChangeRequestDao
+import com.example.chatgpt_mealplanner.core.database.dao.MealDao
+import com.example.chatgpt_mealplanner.core.database.entity.MealChangeRequestEntity
+import com.example.chatgpt_mealplanner.sync.contract.CreateMealChangeRequestPayloadDto
 import com.example.chatgpt_mealplanner.core.database.dao.InventoryDao
 import com.example.chatgpt_mealplanner.core.database.dao.PairedDeviceDao
 import com.example.chatgpt_mealplanner.core.database.entity.CanonicalSyncOperationEntity
@@ -38,7 +42,9 @@ open class MainCanonicalSyncEngine @Inject constructor(
     private val canonicalSyncDao: CanonicalSyncDao,
     private val pairedDeviceDao: PairedDeviceDao,
     private val inventoryDao: InventoryDao,
-    private val transactionRunner: DatabaseTransactionRunner
+    private val transactionRunner: DatabaseTransactionRunner,
+    private val mealChangeRequestDao: MealChangeRequestDao? = null,
+    private val mealDao: MealDao? = null
 ) {
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -142,29 +148,59 @@ open class MainCanonicalSyncEngine @Inject constructor(
             when (dto.operationType) {
                 SyncOperationType.CREATE_MEAL_CHANGE_REQUEST,
                 SyncOperationType.UPDATE_MEAL_CHANGE_REQUEST_STATUS -> {
-                    val parentOp = CanonicalSyncOperationEntity(
-                        operationId = dto.operationId,
-                        deviceId = dto.deviceId,
-                        deviceSequence = dto.deviceSequence,
-                        protocolVersion = dto.protocolVersion,
-                        operationType = dto.operationType.name,
-                        targetItemId = dto.targetItemId,
-                        baseRevision = dto.baseRevision,
-                        payloadJson = dto.payloadJson,
-                        createdAt = dto.createdAt,
-                        canonicalSequence = allocatedSequence,
-                        receivedAt = now,
-                        status = SyncOperationStatus.REJECTED.name,
-                        resultCode = "MEAL_SYNC_NOT_ENABLED"
+                    // A follower may propose a change but must never decide its status.
+                    // Main writes the request and canonical operation in one Room transaction.
+                    val payload = if (dto.operationType == SyncOperationType.CREATE_MEAL_CHANGE_REQUEST) {
+                        json.decodeFromString<CreateMealChangeRequestPayloadDto>(dto.payloadJson)
+                    } else null
+                    val existing = payload?.let { mealChangeRequestDao?.getRequestById(it.requestId) }
+                    val mealExists = payload?.let { mealDao?.getMealWithIngredients(it.mealId) != null } ?: false
+                    val resultCode = when {
+                        payload == null -> "MAIN_ONLY_MEAL_STATUS"
+                        mealChangeRequestDao == null || mealDao == null -> "MEAL_SYNC_NOT_CONFIGURED"
+                        existing != null -> "MEAL_REQUEST_ID_ALREADY_EXISTS"
+                        !mealExists -> "MEAL_NOT_FOUND"
+                        else -> "SUCCESS"
+                    }
+                    val accepted = resultCode == "SUCCESS"
+                    canonicalSyncDao.insertCanonicalOperation(
+                        CanonicalSyncOperationEntity(
+                            operationId = dto.operationId,
+                            deviceId = dto.deviceId,
+                            deviceSequence = dto.deviceSequence,
+                            protocolVersion = dto.protocolVersion,
+                            operationType = dto.operationType.name,
+                            targetItemId = null,
+                            baseRevision = null,
+                            payloadJson = dto.payloadJson,
+                            createdAt = dto.createdAt,
+                            canonicalSequence = allocatedSequence,
+                            receivedAt = now,
+                            status = if (accepted) SyncOperationStatus.APPLIED.name else SyncOperationStatus.REJECTED.name,
+                            resultCode = resultCode
+                        )
                     )
-                    canonicalSyncDao.insertCanonicalOperation(parentOp)
+                    if (accepted) {
+                        mealChangeRequestDao!!.insertRequest(
+                            MealChangeRequestEntity(
+                                id = payload!!.requestId,
+                                mealId = payload.mealId,
+                                authorDeviceId = dto.deviceId,
+                                requestText = payload.requestText,
+                                status = "PENDING",
+                                mainResponse = null,
+                                createdAt = now,
+                                updatedAt = now
+                            )
+                        )
+                    }
                     return@runInTransaction SyncOperationResultDto(
                         operationId = dto.operationId,
                         deviceId = dto.deviceId,
-                        status = SyncOperationStatus.REJECTED,
+                        status = if (accepted) SyncOperationStatus.APPLIED else SyncOperationStatus.REJECTED,
                         canonicalSequence = allocatedSequence,
-                        resultCode = "MEAL_SYNC_NOT_ENABLED",
-                        resultMessage = "Meal-request synchronization is not enabled yet."
+                        resultCode = resultCode,
+                        resultMessage = if (accepted) "Meal change request recorded for Main review." else "Meal change request was not accepted."
                     )
                 }
                 SyncOperationType.ADD_ITEM -> {
