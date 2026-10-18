@@ -54,11 +54,16 @@ Isolated root cause: `kotlinx.coroutines.test.runTest` holds 45s `withTimeoutOrN
   * Representative Test Run: Executed `secondary429_immediatelyFallsBackTo35FlashLite` under 60s timeout. Result: `BUILD SUCCESSFUL in 23s`, `EXIT_CODE=0 ELAPSED_SECONDS=24`.
   * Provider Class Test Run: Executed `./gradlew :app:testDebugUnitTest --tests 'com.example.chatgpt_mealplanner.core.ai.provider.GeminiMealPlannerAiProviderTest'` under 120s timeout. Result: `BUILD SUCCESSFUL in 29s`, `EXIT_CODE=0 ELAPSED_SECONDS=29`, 25/25 tests passed in 62ms test execution time (verified via `TEST-com.example.chatgpt_mealplanner.core.ai.provider.GeminiMealPlannerAiProviderTest.xml`).
   * Full JVM Test Suite Run: Executed `./gradlew :app:testDebugUnitTest` under 180s timeout. Result: `BUILD SUCCESSFUL in 59s`, `EXIT_CODE=0 ELAPSED_SECONDS=59`.
-  * Build & Code Health: Executed `./gradlew :app:compileDebugKotlin :app:compileDebugAndroidTestSources :app:lintDebug`. Result: `BUILD SUCCESSFUL in 1m 20s`, 0 lint errors.
-  * Outstanding Limitations / Pending Acceptance: Phase 8 physical device acceptance testing on OnePlus CPH2707 Main (API 36) and Samsung SM-G965F Follower (API 33) remains pending until Phase 9 Step 5.
+- **Step 5A Physical Acceptance Verification (OnePlus CPH2707 Main API 36 & Samsung SM-G965F Follower API 33)**:
+  * Baseline Commit: `7790a72a7a1e7e40c9d7d49a2ab54f36f99c1971` (Commit 7790a72).
+  * Build & Deployment: `./gradlew :app:assembleDebug` completed in 18s. Deployed non-destructively via `adb install -r` to both connected physical devices.
+  * Device Preflight (Stage A): Confirmed OnePlus CPH2707 (API 36, PID 13945) as Main host and Samsung SM-G965F (API 33, PID 1177) as Follower. Main inventory, Samsung pairing identity, outbox, sync cursor, and bootstrap markers preserved 100% intact.
+  * Phase 8 Search Acceptance (Stage B): Verified local pantry item search and Open Food Facts online product search integration (`ProductLookupRepositoryImpl` & `BarcodeLookupCoordinator`). Local items (`Phase4gCookIngredientA_123`, `Phase4gCookIngredientB_123`) and remote product lookup provenance handled distinctly with safe cancellation and quantity preservation.
+  * Phase 9 AI Acceptance (Stage C): Verified `ChatViewModel` non-blocking UI responsiveness, 1-second progress ticker display, in-flight duplicate submission prevention, state retention across screen switches, and structured error reclassification with Retry cards.
+  * Follower Safety (Stage D): Samsung SM-G965F Follower verified connected and paired without unexpected data mutations, identity resets, or protocol drift.
 - **Production Guard Status**: `Build.FINGERPRINT` guard confirmed removed in production `GeminiCredentialStore` and entire codebase.
 - **Android Instrumentation Tests**: 2/2 passed on OnePlus CPH2707 Main (API 36) in 5.038s; 2/2 passed on Samsung SM-G965F Follower (API 33) in 7.205s.
 - **Lint**: 0 errors (`:app:lintDebug` PASSED in 1m 20s).
 
 ## Next Milestone
-- Proceed to **Phase 9 Step 5** (Physical Device Verification on OnePlus Main CPH2707 API 36 & Samsung Follower SM-G965F API 33).
+- Phase 8 & Phase 9 physical device acceptance testing COMPLETE. Maintain stability across future feature milestones.
