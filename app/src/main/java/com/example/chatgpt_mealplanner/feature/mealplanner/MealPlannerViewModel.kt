@@ -12,8 +12,10 @@ import com.example.chatgpt_mealplanner.core.model.MealIngredient
 import com.example.chatgpt_mealplanner.core.model.MealWithIngredients
 import com.example.chatgpt_mealplanner.core.model.StorageLocation
 import com.example.chatgpt_mealplanner.core.repository.LeftoverRepository
+import com.example.chatgpt_mealplanner.core.repository.MealChangeRequestRepository
 import com.example.chatgpt_mealplanner.core.repository.MealRepository
 import com.example.chatgpt_mealplanner.core.service.MealDomainService
+import com.example.chatgpt_mealplanner.core.sync.AppRoleResolver
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,7 +36,9 @@ import javax.inject.Inject
 class MealPlannerViewModel @Inject constructor(
     private val mealDomainService: MealDomainService,
     private val mealRepository: MealRepository,
-    leftoverRepository: LeftoverRepository
+    leftoverRepository: LeftoverRepository,
+    private val mealChangeRequestRepository: MealChangeRequestRepository,
+    private val appRoleResolver: AppRoleResolver
 ) : ViewModel() {
 
     private val todayIsoDate: String = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE)
@@ -62,6 +66,8 @@ class MealPlannerViewModel @Inject constructor(
         emit(mealRepository.getRecentCookedMeals(14))
     }
 
+    private val allChangeRequestsFlow = mealChangeRequestRepository.observeAllRequests()
+
     @Suppress("UNCHECKED_CAST")
     val uiState: StateFlow<MealPlannerUiState> = combine(
         selectedDateFlow,
@@ -73,7 +79,8 @@ class MealPlannerViewModel @Inject constructor(
         isLoadingFlow,
         mealToCookFlow,
         mealToAddOrEditFlow,
-        showAddDialogFlow
+        showAddDialogFlow,
+        allChangeRequestsFlow
     ) { flows ->
         MealPlannerUiState(
             selectedDate = flows[0] as String,
@@ -85,13 +92,29 @@ class MealPlannerViewModel @Inject constructor(
             isLoading = flows[6] as Boolean,
             mealToCook = flows[7] as MealWithIngredients?,
             mealToAddOrEdit = flows[8] as MealWithIngredients?,
-            showAddDialog = flows[9] as Boolean
+            showAddDialog = flows[9] as Boolean,
+            allChangeRequests = flows[10] as List<com.example.chatgpt_mealplanner.core.database.entity.MealChangeRequestEntity>,
+            isFollower = appRoleResolver.isFollower()
         )
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
-        initialValue = MealPlannerUiState(selectedDate = todayIsoDate)
+        initialValue = MealPlannerUiState(selectedDate = todayIsoDate, isFollower = appRoleResolver.isFollower())
     )
+
+    fun submitMealChangeRequest(mealId: String, requestText: String) {
+        viewModelScope.launch {
+            mealChangeRequestRepository.submitRequest(mealId, requestText)
+            userMessageFlow.value = "Change request submitted successfully"
+        }
+    }
+
+    fun updateRequestStatus(requestId: String, status: String, mainResponse: String?) {
+        viewModelScope.launch {
+            mealChangeRequestRepository.updateRequestStatus(requestId, status, mainResponse)
+            userMessageFlow.value = "Request status updated: $status"
+        }
+    }
 
     fun onEvent(event: MealPlannerUiEvent) {
         when (event) {

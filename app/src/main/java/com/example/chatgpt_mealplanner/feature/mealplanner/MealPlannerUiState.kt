@@ -18,6 +18,8 @@ data class MealPlannerUiState(
     val mealsForSelectedDate: List<MealWithIngredients> = emptyList(),
     val leftovers: List<Leftover> = emptyList(),
     val recentCookedMeals: List<MealWithIngredients> = emptyList(),
+    val allChangeRequests: List<com.example.chatgpt_mealplanner.core.database.entity.MealChangeRequestEntity> = emptyList(),
+    val isFollower: Boolean = false,
     val selectedDate: String = "", // Populated dynamically with today's ISO date YYYY-MM-DD
     val activeTab: MealPlannerTab = MealPlannerTab.PLANNER,
     val isLoading: Boolean = false,

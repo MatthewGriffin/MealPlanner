@@ -20,10 +20,16 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import com.example.chatgpt_mealplanner.core.util.formatQuantityAndUnit
 import com.example.chatgpt_mealplanner.feature.mealplanner.MealPlannerViewModel
 
@@ -161,6 +167,65 @@ fun RecipeDetailsScreen(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text("Cook Now")
+                    }
+                }
+
+                item {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "Meal Change Requests",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    var requestInput by remember { mutableStateOf("") }
+                    val mealRequests = uiState.allChangeRequests.filter { it.mealId == meal.id }
+
+                    if (mealRequests.isNotEmpty()) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            for (req in mealRequests) {
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text(text = "Request: ${req.requestText}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                                            Text(text = req.status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                                        }
+                                        if (!req.mainResponse.isNullOrBlank()) {
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(text = "Main Response: ${req.mainResponse}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+
+                    androidx.compose.material3.OutlinedTextField(
+                        value = requestInput,
+                        onValueChange = { requestInput = it },
+                        label = { Text("Suggest substitution / change request...") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(
+                        onClick = {
+                            if (requestInput.isNotBlank()) {
+                                viewModel.submitMealChangeRequest(meal.id, requestInput.trim())
+                                requestInput = ""
+                            }
+                        },
+                        enabled = requestInput.isNotBlank(),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Submit Request (Syncs via Outbox)")
                     }
                 }
             }

@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FloatingActionButton
@@ -30,9 +31,12 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -123,6 +127,14 @@ fun MealPlannerScreen(
                     when (uiState.activeTab) {
                         MealPlannerTab.PLANNER -> {
                             Column(modifier = Modifier.fillMaxSize()) {
+                                if (!uiState.isFollower && uiState.allChangeRequests.isNotEmpty()) {
+                                    MainRequestReviewSection(
+                                        requests = uiState.allChangeRequests,
+                                        onUpdateStatus = { reqId, status, resp ->
+                                            parentViewModel.updateRequestStatus(reqId, status, resp)
+                                        }
+                                    )
+                                }
                                 DateNavigationHeader(
                                     selectedDate = uiState.selectedDate,
                                     onDateSelected = { date -> onEvent(MealPlannerUiEvent.SelectDate(date)) }
@@ -362,3 +374,88 @@ fun MealCard(
         }
     }
 }
+
+@Composable
+fun MainRequestReviewSection(
+    requests: List<com.example.chatgpt_mealplanner.core.database.entity.MealChangeRequestEntity>,
+    onUpdateStatus: (String, String, String?) -> Unit
+) {
+    if (requests.isEmpty()) return
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            text = "Incoming Meal Change Requests (${requests.count { it.status == "PENDING" }} Pending)",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary
+        )
+        requests.forEach { req ->
+            var responseInput by remember(req.id) { mutableStateOf(req.mainResponse ?: "") }
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(text = "Request: ${req.requestText}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                        Text(text = req.status, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(text = "Meal ID: ${req.mealId} • By: ${req.authorDeviceId}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    OutlinedTextField(
+                        value = responseInput,
+                        onValueChange = { text: String -> responseInput = text },
+                        label = { Text("Response / Discussion note...") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                val resp = if (responseInput.isNotBlank()) responseInput.trim() else null
+                                onUpdateStatus(req.id, "ACCEPTED", resp)
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Accept")
+                        }
+                        Button(
+                            onClick = {
+                                val resp = if (responseInput.isNotBlank()) responseInput.trim() else null
+                                onUpdateStatus(req.id, "DECLINED", resp)
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Decline")
+                        }
+                        Button(
+                            onClick = {
+                                val resp = if (responseInput.isNotBlank()) responseInput.trim() else null
+                                onUpdateStatus(req.id, "DISCUSSED", resp)
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Discuss")
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+
