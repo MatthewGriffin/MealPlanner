@@ -74,6 +74,9 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var hostController: com.example.chatgpt_mealplanner.core.sync.server.PantrySyncHostController
 
+    @Inject
+    lateinit var appRoleResolver: com.example.chatgpt_mealplanner.core.sync.AppRoleResolver
+
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -82,6 +85,10 @@ class MainActivity : ComponentActivity() {
         setContent {
             ChatGPT_MealPlannerTheme {
                 var currentScreen by remember { mutableStateOf(Screen.INVENTORY) }
+                val isFollower = remember { appRoleResolver.isFollower() }
+                if (isFollower && currentScreen == Screen.CHAT) {
+                    currentScreen = Screen.INVENTORY
+                }
                 val scannerViewModel: ScannerViewModel = hiltViewModel()
                 val scannerState by scannerViewModel.state.collectAsState()
                 val isConfirming = scannerState is ScannerState.Confirming
@@ -139,12 +146,14 @@ class MainActivity : ComponentActivity() {
                     },
                     bottomBar = {
                         NavigationBar {
-                            NavigationBarItem(
-                                selected = currentScreen == Screen.CHAT,
-                                onClick = { currentScreen = Screen.CHAT },
-                                icon = { Icon(Icons.Default.AutoAwesome, contentDescription = "Assistant") },
-                                label = { Text("Assistant") }
-                            )
+                            if (!isFollower) {
+                                NavigationBarItem(
+                                    selected = currentScreen == Screen.CHAT,
+                                    onClick = { currentScreen = Screen.CHAT },
+                                    icon = { Icon(Icons.Default.AutoAwesome, contentDescription = "Assistant") },
+                                    label = { Text("Assistant") }
+                                )
+                            }
                             NavigationBarItem(
                                 selected = currentScreen == Screen.INVENTORY,
                                 onClick = { currentScreen = Screen.INVENTORY },

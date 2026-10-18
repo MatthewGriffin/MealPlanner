@@ -128,6 +128,11 @@ object DatabaseModule {
     fun provideCanonicalSyncDao(database: AppDatabase): com.example.chatgpt_mealplanner.core.database.dao.CanonicalSyncDao {
         return database.canonicalSyncDao()
     }
+
+    @Provides
+    fun provideMealChangeRequestDao(database: AppDatabase): com.example.chatgpt_mealplanner.core.database.dao.MealChangeRequestDao {
+        return database.mealChangeRequestDao()
+    }
 }
 
 @Module

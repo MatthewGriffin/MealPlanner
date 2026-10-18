@@ -34,7 +34,8 @@ class AiMealPlannerOrchestrator @Inject constructor(
     private val intentResolver: UserMutationIntentResolver,
     private val chatRepository: ChatRepository,
     private val pendingMutationStore: com.example.chatgpt_mealplanner.core.ai.pending.PendingMutationStore,
-    private val activeProposalStore: com.example.chatgpt_mealplanner.core.ai.proposal.ActiveProposalStore
+    private val activeProposalStore: com.example.chatgpt_mealplanner.core.ai.proposal.ActiveProposalStore,
+    private val appRoleResolver: com.example.chatgpt_mealplanner.core.sync.AppRoleResolver = object : com.example.chatgpt_mealplanner.core.sync.AppRoleResolver(object : com.example.chatgpt_mealplanner.core.sync.follower.config.FollowerPairingStore(null) { override fun isPaired() = false }) { override fun isFollower() = false }
 ) {
     companion object {
         const val MAX_TOOL_ROUNDS = 8
@@ -45,6 +46,12 @@ class AiMealPlannerOrchestrator @Inject constructor(
         userMessageText: String,
         userMessageId: String? = null
     ): AiOrchestrationResult {
+        if (appRoleResolver.isFollower()) {
+            return AiOrchestrationResult.Error(
+                code = "FOLLOWER_RESTRICTED",
+                userFacingMessage = "AI Assistant features are disabled on Follower devices."
+            )
+        }
         val pid = try { android.os.Process.myPid() } catch (_: Throwable) { -1 }
         val activeProp = activeProposalStore.getActiveProposal(conversationId)
         val initialPending = pendingMutationStore.getPendingMutation(conversationId)

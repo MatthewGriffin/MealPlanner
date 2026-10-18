@@ -868,6 +868,7 @@ open class FakeAppDatabase : AppDatabase() {
     override fun householdIdentityDao(): com.example.chatgpt_mealplanner.core.database.dao.HouseholdIdentityDao = error("")
     override fun pairedDeviceDao(): com.example.chatgpt_mealplanner.core.database.dao.PairedDeviceDao = error("")
     override fun canonicalSyncDao(): com.example.chatgpt_mealplanner.core.database.dao.CanonicalSyncDao = error("")
+    override fun mealChangeRequestDao(): com.example.chatgpt_mealplanner.core.database.dao.MealChangeRequestDao = error("")
     override fun createOpenHelper(config: androidx.room.DatabaseConfiguration): androidx.sqlite.db.SupportSQLiteOpenHelper = error("")
     override fun createInvalidationTracker(): androidx.room.InvalidationTracker = error("")
     override fun clearAllTables() {}

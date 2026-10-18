@@ -731,6 +731,27 @@ val MIGRATION_15_16 = object : Migration(15, 16) {
     }
 }
 
+val MIGRATION_16_17 = object : Migration(16, 17) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("""
+            CREATE TABLE IF NOT EXISTS `meal_change_requests` (
+                `id` TEXT NOT NULL,
+                `mealId` TEXT NOT NULL,
+                `authorDeviceId` TEXT NOT NULL,
+                `requestText` TEXT NOT NULL,
+                `status` TEXT NOT NULL,
+                `mainResponse` TEXT,
+                `createdAt` INTEGER NOT NULL,
+                `updatedAt` INTEGER NOT NULL,
+                PRIMARY KEY(`id`),
+                FOREIGN KEY(`mealId`) REFERENCES `meals`(`id`) ON DELETE CASCADE
+            )
+        """)
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_meal_change_requests_mealId` ON `meal_change_requests` (`mealId`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_meal_change_requests_authorDeviceId` ON `meal_change_requests` (`authorDeviceId`)")
+    }
+}
+
 val ALL_MIGRATIONS = arrayOf(
     MIGRATION_1_2,
     MIGRATION_2_3,
@@ -746,7 +767,8 @@ val ALL_MIGRATIONS = arrayOf(
     MIGRATION_12_13,
     MIGRATION_13_14,
     MIGRATION_14_15,
-    MIGRATION_15_16
+    MIGRATION_15_16,
+    MIGRATION_16_17
 )
 
 @Database(
@@ -784,9 +806,10 @@ val ALL_MIGRATIONS = arrayOf(
         com.example.chatgpt_mealplanner.core.database.entity.CanonicalSyncSequenceEntity::class,
         com.example.chatgpt_mealplanner.core.database.entity.CanonicalSyncOperationEntity::class,
         com.example.chatgpt_mealplanner.core.database.entity.SyncConflictEntity::class,
-        com.example.chatgpt_mealplanner.core.database.entity.SyncPendingApprovalEntity::class
+        com.example.chatgpt_mealplanner.core.database.entity.SyncPendingApprovalEntity::class,
+        com.example.chatgpt_mealplanner.core.database.entity.MealChangeRequestEntity::class
     ],
-    version = 16,
+    version = 17,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -806,4 +829,6 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun householdIdentityDao(): com.example.chatgpt_mealplanner.core.database.dao.HouseholdIdentityDao
     abstract fun pairedDeviceDao(): com.example.chatgpt_mealplanner.core.database.dao.PairedDeviceDao
     abstract fun canonicalSyncDao(): com.example.chatgpt_mealplanner.core.database.dao.CanonicalSyncDao
+    abstract fun mealChangeRequestDao(): com.example.chatgpt_mealplanner.core.database.dao.MealChangeRequestDao
 }
+

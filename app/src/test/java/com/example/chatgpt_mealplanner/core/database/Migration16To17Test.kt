@@ -6,23 +6,23 @@ import org.junit.runner.RunWith
 import org.junit.runners.JUnit4
 
 @RunWith(JUnit4::class)
-class Migration15To16Test {
+class Migration16To17Test {
 
     @Test
-    fun migration15_16_versionNumbersValidation() {
-        assertEquals(15, MIGRATION_15_16.startVersion)
-        assertEquals(16, MIGRATION_15_16.endVersion)
+    fun migration16_17_versionNumbersValidation() {
+        assertEquals(16, MIGRATION_16_17.startVersion)
+        assertEquals(17, MIGRATION_16_17.endVersion)
     }
 
     @Test
-    fun allMigrationsRegisteredInProduction_covers1To16Path() {
-        assertEquals(15, ALL_MIGRATIONS.size)
+    fun allMigrationsRegisteredInProduction_covers1To17Path() {
+        assertEquals(16, ALL_MIGRATIONS.size)
         assertEquals(1, ALL_MIGRATIONS.first().startVersion)
         assertEquals(2, ALL_MIGRATIONS.first().endVersion)
-        assertEquals(15, ALL_MIGRATIONS.last().startVersion)
-        assertEquals(16, ALL_MIGRATIONS.last().endVersion)
+        assertEquals(16, ALL_MIGRATIONS.last().startVersion)
+        assertEquals(17, ALL_MIGRATIONS.last().endVersion)
 
-        // Verify continuous upgrade path from version 1 to 16
+        // Verify continuous upgrade path from version 1 to 17
         for (i in 0 until ALL_MIGRATIONS.size - 1) {
             val current = ALL_MIGRATIONS[i]
             val next = ALL_MIGRATIONS[i + 1]

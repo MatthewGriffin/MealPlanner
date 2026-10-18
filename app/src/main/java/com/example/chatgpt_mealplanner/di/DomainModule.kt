@@ -96,6 +96,12 @@ abstract class DomainModule {
 
     @Binds
     @Singleton
+    abstract fun bindMealChangeRequestRepository(
+        impl: com.example.chatgpt_mealplanner.core.repository.MealChangeRequestRepositoryImpl
+    ): com.example.chatgpt_mealplanner.core.repository.MealChangeRequestRepository
+
+    @Binds
+    @Singleton
     abstract fun bindSafDocumentStreamProvider(
         impl: com.example.chatgpt_mealplanner.core.backup.DefaultSafDocumentStreamProvider
     ): com.example.chatgpt_mealplanner.core.backup.SafDocumentStreamProvider
