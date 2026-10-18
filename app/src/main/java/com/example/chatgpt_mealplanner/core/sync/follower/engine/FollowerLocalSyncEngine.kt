@@ -8,6 +8,7 @@ import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.Follow
 import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerInventoryItemEntity
 import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerSyncOutboxEntity
 import com.example.chatgpt_mealplanner.core.sync.follower.worker.FollowerSyncScheduler
+import com.example.chatgpt_mealplanner.sync.contract.CreateMealChangeRequestPayloadDto
 import com.example.chatgpt_mealplanner.sync.contract.AddItemPayloadDto
 import com.example.chatgpt_mealplanner.sync.contract.AdjustQuantityPayloadDto
 import com.example.chatgpt_mealplanner.sync.contract.EditItemPayloadDto
@@ -457,6 +458,48 @@ open class FollowerLocalSyncEngine @Inject constructor(
             recomputeItemWorkingProjection(dao, targetItemId)
 
             outboxEntity
+        }
+        notifyOutboxCommitted()
+        return result
+    }
+
+    /**
+     * Record a meal-change request durably in the follower outbox.
+     * This primitive is not connected to the UI until Main can accept requests.
+     */
+    open suspend fun recordLocalMealChangeRequest(
+        deviceId: String,
+        requestId: String,
+        mealId: String,
+        requestText: String
+    ): FollowerSyncOutboxEntity {
+        require(requestId.startsWith("req_") &&
+            runCatching { UUID.fromString(requestId.removePrefix("req_")) }.isSuccess)
+        require(mealId.isNotBlank() && mealId.length <= 128)
+        require(requestText.isNotBlank() && requestText.length <= 2000)
+
+        val result = runTransaction { dao ->
+            val now = System.currentTimeMillis()
+            val sequence = dao.getSequenceEntity()
+                ?: FollowerDeviceSequenceEntity(singletonId = 1, nextSequence = 1L)
+            dao.updateSequenceEntity(sequence.copy(nextSequence = sequence.nextSequence + 1L))
+            val outbox = FollowerSyncOutboxEntity(
+                operationId = UUID.randomUUID().toString(),
+                deviceId = deviceId,
+                deviceSequence = sequence.nextSequence,
+                protocolVersion = SYNC_PROTOCOL_VERSION,
+                operationType = SyncOperationType.CREATE_MEAL_CHANGE_REQUEST.name,
+                targetItemId = null,
+                baseRevision = null,
+                payloadJson = json.encodeToString(
+                    CreateMealChangeRequestPayloadDto(requestId, mealId, requestText)
+                ),
+                createdAt = now,
+                status = "PENDING",
+                createdLocallyAt = now
+            )
+            dao.insertOutboxOperation(outbox)
+            outbox
         }
         notifyOutboxCommitted()
         return result
