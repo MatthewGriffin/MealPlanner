@@ -34,7 +34,8 @@ import org.robolectric.annotation.Config
 import java.util.UUID
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28], application = android.app.Application::class)
+// Keep the test runtime at or above the app minSdk (30), so package parsing succeeds.
+@Config(sdk = [30], application = android.app.Application::class)
 class Phase10MealRequestSyncTest {
     private lateinit var main: AppDatabase
     private lateinit var follower: FollowerDatabase
