@@ -156,3 +156,22 @@ Isolated root cause: `kotlinx.coroutines.test.runTest` holds 45s `withTimeoutOrN
   completed successfully. **813 app tests passed**, no failures/errors/skips;
   sync-contract was **UP-TO-DATE** with **9 passing tests** in its existing XML.
   Lint reported **0 errors and 81 warnings**; none referenced the changed files.
+
+
+## Inventory Edit Out-of-Stock Status Fix (2026-10-18)
+
+- Reproduced the reported bug: the edit form always created an AVAILABLE item,
+  so editing a name or note cleared OUT even with quantity zero. The same issue
+  also cleared LOW and USE_SOON markers.
+- Form state now retains the loaded item's status. OUT changes to AVAILABLE only
+  for a valid, finite, positive entered quantity, including 1 and fractional
+  quantities. Zero retains OUT; blank/invalid input cannot clear the marker.
+  Other status markers are preserved by metadata edits.
+- Added three regression tests for metadata-only edits, positive/zero/invalid
+  quantity boundaries, and preservation of other statuses. All three reproduced
+  the original status-reset failure before the fix.
+- This changes the edit form only; no database reset, pairing change, or device
+  deployment was performed.
+- Final verification: debug assembly and full app unit suite passed (**816 tests**,
+  no failures/errors/skips). Sync-contract remained **UP-TO-DATE**, with its
+  existing report recording **9 passing tests**. Normal Gradle caching retained.

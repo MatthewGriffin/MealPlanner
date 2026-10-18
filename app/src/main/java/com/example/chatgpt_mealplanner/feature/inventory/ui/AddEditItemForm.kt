@@ -78,10 +78,12 @@ data class AddEditItemFormState(
     val notes: String = "",
     val isPackagingExpanded: Boolean = false,
     val isDatesAndStorageExpanded: Boolean = false,
-    val isNotesExpanded: Boolean = false
+    val isNotesExpanded: Boolean = false,
+    val originalStatus: ItemStatus = ItemStatus.AVAILABLE
 ) {
     fun toInventoryItem(): InventoryItem {
-        val qty = quantityText.toDoubleOrNull() ?: 1.0
+        val enteredQuantity = quantityText.toDoubleOrNull()
+        val qty = enteredQuantity ?: 1.0
         val pCount = packCountText.toIntOrNull()
         val pSize = packSizeText.toDoubleOrNull()
 
@@ -100,7 +102,13 @@ data class AddEditItemFormState(
             packSize = pSize,
             packSizeUnit = if (pSize != null) packSizeUnit else null,
             quantityConfidence = QuantityConfidence.EXACT,
-            status = ItemStatus.AVAILABLE,
+            // Editing metadata must not clear stock-state markers. An OUT item
+            // becomes available only when a valid positive quantity is entered.
+            status = if (originalStatus == ItemStatus.OUT && enteredQuantity != null && enteredQuantity.isFinite() && enteredQuantity > 0.0) {
+                ItemStatus.AVAILABLE
+            } else {
+                originalStatus
+            },
             opened = opened,
             frozen = frozen,
             staple = staple,
@@ -162,7 +170,8 @@ data class AddEditItemFormState(
                 notes = item.notes ?: "",
                 isPackagingExpanded = item.brand != null || item.barcode != null || item.packCount != null || item.packSize != null,
                 isDatesAndStorageExpanded = item.useByDate != null || item.bestBeforeDate != null || item.purchaseDate != null || item.openedDate != null,
-                isNotesExpanded = item.notes != null
+                isNotesExpanded = item.notes != null,
+                originalStatus = item.status
             )
         }
     }

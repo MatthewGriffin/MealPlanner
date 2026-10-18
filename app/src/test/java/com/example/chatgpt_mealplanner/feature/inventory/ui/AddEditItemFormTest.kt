@@ -16,6 +16,42 @@ import org.junit.runners.JUnit4
 @RunWith(JUnit4::class)
 class AddEditItemFormTest {
 
+    private fun outItem() = InventoryItem(
+        id = "out-item", canonicalName = "Milk", displayName = "Milk",
+        category = FoodCategory.FRIDGE, storageLocation = StorageLocation.FRIDGE,
+        quantity = 0.0, quantityUnit = QuantityUnit.LITRE, status = ItemStatus.OUT
+    )
+
+    @Test
+    fun editingOutItemMetadata_preservesOutMarkAndZeroQuantity() {
+        val edited = AddEditItemFormState.fromInventoryItem(outItem())
+            .copy(displayName = "Whole milk", notes = "Buy again").toInventoryItem()
+        assertEquals(ItemStatus.OUT, edited.status)
+        assertEquals(0.0, edited.quantity!!, 0.0)
+        assertEquals("Whole milk", edited.displayName)
+        assertEquals("Buy again", edited.notes)
+    }
+
+    @Test
+    fun editingOutItem_onlyPositiveQuantityClearsOutMark() {
+        val form = AddEditItemFormState.fromInventoryItem(outItem())
+        for (quantity in listOf("0", "-1", "", "invalid", "NaN", "Infinity")) {
+            assertEquals("quantity=$quantity", ItemStatus.OUT, form.copy(quantityText = quantity).toInventoryItem().status)
+        }
+        for (quantity in listOf("0.5", "1", "1.01", "2")) {
+            assertEquals("quantity=$quantity", ItemStatus.AVAILABLE, form.copy(quantityText = quantity).toInventoryItem().status)
+        }
+    }
+
+    @Test
+    fun editingMetadata_preservesOtherItemStatuses() {
+        for (status in listOf(ItemStatus.LOW, ItemStatus.USE_SOON, ItemStatus.DISCARDED)) {
+            val item = outItem().copy(status = status, quantity = 2.0)
+            assertEquals(status, AddEditItemFormState.fromInventoryItem(item)
+                .copy(notes = "Updated note").toInventoryItem().status)
+        }
+    }
+
     @Test
     fun fromInventoryItem_populatesFormState_andSetsExpansionFlags() {
         val item = InventoryItem(
