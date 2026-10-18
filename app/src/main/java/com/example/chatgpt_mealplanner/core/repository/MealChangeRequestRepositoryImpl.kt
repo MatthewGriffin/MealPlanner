@@ -5,6 +5,16 @@ import com.example.chatgpt_mealplanner.core.database.entity.MealChangeRequestEnt
 import com.example.chatgpt_mealplanner.core.sync.follower.config.FollowerPairingStore
 import com.example.chatgpt_mealplanner.core.sync.AppRoleResolver
 import kotlinx.coroutines.flow.Flow
+import com.example.chatgpt_mealplanner.core.database.DatabaseTransactionRunner
+import com.example.chatgpt_mealplanner.core.database.dao.CanonicalSyncDao
+import com.example.chatgpt_mealplanner.core.database.entity.CanonicalSyncOperationEntity
+import com.example.chatgpt_mealplanner.core.database.entity.CanonicalSyncSequenceEntity
+import com.example.chatgpt_mealplanner.sync.contract.SYNC_PROTOCOL_VERSION
+import com.example.chatgpt_mealplanner.sync.contract.SyncOperationStatus
+import com.example.chatgpt_mealplanner.sync.contract.SyncOperationType
+import com.example.chatgpt_mealplanner.sync.contract.UpdateMealChangeRequestStatusPayloadDto
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -13,7 +23,9 @@ import javax.inject.Singleton
 class MealChangeRequestRepositoryImpl @Inject constructor(
     private val dao: MealChangeRequestDao,
     private val pairingStore: FollowerPairingStore,
-    private val appRoleResolver: AppRoleResolver
+    private val appRoleResolver: AppRoleResolver,
+    private val canonicalSyncDao: CanonicalSyncDao,
+    private val transactionRunner: DatabaseTransactionRunner
 ) : MealChangeRequestRepository {
 
     override fun observeRequestsForMeal(mealId: String): Flow<List<MealChangeRequestEntity>> {
@@ -52,12 +64,35 @@ class MealChangeRequestRepositoryImpl @Inject constructor(
         check(appRoleResolver.isMainAsync()) { "Only Main can decide meal-change requests" }
         require(status in setOf("ACCEPTED", "DECLINED", "DISCUSSED")) { "Invalid request status" }
         require(mainResponse == null || mainResponse.length <= 2000) { "Response exceeds 2000 characters" }
-        val existing = dao.getRequestById(requestId)
-            ?: throw IllegalArgumentException("Meal request not found")
-        check(existing.status == "PENDING" || existing.status == "DISCUSSED") {
-            "This meal request has already been decided"
+        transactionRunner.runInTransaction {
+            val existing = dao.getRequestById(requestId)
+                ?: throw IllegalArgumentException("Meal request not found")
+            check(existing.status == "PENDING" || existing.status == "DISCUSSED") {
+                "This meal request has already been decided"
+            }
+            val now = System.currentTimeMillis()
+            val sequence = canonicalSyncDao.getSequenceEntity()
+                ?: CanonicalSyncSequenceEntity(singletonId = 1, nextSequence = 1L)
+            val next = sequence.nextSequence
+            canonicalSyncDao.updateSequenceEntity(sequence.copy(nextSequence = next + 1L))
+            canonicalSyncDao.insertCanonicalOperation(
+                CanonicalSyncOperationEntity(
+                    operationId = UUID.randomUUID().toString(),
+                    deviceId = "main_device",
+                    deviceSequence = next,
+                    protocolVersion = SYNC_PROTOCOL_VERSION,
+                    operationType = SyncOperationType.UPDATE_MEAL_CHANGE_REQUEST_STATUS.name,
+                    payloadJson = Json.encodeToString(
+                        UpdateMealChangeRequestStatusPayloadDto(requestId, status, mainResponse)
+                    ),
+                    createdAt = now,
+                    canonicalSequence = next,
+                    receivedAt = now,
+                    status = SyncOperationStatus.APPLIED.name,
+                    resultCode = "SUCCESS"
+                )
+            )
+            dao.updateRequestStatus(requestId, status, mainResponse, now)
         }
-        val now = System.currentTimeMillis()
-        dao.updateRequestStatus(requestId, status, mainResponse, now)
     }
 }
