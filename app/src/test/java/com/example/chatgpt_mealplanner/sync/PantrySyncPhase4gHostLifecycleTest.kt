@@ -540,6 +540,7 @@ class PantrySyncPhase4gHostLifecycleTest {
     open class TestFakeFollowerDatabase(val testDao: TestFakeFollowerDao = TestFakeFollowerDao()) : com.example.chatgpt_mealplanner.core.sync.follower.database.FollowerDatabase() {
         private var inTx = false
         override fun followerDao(): com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerDao = testDao
+        override fun mealRequestDao(): com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerMealRequestDao = error("Meal projection not used in this inventory fixture")
         @Deprecated("Deprecated in Room")
         override fun beginTransaction() { inTx = true }
         @Deprecated("Deprecated in Room")

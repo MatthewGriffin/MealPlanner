@@ -27,7 +27,8 @@ object FollowerDatabaseModule {
         ).addMigrations(
             com.example.chatgpt_mealplanner.core.sync.follower.database.FOLLOWER_MIGRATION_1_2,
             com.example.chatgpt_mealplanner.core.sync.follower.database.FOLLOWER_MIGRATION_2_3,
-            com.example.chatgpt_mealplanner.core.sync.follower.database.FOLLOWER_MIGRATION_3_4
+            com.example.chatgpt_mealplanner.core.sync.follower.database.FOLLOWER_MIGRATION_3_4,
+            com.example.chatgpt_mealplanner.core.sync.follower.database.FOLLOWER_MIGRATION_4_5
         ).build()
     }
 
@@ -35,4 +36,8 @@ object FollowerDatabaseModule {
     fun provideFollowerDao(database: FollowerDatabase): FollowerDao {
         return database.followerDao()
     }
+
+    @Provides
+    fun provideFollowerMealRequestDao(database: FollowerDatabase):
+        com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerMealRequestDao = database.mealRequestDao()
 }

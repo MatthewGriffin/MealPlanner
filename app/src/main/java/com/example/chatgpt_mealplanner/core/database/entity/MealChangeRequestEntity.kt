@@ -30,3 +30,8 @@ data class MealChangeRequestEntity(
     val createdAt: Long,
     val updatedAt: Long
 )
+
+fun MealChangeRequestEntity.toSyncDto() =
+    com.example.chatgpt_mealplanner.sync.contract.MealChangeRequestSyncDto(
+        id, mealId, authorDeviceId, requestText, status, mainResponse, createdAt, updatedAt
+    )

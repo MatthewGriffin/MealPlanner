@@ -98,7 +98,8 @@ data class BootstrapResponseDto(
     val protocolVersion: Int = SYNC_PROTOCOL_VERSION,
     val householdId: String,
     val snapshotCanonicalSequence: Long,
-    val inventoryItems: List<InventoryItemSyncDto>
+    val inventoryItems: List<InventoryItemSyncDto>,
+    val mealRequests: List<MealChangeRequestSyncDto> = emptyList()
 )
 
 @Serializable
@@ -150,7 +151,20 @@ data class CreateMealChangeRequestPayloadDto(
 data class UpdateMealChangeRequestStatusPayloadDto(
     val requestId: String,
     val status: String,
-    val mainResponse: String? = null
+    val mainResponse: String? = null,
+    val requestSnapshot: MealChangeRequestSyncDto? = null
+)
+
+@Serializable
+data class MealChangeRequestSyncDto(
+    val id: String,
+    val mealId: String,
+    val authorDeviceId: String,
+    val requestText: String,
+    val status: String,
+    val mainResponse: String? = null,
+    val createdAt: Long,
+    val updatedAt: Long
 )
 
 @Serializable

@@ -7,6 +7,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.chatgpt_mealplanner.core.sync.follower.database.FOLLOWER_MIGRATION_1_2
 import com.example.chatgpt_mealplanner.core.sync.follower.database.FOLLOWER_MIGRATION_2_3
 import com.example.chatgpt_mealplanner.core.sync.follower.database.FOLLOWER_MIGRATION_3_4
+import com.example.chatgpt_mealplanner.core.sync.follower.database.FOLLOWER_MIGRATION_4_5
 import com.example.chatgpt_mealplanner.core.sync.follower.database.FollowerDatabase
 import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerInventoryItemEntity
 import com.example.chatgpt_mealplanner.core.sync.follower.engine.FollowerLocalSyncEngine
@@ -33,7 +34,8 @@ class PantrySyncPhase4hFollowerDiscardOutboxRollbackTest {
             .addMigrations(
                 FOLLOWER_MIGRATION_1_2,
                 FOLLOWER_MIGRATION_2_3,
-                FOLLOWER_MIGRATION_3_4
+                FOLLOWER_MIGRATION_3_4,
+                FOLLOWER_MIGRATION_4_5
             )
             .allowMainThreadQueries()
             .build()

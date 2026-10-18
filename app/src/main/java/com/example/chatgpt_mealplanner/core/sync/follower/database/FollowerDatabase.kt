@@ -5,6 +5,8 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerDao
+import com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerMealRequestDao
+import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerMealRequestEntity
 import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerDeviceSequenceEntity
 import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerInventoryItemEntity
 import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerSyncMetadataEntity
@@ -86,16 +88,32 @@ val FOLLOWER_MIGRATION_3_4 = object : Migration(3, 4) {
     }
 }
 
+val FOLLOWER_MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("""
+            CREATE TABLE IF NOT EXISTS `follower_meal_requests` (
+                `id` TEXT NOT NULL, `mealId` TEXT NOT NULL,
+                `authorDeviceId` TEXT NOT NULL, `requestText` TEXT NOT NULL,
+                `status` TEXT NOT NULL, `mainResponse` TEXT,
+                `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL,
+                `canonicalSequence` INTEGER NOT NULL, PRIMARY KEY(`id`)
+            )
+        """.trimIndent())
+    }
+}
+
 @Database(
     entities = [
         FollowerInventoryItemEntity::class,
         FollowerSyncOutboxEntity::class,
         FollowerDeviceSequenceEntity::class,
-        FollowerSyncMetadataEntity::class
+        FollowerSyncMetadataEntity::class,
+        FollowerMealRequestEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class FollowerDatabase : RoomDatabase() {
     abstract fun followerDao(): FollowerDao
+    abstract fun mealRequestDao(): FollowerMealRequestDao
 }

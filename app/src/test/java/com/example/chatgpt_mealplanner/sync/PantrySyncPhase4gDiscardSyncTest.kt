@@ -265,6 +265,7 @@ class PantrySyncPhase4gDiscardSyncTest {
             householdIdentityManager = HouseholdIdentityManager(mock()),
             followerDatabase = object : FollowerDatabase() {
                 override fun followerDao(): FollowerDao = followerDao
+                override fun mealRequestDao(): com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerMealRequestDao = error("Meal projection not used in this inventory fixture")
                 override fun clearAllTables() {}
                 override fun createInvalidationTracker(): androidx.room.InvalidationTracker = mock()
                 override fun createOpenHelper(config: androidx.room.DatabaseConfiguration): androidx.sqlite.db.SupportSQLiteOpenHelper = mock()
@@ -585,6 +586,7 @@ class PantrySyncPhase4gDiscardSyncTest {
         val engine = object : FollowerLocalSyncEngine(
             followerDatabase = object : FollowerDatabase() {
                 override fun followerDao(): FollowerDao = followerDao
+                override fun mealRequestDao(): com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerMealRequestDao = error("Meal projection not used in this inventory fixture")
                 override fun clearAllTables() {}
                 override fun createInvalidationTracker(): androidx.room.InvalidationTracker = mock()
                 override fun createOpenHelper(config: androidx.room.DatabaseConfiguration): androidx.sqlite.db.SupportSQLiteOpenHelper = mock()
@@ -662,6 +664,7 @@ class PantrySyncPhase4gDiscardSyncTest {
         val engine = object : FollowerLocalSyncEngine(
             followerDatabase = object : FollowerDatabase() {
                 override fun followerDao(): FollowerDao = followerDao
+                override fun mealRequestDao(): com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerMealRequestDao = error("Meal projection not used in this inventory fixture")
                 override fun clearAllTables() {}
                 override fun createInvalidationTracker(): androidx.room.InvalidationTracker = mock()
                 override fun createOpenHelper(config: androidx.room.DatabaseConfiguration): androidx.sqlite.db.SupportSQLiteOpenHelper = mock()
@@ -686,6 +689,7 @@ class PantrySyncPhase4gDiscardSyncTest {
             householdIdentityManager = HouseholdIdentityManager(mock()),
             followerDatabase = object : FollowerDatabase() {
                 override fun followerDao(): FollowerDao = followerDao
+                override fun mealRequestDao(): com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerMealRequestDao = error("Meal projection not used in this inventory fixture")
                 override fun clearAllTables() {}
                 override fun createInvalidationTracker(): androidx.room.InvalidationTracker = mock()
                 override fun createOpenHelper(config: androidx.room.DatabaseConfiguration): androidx.sqlite.db.SupportSQLiteOpenHelper = mock()
@@ -740,6 +744,7 @@ class PantrySyncPhase4gDiscardSyncTest {
         val failingEngine = object : FollowerLocalSyncEngine(
             followerDatabase = object : FollowerDatabase() {
                 override fun followerDao(): FollowerDao = followerDao
+                override fun mealRequestDao(): com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerMealRequestDao = error("Meal projection not used in this inventory fixture")
                 override fun clearAllTables() {}
                 override fun createInvalidationTracker(): androidx.room.InvalidationTracker = mock()
                 override fun createOpenHelper(config: androidx.room.DatabaseConfiguration): androidx.sqlite.db.SupportSQLiteOpenHelper = mock()
@@ -768,6 +773,7 @@ class PantrySyncPhase4gDiscardSyncTest {
             householdIdentityManager = HouseholdIdentityManager(mock()),
             followerDatabase = object : FollowerDatabase() {
                 override fun followerDao(): FollowerDao = followerDao
+                override fun mealRequestDao(): com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerMealRequestDao = error("Meal projection not used in this inventory fixture")
                 override fun clearAllTables() {}
                 override fun createInvalidationTracker(): androidx.room.InvalidationTracker = mock()
                 override fun createOpenHelper(config: androidx.room.DatabaseConfiguration): androidx.sqlite.db.SupportSQLiteOpenHelper = mock()
