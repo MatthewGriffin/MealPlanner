@@ -74,6 +74,14 @@ android {
     }
 }
 
+// Robolectric 4.14.1's ASM cannot read Java 25 runtime classes during sandbox cleanup.
+// Keep unit tests on Java 21 even when the Gradle daemon runs on a newer JDK.
+tasks.withType<Test>().configureEach {
+    javaLauncher.set(javaToolchains.launcherFor {
+        languageVersion.set(JavaLanguageVersion.of(21))
+    })
+}
+
 dependencies {
     implementation(project(":sync-contract"))
     implementation(project(":ai-contract"))

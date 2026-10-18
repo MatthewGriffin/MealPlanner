@@ -73,3 +73,34 @@ Isolated root cause: `kotlinx.coroutines.test.runTest` holds 45s `withTimeoutOrN
 
 ## Next Milestone
 - Phase 10 full implementation and test verification COMPLETE. Proceed to physical acceptance deployment on OnePlus Main & Samsung Follower when ready.
+
+
+## Phase 10 Meal Request Sync — JVM Verification (2026-10-18)
+
+- Inspected the full `Phase10MealRequestSyncTest` XML: all ten failures were
+  `IllegalArgumentException: Unsupported class file major version 69` in
+  Robolectric's ASM instrumentation during `Shadows.reset` cleanup.
+- Reproduced all ten failures with the configured Java 25 daemon/test runtime.
+  Dependency insight resolved Robolectric 4.14.1 and ASM 9.7.1. Effective Kotlin
+  compile targets were Java 17 in every module, including app unit tests; the
+  observed failure was not a Kotlin target mismatch.
+- Pinned app unit-test workers to Java 21 using Gradle's Java toolchain launcher.
+  The existing toolchain resolver can provision the runtime if needed. Verified
+  local selection of Temurin 21.0.6+7 even when launching Gradle with Java 25.
+  Gradle daemon settings, Java/Kotlin compilation targets, dependencies, test
+  assertions, and application/database code are unchanged.
+- Targeted verification: `:app:testDebugUnitTest --tests
+  'com.example.chatgpt_mealplanner.sync.Phase10MealRequestSyncTest'` passed all
+  **10 tests**, with no failures or skips. Coverage includes request/decision
+  round trips, replay protection, transaction rollback, additive migration
+  preservation, failure visibility, and bootstrap projection.
+- Full verification with `--no-daemon` and normal caching:
+  - `:app:assembleDebug`: **BUILD SUCCESSFUL** (53 tasks up-to-date).
+  - `:sync-contract:test :app:testDebugUnitTest`: **BUILD SUCCESSFUL**;
+    **810 app tests passed**, no failures/errors/skips. Sync-contract was
+    **UP-TO-DATE**, with its existing XML recording **9 passing tests**.
+- Inspected `build-and-test.sh` and ran its build/test commands directly, without
+  its preliminary pull, to verify this checkout without introducing remote changes.
+- No phone connections, deployment, pairing changes, Restore operations, or
+  persistent inventory/database changes were performed. Physical acceptance of
+  the latest Phase 10 changes remains separate and requires user confirmation.
