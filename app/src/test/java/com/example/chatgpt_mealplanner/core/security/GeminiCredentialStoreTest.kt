@@ -35,6 +35,12 @@ class GeminiCredentialStoreTest {
         credentialStore.saveKey("test_secret_gemini_key_123")
 
         val provider = GeminiMealPlannerAiProvider(credentialStore = credentialStore)
+        var capturedUrl = ""
+        provider.httpCallHandler = { url, _ ->
+            capturedUrl = url
+            Pair(200, """{"candidates":[{"content":{"parts":[{"text":"Success"}]}}]}""")
+        }
+
         assertTrue(credentialStore.hasKey())
         assertEquals("test_secret_gemini_key_123", credentialStore.loadKey())
 
@@ -48,7 +54,7 @@ class GeminiCredentialStoreTest {
         )
 
         val response = provider.send(request)
-        // With a key supplied, provider attempts network call and returns HTTP or Network Error, NOT NO_API_KEY!
+        assertTrue(capturedUrl.contains("key=test_secret_gemini_key_123"))
         assertNotEquals("NO_API_KEY", (response as? AiProviderResponse.Error)?.code)
     }
 
@@ -98,6 +104,11 @@ class GeminiCredentialStoreTest {
         // Navigate away and return
         assertTrue(credentialStore.hasKey())
         val provider = GeminiMealPlannerAiProvider(credentialStore = credentialStore)
+        var capturedUrl = ""
+        provider.httpCallHandler = { url, _ ->
+            capturedUrl = url
+            Pair(200, """{"candidates":[{"content":{"parts":[{"text":"Success"}]}}]}""")
+        }
 
         val request = AiProviderRequest(
             conversationId = "nav_test",
@@ -109,6 +120,7 @@ class GeminiCredentialStoreTest {
         )
 
         val response = provider.send(request)
+        assertTrue(capturedUrl.contains("key=valid_gemini_key"))
         assertNotEquals("NO_API_KEY", (response as? AiProviderResponse.Error)?.code)
     }
 }

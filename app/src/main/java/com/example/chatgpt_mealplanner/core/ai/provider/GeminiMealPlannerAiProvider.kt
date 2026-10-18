@@ -347,9 +347,14 @@ class GeminiMealPlannerAiProvider @Inject constructor(
 
         val customHandler = httpCallHandler
         if (customHandler != null) {
-            val (statusCode, responseText) = customHandler(urlStr, payload)
-            safeLog("[GEMINI_HTTP] phase=response_code, code=$statusCode, elapsedMs=${System.currentTimeMillis() - startTime}")
-            return parseGeminiResponse(statusCode, responseText, conversationId, historyContents, startTime, currentModel)
+            return try {
+                val (statusCode, responseText) = customHandler(urlStr, payload)
+                safeLog("[GEMINI_HTTP] phase=response_code, code=$statusCode, elapsedMs=${System.currentTimeMillis() - startTime}")
+                parseGeminiResponse(statusCode, responseText, conversationId, historyContents, startTime, currentModel)
+            } catch (e: SocketTimeoutException) {
+                safeLog("[GEMINI_HTTP] phase=timeout, exception=${e.javaClass.simpleName}, elapsedMs=${System.currentTimeMillis() - startTime}")
+                AiProviderResponse.Error("CONNECT_TIMEOUT", "Connection to Gemini timed out after ${System.currentTimeMillis() - startTime}ms.")
+            }
         }
 
         var connection: HttpURLConnection? = null

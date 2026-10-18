@@ -9,9 +9,9 @@ import com.example.chatgpt_mealplanner.contract.AiToolId
 import com.example.chatgpt_mealplanner.contract.AiToolResult
 import com.example.chatgpt_mealplanner.contract.UserPreferencesSummaryDto
 import com.example.chatgpt_mealplanner.core.security.FakeCredentialStore
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.test.UnconfinedTestDispatcher
-import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -38,7 +38,6 @@ class GeminiMealPlannerAiProviderTest {
 
     private lateinit var provider: GeminiMealPlannerAiProvider
     private lateinit var credentialStore: FakeCredentialStore
-    private val testDispatcher = UnconfinedTestDispatcher()
 
     private val emptyPayload = AiContextPayload(
         currentDate = "2026-09-28",
@@ -78,7 +77,7 @@ class GeminiMealPlannerAiProviderTest {
     @Before
     fun setup() {
         credentialStore = FakeCredentialStore("test_api_key")
-        provider = GeminiMealPlannerAiProvider(credentialStore = credentialStore, ioDispatcher = testDispatcher)
+        provider = GeminiMealPlannerAiProvider(credentialStore = credentialStore, ioDispatcher = Dispatchers.Unconfined)
     }
 
     @Test
@@ -90,7 +89,17 @@ class GeminiMealPlannerAiProviderTest {
     }
 
     @Test
-    fun geminiProvider_blockingNetworkCall_doesNotExecuteOnMainDispatcher() = runTest {
+    fun geminiProvider_blockingNetworkCall_doesNotExecuteOnMainDispatcher() = runBlocking {
+        var executedOffMain = false
+        // Test dispatcher override explicitly for off-main verification
+        val ioProvider = GeminiMealPlannerAiProvider(credentialStore = credentialStore, ioDispatcher = Dispatchers.IO)
+        ioProvider.httpCallHandler = { _, _ ->
+            if (Thread.currentThread().name != "main") {
+                executedOffMain = true
+            }
+            Pair(503, makeErrorBody(503, "Service Unavailable"))
+        }
+
         val request = AiProviderRequest(
             conversationId = "test_conv",
             systemPrompt = "Prompt",
@@ -100,14 +109,21 @@ class GeminiMealPlannerAiProviderTest {
             availableTools = emptyList()
         )
 
-        val response = provider.send(request)
+        val response = ioProvider.send(request)
         assertTrue(response is AiProviderResponse.Error)
         assertNotEquals("NO_API_KEY", (response as AiProviderResponse.Error).code)
+        assertTrue("Network calls MUST execute off the main thread", executedOffMain)
     }
 
     @Test
-    fun geminiProvider_existingCredential_reachesNetworkRequest() = runTest {
+    fun geminiProvider_existingCredential_reachesNetworkRequest() = runBlocking {
         credentialStore.saveKey("valid_persisted_key_456")
+        var capturedUrl = ""
+        provider.httpCallHandler = { url, _ ->
+            capturedUrl = url
+            Pair(200, makeSuccessBody("Success"))
+        }
+
         val request = AiProviderRequest(
             conversationId = "test_conv",
             systemPrompt = "Prompt",
@@ -118,12 +134,16 @@ class GeminiMealPlannerAiProviderTest {
         )
 
         val response = provider.send(request)
-        assertTrue(response is AiProviderResponse.Error)
-        assertNotEquals("NO_API_KEY", (response as AiProviderResponse.Error).code)
+        assertTrue(capturedUrl.contains("key=valid_persisted_key_456"))
+        assertNotEquals("NO_API_KEY", (response as? AiProviderResponse.Error)?.code)
     }
 
     @Test
-    fun geminiProvider_networkFailure_returnsErrorNotSuccess() = runTest {
+    fun geminiProvider_networkFailure_returnsErrorNotSuccess() = runBlocking {
+        provider.httpCallHandler = { _, _ ->
+            Pair(503, makeErrorBody(503, "Network Unavailable"))
+        }
+
         val request = AiProviderRequest(
             conversationId = "test_conv",
             systemPrompt = "Prompt",
@@ -138,7 +158,11 @@ class GeminiMealPlannerAiProviderTest {
     }
 
     @Test
-    fun geminiProvider_networkFailure_neverReturnsActionCompletedSuccessfully() = runTest {
+    fun geminiProvider_networkFailure_neverReturnsActionCompletedSuccessfully() = runBlocking {
+        provider.httpCallHandler = { _, _ ->
+            Pair(503, makeErrorBody(503, "Network Unavailable"))
+        }
+
         val request = AiProviderRequest(
             conversationId = "test_conv",
             systemPrompt = "Prompt",
@@ -154,7 +178,7 @@ class GeminiMealPlannerAiProviderTest {
     }
 
     @Test
-    fun primarySuccess_doesNotFallback() = runTest {
+    fun primarySuccess_doesNotFallback() = runBlocking {
         val requestedModels = mutableListOf<String>()
         provider.httpCallHandler = { urlStr, _ ->
             val model = urlStr.substringAfter("/models/").substringBefore(":")
@@ -172,7 +196,7 @@ class GeminiMealPlannerAiProviderTest {
     }
 
     @Test
-    fun primary429_immediatelyFallsBackTo36() = runTest {
+    fun primary429_immediatelyFallsBackTo36() = runBlocking {
         val requestedModels = mutableListOf<String>()
         provider.httpCallHandler = { urlStr, _ ->
             val model = urlStr.substringAfter("/models/").substringBefore(":")
@@ -194,7 +218,7 @@ class GeminiMealPlannerAiProviderTest {
     }
 
     @Test
-    fun primary503RetryThenFallsBackTo36() = runTest {
+    fun primary503RetryThenFallsBackTo36() = runBlocking {
         val requestedModels = mutableListOf<String>()
         provider.httpCallHandler = { urlStr, _ ->
             val model = urlStr.substringAfter("/models/").substringBefore(":")
@@ -216,15 +240,15 @@ class GeminiMealPlannerAiProviderTest {
     }
 
     @Test
-    fun secondary429_immediatelyFallsBackTo35FlashLite() = runTest {
+    fun secondary429_immediatelyFallsBackTo35FlashLite() = runBlocking {
         val requestedModels = mutableListOf<String>()
         provider.httpCallHandler = { urlStr, _ ->
             val model = urlStr.substringAfter("/models/").substringBefore(":")
             requestedModels.add(model)
-            if (model == "gemini-3.7-flash" || model == "gemini-3.6-flash") {
-                Pair(429, makeErrorBody(429, "Quota limit"))
-            } else {
-                Pair(200, makeSuccessBody("Success from 3.5-flash-lite"))
+            when (model) {
+                "gemini-3.7-flash", "gemini-3.6-flash" -> Pair(429, makeErrorBody(429, "Quota limit"))
+                "gemini-3.5-flash-lite" -> Pair(200, makeSuccessBody("Success from 3.5-flash-lite"))
+                else -> Pair(400, makeErrorBody(400, "Unexpected model: $model"))
             }
         }
 
@@ -238,7 +262,7 @@ class GeminiMealPlannerAiProviderTest {
     }
 
     @Test
-    fun secondary503RetryThenFallsBackTo35FlashLite() = runTest {
+    fun secondary503RetryThenFallsBackTo35FlashLite() = runBlocking {
         val requestedModels = mutableListOf<String>()
         provider.httpCallHandler = { urlStr, _ ->
             val model = urlStr.substringAfter("/models/").substringBefore(":")
@@ -259,7 +283,7 @@ class GeminiMealPlannerAiProviderTest {
     }
 
     @Test
-    fun modelSpecific404_immediatelySkipsModel() = runTest {
+    fun modelSpecific404_immediatelySkipsModel() = runBlocking {
         val requestedModels = mutableListOf<String>()
         provider.httpCallHandler = { urlStr, _ ->
             val model = urlStr.substringAfter("/models/").substringBefore(":")
@@ -280,7 +304,7 @@ class GeminiMealPlannerAiProviderTest {
     }
 
     @Test
-    fun flashLite_canCompleteRequest() = runTest {
+    fun flashLite_canCompleteRequest() = runBlocking {
         val requestedModels = mutableListOf<String>()
         provider.httpCallHandler = { urlStr, _ ->
             val model = urlStr.substringAfter("/models/").substringBefore(":")
@@ -301,7 +325,7 @@ class GeminiMealPlannerAiProviderTest {
     }
 
     @Test
-    fun globalAttemptLimit_neverExceeds4() = runTest {
+    fun globalAttemptLimit_neverExceeds4() = runBlocking {
         var totalHttpCalls = 0
         provider.httpCallHandler = { _, _ ->
             totalHttpCalls++
@@ -315,7 +339,7 @@ class GeminiMealPlannerAiProviderTest {
     }
 
     @Test
-    fun arbitrary404_doesNotBlindlyFallback() = runTest {
+    fun arbitrary404_doesNotBlindlyFallback() = runBlocking {
         val requestedModels = mutableListOf<String>()
         provider.httpCallHandler = { urlStr, _ ->
             val model = urlStr.substringAfter("/models/").substringBefore(":")
@@ -332,7 +356,7 @@ class GeminiMealPlannerAiProviderTest {
     }
 
     @Test
-    fun rawGoogleErrors_areNotShownToUser() = runTest {
+    fun rawGoogleErrors_areNotShownToUser() = runBlocking {
         provider.httpCallHandler = { _, _ ->
             Pair(404, "{\"error\":{\"code\":404,\"message\":\"models/gemini-3.7-flash is not found for API version v1beta\"}}")
         }
@@ -347,7 +371,7 @@ class GeminiMealPlannerAiProviderTest {
     }
 
     @Test
-    fun readToolFallback_doesNotClaimActionApplied() = runTest {
+    fun readToolFallback_doesNotClaimActionApplied() = runBlocking {
         val requestedModels = mutableListOf<String>()
         provider.httpCallHandler = { urlStr, _ ->
             val model = urlStr.substringAfter("/models/").substringBefore(":")
@@ -381,7 +405,7 @@ class GeminiMealPlannerAiProviderTest {
     }
 
     @Test
-    fun whatIsForDinner_neverClaimsActionAppliedWithoutCommittedWrite() = runTest {
+    fun whatIsForDinner_neverClaimsActionAppliedWithoutCommittedWrite() = runBlocking {
         provider.httpCallHandler = { _, _ ->
             Pair(503, makeErrorBody(503, "All models busy"))
         }
@@ -396,7 +420,7 @@ class GeminiMealPlannerAiProviderTest {
     }
 
     @Test
-    fun fallback_doesNotDuplicateUserMessage() = runTest {
+    fun fallback_doesNotDuplicateUserMessage() = runBlocking {
         val payloads = mutableListOf<JsonObject>()
         provider.httpCallHandler = { urlStr, payload ->
             payloads.add(payload)
@@ -421,7 +445,7 @@ class GeminiMealPlannerAiProviderTest {
     }
 
     @Test
-    fun fallback_doesNotDuplicateToolMutation() = runTest {
+    fun fallback_doesNotDuplicateToolMutation() = runBlocking {
         val payloads = mutableListOf<JsonObject>()
         provider.httpCallHandler = { urlStr, payload ->
             payloads.add(payload)
@@ -442,7 +466,7 @@ class GeminiMealPlannerAiProviderTest {
     }
 
     @Test
-    fun fallbackAfterSuccessfulMutation_doesNotReplayMutation() = runTest {
+    fun fallbackAfterSuccessfulMutation_doesNotReplayMutation() = runBlocking {
         val payloads = mutableListOf<JsonObject>()
         provider.httpCallHandler = { urlStr, payload ->
             payloads.add(payload)
@@ -480,7 +504,7 @@ class GeminiMealPlannerAiProviderTest {
     }
 
     @Test
-    fun executeDiagnosticBisectionAndAudit() = runTest {
+    fun executeDiagnosticBisectionAndAudit() = runBlocking {
         val systemPrompt = "You are Pantry Planner AI, an expert household meal planning and inventory assistant.\nDatabase is authoritative. Use tools for dynamic queries. Household size default is 2."
         val contextJson = "{\"currentDate\":\"2026-09-28\",\"dayOfWeek\":\"MONDAY\",\"householdSize\":2,\"preferences\":{\"householdSize\":2,\"preferFrozenVegetables\":true,\"preferGarlicPowderOverFresh\":true},\"recentCookedMeals\":[],\"upcomingPlannedMeals\":[],\"availableLeftovers\":[],\"useSoonItems\":[],\"lowStockStaples\":[],\"activeShoppingList\":[]}"
         val userMsg = AiChatMessage(role = "user", content = "What can I make for dinner tonight?")
@@ -584,7 +608,7 @@ class GeminiMealPlannerAiProviderTest {
     }
 
     @Test
-    fun provider_forcedTool_serializesGeminiToolConfig() = runTest {
+    fun provider_forcedTool_serializesGeminiToolConfig() = runBlocking {
         var capturedPayload: JsonObject? = null
         provider.httpCallHandler = { _, payload ->
             capturedPayload = payload
@@ -612,7 +636,7 @@ class GeminiMealPlannerAiProviderTest {
     }
 
     @Test
-    fun normalProviderRequest_doesNotForceToolConfig() = runTest {
+    fun normalProviderRequest_doesNotForceToolConfig() = runBlocking {
         var capturedPayload: JsonObject? = null
         provider.httpCallHandler = { _, payload ->
             capturedPayload = payload
@@ -639,7 +663,7 @@ class GeminiMealPlannerAiProviderTest {
     }
 
     @Test
-    fun send_whenTimeoutError_returnsTypedRequestTimeoutError() = runTest {
+    fun send_whenTimeoutError_returnsTypedRequestTimeoutError() = runBlocking {
         provider.httpCallHandler = { _, _ ->
             throw java.net.SocketTimeoutException("Read timed out")
         }
