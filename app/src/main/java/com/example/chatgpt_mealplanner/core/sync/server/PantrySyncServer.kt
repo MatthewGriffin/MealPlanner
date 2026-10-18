@@ -1,5 +1,6 @@
 package com.example.chatgpt_mealplanner.core.sync.server
 
+import com.example.chatgpt_mealplanner.core.database.entity.toDomainModel
 import com.example.chatgpt_mealplanner.core.database.DatabaseTransactionRunner
 import com.example.chatgpt_mealplanner.core.database.dao.CanonicalSyncDao
 import com.example.chatgpt_mealplanner.core.database.dao.InventoryDao
@@ -63,7 +64,8 @@ open class PantrySyncServer @Inject constructor(
     private val inventoryDao: InventoryDao,
     private val transactionRunner: DatabaseTransactionRunner? = null,
     private val invitationManager: PantryEnrollmentInvitationManager? = null,
-    private val mealChangeRequestDao: MealChangeRequestDao? = null
+    private val mealChangeRequestDao: MealChangeRequestDao? = null,
+    private val mealDao: com.example.chatgpt_mealplanner.core.database.dao.MealDao? = null
 ) {
     private var engine: io.ktor.server.engine.ApplicationEngine? = null
     private var serverState = PantryServerState.STOPPED
@@ -82,7 +84,7 @@ open class PantrySyncServer @Inject constructor(
         engine = null
         serverState = PantryServerState.FAILED
     }
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
     var onBeforeSnapshotReadHook: (() -> Unit)? = null
     var onInsideSnapshotTransactionHook: (() -> Unit)? = null
@@ -96,20 +98,32 @@ open class PantrySyncServer @Inject constructor(
         onBeforeSnapshotReadHook?.invoke()
         val householdId = identityManager.getOrCreateHouseholdIdentity().householdId
 
-        val (latestSeq, invItems, mealRequests) = if (transactionRunner != null) {
+        val (latestSeq, invItems, mealData) = if (transactionRunner != null) {
             transactionRunner.runInTransaction {
                 val seq = canonicalSyncDao.getLatestCanonicalSequence() ?: 0L
                 onInsideSnapshotTransactionHook?.invoke()
                 val items = inventoryDao.getAllItemsSync()
-                Triple(seq, items, mealChangeRequestDao?.getAllRequestsSync().orEmpty().map { it.toSyncDto() })
+                Triple(seq, items, Pair(mealChangeRequestDao?.getAllRequestsSync().orEmpty().map { it.toSyncDto() },
+                    mealDao?.getAllMealsWithIngredientsSync()?.map { row ->
+                        val model = com.example.chatgpt_mealplanner.core.model.MealWithIngredients(
+                            row.meal.toDomainModel(), row.ingredients.map { it.toDomainModel() })
+                        json.decodeFromString<com.example.chatgpt_mealplanner.sync.contract.MealWithIngredientsSyncDto>(json.encodeToString(model))
+                    }))
             }
         } else {
             val seq = canonicalSyncDao.getLatestCanonicalSequence() ?: 0L
             onInsideSnapshotTransactionHook?.invoke()
             val items = inventoryDao.getAllItemsSync()
-            Triple(seq, items, mealChangeRequestDao?.getAllRequestsSync().orEmpty().map { it.toSyncDto() })
+            Triple(seq, items, Pair(mealChangeRequestDao?.getAllRequestsSync().orEmpty().map { it.toSyncDto() },
+                    mealDao?.getAllMealsWithIngredientsSync()?.map { row ->
+                        val model = com.example.chatgpt_mealplanner.core.model.MealWithIngredients(
+                            row.meal.toDomainModel(), row.ingredients.map { it.toDomainModel() })
+                        json.decodeFromString<com.example.chatgpt_mealplanner.sync.contract.MealWithIngredientsSyncDto>(json.encodeToString(model))
+                    }))
         }
 
+        val (mealRequests, mealPlan) = mealData
+        if ((mealPlan?.size ?: 0) > MAX_BOOTSTRAP_ITEMS) throw SnapshotTooLargeException("Meal plan too large")
         if (invItems.size > MAX_BOOTSTRAP_ITEMS || mealRequests.size > MAX_BOOTSTRAP_ITEMS) {
             throw SnapshotTooLargeException("Bootstrap snapshot item count ${invItems.size} exceeds maximum limit of $MAX_BOOTSTRAP_ITEMS")
         }
@@ -136,7 +150,8 @@ open class PantrySyncServer @Inject constructor(
             householdId = householdId,
             snapshotCanonicalSequence = latestSeq,
             inventoryItems = syncItems,
-            mealRequests = mealRequests
+            mealRequests = mealRequests,
+            mealPlan = mealPlan
         )
         onAfterSnapshotReadHook?.invoke()
         return dto

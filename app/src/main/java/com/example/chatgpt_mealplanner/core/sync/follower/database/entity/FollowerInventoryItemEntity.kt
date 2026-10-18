@@ -45,6 +45,10 @@ fun FollowerInventoryItemEntity.toDomainModel(): com.example.chatgpt_mealplanner
         category = parsedCategory,
         storageLocation = parsedLocation,
         quantity = quantity,
+        // The current inventory protocol carries the numeric quantity, not its precision.
+        quantityConfidence = if (quantity != null && parsedUnit != null)
+            com.example.chatgpt_mealplanner.core.model.QuantityConfidence.APPROXIMATE
+        else com.example.chatgpt_mealplanner.core.model.QuantityConfidence.UNKNOWN,
         quantityUnit = parsedUnit,
         notes = notes,
         status = parsedStatus,

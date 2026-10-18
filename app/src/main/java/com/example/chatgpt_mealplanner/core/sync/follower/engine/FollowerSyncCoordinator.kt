@@ -25,7 +25,8 @@ open class FollowerSyncCoordinator @Inject constructor(
     private val followerBootstrapEngine: FollowerBootstrapEngine?,
     private val pantrySyncTestClient: PantrySyncTestClient?,
     private val followerPairingStore: FollowerPairingStore?,
-    private val statusRepository: FollowerSyncStatusRepository?
+    private val statusRepository: FollowerSyncStatusRepository?,
+    private val mealPlanSyncEngine: FollowerMealPlanSyncEngine? = null
 ) {
     private val stateLock = Any()
 
@@ -215,6 +216,13 @@ open class FollowerSyncCoordinator @Inject constructor(
                 "AUTH_FAILURE" -> { statusRepository?.reportAuthenticationError("Feed pull auth failed"); return false }
                 else -> { statusRepository?.reportTransientSyncError("Feed pull error"); return false }
             }
+        }
+
+        if (mealPlanSyncEngine != null && !mealPlanSyncEngine.refresh(
+                hostIp, port, pinnedCertFingerprint, tokenToUse, sessionRefreshLambda,
+                followerPairingStore?.getPairingConfig()?.householdId)) {
+            statusRepository?.reportTransientSyncError("Meal plan refresh failed")
+            return false
         }
 
         statusRepository?.clearSyncError()

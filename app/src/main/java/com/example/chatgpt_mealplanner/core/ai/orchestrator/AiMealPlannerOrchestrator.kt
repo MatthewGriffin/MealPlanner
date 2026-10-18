@@ -766,16 +766,13 @@ class AiMealPlannerOrchestrator @Inject constructor(
     }
 
     private fun sanitizeUncommittedPlannerClaims(text: String): String {
-        val sentencePatterns = listOf(
-            Regex("(?i)I (?:have )?(?:added|scheduled|put|placed|saved) [^.!\n]+(?:to|on|in) (?:your |the )?(?:meal plan|planner|calendar|schedule)[^.!\n]*[.!\n]?"),
-            Regex("(?i)Added [^.!\n]+ to (?:your |the )?(?:meal plan|planner|calendar|schedule)[^.!\n]*[.!\n]?"),
-            Regex("(?i)It's now (?:added|saved|scheduled) (?:to|on) (?:your |the )?(?:meal plan|planner)[^.!\n]*[.!\n]?")
-        )
-        var sanitized = text
-        for (pat in sentencePatterns) {
-            sanitized = pat.replace(sanitized, "").trim()
-        }
-        return sanitized
+        // Model prose is not evidence of a database write. Cover contractions,
+        // plural meals and passive completion claims as well as "I have added".
+        val normalized = text.replace("’", "'").replace(Regex("(?i)\\bI've\\b"), "I have")
+        val completion = Regex("(?i)(?:I (?:have )?(?:now )?(?:added|scheduled|put|placed|saved)[^.!\n]*(?:meal|plan|dinner|week|calendar|lunch|breakfast|menu)|(?:meals?|dinners?|plan)[^.!\n]*(?:have been|has been|were|was|are now|is now) (?:added|saved|scheduled)|(?:added|saved|scheduled)[^.!\n]*(?:meal plan|planner|calendar)|(?:meal plan|planner) (?:is|has been) (?:updated|saved))")
+        return if (completion.containsMatchIn(normalized)) {
+            "No meal-plan changes were saved in this turn. Please ask me to try again or confirm a meal proposal before adding it."
+        } else text
     }
 
     private fun safeLog(msg: String) {

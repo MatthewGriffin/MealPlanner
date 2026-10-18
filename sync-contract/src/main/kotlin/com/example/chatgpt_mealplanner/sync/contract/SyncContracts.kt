@@ -99,7 +99,8 @@ data class BootstrapResponseDto(
     val householdId: String,
     val snapshotCanonicalSequence: Long,
     val inventoryItems: List<InventoryItemSyncDto>,
-    val mealRequests: List<MealChangeRequestSyncDto> = emptyList()
+    val mealRequests: List<MealChangeRequestSyncDto> = emptyList(),
+    val mealPlan: List<MealWithIngredientsSyncDto>? = null
 )
 
 @Serializable

@@ -102,18 +102,26 @@ val FOLLOWER_MIGRATION_4_5 = object : Migration(4, 5) {
     }
 }
 
+val FOLLOWER_MIGRATION_5_6 = object : Migration(5, 6) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS follower_meals (id TEXT NOT NULL PRIMARY KEY, payloadJson TEXT NOT NULL)")
+    }
+}
+
 @Database(
     entities = [
         FollowerInventoryItemEntity::class,
         FollowerSyncOutboxEntity::class,
         FollowerDeviceSequenceEntity::class,
         FollowerSyncMetadataEntity::class,
+        com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerMealEntity::class,
         FollowerMealRequestEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class FollowerDatabase : RoomDatabase() {
+    abstract fun mealDao(): com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerMealDao
     abstract fun followerDao(): FollowerDao
     abstract fun mealRequestDao(): FollowerMealRequestDao
 }

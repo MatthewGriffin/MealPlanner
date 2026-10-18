@@ -149,6 +149,7 @@ class PantrySyncPhase4gFollowerRoomTest {
     private class TestFollowerDatabase(private val conn: java.sql.Connection) : FollowerDatabase() {
         private val dao = TestJdbcFollowerDao(conn)
         override fun followerDao(): FollowerDao = dao
+        override fun mealDao(): com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerMealDao = error("Meal DAO not used by this fake")
         override fun mealRequestDao(): com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerMealRequestDao = error("Meal projection not used in this inventory fixture")
         override fun beginTransaction() { conn.setAutoCommit(false) }
         override fun setTransactionSuccessful() {}

@@ -174,6 +174,28 @@ class AiOrchestratorIntegrationTest {
     }
 
     @Test
+    fun weeklyPlanConfirmation_withoutToolWrite_neverClaimsPlanWasSaved() = runTest {
+        for (claim in listOf("Great, I've added that plan for the rest of the week.",
+            "All set! I have now added the plan.", "Your meals have been scheduled.")) {
+            val provider = object : MealPlannerAiProvider {
+                override suspend fun testConnection() = AiProviderResponse.FinalResponse("OK")
+                override suspend fun send(request: AiProviderRequest) = AiProviderResponse.FinalResponse(claim)
+                override suspend fun continueWithToolResults(request: AiContinueWithToolsRequest) = AiProviderResponse.FinalResponse(claim)
+            }
+            val orchestrator = AiMealPlannerOrchestrator(
+                provider = provider, contextBuilder = contextBuilder, toolDispatcher = aiToolDispatcher,
+                recipeValidator = RecipeValidator(inventoryDao, mealDao), intentResolver = intentResolver,
+                chatRepository = chatRepository, pendingMutationStore = pendingMutationStore,
+                activeProposalStore = activeProposalStore)
+            val result = orchestrator.processUserMessage("conv_1", "sounds good")
+            assertTrue(result is AiOrchestrationResult.Final)
+            val text = (result as AiOrchestrationResult.Final).assistantText
+            assertTrue(text, text.contains("No meal-plan changes were saved"))
+            assertTrue(mealDao.getAllMealsWithIngredientsSync().isEmpty())
+        }
+    }
+
+    @Test
     fun orchestrator_executesWriteToolWithIntentScope_andPersistsMessage() = runTest {
         val mockProvider = object : MealPlannerAiProvider {
             override suspend fun testConnection(): AiProviderResponse = AiProviderResponse.FinalResponse("Connected")

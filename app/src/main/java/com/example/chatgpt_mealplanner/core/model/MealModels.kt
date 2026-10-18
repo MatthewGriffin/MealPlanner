@@ -34,6 +34,7 @@ enum class MealTag {
     BATCH_COOK
 }
 
+@kotlinx.serialization.Serializable
 data class Meal(
     val id: String,
     val date: String, // ISO-8601 Date (YYYY-MM-DD)
@@ -69,6 +70,7 @@ data class MealIngredient(
     val substitutedDisplayName: String? = null
 )
 
+@kotlinx.serialization.Serializable
 data class MealWithIngredients(
     val meal: Meal,
     val ingredients: List<MealIngredient>

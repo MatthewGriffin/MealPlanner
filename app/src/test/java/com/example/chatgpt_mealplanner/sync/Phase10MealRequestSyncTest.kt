@@ -184,7 +184,8 @@ class Phase10MealRequestSyncTest {
         val name = "phase10_migration_${UUID.randomUUID()}.db"
         fun open() = Room.databaseBuilder(context, FollowerDatabase::class.java, name)
             .allowMainThreadQueries()
-            .addMigrations(com.example.chatgpt_mealplanner.core.sync.follower.database.FOLLOWER_MIGRATION_4_5).build()
+            .addMigrations(com.example.chatgpt_mealplanner.core.sync.follower.database.FOLLOWER_MIGRATION_4_5,
+                com.example.chatgpt_mealplanner.core.sync.follower.database.FOLLOWER_MIGRATION_5_6).build()
         var disk = open()
         try {
             val diskLocal = FollowerLocalSyncEngine(disk, null, null, disk.mealRequestDao())
@@ -216,7 +217,8 @@ class Phase10MealRequestSyncTest {
         val name = "phase10_legacy_outbox_${UUID.randomUUID()}.db"
         fun open() = Room.databaseBuilder(context, FollowerDatabase::class.java, name)
             .allowMainThreadQueries()
-            .addMigrations(com.example.chatgpt_mealplanner.core.sync.follower.database.FOLLOWER_MIGRATION_4_5).build()
+            .addMigrations(com.example.chatgpt_mealplanner.core.sync.follower.database.FOLLOWER_MIGRATION_4_5,
+                com.example.chatgpt_mealplanner.core.sync.follower.database.FOLLOWER_MIGRATION_5_6).build()
         var disk = open()
         try {
             val beforeUpgrade = FollowerLocalSyncEngine(disk, null, null, disk.mealRequestDao())
