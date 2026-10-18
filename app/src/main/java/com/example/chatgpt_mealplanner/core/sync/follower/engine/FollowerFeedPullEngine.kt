@@ -7,6 +7,8 @@ import com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerD
 import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerInventoryItemEntity
 import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerSyncMetadataEntity
 import com.example.chatgpt_mealplanner.sync.contract.SyncOperationStatus
+import com.example.chatgpt_mealplanner.sync.contract.SyncOperationType
+import com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerMealRequestDao
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -23,7 +25,8 @@ data class FollowerFeedPullSummary(
 open class FollowerFeedPullEngine @Inject constructor(
     private val followerDatabase: FollowerDatabase?,
     private val pantrySyncTestClient: PantrySyncTestClient,
-    private val localSyncEngine: FollowerLocalSyncEngine
+    private val localSyncEngine: FollowerLocalSyncEngine,
+    private val mealRequestDao: FollowerMealRequestDao? = null
 ) {
     open suspend fun performFeedPullPass(
         hostIp: String,
@@ -107,12 +110,27 @@ open class FollowerFeedPullEngine @Inject constructor(
             if (response.items.isEmpty()) {
                 break
             }
+            check(response.items.zipWithNext().all { (a, b) -> a.canonicalSequence < b.canonicalSequence }) {
+                "Feed entries must be ordered by canonical sequence"
+            }
+            check(!hasMore || response.items.last().canonicalSequence > currentCursor) {
+                "Feed pagination did not advance"
+            }
 
             for (feedItem in response.items) {
+                // A replayed page must never move the cursor backwards.
+                if (feedItem.canonicalSequence <= currentCursor) continue
                 totalProcessed++
 
                 val block: suspend () -> Unit = {
-                    if (feedItem.sourceDeviceId == followerDeviceId) {
+                    val isMealEvent = feedItem.operationType == SyncOperationType.CREATE_MEAL_CHANGE_REQUEST ||
+                        feedItem.operationType == SyncOperationType.UPDATE_MEAL_CHANGE_REQUEST_STATUS
+                    if (isMealEvent) {
+                        if (feedItem.status == SyncOperationStatus.APPLIED) {
+                            val requests = checkNotNull(mealRequestDao) { "Meal projection unavailable; retaining feed cursor" }
+                            FollowerMealRequestProjector.apply(requests, feedItem)
+                        }
+                    } else if (feedItem.sourceDeviceId == followerDeviceId) {
                         // Own-device operation: Already reconciled during upload, BUT still advance cursor!
                         totalOwnSkipped++
                     } else {
@@ -180,11 +198,10 @@ open class FollowerFeedPullEngine @Inject constructor(
                             )
                         }
                     }
-                    currentCursor = feedItem.canonicalSequence
                     val currentMeta = dao.getSyncMetadata() ?: FollowerSyncMetadataEntity(singletonId = 1, lastReconciledCanonicalSequence = 0L)
                     dao.updateSyncMetadata(
                         currentMeta.copy(
-                            lastReconciledCanonicalSequence = currentCursor
+                            lastReconciledCanonicalSequence = feedItem.canonicalSequence
                         )
                     )
                 }
@@ -194,6 +211,7 @@ open class FollowerFeedPullEngine @Inject constructor(
                 } else {
                     block()
                 }
+                currentCursor = feedItem.canonicalSequence
             }
         }
 

@@ -125,6 +125,11 @@ open class FollowerSyncUploader @Inject constructor(
                     totalProcessed++
 
                     if (resultDto != null) {
+                        if (op.operationType == SyncOperationType.CREATE_MEAL_CHANGE_REQUEST.name) {
+                            localSyncEngine.reconcileMealRequestUpload(op, resultDto)
+                            if (resultDto.status == SyncOperationStatus.APPLIED) totalApplied++ else totalRejected++
+                            continue
+                        }
                         dao.reconcileOutboxResult(
                             operationId = op.operationId,
                             status = resultDto.status.name,

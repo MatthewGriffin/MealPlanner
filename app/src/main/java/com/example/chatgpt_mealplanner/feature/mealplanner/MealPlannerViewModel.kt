@@ -106,7 +106,11 @@ class MealPlannerViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 mealChangeRequestRepository.submitRequest(mealId, requestText)
-                userMessageFlow.value = "Change request submitted successfully"
+                userMessageFlow.value = if (appRoleResolver.isFollowerAsync()) {
+                    "Change request queued for Main. It will send when connected."
+                } else {
+                    "Change request saved"
+                }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: IllegalArgumentException) {

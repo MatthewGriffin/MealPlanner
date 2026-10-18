@@ -4,6 +4,10 @@ import android.content.Context
 import androidx.room.withTransaction
 import com.example.chatgpt_mealplanner.core.sync.follower.database.FollowerDatabase
 import com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerDao
+import com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerMealRequestDao
+import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerMealRequestEntity
+import com.example.chatgpt_mealplanner.sync.contract.SyncOperationResultDto
+import com.example.chatgpt_mealplanner.sync.contract.SyncOperationStatus
 import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerDeviceSequenceEntity
 import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerInventoryItemEntity
 import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerSyncOutboxEntity
@@ -31,7 +35,8 @@ class DuplicateDiscardRequestException(val targetItemId: String) :
 open class FollowerLocalSyncEngine @Inject constructor(
     private val followerDatabase: FollowerDatabase?,
     private val followerSyncScheduler: FollowerSyncScheduler?,
-    @param:ApplicationContext private val context: Context?
+    @param:ApplicationContext private val context: Context?,
+    private val mealRequestDao: FollowerMealRequestDao? = null
 ) {
     constructor() : this(null, null, null)
 
@@ -465,7 +470,7 @@ open class FollowerLocalSyncEngine @Inject constructor(
 
     /**
      * Record a meal-change request durably in the follower outbox.
-     * This primitive is not connected to the UI until Main can accept requests.
+     * The production projection and outbox are committed in the same database.
      */
     open suspend fun recordLocalMealChangeRequest(
         deviceId: String,
@@ -499,10 +504,41 @@ open class FollowerLocalSyncEngine @Inject constructor(
                 createdLocallyAt = now
             )
             dao.insertOutboxOperation(outbox)
+            mealRequestDao?.insert(FollowerMealRequestEntity(
+                id = requestId, mealId = mealId, authorDeviceId = deviceId,
+                requestText = requestText, status = "QUEUED", mainResponse = null,
+                createdAt = now, updatedAt = now, canonicalSequence = 0L
+            ))
             outbox
         }
         notifyOutboxCommitted()
         return result
+    }
+
+    open suspend fun reconcileMealRequestUpload(
+        op: FollowerSyncOutboxEntity,
+        result: SyncOperationResultDto
+    ) {
+        require(result.operationId == op.operationId && result.deviceId == op.deviceId)
+        runTransaction { dao ->
+            val requests = checkNotNull(mealRequestDao) { "Meal projection unavailable" }
+            val payload = json.decodeFromString<CreateMealChangeRequestPayloadDto>(op.payloadJson)
+            val existing = checkNotNull(requests.getById(payload.requestId)) { "Queued meal request not found" }
+            val now = System.currentTimeMillis()
+            // A feed decision can arrive before an upload retry completes. Never
+            // replace a newer authoritative decision with the create acknowledgement.
+            if (existing.canonicalSequence == 0L) {
+                val applied = result.status == SyncOperationStatus.APPLIED
+                requests.upsert(existing.copy(
+                    status = if (applied) "PENDING" else "SYNC_FAILED",
+                    mainResponse = if (applied) null else "Main did not accept this request: ${result.resultCode}",
+                    updatedAt = now,
+                    canonicalSequence = if (applied) result.canonicalSequence ?: 0L else 0L
+                ))
+            }
+            dao.reconcileOutboxResult(op.operationId, result.status.name, result.canonicalSequence,
+                result.resultCode, result.resultingRevision, result.conflictId, result.approvalId, now)
+        }
     }
 
     open suspend fun recordLocalRequestDiscard(

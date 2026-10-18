@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -127,6 +128,9 @@ fun MealPlannerScreen(
                     when (uiState.activeTab) {
                         MealPlannerTab.PLANNER -> {
                             Column(modifier = Modifier.fillMaxSize()) {
+                                if (uiState.isFollower && uiState.allChangeRequests.isNotEmpty()) {
+                                    FollowerRequestStatusSection(uiState.allChangeRequests)
+                                }
                                 if (!uiState.isFollower && uiState.allChangeRequests.isNotEmpty()) {
                                     MainRequestReviewSection(
                                         requests = uiState.allChangeRequests,
@@ -376,6 +380,42 @@ fun MealCard(
 }
 
 @Composable
+fun FollowerRequestStatusSection(
+    requests: List<com.example.chatgpt_mealplanner.core.database.entity.MealChangeRequestEntity>
+) {
+    Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+        Text("Meal change requests", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(requests, key = { it.id }) { request ->
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(request.requestText, style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            text = when (request.status) {
+                                "QUEUED" -> "Waiting to send"
+                                "PENDING" -> "Awaiting Main's decision"
+                                "ACCEPTED" -> "Accepted"
+                                "DECLINED" -> "Declined"
+                                "DISCUSSED" -> "Discussed"
+                                "SYNC_FAILED" -> "Could not send"
+                                else -> request.status
+                            },
+                            style = MaterialTheme.typography.labelMedium,
+                            color = if (request.status == "SYNC_FAILED") MaterialTheme.colorScheme.error
+                                else MaterialTheme.colorScheme.primary
+                        )
+                        request.mainResponse?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun MainRequestReviewSection(
     requests: List<com.example.chatgpt_mealplanner.core.database.entity.MealChangeRequestEntity>,
     onUpdateStatus: (String, String, String?) -> Unit
@@ -457,5 +497,3 @@ fun MainRequestReviewSection(
         }
     }
 }
-
-

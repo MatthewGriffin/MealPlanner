@@ -2,9 +2,15 @@ package com.example.chatgpt_mealplanner.core.repository
 
 import com.example.chatgpt_mealplanner.core.database.dao.MealChangeRequestDao
 import com.example.chatgpt_mealplanner.core.database.entity.MealChangeRequestEntity
+import com.example.chatgpt_mealplanner.core.database.entity.toSyncDto
+import com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerMealRequestDao
+import com.example.chatgpt_mealplanner.core.sync.follower.engine.FollowerLocalSyncEngine
 import com.example.chatgpt_mealplanner.core.sync.follower.config.FollowerPairingStore
 import com.example.chatgpt_mealplanner.core.sync.AppRoleResolver
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.map
 import com.example.chatgpt_mealplanner.core.database.DatabaseTransactionRunner
 import com.example.chatgpt_mealplanner.core.database.dao.CanonicalSyncDao
 import com.example.chatgpt_mealplanner.core.database.entity.CanonicalSyncOperationEntity
@@ -25,26 +31,35 @@ class MealChangeRequestRepositoryImpl @Inject constructor(
     private val pairingStore: FollowerPairingStore,
     private val appRoleResolver: AppRoleResolver,
     private val canonicalSyncDao: CanonicalSyncDao,
-    private val transactionRunner: DatabaseTransactionRunner
+    private val transactionRunner: DatabaseTransactionRunner,
+    private val followerMealRequestDao: FollowerMealRequestDao,
+    private val followerLocalSyncEngine: FollowerLocalSyncEngine
 ) : MealChangeRequestRepository {
 
     override fun observeRequestsForMeal(mealId: String): Flow<List<MealChangeRequestEntity>> {
-        return dao.observeRequestsForMeal(mealId)
+        return observeAllRequests().map { requests -> requests.filter { it.mealId == mealId } }
     }
 
     override fun observeAllRequests(): Flow<List<MealChangeRequestEntity>> {
-        return dao.observeAllRequests()
+        return flow {
+            if (appRoleResolver.isFollowerAsync()) {
+                emitAll(followerMealRequestDao.observeAllRequests().map { rows -> rows.map { it.toRequest() } })
+            } else {
+                emitAll(dao.observeAllRequests())
+            }
+        }
     }
 
     override suspend fun submitRequest(mealId: String, requestText: String) {
         require(mealId.isNotBlank() && mealId.length <= 128) { "Invalid meal ID" }
         require(requestText.isNotBlank() && requestText.length <= 2000) { "Request must contain 1 to 2000 characters" }
-        // Until meal projections and status feed are implemented, never present a
-        // follower-local Room insert as a successfully synchronized request.
-        check(!appRoleResolver.isFollowerAsync()) {
-            "Follower meal requests are not available until meal synchronization is enabled"
-        }
         val requestId = "req_${UUID.randomUUID()}"
+        if (appRoleResolver.isFollowerAsync()) {
+            val config = checkNotNull(pairingStore.getPairingConfig()) { "Follower pairing is unavailable" }
+            check(!pairingStore.isRevoked()) { "Follower access has been revoked" }
+            followerLocalSyncEngine.recordLocalMealChangeRequest(config.deviceId, requestId, mealId, requestText)
+            return
+        }
         val deviceId = pairingStore.getPairingConfig()?.deviceId ?: "main_device"
         val now = System.currentTimeMillis()
         val entity = MealChangeRequestEntity(
@@ -83,7 +98,10 @@ class MealChangeRequestRepositoryImpl @Inject constructor(
                     protocolVersion = SYNC_PROTOCOL_VERSION,
                     operationType = SyncOperationType.UPDATE_MEAL_CHANGE_REQUEST_STATUS.name,
                     payloadJson = Json.encodeToString(
-                        UpdateMealChangeRequestStatusPayloadDto(requestId, status, mainResponse)
+                        UpdateMealChangeRequestStatusPayloadDto(
+                            requestId, status, mainResponse,
+                            existing.copy(status = status, mainResponse = mainResponse, updatedAt = now).toSyncDto()
+                        )
                     ),
                     createdAt = now,
                     canonicalSequence = next,

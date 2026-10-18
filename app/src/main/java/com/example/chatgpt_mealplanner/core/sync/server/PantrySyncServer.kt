@@ -3,6 +3,8 @@ package com.example.chatgpt_mealplanner.core.sync.server
 import com.example.chatgpt_mealplanner.core.database.DatabaseTransactionRunner
 import com.example.chatgpt_mealplanner.core.database.dao.CanonicalSyncDao
 import com.example.chatgpt_mealplanner.core.database.dao.InventoryDao
+import com.example.chatgpt_mealplanner.core.database.dao.MealChangeRequestDao
+import com.example.chatgpt_mealplanner.core.database.entity.toSyncDto
 import com.example.chatgpt_mealplanner.core.sync.HouseholdIdentityManager
 import com.example.chatgpt_mealplanner.core.sync.engine.MainCanonicalSyncEngine
 import com.example.chatgpt_mealplanner.sync.contract.BootstrapResponseDto
@@ -60,7 +62,8 @@ open class PantrySyncServer @Inject constructor(
     private val canonicalSyncDao: CanonicalSyncDao,
     private val inventoryDao: InventoryDao,
     private val transactionRunner: DatabaseTransactionRunner? = null,
-    private val invitationManager: PantryEnrollmentInvitationManager? = null
+    private val invitationManager: PantryEnrollmentInvitationManager? = null,
+    private val mealChangeRequestDao: MealChangeRequestDao? = null
 ) {
     private var engine: io.ktor.server.engine.ApplicationEngine? = null
     private var serverState = PantryServerState.STOPPED
@@ -93,21 +96,21 @@ open class PantrySyncServer @Inject constructor(
         onBeforeSnapshotReadHook?.invoke()
         val householdId = identityManager.getOrCreateHouseholdIdentity().householdId
 
-        val (latestSeq, invItems) = if (transactionRunner != null) {
+        val (latestSeq, invItems, mealRequests) = if (transactionRunner != null) {
             transactionRunner.runInTransaction {
                 val seq = canonicalSyncDao.getLatestCanonicalSequence() ?: 0L
                 onInsideSnapshotTransactionHook?.invoke()
                 val items = inventoryDao.getAllItemsSync()
-                Pair(seq, items)
+                Triple(seq, items, mealChangeRequestDao?.getAllRequestsSync().orEmpty().map { it.toSyncDto() })
             }
         } else {
             val seq = canonicalSyncDao.getLatestCanonicalSequence() ?: 0L
             onInsideSnapshotTransactionHook?.invoke()
             val items = inventoryDao.getAllItemsSync()
-            Pair(seq, items)
+            Triple(seq, items, mealChangeRequestDao?.getAllRequestsSync().orEmpty().map { it.toSyncDto() })
         }
 
-        if (invItems.size > MAX_BOOTSTRAP_ITEMS) {
+        if (invItems.size > MAX_BOOTSTRAP_ITEMS || mealRequests.size > MAX_BOOTSTRAP_ITEMS) {
             throw SnapshotTooLargeException("Bootstrap snapshot item count ${invItems.size} exceeds maximum limit of $MAX_BOOTSTRAP_ITEMS")
         }
 
@@ -132,7 +135,8 @@ open class PantrySyncServer @Inject constructor(
             protocolVersion = SYNC_PROTOCOL_VERSION,
             householdId = householdId,
             snapshotCanonicalSequence = latestSeq,
-            inventoryItems = syncItems
+            inventoryItems = syncItems,
+            mealRequests = mealRequests
         )
         onAfterSnapshotReadHook?.invoke()
         return dto

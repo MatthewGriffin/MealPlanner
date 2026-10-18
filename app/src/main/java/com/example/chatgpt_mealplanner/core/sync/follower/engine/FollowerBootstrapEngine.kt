@@ -7,6 +7,9 @@ import com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerD
 import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerInventoryItemEntity
 import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerSyncMetadataEntity
 import com.example.chatgpt_mealplanner.sync.contract.BootstrapResponseDto
+import com.example.chatgpt_mealplanner.sync.contract.MealRequestSyncValidation
+import com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerMealRequestDao
+import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.toFollowerEntity
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -23,7 +26,8 @@ open class FollowerBootstrapEngine @Inject constructor(
     private val pantrySyncTestClient: PantrySyncTestClient,
     private val followerFeedPullEngine: FollowerFeedPullEngine,
     private val followerPairingStore: com.example.chatgpt_mealplanner.core.sync.follower.config.FollowerPairingStore? = null,
-    private val followerLocalSyncEngine: FollowerLocalSyncEngine? = null
+    private val followerLocalSyncEngine: FollowerLocalSyncEngine? = null,
+    private val mealRequestDao: FollowerMealRequestDao? = null
 ) {
     companion object {
         const val MAX_BOOTSTRAP_ITEMS = 5000
@@ -83,7 +87,7 @@ open class FollowerBootstrapEngine @Inject constructor(
         }
 
         val response = snapshotResult.bootstrapResponse
-        if (response.inventoryItems.size > MAX_BOOTSTRAP_ITEMS) {
+        if (response.inventoryItems.size > MAX_BOOTSTRAP_ITEMS || response.mealRequests.size > MAX_BOOTSTRAP_ITEMS) {
             return BootstrapPassSummary(false, "SNAPSHOT_TOO_LARGE", 0, 0L)
         }
 
@@ -92,9 +96,22 @@ open class FollowerBootstrapEngine @Inject constructor(
         }
 
         val watermark = response.snapshotCanonicalSequence
+        if (response.mealRequests.any { !MealRequestSyncValidation.isValid(it) } ||
+            response.mealRequests.map { it.id }.distinct().size != response.mealRequests.size) {
+            return BootstrapPassSummary(false, "INVALID_MEAL_SNAPSHOT", 0, 0L)
+        }
         val now = System.currentTimeMillis()
 
         val block: suspend () -> Unit = {
+            if (response.mealRequests.isNotEmpty()) {
+                val requests = checkNotNull(mealRequestDao) { "Meal projection unavailable" }
+                for (request in response.mealRequests) {
+                    val existing = requests.getById(request.id)
+                    if (existing == null || existing.canonicalSequence <= watermark) {
+                        requests.upsert(request.toFollowerEntity(watermark))
+                    }
+                }
+            }
             dao.clearAllInventoryItems()
 
             for (snap in response.inventoryItems) {
