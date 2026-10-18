@@ -61,9 +61,18 @@ Isolated root cause: `kotlinx.coroutines.test.runTest` holds 45s `withTimeoutOrN
   * Phase 8 Search Acceptance (Stage B): Verified local pantry item search and Open Food Facts online product search integration (`ProductLookupRepositoryImpl` & `BarcodeLookupCoordinator`). Local items (`Phase4gCookIngredientA_123`, `Phase4gCookIngredientB_123`) and remote product lookup provenance handled distinctly with safe cancellation and quantity preservation.
   * Phase 9 AI Acceptance (Stage C): Verified `ChatViewModel` non-blocking UI responsiveness, 1-second progress ticker display, in-flight duplicate submission prevention, state retention across screen switches, and structured error reclassification with Retry cards.
   * Follower Safety (Stage D): Samsung SM-G965F Follower verified connected and paired without unexpected data mutations, identity resets, or protocol drift.
+- **Phase 10 Step 1: Follower UX & Meal-Change Request Architecture Audit**:
+  * Role Detection & AI Restrictions: Audited `AppRoleResolver`. Identified Follower AI entry point in `MainActivity.kt` (Assistant bottom nav tab) and backend invocation paths in `ChatViewModel` / `AiMealPlannerOrchestrator`. Planned enforcement via UI hiding plus backend defense-in-depth rejection when `isFollower()` is true.
+  * Meal-Change Request Design: Designed `MealChangeRequestEntity` linked to existing planned meals (`mealId`). Supports non-authoritative requests ("I don't like that ingredient. Can we substitute it?"), status lifecycle (`PENDING`, `ACCEPTED`, `DECLINED`, `DISCUSSED`), Main response text, and timestamps.
+  * Sync & Outbox Integration: Proposed outbox-backed synchronization through existing offline-capable Follower/Main protocol (`FollowerSyncOutboxEntity`). Main holds authoritative conflict resolution; duplicate delivery handled via idempotent UUID primary keys. No instant push notifications implied (foreground/manual/opportunistic sync semantics maintained).
+  * Staged Implementation Plan:
+    1. Stage 1: Role-based Follower UI restriction & backend guard checks.
+    2. Stage 2: `MealChangeRequestEntity` schema, DAOs, and repository layers.
+    3. Stage 3: Outbox operations & Follower/Main sync protocol extension.
+    4. Stage 4: Main review UI & Follower status display.
 - **Production Guard Status**: `Build.FINGERPRINT` guard confirmed removed in production `GeminiCredentialStore` and entire codebase.
 - **Android Instrumentation Tests**: 2/2 passed on OnePlus CPH2707 Main (API 36) in 5.038s; 2/2 passed on Samsung SM-G965F Follower (API 33) in 7.205s.
 - **Lint**: 0 errors (`:app:lintDebug` PASSED in 1m 20s).
 
 ## Next Milestone
-- Phase 8 & Phase 9 physical device acceptance testing COMPLETE. Maintain stability across future feature milestones.
+- Proceed to **Phase 10 Step 2** (Follower UI restriction & backend guard implementation).
