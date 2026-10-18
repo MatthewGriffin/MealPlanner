@@ -104,15 +104,31 @@ class MealPlannerViewModel @Inject constructor(
 
     fun submitMealChangeRequest(mealId: String, requestText: String) {
         viewModelScope.launch {
-            mealChangeRequestRepository.submitRequest(mealId, requestText)
-            userMessageFlow.value = "Change request submitted successfully"
+            try {
+                mealChangeRequestRepository.submitRequest(mealId, requestText)
+                userMessageFlow.value = "Change request submitted successfully"
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: IllegalArgumentException) {
+                userMessageFlow.value = e.message ?: "Invalid meal change request"
+            } catch (e: IllegalStateException) {
+                userMessageFlow.value = e.message ?: "Meal change requests are not available"
+            }
         }
     }
 
     fun updateRequestStatus(requestId: String, status: String, mainResponse: String?) {
         viewModelScope.launch {
-            mealChangeRequestRepository.updateRequestStatus(requestId, status, mainResponse)
-            userMessageFlow.value = "Request status updated: $status"
+            try {
+                mealChangeRequestRepository.updateRequestStatus(requestId, status, mainResponse)
+                userMessageFlow.value = "Request status updated: $status"
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: IllegalArgumentException) {
+                userMessageFlow.value = e.message ?: "Invalid request status"
+            } catch (e: IllegalStateException) {
+                userMessageFlow.value = e.message ?: "Cannot update request status"
+            }
         }
     }
 
