@@ -169,6 +169,75 @@ class Phase10MealRequestSyncTest {
     }
 
     @Test
+    fun migration4To5_legacyMealOutboxReconcilesAcceptedAndRejectedRequests() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val name = "phase10_legacy_outbox_${UUID.randomUUID()}.db"
+        fun open() = Room.databaseBuilder(context, FollowerDatabase::class.java, name)
+            .allowMainThreadQueries()
+            .addMigrations(com.example.chatgpt_mealplanner.core.sync.follower.database.FOLLOWER_MIGRATION_4_5).build()
+        var disk = open()
+        try {
+            val beforeUpgrade = FollowerLocalSyncEngine(disk, null, null, disk.mealRequestDao())
+            val inventory = beforeUpgrade.recordLocalAddItem(deviceId, "Milk", "Milk", "FRESH_PANTRY", "FRIDGE", 2.0, "LITRE", null, null)
+            val beforeItem = disk.followerDao().getItemById(inventory.targetItemId!!)
+            val accepted = beforeUpgrade.recordLocalMealChangeRequest(deviceId, requestId, "meal_1", "Change dinner")
+            val rejectedId = "req_${UUID.randomUUID()}"
+            val rejected = beforeUpgrade.recordLocalMealChangeRequest(deviceId, rejectedId, "missing_meal", "Change lunch")
+            disk.followerDao().updateSyncMetadata(FollowerSyncMetadataEntity(1, 19L))
+            disk.close()
+            android.database.sqlite.SQLiteDatabase.openDatabase(context.getDatabasePath(name).path, null, 0).use { raw ->
+                raw.execSQL("DROP TABLE follower_meal_requests")
+                raw.version = 4
+            }
+            disk = open()
+            assertNull(disk.mealRequestDao().getById(requestId))
+            val afterUpgrade = FollowerLocalSyncEngine(disk, null, null, disk.mealRequestDao())
+            afterUpgrade.reconcileMealRequestUpload(accepted, SyncOperationResultDto(accepted.operationId, deviceId,
+                SyncOperationStatus.APPLIED, canonicalSequence = 20L, resultCode = "SUCCESS"))
+            afterUpgrade.reconcileMealRequestUpload(rejected, SyncOperationResultDto(rejected.operationId, deviceId,
+                SyncOperationStatus.REJECTED, canonicalSequence = 21L, resultCode = "MEAL_NOT_FOUND"))
+            val recovered = disk.mealRequestDao().getById(requestId)!!
+            assertEquals("PENDING", recovered.status)
+            assertEquals("meal_1", recovered.mealId)
+            assertEquals(deviceId, recovered.authorDeviceId)
+            assertEquals("Change dinner", recovered.requestText)
+            assertEquals(accepted.createdAt, recovered.createdAt)
+            assertEquals(20L, recovered.canonicalSequence)
+            assertEquals("SYNC_FAILED", disk.mealRequestDao().getById(rejectedId)?.status)
+            assertTrue(disk.mealRequestDao().getById(rejectedId)!!.mainResponse!!.contains("MEAL_NOT_FOUND"))
+            assertEquals("APPLIED", disk.followerDao().getOutboxByOperationId(accepted.operationId)?.status)
+            assertEquals("REJECTED", disk.followerDao().getOutboxByOperationId(rejected.operationId)?.status)
+            assertEquals(beforeItem, disk.followerDao().getItemById(inventory.targetItemId!!))
+            assertEquals(inventory, disk.followerDao().getOutboxByOperationId(inventory.operationId))
+            assertEquals(4L, disk.followerDao().getSequenceEntity()?.nextSequence)
+            assertEquals(19L, disk.followerDao().getSyncMetadata()?.lastReconciledCanonicalSequence)
+        } finally {
+            disk.close()
+            context.deleteDatabase(name)
+        }
+    }
+
+    @Test
+    fun legacyAcknowledgement_outboxWriteFailureRollsBackRecoveredProjection() = runBlocking {
+        val op = queue()
+        // Recreate an outbox-only request written before the v5 projection existed.
+        follower.openHelper.writableDatabase.execSQL("DELETE FROM follower_meal_requests")
+        follower.openHelper.writableDatabase.execSQL("""CREATE TRIGGER fail_meal_ack BEFORE UPDATE ON follower_sync_outbox
+            BEGIN SELECT RAISE(ABORT, 'injected acknowledgement failure'); END""")
+        val result = SyncOperationResultDto(op.operationId, deviceId,
+            SyncOperationStatus.APPLIED, canonicalSequence = 1L, resultCode = "SUCCESS")
+        assertFails { local.reconcileMealRequestUpload(op, result) }
+        assertNull(follower.mealRequestDao().getById(requestId))
+        assertEquals(op, follower.followerDao().getOutboxByOperationId(op.operationId))
+        follower.openHelper.writableDatabase.execSQL("DROP TRIGGER fail_meal_ack")
+        local.reconcileMealRequestUpload(op, result)
+        assertEquals("PENDING", follower.mealRequestDao().getById(requestId)?.status)
+        assertEquals("APPLIED", follower.followerDao().getOutboxByOperationId(op.operationId)?.status)
+        assertEquals(2L, follower.followerDao().getSequenceEntity()?.nextSequence)
+        assertNull(follower.followerDao().getSyncMetadata())
+    }
+
+    @Test
     fun rejectedUpload_isVisibleAndRemainsTerminal() = runBlocking {
         val op = queue()
         local.reconcileMealRequestUpload(op, SyncOperationResultDto(op.operationId, deviceId,

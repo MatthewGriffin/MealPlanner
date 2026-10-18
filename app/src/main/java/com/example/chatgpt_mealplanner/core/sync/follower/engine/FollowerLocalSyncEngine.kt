@@ -523,7 +523,14 @@ open class FollowerLocalSyncEngine @Inject constructor(
         runTransaction { dao ->
             val requests = checkNotNull(mealRequestDao) { "Meal projection unavailable" }
             val payload = json.decodeFromString<CreateMealChangeRequestPayloadDto>(op.payloadJson)
-            val existing = checkNotNull(requests.getById(payload.requestId)) { "Queued meal request not found" }
+            // Version 4 persisted meal requests only in the outbox. Its additive
+            // migration leaves the new projection empty, so recover legacy requests
+            // from their durable payload inside the acknowledgement transaction.
+            val existing = requests.getById(payload.requestId) ?: FollowerMealRequestEntity(
+                id = payload.requestId, mealId = payload.mealId, authorDeviceId = op.deviceId,
+                requestText = payload.requestText, status = "QUEUED", mainResponse = null,
+                createdAt = op.createdAt, updatedAt = op.createdAt, canonicalSequence = 0L
+            )
             val now = System.currentTimeMillis()
             // A feed decision can arrive before an upload retry completes. Never
             // replace a newer authoritative decision with the create acknowledgement.

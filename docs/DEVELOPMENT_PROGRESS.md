@@ -104,3 +104,30 @@ Isolated root cause: `kotlinx.coroutines.test.runTest` holds 45s `withTimeoutOrN
 - No phone connections, deployment, pairing changes, Restore operations, or
   persistent inventory/database changes were performed. Physical acceptance of
   the latest Phase 10 changes remains separate and requires user confirmation.
+
+
+## Phase 10 Legacy Outbox Recovery (2026-10-18)
+
+- Found and reproduced an upgrade failure: a version 4 meal-request outbox entry
+  survives migration, but the new version 5 projection table has no corresponding
+  row. Upload acknowledgement previously threw `Queued meal request not found`,
+  preventing that request from completing reconciliation.
+- Acknowledgement now reconstructs a missing request projection from the preserved
+  outbox payload, author, and creation time. Recovery and outbox completion share
+  the existing database transaction. Existing projections still use the original
+  replay protection, so a newer Main decision cannot be replaced by an old create
+  acknowledgement. No schema, pairing, or inventory behavior changes were needed.
+- Added a disk-backed version 4-to-5 migration regression covering both accepted
+  and rejected legacy requests, preserving inventory, its pending outbox entry,
+  device sequence, and feed cursor. Confirmed this test failed before the fix.
+- Added fault injection proving an outbox update failure rolls back the recovered
+  projection and leaves the operation retryable; retry then completes successfully.
+- Targeted `Phase10MealRequestSyncTest`: **12/12 passed**, no failures or skips.
+- Debug APK assembly: **BUILD SUCCESSFUL** (3 tasks executed, 50 up-to-date).
+- No physical devices were connected or deployed to, and no persistent user data
+  was modified. Physical acceptance remains subject to user confirmation.
+- Full `:sync-contract:test :app:testDebugUnitTest` verification with
+  `--no-daemon` and normal caching: **BUILD SUCCESSFUL**, **812 app tests passed**,
+  no failures/errors/skips. Sync-contract was **UP-TO-DATE**, with existing XML
+  reporting **9 passing tests**. Gradle was launched with Java 25 and app tests
+  used the pinned Java 21 runtime.
