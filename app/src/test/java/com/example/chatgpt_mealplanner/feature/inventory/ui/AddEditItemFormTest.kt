@@ -23,6 +23,48 @@ class AddEditItemFormTest {
     )
 
     @Test
+    fun enteringQuantityForUnknownOutItem_setsExactQuantityAndClearsOut() {
+        val original = outItem().copy(quantity = null, quantityUnit = null,
+            quantityConfidence = QuantityConfidence.UNKNOWN)
+        val edited = AddEditItemFormState.fromInventoryItem(original)
+            .copy(quantityText = "1", selectedUnit = QuantityUnit.LITRE).toInventoryItem()
+        assertEquals(1.0, edited.quantity!!, 0.0)
+        assertEquals(QuantityUnit.LITRE, edited.quantityUnit)
+        assertEquals(QuantityConfidence.EXACT, edited.quantityConfidence)
+        assertEquals(ItemStatus.AVAILABLE, edited.status)
+    }
+
+    @Test
+    fun editingMetadata_preservesIdentityHistoryAndQuantityConfidence() {
+        val original = outItem().copy(canonicalIngredientId = "ingredient-milk", canonicalName = "milk",
+            createdAt = 123L, updatedAt = 456L, revision = 9L,
+            quantity = 2.0, quantityConfidence = QuantityConfidence.APPROXIMATE,
+            status = ItemStatus.LOW)
+        val edited = AddEditItemFormState.fromInventoryItem(original)
+            .copy(displayName = "My milk", notes = "New note").toInventoryItem()
+        assertEquals(original.canonicalIngredientId, edited.canonicalIngredientId)
+        assertEquals(original.canonicalName, edited.canonicalName)
+        assertEquals(original.createdAt, edited.createdAt)
+        assertEquals(original.updatedAt, edited.updatedAt)
+        assertEquals(original.revision, edited.revision)
+        assertEquals(original.quantityConfidence, edited.quantityConfidence)
+        assertEquals("My milk", edited.displayName)
+        assertEquals("New note", edited.notes)
+    }
+
+    @Test
+    fun editingMetadata_preservesUnknownQuantityAndNullIngredientIdentity() {
+        val original = outItem().copy(quantity = null, quantityUnit = null,
+            quantityConfidence = QuantityConfidence.UNKNOWN, canonicalIngredientId = null)
+        val edited = AddEditItemFormState.fromInventoryItem(original).copy(notes = "Check later").toInventoryItem()
+        assertNull(edited.quantity)
+        assertNull(edited.quantityUnit)
+        assertNull(edited.canonicalIngredientId)
+        assertEquals(QuantityConfidence.UNKNOWN, edited.quantityConfidence)
+        assertEquals(ItemStatus.OUT, edited.status)
+    }
+
+    @Test
     fun editingOutItemMetadata_preservesOutMarkAndZeroQuantity() {
         val edited = AddEditItemFormState.fromInventoryItem(outItem())
             .copy(displayName = "Whole milk", notes = "Buy again").toInventoryItem()

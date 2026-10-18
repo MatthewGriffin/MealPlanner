@@ -175,3 +175,24 @@ Isolated root cause: `kotlinx.coroutines.test.runTest` holds 45s `withTimeoutOrN
 - Final verification: debug assembly and full app unit suite passed (**816 tests**,
   no failures/errors/skips). Sync-contract remained **UP-TO-DATE**, with its
   existing report recording **9 passing tests**. Normal Gradle caching retained.
+
+
+## Inventory Edit Identity and Quantity Preservation (2026-10-18)
+
+- Reproduced additional edit-form data loss: changing a display name replaced
+  canonical ingredient identity, reset creation metadata, and converted an unknown
+  quantity to 1.0. Metadata edits also changed approximate quantities to exact.
+- Edit form state now retains the original inventory item. Saving preserves its
+  canonical ingredient ID/name, creation/update timestamps and revision for the
+  domain service to update authoritatively. Null ingredient IDs remain null.
+- Unchanged quantity/unit fields preserve the original quantity, nullable unit,
+  and confidence. Unknown quantities display as blank rather than invented stock.
+  Explicitly entering a quantity still records the selected unit and exact
+  confidence, and a positive quantity clears OUT as requested.
+- Added regressions for identity/history preservation, unknown quantities, and
+  explicitly entering one unit on an unknown/out item. The first two reproduced
+  the original failures before the fix.
+- No physical devices, pairing settings, or persistent inventory data were touched.
+- Full verification passed: debug APK assembly, **819 app unit tests** with no
+  failures/errors/skips, and lint with **0 errors / 81 warnings**. Sync-contract
+  remained UP-TO-DATE with its existing 9 passing tests. Normal caching retained.

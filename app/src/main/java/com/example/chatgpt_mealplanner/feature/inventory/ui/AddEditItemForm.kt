@@ -79,29 +79,33 @@ data class AddEditItemFormState(
     val isPackagingExpanded: Boolean = false,
     val isDatesAndStorageExpanded: Boolean = false,
     val isNotesExpanded: Boolean = false,
-    val originalStatus: ItemStatus = ItemStatus.AVAILABLE
+    val originalStatus: ItemStatus = ItemStatus.AVAILABLE,
+    val originalItem: InventoryItem? = null
 ) {
     fun toInventoryItem(): InventoryItem {
         val enteredQuantity = quantityText.toDoubleOrNull()
         val qty = enteredQuantity ?: 1.0
+        val quantityUnchanged = originalItem != null &&
+            quantityText == (originalItem.quantity?.toString() ?: "") &&
+            selectedUnit == (originalItem.quantityUnit ?: QuantityUnit.UNIT)
         val pCount = packCountText.toIntOrNull()
         val pSize = packSizeText.toDoubleOrNull()
 
         return InventoryItem(
             id = id ?: java.util.UUID.randomUUID().toString(),
-            canonicalIngredientId = displayName.trim(),
-            canonicalName = displayName.trim(),
+            canonicalIngredientId = if (originalItem != null) originalItem.canonicalIngredientId else displayName.trim(),
+            canonicalName = originalItem?.canonicalName ?: displayName.trim(),
             displayName = displayName.trim(),
             brand = brand.ifBlank { null },
             barcode = barcode.ifBlank { null },
             category = category,
             storageLocation = storageLocation,
-            quantity = qty,
-            quantityUnit = selectedUnit,
+            quantity = if (quantityUnchanged) originalItem?.quantity else qty,
+            quantityUnit = if (quantityUnchanged) originalItem?.quantityUnit else selectedUnit,
             packCount = pCount,
             packSize = pSize,
             packSizeUnit = if (pSize != null) packSizeUnit else null,
-            quantityConfidence = QuantityConfidence.EXACT,
+            quantityConfidence = if (quantityUnchanged) originalItem!!.quantityConfidence else QuantityConfidence.EXACT,
             // Editing metadata must not clear stock-state markers. An OUT item
             // becomes available only when a valid positive quantity is entered.
             status = if (originalStatus == ItemStatus.OUT && enteredQuantity != null && enteredQuantity.isFinite() && enteredQuantity > 0.0) {
@@ -116,7 +120,10 @@ data class AddEditItemFormState(
             openedDate = openedDate.ifBlank { null },
             useByDate = useByDate.ifBlank { null },
             bestBeforeDate = bestBeforeDate.ifBlank { null },
-            notes = notes.ifBlank { null }
+            notes = notes.ifBlank { null },
+            createdAt = originalItem?.createdAt ?: System.currentTimeMillis(),
+            updatedAt = originalItem?.updatedAt ?: System.currentTimeMillis(),
+            revision = originalItem?.revision ?: 1L
         )
     }
 
@@ -153,7 +160,7 @@ data class AddEditItemFormState(
                 displayName = item.displayName,
                 brand = item.brand ?: "",
                 barcode = item.barcode ?: "",
-                quantityText = (item.quantity ?: 1.0).toString(),
+                quantityText = item.quantity?.toString() ?: "",
                 selectedUnit = item.quantityUnit ?: QuantityUnit.UNIT,
                 category = item.category,
                 storageLocation = item.storageLocation,
@@ -171,7 +178,8 @@ data class AddEditItemFormState(
                 isPackagingExpanded = item.brand != null || item.barcode != null || item.packCount != null || item.packSize != null,
                 isDatesAndStorageExpanded = item.useByDate != null || item.bestBeforeDate != null || item.purchaseDate != null || item.openedDate != null,
                 isNotesExpanded = item.notes != null,
-                originalStatus = item.status
+                originalStatus = item.status,
+                originalItem = item
             )
         }
     }
