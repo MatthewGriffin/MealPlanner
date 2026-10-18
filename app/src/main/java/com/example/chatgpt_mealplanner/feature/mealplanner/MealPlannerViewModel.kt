@@ -113,6 +113,9 @@ class MealPlannerViewModel @Inject constructor(
                 userMessageFlow.value = e.message ?: "Invalid meal change request"
             } catch (e: IllegalStateException) {
                 userMessageFlow.value = e.message ?: "Meal change requests are not available"
+            } catch (e: Exception) {
+                android.util.Log.e("MealPlannerViewModel", "Failed to submit meal change request", e)
+                userMessageFlow.value = "Could not save the meal change request. Please try again."
             }
         }
     }
@@ -128,6 +131,9 @@ class MealPlannerViewModel @Inject constructor(
                 userMessageFlow.value = e.message ?: "Invalid request status"
             } catch (e: IllegalStateException) {
                 userMessageFlow.value = e.message ?: "Cannot update request status"
+            } catch (e: Exception) {
+                android.util.Log.e("MealPlannerViewModel", "Failed to update meal request status", e)
+                userMessageFlow.value = "Could not update the request. Please try again."
             }
         }
     }
