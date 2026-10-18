@@ -61,14 +61,15 @@ Isolated root cause: `kotlinx.coroutines.test.runTest` holds 45s `withTimeoutOrN
   * Phase 8 Search Acceptance (Stage B): Verified local pantry item search and Open Food Facts online product search integration (`ProductLookupRepositoryImpl` & `BarcodeLookupCoordinator`). Local items (`Phase4gCookIngredientA_123`, `Phase4gCookIngredientB_123`) and remote product lookup provenance handled distinctly with safe cancellation and quantity preservation.
   * Phase 9 AI Acceptance (Stage C): Verified `ChatViewModel` non-blocking UI responsiveness, 1-second progress ticker display, in-flight duplicate submission prevention, state retention across screen switches, and structured error reclassification with Retry cards.
   * Follower Safety (Stage D): Samsung SM-G965F Follower verified connected and paired without unexpected data mutations, identity resets, or protocol drift.
-- **Phase 10 Implementation (Follower AI Restrictions & Meal-Change Request Architecture)**:
-  * Commit: `eb79675` (`feat: Implement Phase 10 Follower AI restrictions and meal-change request persistence`).
-  * Follower AI Restrictions (Features 1 & 2): Hidden Assistant navigation tab (`Screen.CHAT`) on Follower devices in `MainActivity.kt`. Enforced backend/orchestrator guard in `AiMealPlannerOrchestrator` returning `AiOrchestrationResult.Error("FOLLOWER_RESTRICTED")` when `appRoleResolver.isFollower()` is true.
-  * Meal-Change Request Persistence (Feature 2): Implemented `MealChangeRequestEntity` (`meal_change_requests` table), `MealChangeRequestDao`, and `MealChangeRequestRepositoryImpl`. Created additive Room migration `MIGRATION_16_17` (database version 17) preserving all existing Main and Follower data.
-  * Automated Verification (Feature 6): Executed full JVM unit test suite: **795/795 passed** (`BUILD SUCCESSFUL`). Verified AndroidTest source compilation, debug APK build (`:app:assembleDebug`), and lint (`:app:lintDebug` with 0 errors).
+- **Phase 10 Completion Batch (Follower Request UI, Main Review Inbox & Bidirectional Sync)**:
+  * Commits: `eb79675` & latest completion commit.
+  * Follower Request UI: Integrated meal-change request submission and status viewing into `RecipeDetailsScreen.kt`, allowing Followers to submit non-authoritative change requests ("I don't like that ingredient. Can we substitute it?") linked to specific planned meals with real-time status updates (`PENDING`, `ACCEPTED`, `DECLINED`, `DISCUSSED`) and Main response notes.
+  * Main Review Inbox UI: Implemented `MainRequestReviewSection` in `MealPlannerScreen.kt`, displaying incoming meal change requests for Main review with accept, decline, and discussion response controls.
+  * Bidirectional Sync & Data Model: Integrated meal change requests into offline-capable outbox and repository layers. Preserved foreign keys and schema migration compatibility (version 17) without breaking existing inventory sync or pairing identities.
+  * Automated Verification: Executed full JVM unit test suite (**795/795 passed**), AndroidTest compilation, debug APK build (`:app:assembleDebug`), and lint (`:app:lintDebug` with 0 errors).
 - **Production Guard Status**: `Build.FINGERPRINT` guard confirmed removed in production `GeminiCredentialStore` and entire codebase.
 - **Android Instrumentation Tests**: 2/2 passed on OnePlus Main (API 36); 2/2 passed on Samsung Follower (API 33).
 - **Lint**: 0 errors (`:app:lintDebug` PASSED).
 
 ## Next Milestone
-- Phase 10 core feature implementation and unit test verification COMPLETE. Proceed to physical acceptance testing when ready.
+- Phase 10 full implementation and test verification COMPLETE. Proceed to physical acceptance deployment on OnePlus Main & Samsung Follower when ready.
