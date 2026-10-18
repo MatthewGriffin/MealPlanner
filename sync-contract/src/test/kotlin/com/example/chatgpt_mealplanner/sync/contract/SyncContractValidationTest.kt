@@ -54,4 +54,58 @@ class SyncContractValidationTest {
         )
         assertFalse(SyncContractValidation.validateOperation(invalidSequence))
     }
+
+    private fun mealOperation(
+        type: SyncOperationType,
+        payloadJson: String,
+        targetItemId: String? = null
+    ) = SyncOperationDto(
+        operationId = UUID.randomUUID().toString(),
+        deviceId = UUID.randomUUID().toString(),
+        deviceSequence = 1L,
+        operationType = type,
+        targetItemId = targetItemId,
+        payloadJson = payloadJson,
+        createdAt = System.currentTimeMillis()
+    )
+
+    @Test
+    fun validateOperation_mealCreate_acceptsValidRequest() {
+        val payload = CreateMealChangeRequestPayloadDto(
+            requestId = "req_${UUID.randomUUID()}",
+            mealId = "meal_123",
+            requestText = "Change dinner, please"
+        )
+        assertTrue(SyncContractValidation.validateOperation(
+            mealOperation(SyncOperationType.CREATE_MEAL_CHANGE_REQUEST, json.encodeToString(payload))
+        ))
+    }
+
+    @Test
+    fun validateOperation_mealCreate_rejectsMalformedRequestAndInventoryTarget() {
+        val payload = CreateMealChangeRequestPayloadDto(
+            requestId = "invalid",
+            mealId = "meal_123",
+            requestText = "Change dinner"
+        )
+        assertFalse(SyncContractValidation.validateOperation(
+            mealOperation(SyncOperationType.CREATE_MEAL_CHANGE_REQUEST, json.encodeToString(payload))
+        ))
+        assertFalse(SyncContractValidation.validateOperation(
+            mealOperation(SyncOperationType.CREATE_MEAL_CHANGE_REQUEST, "{}", UUID.randomUUID().toString())
+        ))
+    }
+
+    @Test
+    fun validateOperation_mealStatus_acceptsDecisionAndRejectsUnknownStatus() {
+        val requestId = "req_${UUID.randomUUID()}"
+        val valid = UpdateMealChangeRequestStatusPayloadDto(requestId, "ACCEPTED", "Agreed")
+        val invalid = UpdateMealChangeRequestStatusPayloadDto(requestId, "UNKNOWN", null)
+        assertTrue(SyncContractValidation.validateOperation(
+            mealOperation(SyncOperationType.UPDATE_MEAL_CHANGE_REQUEST_STATUS, json.encodeToString(valid))
+        ))
+        assertFalse(SyncContractValidation.validateOperation(
+            mealOperation(SyncOperationType.UPDATE_MEAL_CHANGE_REQUEST_STATUS, json.encodeToString(invalid))
+        ))
+    }
 }

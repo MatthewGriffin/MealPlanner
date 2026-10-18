@@ -42,6 +42,30 @@ object SyncContractValidation {
                 if (!isValidUuid(dto.targetItemId) || dto.baseRevision == null || dto.baseRevision < 1L) return false
                 runCatching { json.decodeFromString<RequestDiscardPayloadDto>(dto.payloadJson) }.isSuccess
             }
+            SyncOperationType.CREATE_MEAL_CHANGE_REQUEST -> {
+                if (dto.targetItemId != null || dto.baseRevision != null) return false
+                val payload = runCatching {
+                    json.decodeFromString<CreateMealChangeRequestPayloadDto>(dto.payloadJson)
+                }.getOrNull() ?: return false
+                val requestUuid = payload.requestId.removePrefix("req_")
+                payload.requestId.startsWith("req_") &&
+                    isValidUuid(requestUuid) &&
+                    payload.mealId.isNotBlank() &&
+                    payload.mealId.length <= 128 &&
+                    payload.requestText.isNotBlank() &&
+                    payload.requestText.length <= 2000
+            }
+            SyncOperationType.UPDATE_MEAL_CHANGE_REQUEST_STATUS -> {
+                if (dto.targetItemId != null || dto.baseRevision != null) return false
+                val payload = runCatching {
+                    json.decodeFromString<UpdateMealChangeRequestStatusPayloadDto>(dto.payloadJson)
+                }.getOrNull() ?: return false
+                val requestUuid = payload.requestId.removePrefix("req_")
+                payload.requestId.startsWith("req_") &&
+                    isValidUuid(requestUuid) &&
+                    payload.status in setOf("ACCEPTED", "DECLINED", "DISCUSSED") &&
+                    (payload.mainResponse?.length ?: 0) <= 2000
+            }
         }
     }
 

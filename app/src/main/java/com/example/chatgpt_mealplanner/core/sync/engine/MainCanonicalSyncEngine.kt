@@ -140,6 +140,33 @@ open class MainCanonicalSyncEngine @Inject constructor(
 
             // 6. Process Operation Semantics
             when (dto.operationType) {
+                SyncOperationType.CREATE_MEAL_CHANGE_REQUEST,
+                SyncOperationType.UPDATE_MEAL_CHANGE_REQUEST_STATUS -> {
+                    val parentOp = CanonicalSyncOperationEntity(
+                        operationId = dto.operationId,
+                        deviceId = dto.deviceId,
+                        deviceSequence = dto.deviceSequence,
+                        protocolVersion = dto.protocolVersion,
+                        operationType = dto.operationType.name,
+                        targetItemId = dto.targetItemId,
+                        baseRevision = dto.baseRevision,
+                        payloadJson = dto.payloadJson,
+                        createdAt = dto.createdAt,
+                        canonicalSequence = allocatedSequence,
+                        receivedAt = now,
+                        status = SyncOperationStatus.REJECTED.name,
+                        resultCode = "MEAL_SYNC_NOT_ENABLED"
+                    )
+                    canonicalSyncDao.insertCanonicalOperation(parentOp)
+                    return@runInTransaction SyncOperationResultDto(
+                        operationId = dto.operationId,
+                        deviceId = dto.deviceId,
+                        status = SyncOperationStatus.REJECTED,
+                        canonicalSequence = allocatedSequence,
+                        resultCode = "MEAL_SYNC_NOT_ENABLED",
+                        resultMessage = "Meal-request synchronization is not enabled yet."
+                    )
+                }
                 SyncOperationType.ADD_ITEM -> {
                     val payload = json.decodeFromString<AddItemPayloadDto>(dto.payloadJson)
                     val existingItem = inventoryDao.getItemById(payload.itemId)

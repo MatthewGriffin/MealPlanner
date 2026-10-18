@@ -10,7 +10,9 @@ enum class SyncOperationType {
     EDIT_ITEM,
     SET_QUANTITY,
     ADJUST_QUANTITY,
-    REQUEST_DISCARD_ITEM
+    REQUEST_DISCARD_ITEM,
+    CREATE_MEAL_CHANGE_REQUEST,
+    UPDATE_MEAL_CHANGE_REQUEST_STATUS
 }
 
 @Serializable
@@ -135,6 +137,20 @@ data class AdjustQuantityPayloadDto(
 @Serializable
 data class RequestDiscardPayloadDto(
     val reason: String? = null
+)
+
+@Serializable
+data class CreateMealChangeRequestPayloadDto(
+    val requestId: String,
+    val mealId: String,
+    val requestText: String
+)
+
+@Serializable
+data class UpdateMealChangeRequestStatusPayloadDto(
+    val requestId: String,
+    val status: String,
+    val mainResponse: String? = null
 )
 
 @Serializable

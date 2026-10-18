@@ -163,6 +163,10 @@ open class FollowerLocalSyncEngine @Inject constructor(
                     // Does NOT discard item
                 }
                 SyncOperationType.ADD_ITEM -> {}
+                SyncOperationType.CREATE_MEAL_CHANGE_REQUEST,
+                SyncOperationType.UPDATE_MEAL_CHANGE_REQUEST_STATUS -> {
+                    // Meal requests never modify inventory projections.
+                }
             }
         }
 
