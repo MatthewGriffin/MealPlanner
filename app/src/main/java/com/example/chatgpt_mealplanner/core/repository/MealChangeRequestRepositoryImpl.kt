@@ -52,7 +52,11 @@ class MealChangeRequestRepositoryImpl @Inject constructor(
         check(appRoleResolver.isMainAsync()) { "Only Main can decide meal-change requests" }
         require(status in setOf("ACCEPTED", "DECLINED", "DISCUSSED")) { "Invalid request status" }
         require(mainResponse == null || mainResponse.length <= 2000) { "Response exceeds 2000 characters" }
-        require(dao.getRequestById(requestId) != null) { "Meal request not found" }
+        val existing = dao.getRequestById(requestId)
+            ?: throw IllegalArgumentException("Meal request not found")
+        check(existing.status == "PENDING" || existing.status == "DISCUSSED") {
+            "This meal request has already been decided"
+        }
         val now = System.currentTimeMillis()
         dao.updateRequestStatus(requestId, status, mainResponse, now)
     }
