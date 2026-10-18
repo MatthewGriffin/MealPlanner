@@ -433,63 +433,73 @@ fun MainRequestReviewSection(
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.primary
         )
-        requests.forEach { req ->
-            var responseInput by remember(req.id) { mutableStateOf(req.mainResponse ?: "") }
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(text = "Request: ${req.requestText}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                        Text(text = req.status, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
-                    }
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(text = "Meal ID: ${req.mealId} • By: ${req.authorDeviceId}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(modifier = Modifier.height(8.dp))
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(requests, key = { it.id }) { req ->
+                val canDecide = req.status == "PENDING" || req.status == "DISCUSSED"
+                var responseInput by remember(req.id, req.mainResponse) { mutableStateOf(req.mainResponse ?: "") }
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(text = "Request: ${req.requestText}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                            Text(text = req.status, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(text = "Meal ID: ${req.mealId} • By: ${req.authorDeviceId}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(modifier = Modifier.height(8.dp))
 
-                    OutlinedTextField(
-                        value = responseInput,
-                        onValueChange = { text: String -> responseInput = text },
-                        label = { Text("Response / Discussion note...") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Button(
-                            onClick = {
-                                val resp = if (responseInput.isNotBlank()) responseInput.trim() else null
-                                onUpdateStatus(req.id, "ACCEPTED", resp)
-                            },
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text("Accept")
-                        }
-                        Button(
-                            onClick = {
-                                val resp = if (responseInput.isNotBlank()) responseInput.trim() else null
-                                onUpdateStatus(req.id, "DECLINED", resp)
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text("Decline")
-                        }
-                        Button(
-                            onClick = {
-                                val resp = if (responseInput.isNotBlank()) responseInput.trim() else null
-                                onUpdateStatus(req.id, "DISCUSSED", resp)
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text("Discuss")
+                        if (canDecide) {
+                            OutlinedTextField(
+                                value = responseInput,
+                                onValueChange = { text: String -> if (text.length <= 2000) responseInput = text },
+                                label = { Text("Response / Discussion note...") },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Button(
+                                    onClick = {
+                                        val resp = if (responseInput.isNotBlank()) responseInput.trim() else null
+                                        onUpdateStatus(req.id, "ACCEPTED", resp)
+                                    },
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text("Accept")
+                                }
+                                Button(
+                                    onClick = {
+                                        val resp = if (responseInput.isNotBlank()) responseInput.trim() else null
+                                        onUpdateStatus(req.id, "DECLINED", resp)
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text("Decline")
+                                }
+                                Button(
+                                    onClick = {
+                                        val resp = if (responseInput.isNotBlank()) responseInput.trim() else null
+                                        onUpdateStatus(req.id, "DISCUSSED", resp)
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text("Discuss")
+                                }
+                            }
+                        } else {
+                            req.mainResponse?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
                         }
                     }
                 }

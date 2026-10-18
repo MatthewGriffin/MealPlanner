@@ -111,6 +111,48 @@ class Phase10MealRequestSyncTest {
     }
 
     @Test
+    fun discussionThenDecision_syncsInOrderAndTerminalDecisionCannotBeChanged() = runBlocking {
+        main.mealDao().insertMeal(Meal("meal_1", "2026-10-18", title = "Dinner").toEntity())
+        main.pairedDeviceDao().insertOrUpdateDevice(PairedDeviceEntity(deviceId, "Follower", "key", "ACTIVE", 1L, 1L))
+        val op = queue()
+        val engine = MainCanonicalSyncEngine(main.canonicalSyncDao(), main.pairedDeviceDao(),
+            main.inventoryDao(), RoomTransactionRunner(main), main.mealChangeRequestDao(), main.mealDao())
+        val accepted = engine.processOperation(deviceId, SyncOperationDto(op.operationId, deviceId, op.deviceSequence,
+            operationType = SyncOperationType.CREATE_MEAL_CHANGE_REQUEST, payloadJson = op.payloadJson, createdAt = op.createdAt))
+        local.reconcileMealRequestUpload(op, accepted)
+        val store = FollowerPairingStore(null)
+        val repository = MealChangeRequestRepositoryImpl(main.mealChangeRequestDao(), store,
+            AppRoleResolver(store), main.canonicalSyncDao(), RoomTransactionRunner(main), follower.mealRequestDao(), local)
+        val client = FakeFeedSyncTestClient()
+        val pull = FollowerFeedPullEngine(follower, client, local, follower.mealRequestDao())
+        suspend fun pullDecisions() {
+            val since = follower.followerDao().getSyncMetadata()?.lastReconciledCanonicalSequence ?: 0L
+            val operations = main.canonicalSyncDao().getFeedOperationsSince(since, 10)
+            client.feedResponseToReturn = SyncFeedResponseDto("home", operations.last().canonicalSequence,
+                operations.map { entry -> SyncFeedItemDto(entry.canonicalSequence, entry.operationId, entry.deviceId,
+                    SyncOperationType.valueOf(entry.operationType), payloadJson = entry.payloadJson,
+                    status = SyncOperationStatus.APPLIED, resultCode = entry.resultCode, occurredAt = entry.createdAt) }, false)
+            pull.performFeedPullPass("localhost", pinnedCertFingerprint = null, sessionToken = "token", followerDeviceId = deviceId)
+        }
+        repository.updateRequestStatus(requestId, "DISCUSSED", "Try another ingredient?")
+        pullDecisions()
+        assertEquals("DISCUSSED", follower.mealRequestDao().getById(requestId)?.status)
+        assertEquals("Try another ingredient?", follower.mealRequestDao().getById(requestId)?.mainResponse)
+        repository.updateRequestStatus(requestId, "ACCEPTED", "Use beans")
+        pullDecisions()
+        val finalRequest = follower.mealRequestDao().getById(requestId)
+        assertEquals("ACCEPTED", finalRequest?.status)
+        assertEquals("Use beans", finalRequest?.mainResponse)
+        val sequence = main.canonicalSyncDao().getSequenceEntity()
+        assertFails { repository.updateRequestStatus(requestId, "DECLINED", "Too late") }
+        assertEquals(sequence, main.canonicalSyncDao().getSequenceEntity())
+        assertTrue(main.canonicalSyncDao().getFeedOperationsSince(finalRequest!!.canonicalSequence, 10).isEmpty())
+        assertEquals("ACCEPTED", main.mealChangeRequestDao().getRequestById(requestId)?.status)
+        local.reconcileMealRequestUpload(op, accepted)
+        assertEquals(finalRequest, follower.mealRequestDao().getById(requestId))
+    }
+
+    @Test
     fun duplicateQueue_rollsBackOutboxAndDeviceSequence() = runBlocking {
         queue()
         assertFails { queue() }

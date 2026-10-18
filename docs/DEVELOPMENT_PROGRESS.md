@@ -131,3 +131,28 @@ Isolated root cause: `kotlinx.coroutines.test.runTest` holds 45s `withTimeoutOrN
   no failures/errors/skips. Sync-contract was **UP-TO-DATE**, with existing XML
   reporting **9 passing tests**. Gradle was launched with Java 25 and app tests
   used the pinned Java 21 runtime.
+
+
+## Phase 10 Main Review and Decision Lifecycle (2026-10-18)
+
+- Main review now shows decision controls only for pending/discussed requests.
+  Accepted/declined requests retain their response as read-only history, matching
+  the repository's terminal-state rules. Response input is bounded to the existing
+  2000-character limit and refreshes when the persisted Main response changes.
+- Request cards now scroll within a bounded area so history cannot grow without
+  limit and push the planner controls off-screen. The submit button uses plain
+  user-facing wording instead of referring to the outbox implementation.
+- Added a real Room integration test for discussion followed by acceptance,
+  synchronized to the Follower through incremental feed pulls. It verifies that
+  a subsequent decision attempt leaves Main's sequence/feed untouched and that
+  an old upload acknowledgement preserves the Follower's final decision.
+- Targeted Phase 10 suite: **13/13 passed**, no failures/errors/skips.
+- Physical acceptance still requires confirmation: check offline submission,
+  reconnect/upload, Main discussion and final decision, Follower response display,
+  terminal Main controls, and usability of the bounded review list. This session
+  has not connected to or deployed to either phone.
+- Full local verification: `:app:assembleDebug :sync-contract:test
+  :app:testDebugUnitTest :app:lintDebug` with `--no-daemon` and normal caching
+  completed successfully. **813 app tests passed**, no failures/errors/skips;
+  sync-contract was **UP-TO-DATE** with **9 passing tests** in its existing XML.
+  Lint reported **0 errors and 81 warnings**; none referenced the changed files.

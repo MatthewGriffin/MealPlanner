@@ -225,7 +225,7 @@ fun RecipeDetailsScreen(
                         enabled = requestInput.isNotBlank(),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("Submit Request (Syncs via Outbox)")
+                        Text("Submit request")
                     }
                 }
             }
