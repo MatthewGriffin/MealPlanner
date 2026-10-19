@@ -24,7 +24,17 @@ open class AppRoleResolver @Inject constructor(
         }
     )
 
+    // Complete enrollment identifies this device as a follower of a different Main.
+    // Merely opening Household settings used to create an incidental local identity;
+    // that row must not override an established enrollment or require a data reset.
+    private fun hasFollowerEnrollment(): Boolean {
+        val config = followerPairingStore.getPairingConfig() ?: return false
+        return followerPairingStore.isPaired() && !config.householdId.isNullOrBlank() &&
+            !config.mainDeviceId.isNullOrBlank() && config.mainDeviceId != config.deviceId
+    }
+
     open suspend fun getAppRoleAsync(): AppRole {
+        if (hasFollowerEnrollment()) return AppRole.FOLLOWER
         val identity = householdIdentityDao.getHouseholdIdentity()
         if (identity != null) {
             return AppRole.MAIN
@@ -40,6 +50,7 @@ open class AppRoleResolver @Inject constructor(
     open suspend fun isFollowerAsync(): Boolean = getAppRoleAsync() == AppRole.FOLLOWER
 
     open fun getAppRole(): AppRole {
+        if (hasFollowerEnrollment()) return AppRole.FOLLOWER
         val hasMainIdentity = try {
             householdIdentityDao.getHouseholdIdentitySync() != null
         } catch (e: IllegalStateException) {

@@ -99,6 +99,20 @@ class PantrySyncPhase4gHostLifecycleTest {
 
     // A. Main eligibility allows host start
     @Test
+    fun openingFollowerHouseholdSettingsDoesNotCreateMainIdentity() = runTest {
+        val identities = FakeHouseholdIdentityDao()
+        pairingStore.savePairingConfig(FollowerPairingConfig("localhost", 8443, validFingerprint,
+            followerDeviceId, householdId = householdId, mainDeviceId = mainDeviceId))
+        val resolver = com.example.chatgpt_mealplanner.core.sync.AppRoleResolver(pairingStore, identities)
+        val vm = HouseholdViewModel(HouseholdIdentityManager(identities),
+            PairedDeviceRepository(mainPairedDeviceDao), pairingStore, appRoleResolver = resolver)
+        advanceUntilIdle()
+        assertNull(identities.getHouseholdIdentity())
+        assertNull(vm.uiState.value.householdIdentity)
+        assertEquals(com.example.chatgpt_mealplanner.core.sync.AppRole.FOLLOWER, vm.uiState.value.appRole)
+    }
+
+    @Test
     fun testA_mainEligibility_allowsHostStart() {
         assertTrue("Main installation (unpaired) MUST be eligible to host", hostController.isEligibleToHost())
     }

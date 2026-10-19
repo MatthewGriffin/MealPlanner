@@ -218,11 +218,14 @@ open class FollowerSyncCoordinator @Inject constructor(
             }
         }
 
-        if (mealPlanSyncEngine != null && !mealPlanSyncEngine.refresh(
+        if (mealPlanSyncEngine != null) {
+            val mealResult = mealPlanSyncEngine.refreshWithResult(
                 hostIp, port, pinnedCertFingerprint, tokenToUse, sessionRefreshLambda,
-                followerPairingStore?.getPairingConfig()?.householdId)) {
-            statusRepository?.reportTransientSyncError("Meal plan refresh failed")
-            return false
+                followerPairingStore?.getPairingConfig()?.householdId)
+            if (!mealResult.success) {
+                statusRepository?.reportTransientSyncError(mealResult.message)
+                return false
+            }
         }
 
         statusRepository?.clearSyncError()

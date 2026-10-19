@@ -23,6 +23,23 @@ class AppRoleResolverTest {
     }
 
     @Test
+    fun selfReferencingPairingDoesNotDemoteMain() = runTest {
+        val identity = HouseholdIdentityEntity("home", "Main", "main-device", 1L)
+        val dao: HouseholdIdentityDao = mock {
+            onBlocking { getHouseholdIdentity() } doAnswer { identity }
+            on { getHouseholdIdentitySync() } doAnswer { identity }
+        }
+        val store = object : FollowerPairingStore(null) {
+            override fun isPaired() = true
+            override fun getPairingConfig() = com.example.chatgpt_mealplanner.core.sync.follower.config.FollowerPairingConfig(
+                "localhost", pinnedCertFingerprint = "pin", deviceId = "main-device", householdId = "home", mainDeviceId = "main-device")
+        }
+        val resolver = AppRoleResolver(store, dao)
+        assertEquals(AppRole.MAIN, resolver.getAppRoleAsync())
+        assertEquals(AppRole.MAIN, resolver.getAppRole())
+    }
+
+    @Test
     fun testIsMainAsync_existingMainIdentityWithPairingPresent_returnsTrueAndMainRole() = runTest {
         val identityDao: HouseholdIdentityDao = mock {
             onBlocking { getHouseholdIdentity() } doAnswer {

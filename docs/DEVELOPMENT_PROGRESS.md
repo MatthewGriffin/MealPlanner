@@ -239,3 +239,35 @@ Next physical check: update BOTH Main and Follower over their existing installs,
 then manually sync Follower. Confirm numeric quantities and the planned meals,
 including ingredients, are visible before resuming request/discussion/decision tests.
 No phone connection, deployment, data reset, Restore, or pairing change was performed.
+
+
+## Healthy Sync but Missing Follower Meals — Role Selection (2026-10-19)
+
+The user confirmed both phones had the updated build and Follower reported healthy
+sync, but meals remained absent. Inspection found Household settings unconditionally
+created a local Main identity, including on Followers. Asynchronous role resolution
+then preferred that row and meal reads selected the local Main meal table instead of
+`follower_meals`. A real-Room regression reproduced this with a successfully installed
+meal projection and an incidental local identity; it failed before the fix.
+
+- A complete enrollment into a different Main (paired host, household, remote Main
+  ID distinct from follower device ID) now takes precedence in both synchronous and
+  asynchronous role resolution. Incomplete pairing retains the existing fallback;
+  self-referencing pairing does not demote Main. No identity or pairing rows are
+  deleted or rewritten.
+- Household settings resolve the role before creating an identity, and only create
+  an identity for Main. A regression verifies Follower settings leave it absent.
+- Added a full coordinator regression for already-bootstrapped meal refresh using
+  a serialized snapshot and verified failure reporting with preserved projection.
+- Missing meal-plan fields no longer silently report successful meal refresh.
+  Household mismatch, failed fetch, invalid data/date and persistence failure now
+  have distinct user-facing messages. Successful installation logs the meal count
+  without meal content or credentials.
+
+This fixes a reproduced cause consistent with the phone symptoms; device confirmation
+is still required. No phone was connected, installed to, reset, or re-paired.
+- Verification: `:app:assembleDebug :app:assembleDebugAndroidTest
+  :sync-contract:test :app:testDebugUnitTest :app:lintDebug` passed with normal
+  caching. **829 app tests passed**, no failures/errors/skips; sync-contract remained
+  UP-TO-DATE with 9 passing tests. Instrumentation APK assembly was UP-TO-DATE,
+  not device execution. Lint: **0 errors / 81 warnings**.

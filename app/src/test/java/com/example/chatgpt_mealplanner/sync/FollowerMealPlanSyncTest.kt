@@ -31,6 +31,56 @@ class FollowerMealPlanSyncTest {
     private fun snapshot(meals: List<MealWithIngredientsSyncDto>?) = BootstrapResponseDto(
         householdId = "home", snapshotCanonicalSequence = 20L, inventoryItems = emptyList(), mealPlan = meals)
 
+    @Test fun enrolledFollowerWithIncidentalLocalIdentityReadsSyncedMeals() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(context, FollowerDatabase::class.java).build()
+        val main = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
+        try {
+            FollowerMealPlanSyncEngine(db, FakeBootstrapSyncTestClient()).install(snapshot(listOf(meal())))
+            val identities = FakeHouseholdIdentityDao()
+            val incidental = com.example.chatgpt_mealplanner.core.sync.HouseholdIdentityManager(identities).getOrCreateHouseholdIdentity()
+            val store = object : FollowerPairingStore(null) {
+                override fun isPaired() = true
+                override fun getPairingConfig() = com.example.chatgpt_mealplanner.core.sync.follower.config.FollowerPairingConfig(
+                    "localhost", pinnedCertFingerprint = "pin", deviceId = "follower", householdId = "home", mainDeviceId = "remote-main")
+            }
+            val resolver = AppRoleResolver(store, identities)
+            val repo = MealRepositoryImpl(main.mealDao(), db, resolver)
+            assertTrue(resolver.isFollowerAsync())
+            assertTrue(resolver.isFollower())
+            assertEquals("Pasta", repo.observeMealsForDate("2026-10-19").first().single().meal.title)
+            assertEquals(incidental, identities.getHouseholdIdentity())
+        } finally { db.close(); main.close() }
+    }
+
+    @Test fun alreadyBootstrappedCoordinatorRefreshesMealsAndReportsMissingSnapshot() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(context, FollowerDatabase::class.java).build()
+        try {
+            val client = FakeBootstrapSyncTestClient()
+            val store = object : FollowerPairingStore(null) {
+                override fun isPaired() = true
+                override fun isBootstrapVerifiedV1() = true
+                override fun getPairingConfig() = com.example.chatgpt_mealplanner.core.sync.follower.config.FollowerPairingConfig(
+                    "localhost", pinnedCertFingerprint = "pin", deviceId = "follower", sessionToken = "token", householdId = "home")
+            }
+            val local = FollowerLocalSyncEngine(db, null, null, db.mealRequestDao())
+            val status = com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncStatusRepository(store)
+            val coordinator = FollowerSyncCoordinator(db, null,
+                FollowerFeedPullEngine(db, client, local, db.mealRequestDao()), null, client, store, status,
+                FollowerMealPlanSyncEngine(db, client))
+            val json = kotlinx.serialization.json.Json
+            client.bootstrapToReturn = json.decodeFromString<BootstrapResponseDto>(
+                json.encodeToString(BootstrapResponseDto.serializer(), snapshot(listOf(meal()))))
+            assertEquals(CoordinatorPassOutcome.SUCCESS, coordinator.executeSyncPass("MANUAL_SYNC"))
+            assertEquals(1, db.mealDao().getAll().size)
+            assertEquals(1, client.bootstrapCallCount)
+            client.bootstrapToReturn = snapshot(null)
+            assertEquals(CoordinatorPassOutcome.RECOVERABLE_FAILURE, coordinator.executeSyncPass("MANUAL_SYNC"))
+            assertEquals(1, db.mealDao().getAll().size)
+            val message = status.lastSyncErrorMessage.value
+            assertTrue(message, message!!.contains("Main did not publish"))
+        } finally { db.close() }
+    }
+
     @Test fun mainSnapshotPublishesExistingMealPlanWithIngredients() = runBlocking {
         val main = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
         try {

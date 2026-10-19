@@ -202,13 +202,14 @@ class HouseholdViewModel @Inject constructor(
     fun loadHouseholdInfo() {
         _uiState.update { it.copy(isLoading = true) }
         viewModelScope.launch {
-            val identity = identityManager.getOrCreateHouseholdIdentity()
+            val isPaired = followerPairingStore.isPaired()
+            val role = appRoleResolver?.getAppRoleAsync() ?: if (isPaired) com.example.chatgpt_mealplanner.core.sync.AppRole.FOLLOWER else com.example.chatgpt_mealplanner.core.sync.AppRole.MAIN
+            val identity = if (role == com.example.chatgpt_mealplanner.core.sync.AppRole.MAIN)
+                identityManager.getOrCreateHouseholdIdentity() else null
             val devices = pairedDeviceRepository.getAllDevices()
             val conflicts = syncConflictApprovalRepository?.getOpenConflicts() ?: emptyList()
             val approvals = syncConflictApprovalRepository?.getOpenPendingApprovals() ?: emptyList()
-            val isPaired = followerPairingStore.isPaired()
             val config = followerPairingStore.getPairingConfig()
-            val role = appRoleResolver?.getAppRole() ?: if (isPaired) com.example.chatgpt_mealplanner.core.sync.AppRole.FOLLOWER else com.example.chatgpt_mealplanner.core.sync.AppRole.MAIN
             val dao = followerDatabase?.followerDao()
             val followerStatus = followerSyncStatusRepository?.calculateStatus(dao)
 
