@@ -196,3 +196,46 @@ Isolated root cause: `kotlinx.coroutines.test.runTest` holds 45s `withTimeoutOrN
 - Full verification passed: debug APK assembly, **819 app unit tests** with no
   failures/errors/skips, and lint with **0 errors / 81 warnings**. Sync-contract
   remained UP-TO-DATE with its existing 9 passing tests. Normal caching retained.
+
+
+## Physical Acceptance Findings — Quantity, Meal Plan Sync, AI Claims (2026-10-19)
+
+The user confirmed the inventory edit/OUT test passed. Further phone testing found
+known Main quantities displayed as unknown on Follower, meals absent from Follower,
+and an AI completion claim after “sounds good” without a corresponding saved plan.
+
+Implementation is saved in `dad483f`:
+- Follower inventory conversion now marks numeric quantities with a unit as known
+  (APPROXIMATE). The current inventory wire format does not transmit confidence,
+  so this deliberately does not claim exact precision. Null quantities remain unknown.
+- Bootstrap responses add an optional typed meal plan including ingredients and
+  instructions. Each normal Follower sync refreshes this plan, even for already
+  bootstrapped installations. This uses the existing authenticated snapshot path;
+  it currently transfers a full snapshot each pass rather than a meal delta feed.
+- Follower database version 6 adds an isolated `follower_meals` projection through
+  migration 5-to-6. Meal reads on Follower use this projection. Snapshot replacement
+  is transactional, includes removals, validates data/household, preserves previous
+  data on failure, and does not modify inventory, outbox, pairing, or feed cursor.
+  Missing meal-plan fields from older Main builds do not erase cached meals.
+- Unsupported AI meal-plan completion phrases, including “I've added that plan”
+  and “I have now added the plan”, are replaced with an explicit no-changes-saved
+  response when no planner mutation succeeded. This is a safeguard for the reported
+  claim, not a guarantee that every weekly-plan confirmation will invoke all required
+  tools; unsupported confirmations now remain visibly uncommitted.
+
+Verification:
+- New regression coverage exercises real Room meal refresh/replacement, rollback,
+  migration preservation, Follower repository reads, Main snapshot publication,
+  quantity display and the reported AI wording without a successful write.
+- Existing reports record **825 app tests and 9 sync-contract tests passing**, with
+  no failures/errors/skips. The resumed full verification reused those unit tasks
+  as UP-TO-DATE using normal Gradle caching.
+- Debug app and Android instrumentation APK assembly passed; lint passed with
+  **0 errors / 81 warnings**. Instrumentation APK compilation is not device execution.
+- Android migration-test registration now includes 5-to-6 and checks the version-6
+  meal table while preserving historical inventory, outbox and cursor data.
+
+Next physical check: update BOTH Main and Follower over their existing installs,
+then manually sync Follower. Confirm numeric quantities and the planned meals,
+including ingredients, are visible before resuming request/discussion/decision tests.
+No phone connection, deployment, data reset, Restore, or pairing change was performed.

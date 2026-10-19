@@ -8,6 +8,7 @@ import com.example.chatgpt_mealplanner.core.sync.follower.database.FOLLOWER_MIGR
 import com.example.chatgpt_mealplanner.core.sync.follower.database.FOLLOWER_MIGRATION_2_3
 import com.example.chatgpt_mealplanner.core.sync.follower.database.FOLLOWER_MIGRATION_3_4
 import com.example.chatgpt_mealplanner.core.sync.follower.database.FOLLOWER_MIGRATION_4_5
+import com.example.chatgpt_mealplanner.core.sync.follower.database.FOLLOWER_MIGRATION_5_6
 import com.example.chatgpt_mealplanner.core.sync.follower.database.FollowerDatabase
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -36,7 +37,7 @@ class PantryPhase5FollowerDatabaseMigrationTest {
     }
 
     @Test
-    fun realRoom_followerDatabase_migration3To4_preservesOutboxAndMetadata() = runBlocking {
+    fun realRoom_followerDatabase_migration3To6_preservesOutboxAndMetadata() = runBlocking {
         // 1. Create a raw SQLite database at FollowerDatabase v3
         val openHelper = androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory().create(
             androidx.sqlite.db.SupportSQLiteOpenHelper.Configuration.builder(context)
@@ -151,28 +152,30 @@ class PantryPhase5FollowerDatabaseMigrationTest {
 
         v3Db.close()
 
-        // 3. Open migrated database using Room FollowerDatabase version 4
+        // 3. Open migrated database using Room FollowerDatabase version 6
         val migratedDb = Room.databaseBuilder(context, FollowerDatabase::class.java, dbName)
-            .addMigrations(FOLLOWER_MIGRATION_1_2, FOLLOWER_MIGRATION_2_3, FOLLOWER_MIGRATION_3_4, FOLLOWER_MIGRATION_4_5)
+            .addMigrations(FOLLOWER_MIGRATION_1_2, FOLLOWER_MIGRATION_2_3, FOLLOWER_MIGRATION_3_4, FOLLOWER_MIGRATION_4_5, FOLLOWER_MIGRATION_5_6)
             .allowMainThreadQueries()
             .build()
 
+        assertEquals(6, migratedDb.openHelper.readableDatabase.version)
+        assertTrue(migratedDb.mealDao().getAll().isEmpty())
         val dao = migratedDb.followerDao()
 
-        // 4. Assert data preservation across FOLLOWER_MIGRATION_3_4
+        // 4. Assert data preservation across the full 3-to-6 migration chain
         val itemAfter = dao.getItemById("item-f3-1")
-        assertNotNull("Historical item-f3-1 MUST survive migration to v4", itemAfter)
+        assertNotNull("Historical item-f3-1 MUST survive migration to v6", itemAfter)
         assertEquals("Whole Milk", itemAfter!!.confirmedDisplayName)
         assertEquals(2.0, itemAfter.confirmedQuantity!!, 0.001)
         assertEquals(3L, itemAfter.mainConfirmedRevision)
 
         val outboxAfter = dao.getOutboxByOperationId("op-out-f3-1")
-        assertNotNull("Historical outbox operation op-out-f3-1 MUST survive migration to v4", outboxAfter)
+        assertNotNull("Historical outbox operation op-out-f3-1 MUST survive migration to v6", outboxAfter)
         assertEquals("PENDING_APPROVAL", outboxAfter!!.status)
         assertEquals(1L, outboxAfter.deviceSequence)
 
         val metaAfter = dao.getSyncMetadata()
-        assertNotNull("Sync metadata MUST survive migration to v4", metaAfter)
+        assertNotNull("Sync metadata MUST survive migration to v6", metaAfter)
         assertEquals(10L, metaAfter!!.lastReconciledCanonicalSequence)
         assertTrue("bootstrapCompleted MUST be migrated to true for existing data", metaAfter.bootstrapCompleted)
 
