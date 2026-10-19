@@ -53,26 +53,12 @@ class MealChangeRequestRepositoryImpl @Inject constructor(
     override suspend fun submitRequest(mealId: String, requestText: String) {
         require(mealId.isNotBlank() && mealId.length <= 128) { "Invalid meal ID" }
         require(requestText.isNotBlank() && requestText.length <= 2000) { "Request must contain 1 to 2000 characters" }
-        val requestId = "req_${UUID.randomUUID()}"
-        if (appRoleResolver.isFollowerAsync()) {
-            val config = checkNotNull(pairingStore.getPairingConfig()) { "Follower pairing is unavailable" }
-            check(!pairingStore.isRevoked()) { "Follower access has been revoked" }
-            followerLocalSyncEngine.recordLocalMealChangeRequest(config.deviceId, requestId, mealId, requestText)
-            return
-        }
-        val deviceId = pairingStore.getPairingConfig()?.deviceId ?: "main_device"
-        val now = System.currentTimeMillis()
-        val entity = MealChangeRequestEntity(
-            id = requestId,
-            mealId = mealId,
-            authorDeviceId = deviceId,
-            requestText = requestText,
-            status = "PENDING",
-            mainResponse = null,
-            createdAt = now,
-            updatedAt = now
-        )
-        dao.insertRequest(entity)
+        check(appRoleResolver.isFollowerAsync()) { "Only Followers can create meal-change requests" }
+        val config = checkNotNull(pairingStore.getPairingConfig()) { "Follower pairing is unavailable" }
+        check(!pairingStore.isRevoked()) { "Follower access has been revoked" }
+        followerLocalSyncEngine.recordLocalMealChangeRequest(
+            config.deviceId, "req_${UUID.randomUUID()}", mealId, requestText)
+
     }
 
     override suspend fun updateRequestStatus(requestId: String, status: String, mainResponse: String?) {

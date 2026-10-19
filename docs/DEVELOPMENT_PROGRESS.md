@@ -271,3 +271,22 @@ is still required. No phone was connected, installed to, reset, or re-paired.
   caching. **829 app tests passed**, no failures/errors/skips; sync-contract remained
   UP-TO-DATE with 9 passing tests. Instrumentation APK assembly was UP-TO-DATE,
   not device execution. Lint: **0 errors / 81 warnings**.
+
+
+## Meal Request Roles and Keyboard Visibility (2026-10-19)
+
+The user confirmed meal-plan synchronization now works on both phones.
+
+- Meal details show the new-request editor only on Follower. Main shows existing
+  requests with the shared response/discussion/decision controls, and no request
+  section when there are none. The repository also rejects Main submissions.
+- The meal planner respects keyboard insets. Request and response editors ask
+  their scroll containers to bring them into view on focus and keyboard changes.
+  Editors display at most four lines, and Follower request drafts survive recreation.
+- Added a regression proving Main submissions write neither a request nor sync
+  outbox/sequence state; existing Follower submission and decision tests still pass.
+- Verification: targeted Phase10MealRequestSyncTest passed; full debug assembly,
+  instrumentation APK assembly, unit tests and lint passed. 830 app tests passed
+  with no failures/errors/skips. Sync-contract tests were cached with 9 passing
+  results. No phone was connected or deployed to. Keyboard movement and Main
+  response controls still require visual verification on the updated phones.

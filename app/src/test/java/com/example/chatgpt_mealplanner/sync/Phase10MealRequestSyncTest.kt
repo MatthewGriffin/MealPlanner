@@ -65,6 +65,19 @@ class Phase10MealRequestSyncTest {
     }
 
     @Test
+    fun mainCannotCreateMealChangeRequests() = runBlocking {
+        val store = FollowerPairingStore(null)
+        val repository = MealChangeRequestRepositoryImpl(main.mealChangeRequestDao(), store,
+            AppRoleResolver(store), main.canonicalSyncDao(), RoomTransactionRunner(main), follower.mealRequestDao(), local)
+        assertFails { repository.submitRequest("meal_1", "Change dinner") }
+        assertTrue(main.mealChangeRequestDao().getAllRequestsSync().isEmpty())
+        assertTrue(follower.mealRequestDao().observeAllRequests().first().isEmpty())
+        assertTrue(follower.followerDao().getAllOutboxOps().isEmpty())
+        assertNull(follower.followerDao().getSequenceEntity())
+        assertNull(main.canonicalSyncDao().getSequenceEntity())
+    }
+
+    @Test
     fun requestRoundTrip_mainPersistsOnceAndFollowerReceivesDecision() = runBlocking {
         main.mealDao().insertMeal(Meal("meal_1", "2026-10-18", title = "Dinner").toEntity())
         main.pairedDeviceDao().insertOrUpdateDevice(PairedDeviceEntity(deviceId, "Follower", "key", "ACTIVE", 1L, 1L))
