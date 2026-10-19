@@ -26,7 +26,8 @@ data class MealPlannerUiState(
     val userMessage: String? = null,
     val mealToCook: MealWithIngredients? = null,
     val mealToAddOrEdit: MealWithIngredients? = null,
-    val showAddDialog: Boolean = false
+    val showAddDialog: Boolean = false,
+    val mealTitleMap: Map<String, String> = emptyMap()
 )
 
 sealed interface MealPlannerUiEvent {

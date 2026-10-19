@@ -195,7 +195,11 @@ fun RecipeDetailsScreen(
                     }
                 } else if (mealRequests.isNotEmpty()) {
                     item(key = "request_review") {
-                        MainRequestReviewSection(mealRequests, viewModel::updateRequestStatus)
+                        MainRequestReviewSection(
+                            requests = mealRequests,
+                            onUpdateStatus = viewModel::updateRequestStatus,
+                            mealTitleMap = mapOf(meal.id to meal.title)
+                        )
                     }
                 }
             }

@@ -214,6 +214,11 @@ class FakeMealDao : MealDao {
         return MutableStateFlow(list)
     }
 
+    override fun observeAllMeals(): Flow<List<MealWithIngredientEntities>> {
+        val list = mealsMap.values.map { MealWithIngredientEntities(it, ingredientsMap[it.id] ?: emptyList()) }
+        return MutableStateFlow(list)
+    }
+
     override suspend fun getMealWithIngredients(mealId: String): MealWithIngredientEntities? {
         val meal = mealsMap[mealId] ?: return null
         val ings = ingredientsMap[mealId] ?: emptyList()

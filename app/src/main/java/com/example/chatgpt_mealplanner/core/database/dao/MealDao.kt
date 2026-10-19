@@ -30,6 +30,10 @@ interface MealDao {
     fun observeMealsForWeek(startDate: String, endDate: String): Flow<List<MealWithIngredientEntities>>
 
     @Transaction
+    @Query("SELECT * FROM meals")
+    fun observeAllMeals(): Flow<List<MealWithIngredientEntities>>
+
+    @Transaction
     @Query("SELECT * FROM meals WHERE id = :mealId")
     suspend fun getMealWithIngredients(mealId: String): MealWithIngredientEntities?
 

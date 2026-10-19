@@ -55,6 +55,25 @@ class MealRepositoryImpl @Inject constructor(
         }
     }
 
+    override fun observeAllMealTitles(): Flow<Map<String, String>> {
+        return kotlinx.coroutines.flow.flow {
+            if (roleResolver.isFollowerAsync()) {
+                emitAll(followerDatabase.mealDao().observeAll().map { rows ->
+                    rows.mapNotNull { row ->
+                        runCatching {
+                            val model = decode(row)
+                            model.meal.id to model.meal.title
+                        }.getOrNull()
+                    }.toMap()
+                })
+            } else {
+                emitAll(mealDao.observeAllMeals().map { list ->
+                    list.associate { it.meal.id to it.meal.title }
+                })
+            }
+        }
+    }
+
     override suspend fun getMealWithIngredients(mealId: String): MealWithIngredients? {
         if (roleResolver.isFollowerAsync()) return followerMeals().find { it.meal.id == mealId }
         val entity = mealDao.getMealWithIngredients(mealId) ?: return null

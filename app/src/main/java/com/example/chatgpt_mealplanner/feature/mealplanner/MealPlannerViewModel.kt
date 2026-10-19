@@ -67,6 +67,7 @@ class MealPlannerViewModel @Inject constructor(
     }
 
     private val allChangeRequestsFlow = mealChangeRequestRepository.observeAllRequests()
+    private val mealTitleMapFlow = mealRepository.observeAllMealTitles()
 
     @Suppress("UNCHECKED_CAST")
     val uiState: StateFlow<MealPlannerUiState> = combine(
@@ -80,7 +81,8 @@ class MealPlannerViewModel @Inject constructor(
         mealToCookFlow,
         mealToAddOrEditFlow,
         showAddDialogFlow,
-        allChangeRequestsFlow
+        allChangeRequestsFlow,
+        mealTitleMapFlow
     ) { flows ->
         MealPlannerUiState(
             selectedDate = flows[0] as String,
@@ -94,7 +96,8 @@ class MealPlannerViewModel @Inject constructor(
             mealToAddOrEdit = flows[8] as MealWithIngredients?,
             showAddDialog = flows[9] as Boolean,
             allChangeRequests = flows[10] as List<com.example.chatgpt_mealplanner.core.database.entity.MealChangeRequestEntity>,
-            isFollower = appRoleResolver.isFollower()
+            isFollower = appRoleResolver.isFollower(),
+            mealTitleMap = flows[11] as Map<String, String>
         )
     }.stateIn(
         scope = viewModelScope,

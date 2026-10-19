@@ -130,11 +130,12 @@ fun MealPlannerScreen(
                         MealPlannerTab.PLANNER -> {
                             Column(modifier = Modifier.fillMaxSize()) {
                                 if (uiState.isFollower && uiState.allChangeRequests.isNotEmpty()) {
-                                    FollowerRequestStatusSection(uiState.allChangeRequests)
+                                    FollowerRequestStatusSection(uiState.allChangeRequests, uiState.mealTitleMap)
                                 }
                                 if (!uiState.isFollower && uiState.allChangeRequests.isNotEmpty()) {
                                     MainRequestReviewSection(
                                         requests = uiState.allChangeRequests,
+                                        mealTitleMap = uiState.mealTitleMap,
                                         onUpdateStatus = { reqId, status, resp ->
                                             parentViewModel.updateRequestStatus(reqId, status, resp)
                                         }
@@ -382,7 +383,8 @@ fun MealCard(
 
 @Composable
 fun FollowerRequestStatusSection(
-    requests: List<com.example.chatgpt_mealplanner.core.database.entity.MealChangeRequestEntity>
+    requests: List<com.example.chatgpt_mealplanner.core.database.entity.MealChangeRequestEntity>,
+    mealTitleMap: Map<String, String> = emptyMap()
 ) {
     Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
         Text("Meal change requests", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
@@ -393,6 +395,11 @@ fun FollowerRequestStatusSection(
             items(requests, key = { it.id }) { request ->
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(12.dp)) {
+                        val mealTitle = mealTitleMap[request.mealId]
+                        if (!mealTitle.isNullOrBlank()) {
+                            Text("Meal: $mealTitle", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+                            Spacer(modifier = Modifier.height(2.dp))
+                        }
                         Text(request.requestText, style = MaterialTheme.typography.bodyMedium)
                         Text(
                             text = when (request.status) {
@@ -419,7 +426,8 @@ fun FollowerRequestStatusSection(
 @Composable
 fun MainRequestReviewSection(
     requests: List<com.example.chatgpt_mealplanner.core.database.entity.MealChangeRequestEntity>,
-    onUpdateStatus: (String, String, String?) -> Unit
+    onUpdateStatus: (String, String, String?) -> Unit,
+    mealTitleMap: Map<String, String> = emptyMap()
 ) {
     if (requests.isEmpty()) return
     Column(
@@ -454,7 +462,9 @@ fun MainRequestReviewSection(
                             Text(text = req.status, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
                         }
                         Spacer(modifier = Modifier.height(4.dp))
-                        Text(text = "Meal ID: ${req.mealId} • By: ${req.authorDeviceId}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        val mealTitle = mealTitleMap[req.mealId]
+                        val mealLabel = if (!mealTitle.isNullOrBlank()) "Meal: $mealTitle" else "Meal ID: ${req.mealId}"
+                        Text(text = "$mealLabel • By: ${req.authorDeviceId}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(modifier = Modifier.height(8.dp))
 
                         if (canDecide) {
