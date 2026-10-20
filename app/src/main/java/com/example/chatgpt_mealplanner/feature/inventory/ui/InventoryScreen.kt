@@ -84,7 +84,8 @@ fun InventoryScreen(
     onEvent: (InventoryUiEvent) -> Unit,
     onScanBarcodeClicked: () -> Unit = {},
     onSearchProducts: (suspend (String) -> List<com.example.chatgpt_mealplanner.core.barcode.BarcodeLookupResult>)? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onAddLowStockToShopping: ((InventoryItem) -> Unit)? = null
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -181,7 +182,10 @@ fun InventoryScreen(
                             onMarkAsOut = { onEvent(InventoryUiEvent.MarkAsOut(item.id)) },
                             onCorrection = { correctionItem = item },
                             onMergeRequested = { mergeSourceItem = item },
-                            onDeleteRequested = { deleteItemTarget = item }
+                            onDeleteRequested = { deleteItemTarget = item },
+                            onAddToShoppingList = if (item.status == ItemStatus.LOW && onAddLowStockToShopping != null) {
+                                { onAddLowStockToShopping(item) }
+                            } else null
                         )
                     }
                 }
@@ -291,7 +295,8 @@ fun InventoryItemCard(
     onMarkAsOut: () -> Unit,
     onCorrection: () -> Unit,
     onMergeRequested: () -> Unit,
-    onDeleteRequested: () -> Unit
+    onDeleteRequested: () -> Unit,
+    onAddToShoppingList: (() -> Unit)? = null
 ) {
     var showMenu by remember { mutableStateOf(false) }
 
@@ -389,6 +394,12 @@ fun InventoryItemCard(
                             Text("Mark Out")
                         }
                     }
+                }
+            }
+            if (onAddToShoppingList != null) {
+                Spacer(modifier = Modifier.height(4.dp))
+                FilledTonalButton(onClick = onAddToShoppingList, modifier = Modifier.fillMaxWidth()) {
+                    Text("Add to shopping list")
                 }
             }
         }
