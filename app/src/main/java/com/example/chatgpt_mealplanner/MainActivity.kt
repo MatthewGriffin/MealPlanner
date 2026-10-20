@@ -195,11 +195,16 @@ class MainActivity : ComponentActivity() {
                         Screen.INVENTORY -> {
                             val inventoryViewModel: InventoryViewModel = hiltViewModel()
                             val state by inventoryViewModel.uiState.collectAsState()
+                            val shoppingViewModel: ShoppingViewModel = hiltViewModel()
                             InventoryScreen(
                                 state = state,
                                 onEvent = inventoryViewModel::onEvent,
                                 onScanBarcodeClicked = { currentScreen = Screen.SCANNER },
-                                modifier = Modifier.padding(innerPadding)
+                                modifier = Modifier.padding(innerPadding),
+                                onAddLowStockToShopping = if (isFollower) null else { item ->
+                                    shoppingViewModel.onEvent(com.example.chatgpt_mealplanner.feature.shopping.ShoppingUiEvent.RequestLowStockShortcut(item))
+                                    currentScreen = Screen.SHOPPING
+                                }
                             )
                         }
 
