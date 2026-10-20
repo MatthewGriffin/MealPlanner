@@ -59,6 +59,13 @@ class MealPlannerViewModel @Inject constructor(
     @Volatile
     private var pollingJob: kotlinx.coroutines.Job? = null
 
+    @Volatile
+    private var isPlannerForeground = false
+
+    private var latestPollingRequests =
+        emptyList<com.example.chatgpt_mealplanner.core.database.entity.MealChangeRequestEntity>()
+    private var latestIsFollower = false
+
     val isPollingActive: Boolean
         get() = pollingJob?.isActive == true
 
@@ -327,12 +334,25 @@ class MealPlannerViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Called by the planner screen's lifecycle observer. Polling is allowed only while
+     * this screen is started and the current device is enrolled as a Follower.
+     */
+    fun setPlannerForeground(isForeground: Boolean) {
+        isPlannerForeground = isForeground
+        updatePollingState(latestPollingRequests, latestIsFollower)
+    }
+
     fun updatePollingState(
         requests: List<com.example.chatgpt_mealplanner.core.database.entity.MealChangeRequestEntity>,
         isFollower: Boolean,
         pollIntervalMs: Long = 5000L
     ) {
-        val hasAwaitingRequest = isFollower && requests.any { it.status in AWAITING_MAIN_STATUSES }
+        latestPollingRequests = requests
+        latestIsFollower = isFollower
+        val hasAwaitingRequest = isPlannerForeground &&
+            isFollower &&
+            requests.any { it.status in AWAITING_MAIN_STATUSES }
         if (hasAwaitingRequest) {
             if (pollingJob == null || pollingJob?.isActive == false) {
                 startPolling(pollIntervalMs)
