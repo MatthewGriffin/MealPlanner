@@ -396,7 +396,7 @@ class MealPlannerViewModel @Inject constructor(
                     delay(pollIntervalMs)
                     ticks++
                     val currentRequests = mealChangeRequestRepository.observeAllRequests().firstOrNull() ?: emptyList()
-                    val hasAwaiting = currentRequests.any { it.status in AWAITING_MAIN_STATUSES }
+                    val hasAwaiting = currentRequests.any { it.status in POLLABLE_REQUEST_STATUSES }
                     if (hasAwaiting) {
                         triggerFollowerSync()
                     } else {
@@ -426,6 +426,7 @@ class MealPlannerViewModel @Inject constructor(
     }
 
     companion object {
-        val AWAITING_MAIN_STATUSES = setOf("QUEUED", "PENDING", "DISCUSSED", "ACCEPTED", "IN_PROGRESS", "SYNC_FAILED")
+        val AWAITING_MAIN_STATUSES = setOf("QUEUED", "PENDING", "DISCUSSED", "SYNC_FAILED")
+        val POLLABLE_REQUEST_STATUSES = AWAITING_MAIN_STATUSES + setOf("ACCEPTED", "IN_PROGRESS")
     }
 }
