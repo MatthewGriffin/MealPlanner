@@ -169,7 +169,7 @@ data class RemainderPenaltyConfig(
 
 @Serializable
 data class UserShoppingPreferences(
-    val enabledRetailers: Set<RetailerId> = setOf(RetailerId.ASDA, RetailerId.ICELAND, RetailerId.FOOD_WAREHOUSE),
+    val enabledRetailers: Set<RetailerId> = RetailerId.entries.toSet(),
     val avoidExtraStoreTrips: Boolean = true,
     val minimumSavingsForExtraStore: Money = Money(300L), // £3.00
     val preferFrozenVegetables: Boolean = true,

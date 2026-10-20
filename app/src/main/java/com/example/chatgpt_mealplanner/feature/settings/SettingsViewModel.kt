@@ -13,6 +13,8 @@ import com.example.chatgpt_mealplanner.core.database.dao.ChatDao
 import com.example.chatgpt_mealplanner.core.security.CredentialStore
 import com.example.chatgpt_mealplanner.core.sync.AppRoleResolver
 import com.example.chatgpt_mealplanner.core.sync.follower.worker.FollowerSyncScheduler
+import com.example.chatgpt_mealplanner.core.service.RetailerPreferenceStore
+import com.example.chatgpt_mealplanner.retail.contract.RetailerId
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
@@ -38,7 +40,8 @@ data class SettingsUiState(
     val backupStatusMessage: String? = null,
     val isBackupInProgress: Boolean = false,
     val isPassphraseDialogVisible: Boolean = false,
-    val pendingBackupUri: android.net.Uri? = null
+    val pendingBackupUri: android.net.Uri? = null,
+    val enabledRetailers: Set<RetailerId> = RetailerPreferenceStore.DEFAULT_ENABLED_RETAILERS
 )
 
 @HiltViewModel
@@ -50,15 +53,32 @@ class SettingsViewModel @Inject constructor(
     private val backupManager: BackupManager,
     private val followerSyncScheduler: FollowerSyncScheduler,
     private val appRoleResolver: AppRoleResolver,
-    private val mainBackupSaveCoordinator: MainEncryptedBackupSaveCoordinator
+    private val mainBackupSaveCoordinator: MainEncryptedBackupSaveCoordinator,
+    private val retailerPreferenceStore: RetailerPreferenceStore = RetailerPreferenceStore(null)
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
     init {
+        _uiState.update { it.copy(enabledRetailers = retailerPreferenceStore.getEnabledRetailers()) }
         checkCredentialStatus()
         resolveAppRole()
+    }
+
+    fun setRetailerEnabled(retailer: RetailerId, enabled: Boolean) {
+        val updated = _uiState.value.enabledRetailers.toMutableSet().apply {
+            if (enabled) add(retailer) else remove(retailer)
+        }
+        if (updated.isEmpty()) {
+            _uiState.update { it.copy(syncStatusMessage = "Keep at least one store selected for price comparisons.") }
+            return
+        }
+        if (retailerPreferenceStore.setEnabledRetailers(updated)) {
+            _uiState.update { it.copy(enabledRetailers = updated, syncStatusMessage = null) }
+        } else {
+            _uiState.update { it.copy(syncStatusMessage = "Could not save store preferences.") }
+        }
     }
 
     private fun checkCredentialStatus() {

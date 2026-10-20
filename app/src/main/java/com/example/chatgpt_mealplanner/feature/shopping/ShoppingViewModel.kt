@@ -20,10 +20,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import com.example.chatgpt_mealplanner.core.service.RetailShoppingDomainService
+import com.example.chatgpt_mealplanner.core.service.RetailerPreferenceStore
 import com.example.chatgpt_mealplanner.retail.contract.BasketComparisonResult
 import com.example.chatgpt_mealplanner.retail.contract.BasketLine
 import com.example.chatgpt_mealplanner.retail.contract.Money
 import com.example.chatgpt_mealplanner.retail.contract.RetailerId
+import com.example.chatgpt_mealplanner.retail.contract.UserShoppingPreferences
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.onEach
@@ -36,7 +38,8 @@ class ShoppingViewModel @Inject constructor(
     private val shoppingRepository: ShoppingRepository,
     private val stapleRuleRepository: StapleRuleRepository,
     private val retailShoppingDomainService: RetailShoppingDomainService,
-    private val appRoleResolver: AppRoleResolver
+    private val appRoleResolver: AppRoleResolver,
+    private val retailerPreferenceStore: RetailerPreferenceStore = RetailerPreferenceStore(null)
 ) : ViewModel() {
 
     private val activeTabFlow = MutableStateFlow(ShoppingTab.SHOPPING_LIST)
@@ -122,7 +125,10 @@ class ShoppingViewModel @Inject constructor(
             val count = listWithItems?.items?.size ?: 0
             println("[AI_MEALPLANNER] [SHOPPING_ASSIGNMENT_CALL] shoppingItemCount=$count")
             val result = try {
-                val res = retailShoppingDomainService.optimizeShoppingBasket()
+                val preferences = UserShoppingPreferences(
+                    enabledRetailers = retailerPreferenceStore.getEnabledRetailers()
+                )
+                val res = retailShoppingDomainService.optimizeShoppingBasket(preferences)
                 if (res is DomainResult.Success) {
                     res.value.selectedPlan.lines.forEach { line ->
                         println("[AI_MEALPLANNER] [SHOPPING_ASSIGNMENT_RESULT] requirementId=${line.shoppingRequirementId} assigned=true retailer=${line.retailerId.name}")

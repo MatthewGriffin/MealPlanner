@@ -165,7 +165,14 @@ class RetailShoppingAuthorityTest {
     fun cacheDecision_isIsolatedPerRetailer() = runTest {
         val asdaProd = RetailProduct(RetailerId.ASDA, "asda_1", "Tomato Sauce", "tomato_sauce", storageClass = RetailStorageClass.AMBIENT)
         val asdaOffer = RetailOffer(RetailerId.ASDA, "asda_1", Money(100L))
-        retailRepository.cacheProductsWithOffers(listOf(RetailProductWithOffer(asdaProd, asdaOffer)))
+        val icelandProd = RetailProduct(RetailerId.ICELAND, "iceland_1", "Tomato Sauce", "tomato_sauce", storageClass = RetailStorageClass.AMBIENT)
+        val icelandOffer = RetailOffer(RetailerId.ICELAND, "iceland_1", Money(1L))
+        retailRepository.cacheProductsWithOffers(
+            listOf(
+                RetailProductWithOffer(asdaProd, asdaOffer),
+                RetailProductWithOffer(icelandProd, icelandOffer)
+            )
+        )
 
         shoppingDao.insertShoppingList(ShoppingListEntity("list_1", "List", null, null, ShoppingListStatus.ACTIVE, 1000L, 1000L))
         shoppingDao.insertShoppingListItem(
@@ -199,9 +206,12 @@ class RetailShoppingAuthorityTest {
             )
         )
 
-        val prefs = UserShoppingPreferences(enabledRetailers = setOf(RetailerId.ASDA, RetailerId.ICELAND))
+        val prefs = UserShoppingPreferences(enabledRetailers = setOf(RetailerId.ASDA))
         val result = retailShoppingDomainService.optimizeShoppingBasket(prefs)
         assertTrue(result is DomainResult.Success)
+        val plan = (result as DomainResult.Success).value.selectedPlan
+        assertEquals(setOf(RetailerId.ASDA), plan.stores)
+        assertEquals("asda_1", plan.lines.single().productWithOffer.product.retailerProductId)
     }
 
     @Test

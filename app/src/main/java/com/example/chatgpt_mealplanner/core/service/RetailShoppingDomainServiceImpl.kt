@@ -98,7 +98,7 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
             val queryLower = req.displayName.lowercase()
             val canonicalLower = req.canonicalIngredientId?.lowercase()
 
-            RetailerId.entries.forEach { retailerId ->
+            preferences.enabledRetailers.forEach { retailerId ->
                 val retailerCandidates = allCandidates.filter { c -> c.product.retailerId == retailerId }
                 val relevantCandidates = retailerCandidates.filter { c ->
                     val pName = c.product.name.lowercase()
@@ -191,7 +191,7 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
         }
 
         requirementSpecs.forEach { req ->
-            RetailerId.entries.forEach { retailerId ->
+            preferences.enabledRetailers.forEach { retailerId ->
                 val rCandidates = candidateProducts.filter { it.product.retailerId == retailerId }
                 val matched = rCandidates.map { c -> matcher.evaluateMatch(req.canonicalIngredientId, req.displayName, c.product) }
                 val autoEligible = matched.count { it.isAutoBasketEligible }
