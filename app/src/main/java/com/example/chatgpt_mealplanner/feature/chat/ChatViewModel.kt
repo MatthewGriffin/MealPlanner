@@ -317,7 +317,7 @@ class ChatViewModel @Inject constructor(
                 errorMessageFlow.value = "The planned meal could not be found, so the request was left open."
                 return@launch
             }
-            val stepText = proposal.steps.sortedBy { it.order }.joinToString("\\n") { "${it.order}. ${it.instruction}" }.ifBlank { existingMeal?.instructions }
+            val stepText = proposal.steps.sortedBy { it.order }.joinToString("\n") { "${it.order}. ${it.instruction}" }.ifBlank { existingMeal?.instructions }
             val meal = if (existingMeal != null) {
                 existingMeal.copy(
                     title = proposal.title,
@@ -372,7 +372,7 @@ class ChatViewModel @Inject constructor(
                             mealChangeRequestRepository.updateRequestStatus(
                                 linkedRequest.id,
                                 "COMPLETED",
-                                "Completed: ${meal.title}"
+                                "Completed: ${meal.title}".take(2000)
                             )
                             mealChangeRequestIdFlow.value = null
                             errorMessageFlow.value = "Updated '${meal.title}' and completed the change request."
