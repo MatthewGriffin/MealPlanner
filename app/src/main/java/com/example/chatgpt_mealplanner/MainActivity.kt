@@ -24,6 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import javax.inject.Inject
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -85,6 +86,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             ChatGPT_MealPlannerTheme {
                 var currentScreen by remember { mutableStateOf(Screen.INVENTORY) }
+                var lowStockItemToAdd by remember { mutableStateOf<com.example.chatgpt_mealplanner.core.model.InventoryItem?>(null) }
                 val isFollower = remember { appRoleResolver.isFollower() }
                 if (isFollower && currentScreen == Screen.CHAT) {
                     currentScreen = Screen.INVENTORY
@@ -195,14 +197,13 @@ class MainActivity : ComponentActivity() {
                         Screen.INVENTORY -> {
                             val inventoryViewModel: InventoryViewModel = hiltViewModel()
                             val state by inventoryViewModel.uiState.collectAsState()
-                            val shoppingViewModel: ShoppingViewModel = hiltViewModel()
                             InventoryScreen(
                                 state = state,
                                 onEvent = inventoryViewModel::onEvent,
                                 onScanBarcodeClicked = { currentScreen = Screen.SCANNER },
                                 modifier = Modifier.padding(innerPadding),
                                 onAddLowStockToShopping = if (isFollower) null else { item ->
-                                    shoppingViewModel.onEvent(com.example.chatgpt_mealplanner.feature.shopping.ShoppingUiEvent.RequestLowStockShortcut(item))
+                                    lowStockItemToAdd = item
                                     currentScreen = Screen.SHOPPING
                                 }
                             )
@@ -224,6 +225,12 @@ class MainActivity : ComponentActivity() {
 
                         Screen.SHOPPING -> {
                             val shoppingViewModel: ShoppingViewModel = hiltViewModel()
+                            LaunchedEffect(lowStockItemToAdd, shoppingViewModel) {
+                                lowStockItemToAdd?.let { item ->
+                                    shoppingViewModel.onEvent(com.example.chatgpt_mealplanner.feature.shopping.ShoppingUiEvent.RequestLowStockShortcut(item))
+                                    lowStockItemToAdd = null
+                                }
+                            }
                             val state by shoppingViewModel.uiState.collectAsState()
                             ShoppingScreen(
                                 uiState = state,
