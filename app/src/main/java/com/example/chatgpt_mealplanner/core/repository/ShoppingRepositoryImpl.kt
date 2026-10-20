@@ -54,6 +54,9 @@ class ShoppingRepositoryImpl @Inject constructor(
         shoppingDao.deleteShoppingListItem(itemId)
     }
 
+    override suspend fun deleteCompletedItems(listId: String): Int =
+        shoppingDao.deleteCompletedItems(listId)
+
     override suspend fun updateItemStatus(itemId: String, status: ShoppingItemStatus) {
         shoppingDao.updateItemStatus(itemId, status.name)
     }

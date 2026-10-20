@@ -25,6 +25,12 @@ interface StapleRuleDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrUpdateStapleRule(rule: StapleRuleEntity)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertStapleRules(rules: List<StapleRuleEntity>)
+
+    @Query("DELETE FROM staple_rules")
+    suspend fun deleteAllStapleRules()
+
     @Query("DELETE FROM staple_rules WHERE id = :id")
     suspend fun deleteStapleRule(id: String)
 

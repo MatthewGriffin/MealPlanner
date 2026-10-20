@@ -1,6 +1,11 @@
 package com.example.chatgpt_mealplanner.core.sync.follower.engine
 
 import androidx.room.withTransaction
+import com.example.chatgpt_mealplanner.core.database.AppDatabase
+import com.example.chatgpt_mealplanner.core.database.entity.ShoppingListEntity
+import com.example.chatgpt_mealplanner.core.database.entity.ShoppingListItemEntity
+import com.example.chatgpt_mealplanner.core.database.entity.StapleRuleEntity
+import com.example.chatgpt_mealplanner.core.model.*
 import com.example.chatgpt_mealplanner.core.model.MealWithIngredients
 import com.example.chatgpt_mealplanner.core.sync.client.PantrySyncTestClient
 import com.example.chatgpt_mealplanner.core.sync.client.NetworkResultStatus
@@ -15,7 +20,8 @@ data class MealPlanRefreshResult(val success: Boolean, val message: String, val 
 
 class FollowerMealPlanSyncEngine @Inject constructor(
     private val database: FollowerDatabase,
-    private val client: PantrySyncTestClient
+    private val client: PantrySyncTestClient,
+    private val appDatabase: AppDatabase
 ) {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
@@ -70,9 +76,60 @@ class FollowerMealPlanSyncEngine @Inject constructor(
             require(model.ingredients.all { it.mealId == model.meal.id && it.plannedQuantity.isFinite() && it.plannedQuantity >= 0 })
             FollowerMealEntity(model.meal.id, payload)
         }
+        val shoppingListDtos = snapshot.shoppingLists
+        val shoppingLists = shoppingListDtos?.map { dto ->
+            ShoppingListEntity(dto.id, dto.name, dto.startDate, dto.endDate,
+                enumValueOf(dto.status), dto.createdAt, dto.updatedAt)
+        }
+        val shoppingItems = if (shoppingListDtos != null) {
+            val knownListIds = shoppingLists.orEmpty().mapTo(mutableSetOf()) { it.id }
+            val itemDtos = snapshot.shoppingItems ?: emptyList()
+            require(itemDtos.all { it.shoppingListId in knownListIds }) { "Shopping item references an unknown list" }
+            itemDtos.map { dto ->
+                ShoppingListItemEntity(
+                    id = dto.id, shoppingListId = dto.shoppingListId, canonicalIngredientId = dto.canonicalIngredientId,
+                    displayName = dto.displayName, requiredQuantity = dto.requiredQuantity,
+                    requiredUnit = dto.requiredUnit?.let { enumValueOf<QuantityUnit>(it) },
+                    suggestedPurchaseQuantity = dto.suggestedPurchaseQuantity,
+                    suggestedPurchaseUnit = dto.suggestedPurchaseUnit?.let { enumValueOf<QuantityUnit>(it) },
+                    packCount = dto.packCount, reason = dto.reason, priority = enumValueOf(dto.priority),
+                    status = enumValueOf(dto.status), optional = dto.optional, sourceType = enumValueOf(dto.sourceType),
+                    hasMealRequirement = dto.hasMealRequirement, hasStapleRestock = dto.hasStapleRestock,
+                    mealShortfallQuantity = dto.mealShortfallQuantity, stapleReserveTopUpQuantity = dto.stapleReserveTopUpQuantity,
+                    expectedFinalInventory = dto.expectedFinalInventory,
+                    expectedFinalInventoryUnit = dto.expectedFinalInventoryUnit?.let { enumValueOf<QuantityUnit>(it) },
+                    quantityUncertain = dto.quantityUncertain, uncertaintyReason = dto.uncertaintyReason,
+                    requirementConfidence = enumValueOf(dto.requirementConfidence), wasteRisk = enumValueOf(dto.wasteRisk),
+                    createdAt = dto.createdAt, updatedAt = dto.updatedAt
+                )
+            }
+        } else null
+        val stapleRules = snapshot.stapleRules?.map { dto ->
+            StapleRuleEntity(
+                id = dto.id, canonicalIngredientId = dto.canonicalIngredientId, displayName = dto.displayName,
+                enabled = dto.enabled, archivedByMerge = dto.archivedByMerge, mode = enumValueOf(dto.mode),
+                thresholdQuantity = dto.thresholdQuantity, thresholdUnit = dto.thresholdUnit?.let { enumValueOf<QuantityUnit>(it) },
+                targetQuantity = dto.targetQuantity, targetUnit = dto.targetUnit?.let { enumValueOf<QuantityUnit>(it) },
+                thresholdPackCount = dto.thresholdPackCount, targetPackCount = dto.targetPackCount,
+                preferredStorageLocation = dto.preferredStorageLocation?.let { enumValueOf<StorageLocation>(it) },
+                notes = dto.notes, createdAt = dto.createdAt, updatedAt = dto.updatedAt
+            )
+        }
         database.withTransaction {
             database.mealDao().clear()
             database.mealDao().insertAll(rows)
+        }
+        appDatabase.withTransaction {
+            if (shoppingLists != null) {
+                require(shoppingLists.count { it.status == ShoppingListStatus.ACTIVE } <= 1) { "Multiple active shopping lists" }
+                appDatabase.shoppingDao().deleteAllShoppingLists()
+                if (shoppingLists.isNotEmpty()) appDatabase.shoppingDao().insertShoppingLists(shoppingLists)
+                if (!shoppingItems.isNullOrEmpty()) appDatabase.shoppingDao().insertShoppingListItems(shoppingItems)
+            }
+            if (stapleRules != null) {
+                appDatabase.stapleRuleDao().deleteAllStapleRules()
+                if (stapleRules.isNotEmpty()) appDatabase.stapleRuleDao().insertStapleRules(stapleRules)
+            }
         }
     }
 }

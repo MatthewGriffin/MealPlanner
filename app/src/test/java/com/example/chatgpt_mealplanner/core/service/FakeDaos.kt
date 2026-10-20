@@ -285,6 +285,20 @@ class FakeShoppingDao : ShoppingDao {
     }
     override suspend fun getShoppingListItemById(itemId: String): ShoppingListItemEntity? = itemsMap[itemId]
     override suspend fun insertShoppingList(list: ShoppingListEntity) { listsMap[list.id] = list }
+    override suspend fun insertShoppingLists(lists: List<ShoppingListEntity>) { lists.forEach { listsMap[it.id] = it } }
+    override suspend fun deleteAllShoppingLists() {
+        listsMap.clear(); itemsMap.clear(); sourcesMap.clear()
+    }
+    override suspend fun deleteCompletedItems(listId: String): Int {
+        val completedIds = itemsMap.values.filter {
+            it.shoppingListId == listId && it.status in setOf(
+                com.example.chatgpt_mealplanner.core.model.ShoppingItemStatus.CHECKED,
+                com.example.chatgpt_mealplanner.core.model.ShoppingItemStatus.PURCHASED_CONFIRMED
+            )
+        }.map { it.id }.toSet()
+        completedIds.forEach { itemsMap.remove(it); sourcesMap.remove(it) }
+        return completedIds.size
+    }
     override suspend fun updateListStatus(listId: String, status: String) {
         val list = listsMap[listId]
         if (list != null) {
@@ -320,6 +334,8 @@ class FakeStapleRuleDao : StapleRuleDao {
     override suspend fun insertOrUpdateStapleRule(rule: StapleRuleEntity) {
         rulesMap[rule.id] = rule
     }
+    override suspend fun insertStapleRules(rules: List<StapleRuleEntity>) { rules.forEach { rulesMap[it.id] = it } }
+    override suspend fun deleteAllStapleRules() { rulesMap.clear() }
 
     override suspend fun deleteStapleRule(id: String) {
         rulesMap.remove(id)

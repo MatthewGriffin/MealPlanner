@@ -55,6 +55,9 @@ interface ShoppingDao {
     suspend fun insertShoppingList(list: ShoppingListEntity)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertShoppingLists(lists: List<ShoppingListEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertShoppingListItems(items: List<ShoppingListItemEntity>)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -68,6 +71,12 @@ interface ShoppingDao {
 
     @Query("DELETE FROM shopping_list_items WHERE id = :itemId")
     suspend fun deleteShoppingListItem(itemId: String)
+
+    @Query("DELETE FROM shopping_list_items WHERE shoppingListId = :listId AND status IN ('CHECKED', 'PURCHASED_CONFIRMED')")
+    suspend fun deleteCompletedItems(listId: String): Int
+
+    @Query("DELETE FROM shopping_lists")
+    suspend fun deleteAllShoppingLists()
 
     @Query("UPDATE shopping_list_items SET status = :status WHERE id = :itemId")
     suspend fun updateItemStatus(itemId: String, status: String)

@@ -33,6 +33,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -134,8 +135,21 @@ fun ShoppingScreen(
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
-                        IconButton(onClick = { onEvent(ShoppingUiEvent.RegenerateShoppingList) }) {
-                            Icon(Icons.Default.Refresh, contentDescription = "Regenerate List")
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            val completedCount = uiState.activeListWithItems?.items.orEmpty().count {
+                                it.item.status == ShoppingItemStatus.CHECKED ||
+                                    it.item.status == ShoppingItemStatus.PURCHASED_CONFIRMED
+                            }
+                            if (!uiState.isFollower && completedCount > 0) {
+                                TextButton(onClick = { onEvent(ShoppingUiEvent.ClearCompletedItems) }) {
+                                    Text("Clear completed")
+                                }
+                            }
+                            if (!uiState.isFollower) {
+                                IconButton(onClick = { onEvent(ShoppingUiEvent.RegenerateShoppingList) }) {
+                                    Icon(Icons.Default.Refresh, contentDescription = "Regenerate List")
+                                }
+                            }
                         }
                     }
 

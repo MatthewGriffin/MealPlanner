@@ -14,6 +14,7 @@ import com.example.chatgpt_mealplanner.core.model.StapleRule
 import com.example.chatgpt_mealplanner.core.repository.ShoppingRepository
 import com.example.chatgpt_mealplanner.core.repository.StapleRuleRepository
 import com.example.chatgpt_mealplanner.core.service.ShoppingDomainService
+import com.example.chatgpt_mealplanner.core.sync.AppRoleResolver
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -32,9 +33,10 @@ import javax.inject.Inject
 @HiltViewModel
 class ShoppingViewModel @Inject constructor(
     private val shoppingDomainService: ShoppingDomainService,
-    shoppingRepository: ShoppingRepository,
+    private val shoppingRepository: ShoppingRepository,
     private val stapleRuleRepository: StapleRuleRepository,
-    private val retailShoppingDomainService: RetailShoppingDomainService
+    private val retailShoppingDomainService: RetailShoppingDomainService,
+    private val appRoleResolver: AppRoleResolver
 ) : ViewModel() {
 
     private val activeTabFlow = MutableStateFlow(ShoppingTab.SHOPPING_LIST)
@@ -92,6 +94,7 @@ class ShoppingViewModel @Inject constructor(
 
         ShoppingUiState(
             activeListWithItems = listWithItems,
+            isFollower = appRoleResolver.isFollower(),
             stapleRules = stapleRules,
             activeTab = activeTab,
             userMessage = userMessage,
@@ -143,13 +146,14 @@ class ShoppingViewModel @Inject constructor(
 
     init {
         println("[AI_MEALPLANNER] [SHOPPING_VM_INIT] buildAudit=SHOPPING_AUDIT_20261001_02")
-        regenerateShoppingList()
+        if (!appRoleResolver.isFollower()) regenerateShoppingList()
     }
 
     fun onEvent(event: ShoppingUiEvent) {
         when (event) {
             is ShoppingUiEvent.SelectTab -> activeTabFlow.value = event.tab
-            ShoppingUiEvent.RegenerateShoppingList -> regenerateShoppingList()
+            ShoppingUiEvent.RegenerateShoppingList -> if (!appRoleResolver.isFollower()) regenerateShoppingList()
+            ShoppingUiEvent.ClearCompletedItems -> if (!appRoleResolver.isFollower()) clearCompletedItems()
             is ShoppingUiEvent.ToggleItemChecked -> toggleItemChecked(event.itemId, event.currentStatus)
             is ShoppingUiEvent.RemoveItem -> removeItem(event.itemId)
             is ShoppingUiEvent.SelectItemDetail -> selectedItemDetailFlow.value = event.itemWithSources
@@ -196,6 +200,18 @@ class ShoppingViewModel @Inject constructor(
             val result = shoppingDomainService.updateItemStatus(itemId, nextStatus)
             if (result is DomainResult.Failure) {
                 userMessageFlow.value = formatDomainError(result.error)
+            }
+        }
+    }
+
+    private fun clearCompletedItems() {
+        val listId = uiState.value.activeListWithItems?.shoppingList?.id ?: return
+        viewModelScope.launch {
+            val removedCount = shoppingRepository.deleteCompletedItems(listId)
+            userMessageFlow.value = if (removedCount == 0) {
+                "No completed items to clear"
+            } else {
+                "Cleared $removedCount completed ${if (removedCount == 1) "item" else "items"}"
             }
         }
     }

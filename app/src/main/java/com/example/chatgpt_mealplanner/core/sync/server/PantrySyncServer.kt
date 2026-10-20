@@ -5,6 +5,8 @@ import com.example.chatgpt_mealplanner.core.database.DatabaseTransactionRunner
 import com.example.chatgpt_mealplanner.core.database.dao.CanonicalSyncDao
 import com.example.chatgpt_mealplanner.core.database.dao.InventoryDao
 import com.example.chatgpt_mealplanner.core.database.dao.MealChangeRequestDao
+import com.example.chatgpt_mealplanner.core.database.dao.ShoppingDao
+import com.example.chatgpt_mealplanner.core.database.dao.StapleRuleDao
 import com.example.chatgpt_mealplanner.core.database.entity.toSyncDto
 import com.example.chatgpt_mealplanner.core.sync.HouseholdIdentityManager
 import com.example.chatgpt_mealplanner.core.sync.engine.MainCanonicalSyncEngine
@@ -17,6 +19,9 @@ import com.example.chatgpt_mealplanner.sync.contract.SyncFeedResponseDto
 import com.example.chatgpt_mealplanner.sync.contract.SyncOperationDto
 import com.example.chatgpt_mealplanner.sync.contract.SyncOperationStatus
 import com.example.chatgpt_mealplanner.sync.contract.SyncOperationType
+import com.example.chatgpt_mealplanner.sync.contract.ShoppingListSyncDto
+import com.example.chatgpt_mealplanner.sync.contract.ShoppingItemSyncDto
+import com.example.chatgpt_mealplanner.sync.contract.StapleRuleSyncDto
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.call
@@ -65,7 +70,9 @@ open class PantrySyncServer @Inject constructor(
     private val transactionRunner: DatabaseTransactionRunner? = null,
     private val invitationManager: PantryEnrollmentInvitationManager? = null,
     private val mealChangeRequestDao: MealChangeRequestDao? = null,
-    private val mealDao: com.example.chatgpt_mealplanner.core.database.dao.MealDao? = null
+    private val mealDao: com.example.chatgpt_mealplanner.core.database.dao.MealDao? = null,
+    private val shoppingDao: ShoppingDao? = null,
+    private val stapleRuleDao: StapleRuleDao? = null
 ) {
     private var engine: io.ktor.server.engine.ApplicationEngine? = null
     private var serverState = PantryServerState.STOPPED
@@ -123,8 +130,41 @@ open class PantrySyncServer @Inject constructor(
         }
 
         val (mealRequests, mealPlan) = mealData
+        val shoppingRows = shoppingDao?.getAllListsWithItemsAndSourcesSync()
+        val shoppingLists = shoppingRows?.map { row ->
+            val list = row.shoppingList
+            ShoppingListSyncDto(list.id, list.name, list.startDate, list.endDate, list.status.name, list.createdAt, list.updatedAt)
+        }
+        val shoppingItems = shoppingRows?.flatMap { row -> row.items.map { wrapped ->
+            val item = wrapped.item
+            ShoppingItemSyncDto(
+                id = item.id, shoppingListId = item.shoppingListId, canonicalIngredientId = item.canonicalIngredientId,
+                displayName = item.displayName, requiredQuantity = item.requiredQuantity, requiredUnit = item.requiredUnit?.name,
+                suggestedPurchaseQuantity = item.suggestedPurchaseQuantity, suggestedPurchaseUnit = item.suggestedPurchaseUnit?.name,
+                packCount = item.packCount, reason = item.reason, priority = item.priority.name, status = item.status.name,
+                optional = item.optional, sourceType = item.sourceType.name, hasMealRequirement = item.hasMealRequirement,
+                hasStapleRestock = item.hasStapleRestock, mealShortfallQuantity = item.mealShortfallQuantity,
+                stapleReserveTopUpQuantity = item.stapleReserveTopUpQuantity, expectedFinalInventory = item.expectedFinalInventory,
+                expectedFinalInventoryUnit = item.expectedFinalInventoryUnit?.name, quantityUncertain = item.quantityUncertain,
+                uncertaintyReason = item.uncertaintyReason, requirementConfidence = item.requirementConfidence.name,
+                wasteRisk = item.wasteRisk.name, createdAt = item.createdAt, updatedAt = item.updatedAt
+            )
+        } }
+        val stapleRules = stapleRuleDao?.getAllRulesSync()?.map { rule ->
+            StapleRuleSyncDto(
+                id = rule.id, canonicalIngredientId = rule.canonicalIngredientId, displayName = rule.displayName,
+                enabled = rule.enabled, archivedByMerge = rule.archivedByMerge, mode = rule.mode.name,
+                thresholdQuantity = rule.thresholdQuantity, thresholdUnit = rule.thresholdUnit?.name,
+                targetQuantity = rule.targetQuantity, targetUnit = rule.targetUnit?.name,
+                thresholdPackCount = rule.thresholdPackCount, targetPackCount = rule.targetPackCount,
+                preferredStorageLocation = rule.preferredStorageLocation?.name, notes = rule.notes,
+                createdAt = rule.createdAt, updatedAt = rule.updatedAt
+            )
+        }
         if ((mealPlan?.size ?: 0) > MAX_BOOTSTRAP_ITEMS) throw SnapshotTooLargeException("Meal plan too large")
-        if (invItems.size > MAX_BOOTSTRAP_ITEMS || mealRequests.size > MAX_BOOTSTRAP_ITEMS) {
+        if (invItems.size > MAX_BOOTSTRAP_ITEMS || mealRequests.size > MAX_BOOTSTRAP_ITEMS ||
+            (shoppingLists?.size ?: 0) > MAX_BOOTSTRAP_ITEMS || (shoppingItems?.size ?: 0) > MAX_BOOTSTRAP_ITEMS ||
+            (stapleRules?.size ?: 0) > MAX_BOOTSTRAP_ITEMS) {
             throw SnapshotTooLargeException("Bootstrap snapshot item count ${invItems.size} exceeds maximum limit of $MAX_BOOTSTRAP_ITEMS")
         }
 
@@ -151,7 +191,10 @@ open class PantrySyncServer @Inject constructor(
             snapshotCanonicalSequence = latestSeq,
             inventoryItems = syncItems,
             mealRequests = mealRequests,
-            mealPlan = mealPlan
+            mealPlan = mealPlan,
+            shoppingLists = shoppingLists,
+            shoppingItems = shoppingItems,
+            stapleRules = stapleRules
         )
         onAfterSnapshotReadHook?.invoke()
         return dto

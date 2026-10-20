@@ -100,7 +100,71 @@ data class BootstrapResponseDto(
     val snapshotCanonicalSequence: Long,
     val inventoryItems: List<InventoryItemSyncDto>,
     val mealRequests: List<MealChangeRequestSyncDto> = emptyList(),
-    val mealPlan: List<MealWithIngredientsSyncDto>? = null
+    val mealPlan: List<MealWithIngredientsSyncDto>? = null,
+    val shoppingLists: List<ShoppingListSyncDto>? = null,
+    val shoppingItems: List<ShoppingItemSyncDto>? = null,
+    val stapleRules: List<StapleRuleSyncDto>? = null
+)
+
+@Serializable
+data class ShoppingListSyncDto(
+    val id: String,
+    val name: String,
+    val startDate: String? = null,
+    val endDate: String? = null,
+    val status: String,
+    val createdAt: Long,
+    val updatedAt: Long
+)
+
+@Serializable
+data class ShoppingItemSyncDto(
+    val id: String,
+    val shoppingListId: String,
+    val canonicalIngredientId: String? = null,
+    val displayName: String,
+    val requiredQuantity: Double? = null,
+    val requiredUnit: String? = null,
+    val suggestedPurchaseQuantity: Double? = null,
+    val suggestedPurchaseUnit: String? = null,
+    val packCount: Int? = null,
+    val reason: String,
+    val priority: String,
+    val status: String,
+    val optional: Boolean,
+    val sourceType: String,
+    val hasMealRequirement: Boolean,
+    val hasStapleRestock: Boolean,
+    val mealShortfallQuantity: Double? = null,
+    val stapleReserveTopUpQuantity: Double? = null,
+    val expectedFinalInventory: Double? = null,
+    val expectedFinalInventoryUnit: String? = null,
+    val quantityUncertain: Boolean,
+    val uncertaintyReason: String? = null,
+    val requirementConfidence: String,
+    val wasteRisk: String,
+    val createdAt: Long,
+    val updatedAt: Long
+)
+
+@Serializable
+data class StapleRuleSyncDto(
+    val id: String,
+    val canonicalIngredientId: String,
+    val displayName: String,
+    val enabled: Boolean,
+    val archivedByMerge: Boolean = false,
+    val mode: String,
+    val thresholdQuantity: Double? = null,
+    val thresholdUnit: String? = null,
+    val targetQuantity: Double? = null,
+    val targetUnit: String? = null,
+    val thresholdPackCount: Int? = null,
+    val targetPackCount: Int? = null,
+    val preferredStorageLocation: String? = null,
+    val notes: String? = null,
+    val createdAt: Long,
+    val updatedAt: Long
 )
 
 @Serializable

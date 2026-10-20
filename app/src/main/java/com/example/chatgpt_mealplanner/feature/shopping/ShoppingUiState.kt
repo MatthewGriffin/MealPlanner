@@ -27,6 +27,7 @@ data class RetailerGroup(
 
 data class ShoppingUiState(
     val activeListWithItems: ShoppingListWithItems? = null,
+    val isFollower: Boolean = false,
     val stapleRules: List<StapleRule> = emptyList(),
     val activeTab: ShoppingTab = ShoppingTab.SHOPPING_LIST,
     val isLoading: Boolean = false,
@@ -42,6 +43,7 @@ data class ShoppingUiState(
 sealed interface ShoppingUiEvent {
     data class SelectTab(val tab: ShoppingTab) : ShoppingUiEvent
     object RegenerateShoppingList : ShoppingUiEvent
+    object ClearCompletedItems : ShoppingUiEvent
     data class ToggleItemChecked(val itemId: String, val currentStatus: ShoppingItemStatus) : ShoppingUiEvent
     data class RemoveItem(val itemId: String) : ShoppingUiEvent
     data class SelectItemDetail(val itemWithSources: ShoppingListItemWithSources?) : ShoppingUiEvent

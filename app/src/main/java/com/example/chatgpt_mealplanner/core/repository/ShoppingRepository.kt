@@ -18,5 +18,6 @@ interface ShoppingRepository {
     suspend fun insertRequirementSources(sources: List<ShoppingRequirementSource>)
     suspend fun deleteGeneratedItemsForList(listId: String)
     suspend fun deleteShoppingListItem(itemId: String)
+    suspend fun deleteCompletedItems(listId: String): Int
     suspend fun updateItemStatus(itemId: String, status: ShoppingItemStatus)
 }

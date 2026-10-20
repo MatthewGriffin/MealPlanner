@@ -35,7 +35,7 @@ class FollowerMealPlanSyncTest {
         val db = Room.inMemoryDatabaseBuilder(context, FollowerDatabase::class.java).build()
         val main = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
         try {
-            FollowerMealPlanSyncEngine(db, FakeBootstrapSyncTestClient()).install(snapshot(listOf(meal())))
+            FollowerMealPlanSyncEngine(db, FakeBootstrapSyncTestClient(), main).install(snapshot(listOf(meal())))
             val identities = FakeHouseholdIdentityDao()
             val incidental = com.example.chatgpt_mealplanner.core.sync.HouseholdIdentityManager(identities).getOrCreateHouseholdIdentity()
             val store = object : FollowerPairingStore(null) {
@@ -54,6 +54,7 @@ class FollowerMealPlanSyncTest {
 
     @Test fun alreadyBootstrappedCoordinatorRefreshesMealsAndReportsMissingSnapshot() = runBlocking {
         val db = Room.inMemoryDatabaseBuilder(context, FollowerDatabase::class.java).build()
+        val main = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
         try {
             val client = FakeBootstrapSyncTestClient()
             val store = object : FollowerPairingStore(null) {
@@ -66,7 +67,7 @@ class FollowerMealPlanSyncTest {
             val status = com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncStatusRepository(store)
             val coordinator = FollowerSyncCoordinator(db, null,
                 FollowerFeedPullEngine(db, client, local, db.mealRequestDao()), null, client, store, status,
-                FollowerMealPlanSyncEngine(db, client))
+                FollowerMealPlanSyncEngine(db, client, main))
             val json = kotlinx.serialization.json.Json
             client.bootstrapToReturn = json.decodeFromString<BootstrapResponseDto>(
                 json.encodeToString(BootstrapResponseDto.serializer(), snapshot(listOf(meal()))))
@@ -78,7 +79,7 @@ class FollowerMealPlanSyncTest {
             assertEquals(1, db.mealDao().getAll().size)
             val message = status.lastSyncErrorMessage.value
             assertTrue(message, message!!.contains("Main did not publish"))
-        } finally { db.close() }
+        } finally { db.close(); main.close() }
     }
 
     @Test fun mainSnapshotPublishesExistingMealPlanWithIngredients() = runBlocking {
@@ -86,16 +87,41 @@ class FollowerMealPlanSyncTest {
         try {
             val model = com.example.chatgpt_mealplanner.core.model.Meal("meal_1", "2026-10-19", title = "Pasta", instructions = "Bake.", createdAt = 123L)
             main.mealDao().insertMeal(model.toEntity())
+            main.shoppingDao().insertShoppingList(com.example.chatgpt_mealplanner.core.database.entity.ShoppingListEntity(
+                "list_1", "Weekly", null, null, com.example.chatgpt_mealplanner.core.model.ShoppingListStatus.ACTIVE, 1L, 2L))
+            main.shoppingDao().insertShoppingListItem(com.example.chatgpt_mealplanner.core.database.entity.ShoppingListItemEntity(
+                id = "item_1", shoppingListId = "list_1", canonicalIngredientId = "ING_PASTA", displayName = "Pasta",
+                requiredQuantity = 1.0, requiredUnit = com.example.chatgpt_mealplanner.core.model.QuantityUnit.PACK,
+                suggestedPurchaseQuantity = 1.0, suggestedPurchaseUnit = com.example.chatgpt_mealplanner.core.model.QuantityUnit.PACK,
+                packCount = 1, reason = "Meal plan", priority = com.example.chatgpt_mealplanner.core.model.ShoppingPriority.ESSENTIAL,
+                status = com.example.chatgpt_mealplanner.core.model.ShoppingItemStatus.CHECKED, optional = false,
+                sourceType = com.example.chatgpt_mealplanner.core.model.ShoppingSourceType.MANUAL,
+                hasMealRequirement = true, hasStapleRestock = false, mealShortfallQuantity = null,
+                stapleReserveTopUpQuantity = null, expectedFinalInventory = null, expectedFinalInventoryUnit = null,
+                quantityUncertain = false, uncertaintyReason = null,
+                requirementConfidence = com.example.chatgpt_mealplanner.core.model.RequirementConfidence.EXACT,
+                wasteRisk = com.example.chatgpt_mealplanner.core.model.WasteRisk.NONE, createdAt = 1L, updatedAt = 2L))
+            main.stapleRuleDao().insertOrUpdateStapleRule(com.example.chatgpt_mealplanner.core.database.entity.StapleRuleEntity(
+                id = "staple_1", canonicalIngredientId = "ING_SALT", displayName = "Salt", enabled = true,
+                mode = com.example.chatgpt_mealplanner.core.model.StapleRuleMode.QUANTITY, thresholdQuantity = 1.0,
+                thresholdUnit = com.example.chatgpt_mealplanner.core.model.QuantityUnit.PACK, targetQuantity = 3.0,
+                targetUnit = com.example.chatgpt_mealplanner.core.model.QuantityUnit.PACK, thresholdPackCount = null,
+                targetPackCount = null, preferredStorageLocation = com.example.chatgpt_mealplanner.core.model.StorageLocation.CUPBOARD,
+                notes = null, createdAt = 1L, updatedAt = 2L))
             val server = com.example.chatgpt_mealplanner.core.sync.server.PantrySyncServer(
                 identityManager = com.example.chatgpt_mealplanner.core.sync.HouseholdIdentityManager(FakeHouseholdIdentityDao()),
                 sessionManager = org.mockito.kotlin.mock(), syncEngine = org.mockito.kotlin.mock(),
                 canonicalSyncDao = main.canonicalSyncDao(), inventoryDao = main.inventoryDao(),
                 transactionRunner = com.example.chatgpt_mealplanner.core.database.RoomTransactionRunner(main),
-                mealChangeRequestDao = main.mealChangeRequestDao(), mealDao = main.mealDao())
+                mealChangeRequestDao = main.mealChangeRequestDao(), mealDao = main.mealDao(),
+                shoppingDao = main.shoppingDao(), stapleRuleDao = main.stapleRuleDao())
             val snapshot = server.createBootstrapSnapshot()
             assertEquals("Pasta", snapshot.mealPlan!!.single().meal.title)
             assertEquals("Bake.", snapshot.mealPlan!!.single().meal.instructions)
             assertEquals(123L, snapshot.mealPlan!!.single().meal.createdAt)
+            assertEquals("list_1", snapshot.shoppingLists!!.single().id)
+            assertEquals("CHECKED", snapshot.shoppingItems!!.single().status)
+            assertEquals("staple_1", snapshot.stapleRules!!.single().id)
         } finally { main.close() }
     }
 
@@ -110,7 +136,7 @@ class FollowerMealPlanSyncTest {
             db.followerDao().updateSyncMetadata(metadata)
             val client = FakeBootstrapSyncTestClient()
             client.bootstrapToReturn = snapshot(listOf(meal()))
-            val engine = FollowerMealPlanSyncEngine(db, client)
+            val engine = FollowerMealPlanSyncEngine(db, client, main)
             assertTrue(engine.refresh("localhost", 8443, null, "token", { "token" }, "home"))
             val store = object : FollowerPairingStore(null) { override fun isPaired() = true }
             val repo = MealRepositoryImpl(main.mealDao(), db, AppRoleResolver(store))
@@ -132,10 +158,34 @@ class FollowerMealPlanSyncTest {
         } finally { db.close(); main.close() }
     }
 
+    @Test fun followerInstallProjectsShoppingProgressAndStapleRules() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(context, FollowerDatabase::class.java).build()
+        val appDb = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
+        try {
+            val shoppingList = ShoppingListSyncDto("list_sync", "Weekly", status = "ACTIVE", createdAt = 1L, updatedAt = 2L)
+            val item = ShoppingItemSyncDto(
+                id = "item_sync", shoppingListId = "list_sync", displayName = "Milk", requiredQuantity = 2.0,
+                requiredUnit = "LITRE", suggestedPurchaseQuantity = 2.0, suggestedPurchaseUnit = "LITRE", packCount = 1,
+                reason = "Meal plan", priority = "ESSENTIAL", status = "CHECKED", optional = false, sourceType = "MANUAL",
+                hasMealRequirement = true, hasStapleRestock = false, quantityUncertain = false,
+                requirementConfidence = "EXACT", wasteRisk = "NONE", createdAt = 1L, updatedAt = 2L)
+            val staple = StapleRuleSyncDto(
+                id = "staple_sync", canonicalIngredientId = "ING_SALT", displayName = "Salt", enabled = true,
+                mode = "QUANTITY", thresholdQuantity = 1.0, thresholdUnit = "PACK", targetQuantity = 3.0,
+                targetUnit = "PACK", preferredStorageLocation = "CUPBOARD", createdAt = 1L, updatedAt = 2L)
+            val payload = snapshot(emptyList()).copy(
+                shoppingLists = listOf(shoppingList), shoppingItems = listOf(item), stapleRules = listOf(staple))
+            FollowerMealPlanSyncEngine(db, FakeBootstrapSyncTestClient(), appDb).install(payload)
+            assertEquals("CHECKED", appDb.shoppingDao().getShoppingListWithItems("list_sync")!!.items.single().item.status.name)
+            assertEquals("staple_sync", appDb.stapleRuleDao().getAllRulesSync().single().id)
+        } finally { db.close(); appDb.close() }
+    }
+
     @Test fun invalidOrFailedMealSnapshotLeavesExistingProjectionUntouched() = runBlocking {
         val db = Room.inMemoryDatabaseBuilder(context, FollowerDatabase::class.java).build()
+        val main = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
         try {
-            val engine = FollowerMealPlanSyncEngine(db, FakeBootstrapSyncTestClient())
+            val engine = FollowerMealPlanSyncEngine(db, FakeBootstrapSyncTestClient(), main)
             engine.install(snapshot(listOf(meal())))
             val before = db.mealDao().getAll()
             try { engine.install(snapshot(listOf(meal(), meal()))); fail("Duplicate accepted") } catch (_: IllegalArgumentException) {}
@@ -143,7 +193,7 @@ class FollowerMealPlanSyncTest {
             db.openHelper.writableDatabase.execSQL("CREATE TRIGGER fail_meal_install BEFORE INSERT ON follower_meals BEGIN SELECT RAISE(ABORT, 'injected'); END")
             try { engine.install(snapshot(listOf(meal("Replacement")))); fail("Write should fail") } catch (_: android.database.sqlite.SQLiteException) {}
             assertEquals(before, db.mealDao().getAll())
-        } finally { db.close() }
+        } finally { db.close(); main.close() }
     }
 
     @Test fun migration5To6PreservesExistingFollowerData() = runBlocking {
