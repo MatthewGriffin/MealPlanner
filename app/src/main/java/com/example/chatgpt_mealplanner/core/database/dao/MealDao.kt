@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
+import androidx.room.Update
 import com.example.chatgpt_mealplanner.core.database.entity.MealEntity
 import com.example.chatgpt_mealplanner.core.database.entity.MealIngredientEntity
 import kotlinx.coroutines.flow.Flow
@@ -51,6 +52,9 @@ interface MealDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMeal(meal: MealEntity)
+
+    @Update
+    suspend fun updateMeal(meal: MealEntity)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMealIngredients(ingredients: List<MealIngredientEntity>)
