@@ -129,7 +129,9 @@ class ChatViewModel @Inject constructor(
 
     fun prepareMealChangeRequest(request: MealChangeRequestEntity) {
         mealChangeRequestIdFlow.value = request.id
-        userMessageTextFlow.value = "Please adjust the existing planned meal to address this follower request: \"${request.requestText}\". Keep it as a replacement for the same planned meal, retain its planned date and meal type, and provide a complete adjusted recipe with ingredients and ordered cooking steps. Do not create a separate meal."
+        latestProposalFlow.value = null
+        latestProposedActionFlow.value = null
+        userMessageTextFlow.value = "Please adjust the existing planned meal with ID \"${request.mealId}\" to address this follower request: \"${request.requestText}\". First inspect that meal, then propose a complete adjusted recipe with ingredients and ordered cooking steps. Keep the same planned date and meal type. Do not create a separate meal."
         errorMessageFlow.value = null
     }
 
