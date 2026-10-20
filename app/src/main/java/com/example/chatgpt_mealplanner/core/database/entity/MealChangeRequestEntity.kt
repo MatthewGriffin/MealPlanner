@@ -25,7 +25,7 @@ data class MealChangeRequestEntity(
     val mealId: String,
     val authorDeviceId: String,
     val requestText: String,
-    val status: String, // PENDING, ACCEPTED, DECLINED, DISCUSSED
+    val status: String, // PENDING, ACCEPTED, IN_PROGRESS, COMPLETED, DECLINED, DISCUSSED
     val mainResponse: String?,
     val createdAt: Long,
     val updatedAt: Long
