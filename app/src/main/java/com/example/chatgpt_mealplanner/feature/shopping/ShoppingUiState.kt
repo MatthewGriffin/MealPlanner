@@ -1,5 +1,6 @@
 package com.example.chatgpt_mealplanner.feature.shopping
 
+import com.example.chatgpt_mealplanner.core.model.InventoryItem
 import com.example.chatgpt_mealplanner.core.model.QuantityConfidence
 import com.example.chatgpt_mealplanner.core.model.QuantityUnit
 import com.example.chatgpt_mealplanner.core.model.ShoppingItemStatus
@@ -33,7 +34,9 @@ data class ShoppingUiState(
     val selectedItemForDetail: ShoppingListItemWithSources? = null,
     val showAddManualDialog: Boolean = false,
     val basketComparisonResult: BasketComparisonResult? = null,
-    val retailerGroups: List<RetailerGroup> = emptyList()
+    val retailerGroups: List<RetailerGroup> = emptyList(),
+    val manualItemName: String = "",
+    val manualItemNotes: String = ""
 )
 
 sealed interface ShoppingUiEvent {
@@ -43,6 +46,7 @@ sealed interface ShoppingUiEvent {
     data class RemoveItem(val itemId: String) : ShoppingUiEvent
     data class SelectItemDetail(val itemWithSources: ShoppingListItemWithSources?) : ShoppingUiEvent
     object RequestAddManualItem : ShoppingUiEvent
+    data class RequestLowStockShortcut(val item: InventoryItem) : ShoppingUiEvent
     object DismissAddManualDialog : ShoppingUiEvent
     data class AddManualItem(val name: String, val quantity: Double?, val unit: QuantityUnit?, val notes: String?) : ShoppingUiEvent
     data class ResolveUncertainty(val inventoryItemId: String, val confirmedQuantity: Double, val unit: QuantityUnit, val confidence: QuantityConfidence = QuantityConfidence.EXACT) : ShoppingUiEvent
