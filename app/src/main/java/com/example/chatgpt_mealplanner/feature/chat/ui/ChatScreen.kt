@@ -239,6 +239,16 @@ fun ChatScreen(
                     }
                 }
 
+                uiState.latestProposal?.let { proposal ->
+                    item(key = "meal_proposal") {
+                        MealProposalCard(
+                            validatedProposal = proposal,
+                            onSaveToPlan = { onEvent(ChatUiEvent.SaveMealProposalToPlan(it)) },
+                            isSaving = uiState.isSavingProposal
+                        )
+                    }
+                }
+
                 if (uiState.isLoading) {
                     item(key = "loading_indicator") {
                         Row(

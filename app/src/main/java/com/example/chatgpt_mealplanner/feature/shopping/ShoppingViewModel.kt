@@ -45,6 +45,8 @@ class ShoppingViewModel @Inject constructor(
     private val manualItemNameFlow = MutableStateFlow("")
     private val manualItemNotesFlow = MutableStateFlow("")
     private val basketOptimizationFlow = MutableStateFlow<BasketComparisonResult?>(null)
+    private var basketOptimizationJob: kotlinx.coroutines.Job? = null
+    private var basketOptimizationVersion = 0L
 
     private val activeShoppingListFlow = shoppingRepository.observeActiveShoppingListWithItems()
         .onEach { listWithItems ->
@@ -84,9 +86,7 @@ class ShoppingViewModel @Inject constructor(
                 val line = group.lineByItemId[item.item.id]
                 val assignmentState = if (line != null) "ASSIGNED" else "UNASSIGNED"
                 val retailerName = line?.retailerId?.name ?: group.retailerName
-                val prodName = line?.productWithOffer?.product?.name ?: "null"
-                val prodId = line?.productWithOffer?.product?.retailerProductId ?: "null"
-                println("[AI_MEALPLANNER] [SHOPPING_UI_STATE_ITEM] buildAudit=TOMATO_UI_PATH_20261001_01 name=\"${item.item.displayName}\" assignmentState=$assignmentState retailer=$retailerName productName=\"$prodName\" productId=$prodId")
+                println("[AI_MEALPLANNER] [SHOPPING_UI_STATE_ITEM] assignmentState=$assignmentState retailer=$retailerName")
             }
         }
 
@@ -110,28 +110,32 @@ class ShoppingViewModel @Inject constructor(
     )
 
     private fun runBasketOptimization(listWithItems: ShoppingListWithItems?) {
-        viewModelScope.launch {
+        val version = ++basketOptimizationVersion
+        basketOptimizationJob?.cancel()
+        basketOptimizationFlow.value = null
+        if (listWithItems?.items.isNullOrEmpty()) return
+
+        basketOptimizationJob = viewModelScope.launch {
             val count = listWithItems?.items?.size ?: 0
-            val itemNames = listWithItems?.items?.joinToString { it.item.displayName } ?: ""
-            println("[AI_MEALPLANNER] [SHOPPING_ASSIGNMENT_CALL] buildAudit=TOMATO_UI_PATH_20261001_01 shoppingItemCount=$count names=\"$itemNames\"")
-            if (listWithItems?.items.isNullOrEmpty()) {
-                basketOptimizationFlow.value = null
-            } else {
-                val result = try {
-                    val res = retailShoppingDomainService.optimizeShoppingBasket()
-                    if (res is DomainResult.Success) {
-                        res.value.selectedPlan.lines.forEach { line ->
-                            println("[AI_MEALPLANNER] [SHOPPING_ASSIGNMENT_RESULT] buildAudit=TOMATO_UI_PATH_20261001_01 requirement=\"${line.requirementDisplayName}\" assigned=true retailer=${line.retailerId.name} productName=\"${line.productWithOffer.product.name}\" reason=\"Assigned to basket\"")
-                        }
-                        res.value.selectedPlan.unmatchedRequirements.forEach { reqId ->
-                            println("[AI_MEALPLANNER] [SHOPPING_ASSIGNMENT_RESULT] buildAudit=TOMATO_UI_PATH_20261001_01 requirement=\"$reqId\" assigned=false retailer=null productName=\"null\" reason=\"Unmatched requirement\"")
-                        }
+            println("[AI_MEALPLANNER] [SHOPPING_ASSIGNMENT_CALL] shoppingItemCount=$count")
+            val result = try {
+                val res = retailShoppingDomainService.optimizeShoppingBasket()
+                if (res is DomainResult.Success) {
+                    res.value.selectedPlan.lines.forEach { line ->
+                        println("[AI_MEALPLANNER] [SHOPPING_ASSIGNMENT_RESULT] requirementId=${line.shoppingRequirementId} assigned=true retailer=${line.retailerId.name}")
                     }
-                    res
-                } catch (e: Exception) {
-                    println("[AI_MEALPLANNER] [SHOPPING_OPTIMIZE_EXCEPTION] buildAudit=TOMATO_UI_PATH_20261001_01 exceptionType=${e.javaClass.simpleName} message=${e.message}")
-                    null
+                    res.value.selectedPlan.unmatchedRequirements.forEach { reqId ->
+                        println("[AI_MEALPLANNER] [SHOPPING_ASSIGNMENT_RESULT] requirementId=$reqId assigned=false")
+                    }
                 }
+                res
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                println("[AI_MEALPLANNER] [SHOPPING_OPTIMIZE_EXCEPTION] exceptionType=${e.javaClass.simpleName}")
+                null
+            }
+            if (version == basketOptimizationVersion) {
                 basketOptimizationFlow.value = if (result is DomainResult.Success) result.value else null
             }
         }

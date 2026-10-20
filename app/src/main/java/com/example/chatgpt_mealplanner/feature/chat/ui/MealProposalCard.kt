@@ -25,6 +25,7 @@ import com.example.chatgpt_mealplanner.contract.ValidatedMealProposal
 fun MealProposalCard(
     validatedProposal: ValidatedMealProposal,
     onSaveToPlan: (MealProposal) -> Unit,
+    isSaving: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val proposal = validatedProposal.proposal
@@ -116,9 +117,10 @@ fun MealProposalCard(
             Spacer(modifier = Modifier.height(16.dp))
             Button(
                 onClick = { onSaveToPlan(proposal) },
+                enabled = !isSaving,
                 modifier = Modifier.align(Alignment.End)
             ) {
-                Text("Save to Plan")
+                Text(if (isSaving) "Saving…" else "Save to Plan")
             }
         }
     }

@@ -192,7 +192,8 @@ fun MealPlannerScreen(
                         }
                         MealPlannerTab.HISTORY -> {
                             MealHistoryScreen(
-                                recentCookedMeals = uiState.recentCookedMeals
+                                recentCookedMeals = uiState.recentCookedMeals,
+                                onMealClicked = { mealId -> navController.navigate("recipe_details/$mealId") }
                             )
                         }
                     }

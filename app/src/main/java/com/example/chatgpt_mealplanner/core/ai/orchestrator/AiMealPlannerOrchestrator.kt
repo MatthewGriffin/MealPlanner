@@ -63,7 +63,7 @@ class AiMealPlannerOrchestrator @Inject constructor(
             null -> "NONE"
         }
 
-        safeLog("[AI_TURN_START] conversationId=\"$conversationId\" userMessage=\"$userMessageText\" processIdentity=$pid activeProposalPresent=${activeProp != null} pendingMutationPresent=${initialPending != null} pendingMutationState=$pendingStateStr")
+        safeLog("[AI_TURN_START] conversationId=\"$conversationId\" messageLength=${userMessageText.length} processIdentity=$pid activeProposalPresent=${activeProp != null} pendingMutationPresent=${initialPending != null} pendingMutationState=$pendingStateStr")
 
         val existingMessage = userMessageId?.let { id -> runCatching { chatRepository.getMessagesForConversation(conversationId).firstOrNull { it.id == id } }.getOrNull() }
 
@@ -93,22 +93,21 @@ class AiMealPlannerOrchestrator @Inject constructor(
 
         val turnId = "turn_${System.currentTimeMillis()}"
         val traceLog = """
-            [DELETE_TRACE] buildId=SYNC_PHASE3D_PULL_FEED_V2 conversationId=$conversationId turnId=$turnId userMessageId=$userMsgId rawUserText="$userMessageText"
+            [DELETE_TRACE] buildId=SYNC_PHASE3D_PULL_FEED_V2 conversationId=$conversationId turnId=$turnId userMessageId=$userMsgId messageLength=${userMessageText.length}
             [DELETE_TRACE] orchestrator_enter conversationId=$conversationId turnId=$turnId
             [DELETE_TRACE] pending_before=${initialPending?.javaClass?.simpleName ?: "NONE"}
             [DELETE_TRACE] affirmative=$isAffirmative
             [DELETE_TRACE] negative=$isNegative
         """.trimIndent()
-        println(traceLog)
         safeLog(traceLog)
 
         if (initialPending != null && isNegative) {
-            safeLog("[CONFIRMATION_GATE] message=\"$userMessageText\" pendingFound=true pendingType=${initialPending.javaClass.simpleName} negative=true action=DIRECT_CANCEL")
+            safeLog("[CONFIRMATION_GATE] messageLength=${userMessageText.length} pendingFound=true pendingType=${initialPending.javaClass.simpleName} negative=true action=DIRECT_CANCEL")
             return executeDirectCancellation(conversationId, userMsgId, initialPending)
         }
 
         if (initialPending != null && isAffirmative) {
-            safeLog("[CONFIRMATION_GATE] message=\"$userMessageText\" pendingFound=true pendingType=${initialPending.javaClass.simpleName} affirmative=true action=DIRECT_CONFIRM")
+            safeLog("[CONFIRMATION_GATE] messageLength=${userMessageText.length} pendingFound=true pendingType=${initialPending.javaClass.simpleName} affirmative=true action=DIRECT_CONFIRM")
             return executeDirectConfirmation(conversationId, userMsgId, initialPending)
         }
 
@@ -118,11 +117,11 @@ class AiMealPlannerOrchestrator @Inject constructor(
             hasActiveProposal = activeProp != null
         )
 
-        safeLog("[AI_CONTEXT_SELECTION] currentMessage=\"$userMessageText\" currentIntent=$intentClass activeProposal=${activeProp?.title} pendingMutation=${initialPending?.javaClass?.simpleName}")
+        safeLog("[AI_CONTEXT_SELECTION] messageLength=${userMessageText.length} currentIntent=$intentClass activeProposalPresent=${activeProp != null} pendingMutation=${initialPending?.javaClass?.simpleName}")
 
         if (intentClass == com.example.chatgpt_mealplanner.core.ai.context.UserMessageIntentClass.FOLLOW_UP_TO_ACTIVE_PROPOSAL) {
             val pendingTitle = (initialPending as? com.example.chatgpt_mealplanner.core.ai.pending.PendingAiMutation.AddPlannedMeal)?.title
-            safeLog("[FOLLOW_UP_PROPOSAL] detected=true pendingPreserved=true title=\"${pendingTitle ?: activeProp?.title}\" question=\"$userMessageText\"")
+            safeLog("[FOLLOW_UP_PROPOSAL] detected=true pendingPreserved=true pendingProposalPresent=${pendingTitle != null || activeProp != null} questionLength=${userMessageText.length}")
         } else if (intentClass == com.example.chatgpt_mealplanner.core.ai.context.UserMessageIntentClass.CANCEL_PENDING ||
             intentClass == com.example.chatgpt_mealplanner.core.ai.context.UserMessageIntentClass.NEW_READ_OR_PROPOSAL_REQUEST) {
             safeLog("[PENDING_MUTATION_STATE] Cleared stale pending mutation due to $intentClass")
@@ -427,7 +426,6 @@ class AiMealPlannerOrchestrator @Inject constructor(
                     [DELETE_TRACE] final_response_text="$textToReturn"
                     [DELETE_TRACE] pending_at_return=${pendingAfter?.javaClass?.simpleName ?: "NONE"}
                 """.trimIndent()
-                println(finalTraceLog)
                 safeLog(finalTraceLog)
 
                 val assistantMsgId = "msg_${System.currentTimeMillis()}"
@@ -778,9 +776,9 @@ class AiMealPlannerOrchestrator @Inject constructor(
     }
 
     private fun safeLog(msg: String) {
-        println("[AI_MEALPLANNER] $msg")
+        val event = msg.substringBefore(']').takeIf { it.startsWith("[") }?.plus("]") ?: "[AI_EVENT]"
         try {
-            android.util.Log.i("AI_MEALPLANNER", msg)
+            android.util.Log.i("AI_MEALPLANNER", event)
         } catch (_: Throwable) {}
     }
 

@@ -17,6 +17,7 @@ data class ChatUiState(
     val messages: List<ChatMessageEntity> = emptyList(),
     val latestProposal: ValidatedMealProposal? = null,
     val latestProposedAction: AiProposedAction? = null,
+    val isSavingProposal: Boolean = false,
     val isLoading: Boolean = false,
     val elapsedSeconds: Int = 0,
     val progressStatusText: String? = null,

@@ -149,6 +149,12 @@ class ChatUiTest {
     }
 
     @Test
+    fun proposalSavingState_exposesInFlightStatus() {
+        assertFalse(ChatUiState().isSavingProposal)
+        assertTrue(ChatUiState(isSavingProposal = true).isSavingProposal)
+    }
+
+    @Test
     fun chatUiState_progressAndElapsedTime_supportedInFlight() {
         val inFlightState = ChatUiState(
             requestState = ChatRequestState.IN_FLIGHT,

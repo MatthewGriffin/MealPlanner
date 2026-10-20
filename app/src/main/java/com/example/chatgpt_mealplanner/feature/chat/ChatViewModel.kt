@@ -80,6 +80,7 @@ class ChatViewModel @Inject constructor(
     private val mealChangeRequestIdFlow = MutableStateFlow<String?>(null)
     private val latestProposalFlow = MutableStateFlow<ValidatedMealProposal?>(null)
     private val latestProposedActionFlow = MutableStateFlow<AiProposedAction?>(null)
+    private val isSavingProposalFlow = MutableStateFlow(false)
 
     private val showCookConfirmationDialogFlow = MutableStateFlow(false)
     private val cookConfirmationMealIdFlow = MutableStateFlow<String?>(null)
@@ -99,7 +100,8 @@ class ChatViewModel @Inject constructor(
         progressStatusTextFlow,
         showCookConfirmationDialogFlow,
         cookConfirmationMealIdFlow,
-        cookConfirmationMealTitleFlow
+        cookConfirmationMealTitleFlow,
+        isSavingProposalFlow
     ) { flows ->
         @Suppress("UNCHECKED_CAST")
         val reqHolder = flows[4] as RequestStateHolder
@@ -110,6 +112,7 @@ class ChatViewModel @Inject constructor(
             messages = flows[1] as List<ChatMessageEntity>,
             latestProposal = flows[2] as ValidatedMealProposal?,
             latestProposedAction = flows[3] as AiProposedAction?,
+            isSavingProposal = flows[12] as Boolean,
             isLoading = isReqInFlight,
             elapsedSeconds = flows[7] as Int,
             progressStatusText = flows[8] as String?,
@@ -168,8 +171,9 @@ class ChatViewModel @Inject constructor(
     }
 
     private fun safeLog(msg: String) {
+        val event = msg.substringBefore(']').takeIf { it.startsWith("[") }?.plus("]") ?: "[CHAT_EVENT]"
         try {
-            android.util.Log.i("AI_MEALPLANNER", msg)
+            android.util.Log.i("AI_MEALPLANNER", event)
         } catch (_: Throwable) {}
     }
 
@@ -211,7 +215,7 @@ class ChatViewModel @Inject constructor(
             stopProgressTicker()
         }
         if (reason != null) {
-            safeLog("[CHAT_REQUEST_STATE] from=$fromState to=$toState reason=\"$reason\"")
+            safeLog("[CHAT_REQUEST_STATE] from=$fromState to=$toState reasonPresent=true")
         } else {
             safeLog("[CHAT_REQUEST_STATE] from=$fromState to=$toState")
         }
@@ -222,7 +226,7 @@ class ChatViewModel @Inject constructor(
         if (text.isBlank()) return
         if (requestStateHolderFlow.value.requestState == ChatRequestState.IN_FLIGHT) return
 
-        safeLog("[CHAT_SEND] text=\"$text\"")
+        safeLog("[CHAT_SEND] messageLength=${text.length}")
 
         val userMsgId = "msg_${System.currentTimeMillis()}"
         userMessageTextFlow.value = ""
@@ -231,7 +235,7 @@ class ChatViewModel @Inject constructor(
         transitionRequestState(ChatRequestState.IN_FLIGHT, retainedMessage = text, retainedMessageId = userMsgId)
 
         viewModelScope.launch {
-            safeLog("[CHAT_ORCHESTRATOR_CALL] conversationId=\"default_conversation\" text=\"$text\" messageId=\"$userMsgId\"")
+            safeLog("[CHAT_ORCHESTRATOR_CALL] conversationId=\"default_conversation\" messageId=\"$userMsgId\"")
             val result = orchestrator.processUserMessage("default_conversation", text, userMessageId = userMsgId)
 
             when (result) {
@@ -261,7 +265,7 @@ class ChatViewModel @Inject constructor(
         val text = currentHolder.retainedUserMessage ?: return
         val messageId = currentHolder.retainedUserMessageId
 
-        safeLog("[CHAT_RETRY] text=\"$text\" messageId=\"$messageId\"")
+        safeLog("[CHAT_RETRY] messageId=\"$messageId\"")
 
         errorMessageFlow.value = null
         startProgressTicker()
@@ -292,34 +296,51 @@ class ChatViewModel @Inject constructor(
     }
 
     private fun saveMealProposalToPlan(proposal: MealProposal) {
+        if (isSavingProposalFlow.value) return
+        isSavingProposalFlow.value = true
         viewModelScope.launch {
-            if (proposal.ingredients.isEmpty()) {
-                errorMessageFlow.value = "Cannot save a proposal without ingredients. Please ask AI to suggest complete ingredients first."
-                return@launch
-            }
+            try {
+                if (proposal.ingredients.isEmpty()) {
+                    errorMessageFlow.value = "Cannot save a proposal without ingredients. Please ask AI to suggest complete ingredients first."
+                    return@launch
+                }
 
-            val resolvedSlot = com.example.chatgpt_mealplanner.core.ai.resolver.MealSlotResolver.resolveSlot(
-                requestedDateStr = proposal.suggestedDate,
-                requestedMealTypeStr = proposal.mealType
-            )
-            val parsedTags = proposal.tags.mapNotNull { runCatching { MealTag.valueOf(it.uppercase()) }.getOrNull() }.toSet()
+                val resolvedSlot = com.example.chatgpt_mealplanner.core.ai.resolver.MealSlotResolver.resolveSlot(
+                    requestedDateStr = proposal.suggestedDate,
+                    requestedMealTypeStr = proposal.mealType
+                )
+                val parsedTags = proposal.tags.mapNotNull { runCatching { MealTag.valueOf(it.uppercase()) }.getOrNull() }.toSet()
 
-            val changeRequestId = mealChangeRequestIdFlow.value
-            val linkedRequest = if (changeRequestId != null) {
-                mealChangeRequestRepository.observeAllRequests().firstOrNull()?.firstOrNull { it.id == changeRequestId }
-            } else null
-            if (changeRequestId != null && (linkedRequest == null || linkedRequest.status != "IN_PROGRESS")) {
-                errorMessageFlow.value = "This meal change request is no longer available. Reopen it from the planner and try again."
-                return@launch
-            }
-            val existingMeal = linkedRequest?.let { mealRepository.getMealWithIngredients(it.mealId)?.meal }
-            if (linkedRequest != null && existingMeal == null) {
-                errorMessageFlow.value = "The planned meal could not be found, so the request was left open."
-                return@launch
-            }
-            val stepText = proposal.steps.sortedBy { it.order }.joinToString("\n") { "${it.order}. ${it.instruction}" }.ifBlank { existingMeal?.instructions }
-            val meal = if (existingMeal != null) {
-                existingMeal.copy(
+                val changeRequestId = mealChangeRequestIdFlow.value
+                val linkedRequest = if (changeRequestId != null) {
+                    mealChangeRequestRepository.observeAllRequests().firstOrNull()?.firstOrNull { it.id == changeRequestId }
+                } else null
+                if (changeRequestId != null && (linkedRequest == null || linkedRequest.status != "IN_PROGRESS")) {
+                    errorMessageFlow.value = "This meal change request is no longer available. Reopen it from the planner and try again."
+                    return@launch
+                }
+                val existingMeal = linkedRequest?.let { mealRepository.getMealWithIngredients(it.mealId)?.meal }
+                if (linkedRequest != null && existingMeal == null) {
+                    errorMessageFlow.value = "The planned meal could not be found, so the request was left open."
+                    return@launch
+                }
+                val stepText = proposal.steps.sortedBy { it.order }.joinToString("\n") { "${it.order}. ${it.instruction}" }.ifBlank { existingMeal?.instructions }
+                val meal = if (existingMeal != null) {
+                    existingMeal.copy(
+                        title = proposal.title,
+                        servings = proposal.servings,
+                        batchPortions = proposal.batchPortions,
+                        immediatePortions = proposal.immediatePortions,
+                        leftoverPortions = proposal.leftoverPortions,
+                        cookInTwoBatches = proposal.cookInTwoBatches,
+                        tags = parsedTags,
+                        instructions = stepText,
+                        updatedAt = System.currentTimeMillis()
+                    )
+                } else Meal(
+                    id = UUID.randomUUID().toString(),
+                    date = resolvedSlot.date,
+                    mealType = resolvedSlot.mealType,
                     title = proposal.title,
                     servings = proposal.servings,
                     batchPortions = proposal.batchPortions,
@@ -327,65 +348,54 @@ class ChatViewModel @Inject constructor(
                     leftoverPortions = proposal.leftoverPortions,
                     cookInTwoBatches = proposal.cookInTwoBatches,
                     tags = parsedTags,
-                    instructions = stepText,
-                    updatedAt = System.currentTimeMillis()
+                    instructions = stepText
                 )
-            } else Meal(
-                id = UUID.randomUUID().toString(),
-                date = resolvedSlot.date,
-                mealType = resolvedSlot.mealType,
-                title = proposal.title,
-                servings = proposal.servings,
-                batchPortions = proposal.batchPortions,
-                immediatePortions = proposal.immediatePortions,
-                leftoverPortions = proposal.leftoverPortions,
-                cookInTwoBatches = proposal.cookInTwoBatches,
-                tags = parsedTags,
-                instructions = stepText
-            )
 
-            val ingredients = proposal.ingredients.map {
-                val parsedUnit = com.example.chatgpt_mealplanner.core.model.parseQuantityUnit(it.unit)
-                MealIngredient(
-                    id = UUID.randomUUID().toString(),
-                    mealId = meal.id,
-                    canonicalIngredientId = it.canonicalIngredientId,
-                    displayName = it.displayName,
-                    plannedQuantity = it.quantity,
-                    plannedUnit = parsedUnit,
-                    optional = it.optional,
-                    substitutionAllowed = it.substitutionAllowed
-                )
-            }
+                val ingredients = proposal.ingredients.map {
+                    val parsedUnit = com.example.chatgpt_mealplanner.core.model.parseQuantityUnit(it.unit)
+                    MealIngredient(
+                        id = UUID.randomUUID().toString(),
+                        mealId = meal.id,
+                        canonicalIngredientId = it.canonicalIngredientId,
+                        displayName = it.displayName,
+                        plannedQuantity = it.quantity,
+                        plannedUnit = parsedUnit,
+                        optional = it.optional,
+                        substitutionAllowed = it.substitutionAllowed
+                    )
+                }
 
-            val createResult = if (existingMeal != null) {
-                mealDomainService.replaceMeal(existingMeal.id, meal, ingredients)
-            } else {
-                mealDomainService.createPlannedMeal(meal, ingredients)
-            }
+                val createResult = if (existingMeal != null) {
+                    mealDomainService.replaceMeal(existingMeal.id, meal, ingredients)
+                } else {
+                    mealDomainService.createPlannedMeal(meal, ingredients)
+                }
 
-            when (createResult) {
-                is DomainResult.Success -> {
-                    latestProposalFlow.value = null
-                    if (linkedRequest != null) {
-                        try {
-                            mealChangeRequestRepository.updateRequestStatus(
-                                linkedRequest.id,
-                                "COMPLETED",
-                                "Completed: ${meal.title}".take(2000)
-                            )
-                            mealChangeRequestIdFlow.value = null
-                            errorMessageFlow.value = "Updated '${meal.title}' and completed the change request."
-                        } catch (e: Exception) {
-                            errorMessageFlow.value = "The meal was updated, but the request could not be marked complete. It remains open for retry."
+                when (createResult) {
+                    is DomainResult.Success -> {
+                        latestProposalFlow.value = null
+                        if (linkedRequest != null) {
+                            try {
+                                mealChangeRequestRepository.updateRequestStatus(
+                                    linkedRequest.id,
+                                    "COMPLETED",
+                                    "Completed: ${meal.title}".take(2000)
+                                )
+                                mealChangeRequestIdFlow.value = null
+                                errorMessageFlow.value = "Updated '${meal.title}' and completed the change request."
+                            } catch (e: Exception) {
+                                errorMessageFlow.value = "The meal was updated, but the request could not be marked complete. It remains open for retry."
+                            }
+                        } else {
+                            errorMessageFlow.value = "Saved '${meal.title}' to meal plan for ${meal.date}!"
                         }
-                    } else {
-                        errorMessageFlow.value = "Saved '${meal.title}' to meal plan for ${meal.date}!"
+                    }
+                    is DomainResult.Failure -> {
+                        errorMessageFlow.value = formatDomainError(createResult.error)
                     }
                 }
-                is DomainResult.Failure -> {
-                    errorMessageFlow.value = formatDomainError(createResult.error)
-                }
+            } finally {
+                isSavingProposalFlow.value = false
             }
         }
     }

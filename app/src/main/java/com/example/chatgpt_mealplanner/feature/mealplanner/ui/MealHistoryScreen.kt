@@ -1,5 +1,6 @@
 package com.example.chatgpt_mealplanner.feature.mealplanner.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -24,7 +25,8 @@ import com.example.chatgpt_mealplanner.core.model.MealWithIngredients
 @Composable
 fun MealHistoryScreen(
     recentCookedMeals: List<MealWithIngredients>,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onMealClicked: (String) -> Unit = {}
 ) {
     if (recentCookedMeals.isEmpty()) {
         Column(
@@ -58,7 +60,7 @@ fun MealHistoryScreen(
                 val ingredients = mealWithIngredients.ingredients
 
                 Card(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().clickable { onMealClicked(meal.id) },
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant
                     )
