@@ -441,6 +441,9 @@ class ShoppingViewModel @Inject constructor(
                 RetailerId.ASDA -> "ASDA"
                 RetailerId.ICELAND -> "Iceland"
                 RetailerId.FOOD_WAREHOUSE -> "The Food Warehouse"
+                RetailerId.TESCO -> "Tesco"
+                RetailerId.MORRISONS -> "Morrisons"
+                RetailerId.SAINSBURYS -> "Sainsbury's"
             }
         }
     }
