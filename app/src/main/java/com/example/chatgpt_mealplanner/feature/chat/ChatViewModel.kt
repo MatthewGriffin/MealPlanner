@@ -154,7 +154,7 @@ class ChatViewModel @Inject constructor(
         mealChangeRequestIdFlow.value = request.id
         latestProposalFlow.value = null
         latestProposedActionFlow.value = null
-        userMessageTextFlow.value = "Please prepare an adjusted proposal for the existing planned meal with ID \"${request.mealId}\" to address this follower request: \"${request.requestText}\". First inspect that meal, then propose a complete replacement recipe with ingredients and ordered cooking steps. Keep the same planned date and meal type. This app supports saving the proposed replacement onto the existing planned meal after I review it. Do not create a separate meal or claim the existing recipe cannot be changed; do not save anything yourself."
+        userMessageTextFlow.value = "Please prepare an adjusted proposal for the existing planned meal with ID \"${request.mealId}\" to address this follower request: \"${request.requestText}\". First inspect that meal, then propose a complete replacement recipe with ingredients and ordered cooking steps. Keep the same planned date and meal type. Return the complete structured proposal with the offer_add_planned_meal tool, including all ingredients and full cooking instructions. This tool prepares a proposal only; it does not add a new meal. The app's Save action applies the reviewed replacement to this existing meal. Do not create a separate meal, claim the existing recipe cannot be changed, or call add_planned_meal."
         errorMessageFlow.value = null
     }
 
