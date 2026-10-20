@@ -25,4 +25,21 @@ class RetailContractTest {
         val deserializedSourceType = json.decodeFromString<RetailOfferSourceType>(serializedSourceType)
         assertEquals(sourceType, deserializedSourceType)
     }
+
+    @Test
+    fun preferredStoreLocation_roundTripsWithExactBranchFormat() {
+        val store = RetailStoreLocation(
+            id = "branch-1",
+            retailerId = RetailerId.TESCO,
+            name = "High Street",
+            postcode = "AB1 2CD",
+            format = RetailStoreFormat.TESCO_EXPRESS,
+            isPreferred = true
+        )
+
+        val encoded = json.encodeToString(RetailStoreLocation.serializer(), store)
+        val decoded = json.decodeFromString<RetailStoreLocation>(encoded)
+
+        assertEquals(store, decoded)
+    }
 }
