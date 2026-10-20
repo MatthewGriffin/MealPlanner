@@ -346,13 +346,17 @@ class ChatViewModel @Inject constructor(
                 is DomainResult.Success -> {
                     latestProposalFlow.value = null
                     if (linkedRequest != null) {
-                        mealChangeRequestRepository.updateRequestStatus(
-                            linkedRequest.id,
-                            "COMPLETED",
-                            linkedRequest.mainResponse ?: "Updated meal: ${meal.title}"
-                        )
-                        mealChangeRequestIdFlow.value = null
-                        errorMessageFlow.value = "Updated '${meal.title}' and completed the change request."
+                        try {
+                            mealChangeRequestRepository.updateRequestStatus(
+                                linkedRequest.id,
+                                "COMPLETED",
+                                linkedRequest.mainResponse ?: "Updated meal: ${meal.title}"
+                            )
+                            mealChangeRequestIdFlow.value = null
+                            errorMessageFlow.value = "Updated '${meal.title}' and completed the change request."
+                        } catch (e: Exception) {
+                            errorMessageFlow.value = "The meal was updated, but the request could not be marked complete. It remains open for retry."
+                        }
                     } else {
                         errorMessageFlow.value = "Saved '${meal.title}' to meal plan for ${meal.date}!"
                     }
