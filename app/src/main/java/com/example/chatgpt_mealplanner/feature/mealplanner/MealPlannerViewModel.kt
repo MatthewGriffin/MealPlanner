@@ -18,14 +18,17 @@ import com.example.chatgpt_mealplanner.core.service.MealDomainService
 import com.example.chatgpt_mealplanner.core.sync.AppRoleResolver
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -38,7 +41,9 @@ class MealPlannerViewModel @Inject constructor(
     private val mealRepository: MealRepository,
     leftoverRepository: LeftoverRepository,
     private val mealChangeRequestRepository: MealChangeRequestRepository,
-    private val appRoleResolver: AppRoleResolver
+    private val appRoleResolver: AppRoleResolver,
+    @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context? = null,
+    private val followerSyncScheduler: com.example.chatgpt_mealplanner.core.sync.follower.worker.FollowerSyncScheduler? = null
 ) : ViewModel() {
 
     private val todayIsoDate: String = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE)
@@ -50,6 +55,12 @@ class MealPlannerViewModel @Inject constructor(
     private val mealToCookFlow = MutableStateFlow<MealWithIngredients?>(null)
     private val mealToAddOrEditFlow = MutableStateFlow<MealWithIngredients?>(null)
     private val showAddDialogFlow = MutableStateFlow(false)
+
+    @Volatile
+    private var pollingJob: kotlinx.coroutines.Job? = null
+
+    val isPollingActive: Boolean
+        get() = pollingJob?.isActive == true
 
     private val mealsForSelectedDateFlow = selectedDateFlow.flatMapLatest { date ->
         mealRepository.observeMealsForDate(date).onEach { meals ->
@@ -99,6 +110,8 @@ class MealPlannerViewModel @Inject constructor(
             isFollower = appRoleResolver.isFollower(),
             mealTitleMap = flows[11] as Map<String, String>
         )
+    }.onEach { state ->
+        updatePollingState(state.allChangeRequests, state.isFollower)
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
@@ -312,5 +325,63 @@ class MealPlannerViewModel @Inject constructor(
         } catch (_: Throwable) {
             // Unstubbed in JVM unit tests
         }
+    }
+
+    fun updatePollingState(
+        requests: List<com.example.chatgpt_mealplanner.core.database.entity.MealChangeRequestEntity>,
+        isFollower: Boolean,
+        pollIntervalMs: Long = 5000L
+    ) {
+        val hasAwaitingRequest = isFollower && requests.any { it.status in AWAITING_MAIN_STATUSES }
+        if (hasAwaitingRequest) {
+            if (pollingJob == null || pollingJob?.isActive == false) {
+                startPolling(pollIntervalMs)
+            }
+        } else {
+            stopPolling()
+        }
+    }
+
+    fun startPolling(pollIntervalMs: Long = 5000L, maxTicks: Int = 60) {
+        if (followerSyncScheduler == null || context == null) return
+        pollingJob?.cancel()
+        pollingJob = viewModelScope.launch {
+            try {
+                var ticks = 0
+                while (isActive && ticks < maxTicks) {
+                    delay(pollIntervalMs)
+                    ticks++
+                    val currentRequests = mealChangeRequestRepository.observeAllRequests().firstOrNull() ?: emptyList()
+                    val hasAwaiting = currentRequests.any { it.status in AWAITING_MAIN_STATUSES }
+                    if (hasAwaiting) {
+                        triggerFollowerSync()
+                    } else {
+                        break
+                    }
+                }
+            } catch (_: kotlinx.coroutines.CancellationException) {
+                // Expected when job is cancelled
+            }
+        }
+    }
+
+    fun stopPolling() {
+        pollingJob?.cancel()
+        pollingJob = null
+    }
+
+    fun triggerFollowerSync() {
+        val scheduler = followerSyncScheduler ?: return
+        val ctx = context ?: return
+        scheduler.scheduleSyncWorkNonBlocking(ctx, "AUTO_SYNC")
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        stopPolling()
+    }
+
+    companion object {
+        val AWAITING_MAIN_STATUSES = setOf("QUEUED", "PENDING", "DISCUSSED", "SYNC_FAILED")
     }
 }
