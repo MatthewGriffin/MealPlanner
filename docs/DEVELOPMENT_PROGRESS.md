@@ -295,6 +295,10 @@ The user confirmed meal-plan synchronization now works on both phones.
 ## Feedback Follow-up After Phase 10 (2026-10-20)
 
 - Inventory filter fix committed as `0b0f296`: out-of-stock items now appear only in the dedicated Out filter.
-- Next: complete accepted meal-change requests through an AI-assisted replacement flow. Main should be able to pass an accepted Follower request and its meal context to the assistant, review the proposed replacement, and explicitly confirm it. Only after the replacement is saved should the request become completed, sync to Follower, notify the Follower, and leave active request views. Keep past requests available from the meal-plan and recipe views on both roles.
+- Implemented the accepted-request resolution flow. Main can start or resume an AI adjustment from the request card; the assistant receives the request and target meal ID. Saving the proposed recipe replaces the existing meal row and ingredient set, preserves the planned date/type and meal ID, and marks the request completed only after the replacement succeeds.
+- Added `IN_PROGRESS` and `COMPLETED` request states to repository transition checks, canonical sync validation, and Follower projection. Follower sync polling remains active while a request is accepted or being adjusted, and a completion arriving while the app is open produces an in-app message.
+- Active request views now hide declined and completed requests behind a past-requests toggle in both the planner inbox and recipe details. The Follower sees “Your request is complete” in history.
+- Source review completed; build and tests were not run in this continuation.
+
 - Data integrity prerequisite fixed in commits `a305b2d` and `268ccb7`: meal replacement now updates the existing row and ingredients in one Room transaction, preserving meal identity and linked requests instead of triggering the `ON DELETE CASCADE` relationship.
 - Mockup inspiration to consider selectively: compact pantry summary, expiry sorting, low-stock shortcuts into shopping, and category-grouped shopping progress. The attached ZIP is a small React/Vite demo with hardcoded sample meal/shopping data and browser local storage; do not reuse its sample data or persistence approach. Archive code was inspected without execution.
