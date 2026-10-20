@@ -6,7 +6,10 @@ import kotlinx.serialization.Serializable
 enum class RetailerId {
     ASDA,
     ICELAND,
-    FOOD_WAREHOUSE
+    FOOD_WAREHOUSE,
+    TESCO,
+    MORRISONS,
+    SAINSBURYS
 }
 
 @Serializable
