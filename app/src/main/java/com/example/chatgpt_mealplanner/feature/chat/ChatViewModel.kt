@@ -33,6 +33,26 @@ import kotlinx.coroutines.launch
 import java.util.UUID
 import javax.inject.Inject
 
+private object UnavailableMealRepository : MealRepository {
+    override fun observeMealsForDate(date: String) = kotlinx.coroutines.flow.emptyFlow<List<com.example.chatgpt_mealplanner.core.model.MealWithIngredients>>()
+    override fun observeMealsForWeek(startDate: String, endDate: String) = kotlinx.coroutines.flow.emptyFlow<List<com.example.chatgpt_mealplanner.core.model.MealWithIngredients>>()
+    override fun observeAllMealTitles() = kotlinx.coroutines.flow.emptyFlow<Map<String, String>>()
+    override suspend fun getMealWithIngredients(mealId: String): com.example.chatgpt_mealplanner.core.model.MealWithIngredients? = null
+    override suspend fun insertMealWithIngredients(meal: Meal, ingredients: List<MealIngredient>) = error("Meal repository is unavailable")
+    override suspend fun updateMeal(meal: Meal) = error("Meal repository is unavailable")
+    override suspend fun updateMealIngredients(mealId: String, ingredients: List<MealIngredient>) = error("Meal repository is unavailable")
+    override suspend fun deleteMeal(mealId: String) = error("Meal repository is unavailable")
+    override suspend fun getRecentCookedMeals(daysLookback: Int) = emptyList<com.example.chatgpt_mealplanner.core.model.MealWithIngredients>()
+    override suspend fun getUpcomingPlannedMeals(startDate: String, endDate: String) = emptyList<com.example.chatgpt_mealplanner.core.model.MealWithIngredients>()
+}
+
+private object UnavailableMealChangeRequestRepository : MealChangeRequestRepository {
+    override fun observeRequestsForMeal(mealId: String) = kotlinx.coroutines.flow.emptyFlow<List<MealChangeRequestEntity>>()
+    override fun observeAllRequests() = kotlinx.coroutines.flow.emptyFlow<List<MealChangeRequestEntity>>()
+    override suspend fun submitRequest(mealId: String, requestText: String) = error("Meal request repository is unavailable")
+    override suspend fun updateRequestStatus(requestId: String, status: String, mainResponse: String?) = error("Meal request repository is unavailable")
+}
+
 private data class RequestStateHolder(
     val requestState: ChatRequestState = ChatRequestState.IDLE,
     val retainedUserMessage: String? = null,
@@ -44,8 +64,8 @@ class ChatViewModel @Inject constructor(
     private val orchestrator: AiMealPlannerOrchestrator,
     private val chatRepository: ChatRepository,
     private val mealDomainService: MealDomainService,
-    private val mealRepository: MealRepository,
-    private val mealChangeRequestRepository: MealChangeRequestRepository
+    private val mealRepository: MealRepository = UnavailableMealRepository,
+    private val mealChangeRequestRepository: MealChangeRequestRepository = UnavailableMealChangeRequestRepository
 ) : ViewModel() {
 
     private val conversationIdFlow = MutableStateFlow("default_conversation")
