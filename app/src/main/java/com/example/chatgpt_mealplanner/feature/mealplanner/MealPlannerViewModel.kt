@@ -62,6 +62,8 @@ class MealPlannerViewModel @Inject constructor(
     @Volatile
     private var isPlannerForeground = false
 
+    private var previousRequestStatuses: Map<String, String>? = null
+
     private var latestPollingRequests =
         emptyList<com.example.chatgpt_mealplanner.core.database.entity.MealChangeRequestEntity>()
     private var latestIsFollower = false
@@ -119,6 +121,14 @@ class MealPlannerViewModel @Inject constructor(
         )
     }.onEach { state ->
         updatePollingState(state.allChangeRequests, state.isFollower)
+        val statuses = state.allChangeRequests.associate { it.id to it.status }
+        val previous = previousRequestStatuses
+        if (state.isFollower && previous != null && statuses.any { (id, status) ->
+                status == "COMPLETED" && previous[id] != "COMPLETED"
+            }) {
+            userMessageFlow.value = "Main completed your meal change request."
+        }
+        previousRequestStatuses = statuses
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
@@ -143,6 +153,19 @@ class MealPlannerViewModel @Inject constructor(
             } catch (e: Exception) {
                 android.util.Log.e("MealPlannerViewModel", "Failed to submit meal change request", e)
                 userMessageFlow.value = "Could not save the meal change request. Please try again."
+            }
+        }
+    }
+
+    fun beginAiAdjustment(requestId: String, onStarted: () -> Unit) {
+        viewModelScope.launch {
+            try {
+                mealChangeRequestRepository.updateRequestStatus(requestId, "IN_PROGRESS", null)
+                onStarted()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                userMessageFlow.value = e.message ?: "Could not start the meal adjustment."
             }
         }
     }
