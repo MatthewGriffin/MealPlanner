@@ -63,7 +63,7 @@ object SyncContractValidation {
                 val requestUuid = payload.requestId.removePrefix("req_")
                 payload.requestId.startsWith("req_") &&
                     isValidUuid(requestUuid) &&
-                    payload.status in setOf("ACCEPTED", "DECLINED", "DISCUSSED") &&
+                    payload.status in setOf("ACCEPTED", "DECLINED", "DISCUSSED", "IN_PROGRESS", "COMPLETED") &&
                     (payload.mainResponse?.length ?: 0) <= 2000
             }
         }
