@@ -410,48 +410,6 @@ fun MealCard(
 }
 
 @Composable
-fun FollowerRequestStatusSection(
-    requests: List<com.example.chatgpt_mealplanner.core.database.entity.MealChangeRequestEntity>,
-    mealTitleMap: Map<String, String> = emptyMap()
-) {
-    Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-        Text("Meal change requests", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        LazyColumn(
-            modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            items(requests, key = { it.id }) { request ->
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        val mealTitle = mealTitleMap[request.mealId]
-                        if (!mealTitle.isNullOrBlank()) {
-                            Text("Meal: $mealTitle", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
-                            Spacer(modifier = Modifier.height(2.dp))
-                        }
-                        Text(request.requestText, style = MaterialTheme.typography.bodyMedium)
-                        Text(
-                            text = when (request.status) {
-                                "QUEUED" -> "Waiting to send"
-                                "PENDING" -> "Awaiting Main's decision"
-                                "ACCEPTED" -> "Accepted"
-                                "DECLINED" -> "Declined"
-                                "DISCUSSED" -> "Discussed"
-                                "SYNC_FAILED" -> "Could not send"
-                                else -> request.status
-                            },
-                            style = MaterialTheme.typography.labelMedium,
-                            color = if (request.status == "SYNC_FAILED") MaterialTheme.colorScheme.error
-                                else MaterialTheme.colorScheme.primary
-                        )
-                        request.mainResponse?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
 fun MainRequestReviewSection(
     requests: List<com.example.chatgpt_mealplanner.core.database.entity.MealChangeRequestEntity>,
     onUpdateStatus: (String, String, String?) -> Unit,
