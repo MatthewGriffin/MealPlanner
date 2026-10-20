@@ -333,6 +333,9 @@ class InventoryViewModel @Inject constructor(
             val q = query.trim().lowercase()
             result = result.filter { it.displayName.lowercase().contains(q) || it.canonicalName.lowercase().contains(q) || (it.barcode?.contains(q) == true) }
         }
+        if (filter != InventoryFilter.OUT) {
+            result = result.filter { it.status != com.example.chatgpt_mealplanner.core.model.ItemStatus.OUT }
+        }
         result = when (filter) {
             InventoryFilter.ALL -> result.filter { it.status != com.example.chatgpt_mealplanner.core.model.ItemStatus.DISCARDED }
             InventoryFilter.CUPBOARD -> result.filter { it.storageLocation == com.example.chatgpt_mealplanner.core.model.StorageLocation.CUPBOARD && it.status != com.example.chatgpt_mealplanner.core.model.ItemStatus.DISCARDED }
