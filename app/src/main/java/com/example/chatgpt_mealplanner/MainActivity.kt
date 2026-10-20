@@ -87,11 +87,11 @@ class MainActivity : ComponentActivity() {
             ChatGPT_MealPlannerTheme {
                 var currentScreen by remember { mutableStateOf(Screen.INVENTORY) }
                 var lowStockItemToAdd by remember { mutableStateOf<com.example.chatgpt_mealplanner.core.model.InventoryItem?>(null) }
+                var mealChangeRequestForAi by remember { mutableStateOf<com.example.chatgpt_mealplanner.core.database.entity.MealChangeRequestEntity?>(null) }
                 val isFollower = remember { appRoleResolver.isFollower() }
                 if (isFollower && currentScreen == Screen.CHAT) {
                     currentScreen = Screen.INVENTORY
                 }
-                val chatViewModel: ChatViewModel = hiltViewModel()
                 val scannerViewModel: ScannerViewModel = hiltViewModel()
                 val scannerState by scannerViewModel.state.collectAsState()
                 val isConfirming = scannerState is ScannerState.Confirming
@@ -186,6 +186,13 @@ class MainActivity : ComponentActivity() {
                 ) { innerPadding ->
                     when (currentScreen) {
                         Screen.CHAT -> {
+                            val chatViewModel: ChatViewModel = hiltViewModel()
+                            LaunchedEffect(mealChangeRequestForAi, chatViewModel) {
+                                mealChangeRequestForAi?.let { request ->
+                                    chatViewModel.prepareMealChangeRequest(request)
+                                    mealChangeRequestForAi = null
+                                }
+                            }
                             val state by chatViewModel.uiState.collectAsState()
                             ChatScreen(
                                 uiState = state,
@@ -217,7 +224,7 @@ class MainActivity : ComponentActivity() {
                                 onEvent = mealPlannerViewModel::onEvent,
                                 modifier = Modifier.padding(innerPadding),
                                 onAdjustWithAiRequest = { request ->
-                                    chatViewModel.prepareMealChangeRequest(request)
+                                    mealChangeRequestForAi = request
                                     currentScreen = Screen.CHAT
                                 }
                             )
