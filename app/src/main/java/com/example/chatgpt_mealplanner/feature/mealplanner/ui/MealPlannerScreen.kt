@@ -65,7 +65,8 @@ import java.time.format.DateTimeFormatter
 fun MealPlannerScreen(
     uiState: MealPlannerUiState,
     onEvent: (MealPlannerUiEvent) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onAdjustWithAiRequest: (com.example.chatgpt_mealplanner.core.database.entity.MealChangeRequestEntity) -> Unit = {}
 ) {
     val navController = rememberNavController()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -163,7 +164,8 @@ fun MealPlannerScreen(
                                         mealTitleMap = uiState.mealTitleMap,
                                         onUpdateStatus = { reqId, status, resp ->
                                             parentViewModel.updateRequestStatus(reqId, status, resp)
-                                        }
+                                        },
+                                        onAdjustWithAi = onAdjustWithAiRequest
                                     )
                                 }
                                 DateNavigationHeader(
@@ -202,7 +204,8 @@ fun MealPlannerScreen(
                     onNavigateBack = { navController.popBackStack() },
                     onCookNowClicked = { mealId ->
                         navController.navigate("cook_now/$mealId")
-                    }
+                    },
+                    onAdjustWithAiRequest = onAdjustWithAiRequest
                 )
             }
             composable("cook_now/{plannedMealId}") { backStackEntry ->
@@ -452,26 +455,35 @@ fun FollowerRequestStatusSection(
 fun MainRequestReviewSection(
     requests: List<com.example.chatgpt_mealplanner.core.database.entity.MealChangeRequestEntity>,
     onUpdateStatus: (String, String, String?) -> Unit,
-    mealTitleMap: Map<String, String> = emptyMap()
+    mealTitleMap: Map<String, String> = emptyMap(),
+    onAdjustWithAi: (com.example.chatgpt_mealplanner.core.database.entity.MealChangeRequestEntity) -> Unit = {}
 ) {
     if (requests.isEmpty()) return
+    var showPast by remember { mutableStateOf(false) }
+    val pastStatuses = setOf("COMPLETED", "DECLINED")
+    val visibleRequests = requests.filter { (it.status in pastStatuses) == showPast }
+    val pendingCount = requests.count { it.status == "PENDING" }
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp),
+        modifier = Modifier.fillMaxWidth().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Text(
-            text = "Incoming Meal Change Requests (${requests.count { it.status == "PENDING" }} Pending)",
+            text = "Incoming Meal Change Requests ($pendingCount Pending)",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.primary
         )
+        TextButton(onClick = { showPast = !showPast }) {
+            Text(if (showPast) "Show active requests" else "View past requests (${requests.count { it.status in pastStatuses }})")
+        }
+        if (visibleRequests.isEmpty()) {
+            Text(if (showPast) "No past requests." else "No active requests.")
+        }
         LazyColumn(
             modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            items(requests, key = { it.id }) { req ->
+            items(visibleRequests, key = { it.id }) { req ->
                 val canDecide = req.status == "PENDING" || req.status == "DISCUSSED"
                 var responseInput by remember(req.id, req.mainResponse) { mutableStateOf(req.mainResponse ?: "") }
                 Card(
@@ -479,63 +491,81 @@ fun MainRequestReviewSection(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(text = "Request: ${req.requestText}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                            Text(text = req.status, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Request: ${req.requestText}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                            Text(req.status.replace('_', ' '), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
                         }
                         Spacer(modifier = Modifier.height(4.dp))
                         val mealTitle = mealTitleMap[req.mealId]
                         val mealLabel = if (!mealTitle.isNullOrBlank()) "Meal: $mealTitle" else "Meal ID: ${req.mealId}"
-                        Text(text = "$mealLabel • By: ${req.authorDeviceId}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("$mealLabel • By: ${req.authorDeviceId}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(modifier = Modifier.height(8.dp))
-
                         if (canDecide) {
-                            MealRequestTextField(
-                                value = responseInput,
-                                onValueChange = { text -> if (text.length <= 2000) responseInput = text },
-                                label = "Response / Discussion note..."
-                            )
+                            MealRequestTextField(value = responseInput, onValueChange = { if (it.length <= 2000) responseInput = it }, label = "Response / Discussion note...")
                             Spacer(modifier = Modifier.height(8.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Button(
-                                    onClick = {
-                                        val resp = if (responseInput.isNotBlank()) responseInput.trim() else null
-                                        onUpdateStatus(req.id, "ACCEPTED", resp)
-                                    },
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Text("Accept")
-                                }
-                                Button(
-                                    onClick = {
-                                        val resp = if (responseInput.isNotBlank()) responseInput.trim() else null
-                                        onUpdateStatus(req.id, "DECLINED", resp)
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Text("Decline")
-                                }
-                                Button(
-                                    onClick = {
-                                        val resp = if (responseInput.isNotBlank()) responseInput.trim() else null
-                                        onUpdateStatus(req.id, "DISCUSSED", resp)
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary),
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Text("Discuss")
-                                }
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(onClick = { onUpdateStatus(req.id, "ACCEPTED", responseInput.trim().ifBlank { null }) }, modifier = Modifier.weight(1f)) { Text("Accept") }
+                                Button(onClick = { onUpdateStatus(req.id, "DECLINED", responseInput.trim().ifBlank { null }) }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error), modifier = Modifier.weight(1f)) { Text("Decline") }
+                                Button(onClick = { onUpdateStatus(req.id, "DISCUSSED", responseInput.trim().ifBlank { null }) }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary), modifier = Modifier.weight(1f)) { Text("Discuss") }
                             }
                         } else {
                             req.mainResponse?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+                            if (req.status == "ACCEPTED") {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Button(onClick = {
+                                    onUpdateStatus(req.id, "IN_PROGRESS", req.mainResponse)
+                                    onAdjustWithAi(req)
+                                }) { Text("Adjust with AI") }
+                            } else if (req.status == "IN_PROGRESS") {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text("AI adjustment in progress", style = MaterialTheme.typography.bodySmall)
+                                TextButton(onClick = { onAdjustWithAi(req) }) { Text("Continue with AI") }
+                            }
                         }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun FollowerRequestStatusSection(
+    requests: List<com.example.chatgpt_mealplanner.core.database.entity.MealChangeRequestEntity>,
+    mealTitleMap: Map<String, String> = emptyMap()
+) {
+    var showPast by remember { mutableStateOf(false) }
+    val pastStatuses = setOf("COMPLETED", "DECLINED")
+    val visibleRequests = requests.filter { (it.status in pastStatuses) == showPast }
+    Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+        Text("Meal change requests", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        TextButton(onClick = { showPast = !showPast }) {
+            Text(if (showPast) "Show active requests" else "View past requests (${requests.count { it.status in pastStatuses }})")
+        }
+        if (visibleRequests.isEmpty()) Text(if (showPast) "No past requests." else "No active requests.")
+        LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(visibleRequests, key = { it.id }) { request ->
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        val mealTitle = mealTitleMap[request.mealId]
+                        if (!mealTitle.isNullOrBlank()) Text("Meal: $mealTitle", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+                        Text(request.requestText, style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            text = when (request.status) {
+                                "QUEUED" -> "Waiting to send"
+                                "PENDING" -> "Awaiting Main's decision"
+                                "ACCEPTED" -> "Accepted"
+                                "IN_PROGRESS" -> "Main is adjusting the meal"
+                                "COMPLETED" -> "Your request is complete"
+                                "DECLINED" -> "Declined"
+                                "DISCUSSED" -> "Discussed"
+                                "SYNC_FAILED" -> "Could not send"
+                                else -> request.status
+                            },
+                            style = MaterialTheme.typography.labelMedium,
+                            color = if (request.status == "SYNC_FAILED") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                        )
+                        request.mainResponse?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                     }
                 }
             }
