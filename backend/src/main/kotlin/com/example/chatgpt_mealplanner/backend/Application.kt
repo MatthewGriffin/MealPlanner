@@ -86,6 +86,12 @@ fun Application.module(config: BackendConfig = BackendConfig()) {
                 RetailerId.ICELAND -> icelandAdapter.searchProducts(req.query)
                 RetailerId.ASDA -> asdaAdapter.searchProducts(req.query)
                 RetailerId.FOOD_WAREHOUSE -> foodWarehouseAdapter.searchProducts(req.query)
+                RetailerId.TESCO, RetailerId.MORRISONS, RetailerId.SAINSBURYS ->
+                    com.example.chatgpt_mealplanner.retail.contract.RetailProductSearchResult.Unavailable(
+                        reason = "Live price search is not configured for this retailer yet.",
+                        errorCode = "SOURCE_UNAVAILABLE",
+                        cachedFallbackAvailable = true
+                    )
             }
             call.respond(result)
         }
