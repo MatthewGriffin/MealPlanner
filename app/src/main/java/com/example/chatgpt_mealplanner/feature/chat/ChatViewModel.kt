@@ -132,6 +132,20 @@ class ChatViewModel @Inject constructor(
 
     init {
         ensureDefaultConversationExists()
+        viewModelScope.launch {
+            messagesFlow.collect { messages ->
+                if (messages.isEmpty() && requestStateHolderFlow.value.requestState == ChatRequestState.FAILED_RETRYABLE) {
+                    transitionRequestState(ChatRequestState.IDLE)
+                    errorMessageFlow.value = null
+                    latestProposalFlow.value = null
+                    latestProposedActionFlow.value = null
+                    showCookConfirmationDialogFlow.value = false
+                    cookConfirmationMealIdFlow.value = null
+                    cookConfirmationMealTitleFlow.value = null
+                    ensureDefaultConversationExists()
+                }
+            }
+        }
     }
 
     private fun ensureDefaultConversationExists() {

@@ -626,11 +626,13 @@ class GeminiMealPlannerAiProviderTest {
         )
         provider.send(req)
 
-        assertTrue("Payload must contain tool_config when forcedToolName is supplied", capturedPayload!!.containsKey("tool_config"))
-        val toolConfig = capturedPayload!!["tool_config"]!!.jsonObject
-        val fnCallingConfig = toolConfig["function_calling_config"]!!.jsonObject
+        assertTrue("Payload must contain toolConfig when forcedToolName is supplied", capturedPayload!!.containsKey("toolConfig"))
+        assertFalse("Payload must use Gemini's camelCase API fields", capturedPayload!!.containsKey("tool_config"))
+        val toolConfig = capturedPayload!!["toolConfig"]!!.jsonObject
+        val fnCallingConfig = toolConfig["functionCallingConfig"]!!.jsonObject
         assertEquals("ANY", fnCallingConfig["mode"]!!.jsonPrimitive.content)
-        val allowedFns = fnCallingConfig["allowed_function_names"]!!.jsonArray
+        assertFalse("Payload must use Gemini's camelCase API fields", fnCallingConfig.containsKey("allowed_function_names"))
+        val allowedFns = fnCallingConfig["allowedFunctionNames"]!!.jsonArray
         assertEquals(1, allowedFns.size)
         assertEquals("offer_add_planned_meal", allowedFns[0].jsonPrimitive.content)
     }
@@ -654,7 +656,7 @@ class GeminiMealPlannerAiProviderTest {
         )
         provider.send(req)
 
-        assertFalse("Normal provider request MUST NOT contain tool_config", capturedPayload!!.containsKey("tool_config"))
+        assertFalse("Normal provider request MUST NOT contain toolConfig", capturedPayload!!.containsKey("toolConfig"))
     }
 
     @Test
