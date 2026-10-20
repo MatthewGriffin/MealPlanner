@@ -78,6 +78,7 @@ class MealChangeRequestRepositoryImpl @Inject constructor(
                 "This meal request cannot move from ${existing.status} to $status"
             }
             if (existing.status == status) return@runInTransaction
+            val effectiveResponse = mainResponse ?: existing.mainResponse
             val now = System.currentTimeMillis()
             val sequence = canonicalSyncDao.getSequenceEntity()
                 ?: CanonicalSyncSequenceEntity(singletonId = 1, nextSequence = 1L)
@@ -92,8 +93,8 @@ class MealChangeRequestRepositoryImpl @Inject constructor(
                     operationType = SyncOperationType.UPDATE_MEAL_CHANGE_REQUEST_STATUS.name,
                     payloadJson = Json.encodeToString(
                         UpdateMealChangeRequestStatusPayloadDto(
-                            requestId, status, mainResponse,
-                            existing.copy(status = status, mainResponse = mainResponse ?: existing.mainResponse, updatedAt = now).toSyncDto()
+                            requestId, status, effectiveResponse,
+                            existing.copy(status = status, mainResponse = effectiveResponse, updatedAt = now).toSyncDto()
                         )
                     ),
                     createdAt = now,
@@ -103,7 +104,7 @@ class MealChangeRequestRepositoryImpl @Inject constructor(
                     resultCode = "SUCCESS"
                 )
             )
-            dao.updateRequestStatus(requestId, status, mainResponse ?: existing.mainResponse, now)
+            dao.updateRequestStatus(requestId, status, effectiveResponse, now)
         }
     }
 }
