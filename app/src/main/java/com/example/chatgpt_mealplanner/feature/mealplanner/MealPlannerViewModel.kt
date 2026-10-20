@@ -426,6 +426,6 @@ class MealPlannerViewModel @Inject constructor(
     }
 
     companion object {
-        val AWAITING_MAIN_STATUSES = setOf("QUEUED", "PENDING", "DISCUSSED", "SYNC_FAILED")
+        val AWAITING_MAIN_STATUSES = setOf("QUEUED", "PENDING", "DISCUSSED", "ACCEPTED", "IN_PROGRESS", "SYNC_FAILED")
     }
 }
