@@ -18,6 +18,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -39,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.chatgpt_mealplanner.core.ai.provider.GEMINI_MODEL_ID
 import com.example.chatgpt_mealplanner.retail.contract.RetailerId
+import com.example.chatgpt_mealplanner.retail.contract.RetailStoreFormat
 
 @Composable
 fun SettingsScreen(
@@ -60,6 +63,12 @@ fun SettingsScreen(
 
     val uiState by viewModel.uiState.collectAsState()
     var apiKeyInput by remember { mutableStateOf("") }
+    var storeNameInput by remember { mutableStateOf("") }
+    var storePostcodeInput by remember { mutableStateOf("") }
+    var selectedStoreRetailer by remember { mutableStateOf(RetailerId.ASDA) }
+    var selectedStoreFormat by remember { mutableStateOf(RetailStoreFormat.ASDA_SUPERMARKET) }
+    var retailerMenuExpanded by remember { mutableStateOf(false) }
+    var formatMenuExpanded by remember { mutableStateOf(false) }
 
     if (uiState.isPassphraseDialogVisible) {
         EncryptedBackupPassphraseDialog(
@@ -199,6 +208,88 @@ fun SettingsScreen(
             }
         }
 
+        Spacer(modifier = Modifier.height(12.dp))
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("Preferred Store Locations", fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    "Save the branches you use and their exact format, such as Tesco Express or Sainsbury's Local. These preferences stay on this device; current prices remain retailer-wide estimates and branch stock checks are not connected yet.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+
+                androidx.compose.foundation.layout.Box {
+                    TextButton(onClick = { retailerMenuExpanded = true }) {
+                        Text("Retailer: ${retailerLabel(selectedStoreRetailer)}")
+                    }
+                    DropdownMenu(expanded = retailerMenuExpanded, onDismissRequest = { retailerMenuExpanded = false }) {
+                        RetailerId.entries.forEach { retailer ->
+                            DropdownMenuItem(
+                                text = { Text(retailerLabel(retailer)) },
+                                onClick = {
+                                    selectedStoreRetailer = retailer
+                                    selectedStoreFormat = storeFormatsFor(retailer).first()
+                                    retailerMenuExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+                OutlinedTextField(
+                    value = storeNameInput,
+                    onValueChange = { storeNameInput = it },
+                    label = { Text("Branch name") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = storePostcodeInput,
+                    onValueChange = { storePostcodeInput = it },
+                    label = { Text("Postcode") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                androidx.compose.foundation.layout.Box {
+                    TextButton(onClick = { formatMenuExpanded = true }) {
+                        Text("Format: ${formatLabel(selectedStoreFormat)}")
+                    }
+                    DropdownMenu(expanded = formatMenuExpanded, onDismissRequest = { formatMenuExpanded = false }) {
+                        storeFormatsFor(selectedStoreRetailer).forEach { format ->
+                            DropdownMenuItem(
+                                text = { Text(formatLabel(format)) },
+                                onClick = { selectedStoreFormat = format; formatMenuExpanded = false }
+                            )
+                        }
+                    }
+                }
+                Button(
+                    onClick = {
+                        viewModel.addPreferredStore(selectedStoreRetailer, storeNameInput, storePostcodeInput, selectedStoreFormat)
+                        storeNameInput = ""
+                        storePostcodeInput = ""
+                    },
+                    enabled = storeNameInput.isNotBlank() && storePostcodeInput.isNotBlank()
+                ) { Text("Add Store") }
+
+                uiState.preferredStores.forEach { store ->
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = store.isPreferred,
+                            onCheckedChange = { viewModel.setPreferredStore(store.id, it) }
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("${retailerLabel(store.retailerId)} · ${store.name}", style = MaterialTheme.typography.bodyMedium)
+                            Text("${store.postcode} · ${formatLabel(store.format)}", style = MaterialTheme.typography.bodySmall)
+                        }
+                        TextButton(onClick = { viewModel.removePreferredStore(store.id) }) { Text("Remove") }
+                    }
+                }
+            }
+        }
+
         Spacer(modifier = Modifier.height(24.dp))
         HorizontalDivider()
         Spacer(modifier = Modifier.height(24.dp))
@@ -278,6 +369,44 @@ fun SettingsScreen(
             }
         }
     }
+}
+
+private fun retailerLabel(retailerId: RetailerId): String = when (retailerId) {
+    RetailerId.ASDA -> "ASDA"
+    RetailerId.ICELAND -> "Iceland"
+    RetailerId.FOOD_WAREHOUSE -> "The Food Warehouse"
+    RetailerId.TESCO -> "Tesco"
+    RetailerId.MORRISONS -> "Morrisons"
+    RetailerId.SAINSBURYS -> "Sainsbury's"
+}
+
+private fun formatLabel(format: RetailStoreFormat): String = when (format) {
+    RetailStoreFormat.ASDA_EXPRESS -> "Asda Express"
+    RetailStoreFormat.ASDA_SUPERMARKET -> "ASDA Supermarket"
+    RetailStoreFormat.ASDA_SUPERSTORE -> "ASDA Superstore"
+    RetailStoreFormat.ASDA_SUPERCENTRE -> "ASDA Supercentre"
+    RetailStoreFormat.TESCO_EXPRESS -> "Tesco Express"
+    RetailStoreFormat.TESCO_METRO -> "Tesco Metro"
+    RetailStoreFormat.TESCO_SUPERMARKET -> "Tesco Supermarket"
+    RetailStoreFormat.TESCO_SUPERSTORE -> "Tesco Superstore"
+    RetailStoreFormat.TESCO_EXTRA -> "Tesco Extra"
+    RetailStoreFormat.MORRISONS_DAILY -> "Morrisons Daily"
+    RetailStoreFormat.MORRISONS_SUPERMARKET -> "Morrisons supermarket"
+    RetailStoreFormat.SAINSBURYS_LOCAL -> "Sainsbury's Local"
+    RetailStoreFormat.SAINSBURYS_SUPERMARKET -> "Sainsbury's supermarket"
+    RetailStoreFormat.SAINSBURYS_SUPERSTORE -> "Sainsbury's superstore"
+    RetailStoreFormat.ICELAND -> "Iceland"
+    RetailStoreFormat.FOOD_WAREHOUSE -> "The Food Warehouse"
+    RetailStoreFormat.UNKNOWN -> "Unknown format"
+}
+
+private fun storeFormatsFor(retailerId: RetailerId): List<RetailStoreFormat> = when (retailerId) {
+    RetailerId.ASDA -> listOf(RetailStoreFormat.ASDA_EXPRESS, RetailStoreFormat.ASDA_SUPERMARKET, RetailStoreFormat.ASDA_SUPERSTORE, RetailStoreFormat.ASDA_SUPERCENTRE)
+    RetailerId.ICELAND -> listOf(RetailStoreFormat.ICELAND)
+    RetailerId.FOOD_WAREHOUSE -> listOf(RetailStoreFormat.FOOD_WAREHOUSE)
+    RetailerId.TESCO -> listOf(RetailStoreFormat.TESCO_EXPRESS, RetailStoreFormat.TESCO_METRO, RetailStoreFormat.TESCO_SUPERMARKET, RetailStoreFormat.TESCO_SUPERSTORE, RetailStoreFormat.TESCO_EXTRA)
+    RetailerId.MORRISONS -> listOf(RetailStoreFormat.MORRISONS_DAILY, RetailStoreFormat.MORRISONS_SUPERMARKET)
+    RetailerId.SAINSBURYS -> listOf(RetailStoreFormat.SAINSBURYS_LOCAL, RetailStoreFormat.SAINSBURYS_SUPERMARKET, RetailStoreFormat.SAINSBURYS_SUPERSTORE)
 }
 
 @Composable
