@@ -160,7 +160,8 @@ class MealPlannerViewModel @Inject constructor(
     fun beginAiAdjustment(requestId: String, onStarted: () -> Unit) {
         viewModelScope.launch {
             try {
-                mealChangeRequestRepository.updateRequestStatus(requestId, "IN_PROGRESS", null)
+                val currentRequest = uiState.value.allChangeRequests.firstOrNull { it.id == requestId }
+                mealChangeRequestRepository.updateRequestStatus(requestId, "IN_PROGRESS", currentRequest?.mainResponse)
                 onStarted()
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
