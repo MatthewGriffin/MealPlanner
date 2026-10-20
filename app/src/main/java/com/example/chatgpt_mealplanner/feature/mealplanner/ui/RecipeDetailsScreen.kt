@@ -36,7 +36,8 @@ fun RecipeDetailsScreen(
     viewModel: MealPlannerViewModel,
     onNavigateBack: () -> Unit,
     onCookNowClicked: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onAdjustWithAiRequest: (com.example.chatgpt_mealplanner.core.database.entity.MealChangeRequestEntity) -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val allMeals = uiState.mealsForSelectedDate + uiState.recentCookedMeals
@@ -198,7 +199,8 @@ fun RecipeDetailsScreen(
                         MainRequestReviewSection(
                             requests = mealRequests,
                             onUpdateStatus = viewModel::updateRequestStatus,
-                            mealTitleMap = mapOf(meal.id to meal.title)
+                            mealTitleMap = mapOf(meal.id to meal.title),
+                            onAdjustWithAi = onAdjustWithAiRequest
                         )
                     }
                 }
