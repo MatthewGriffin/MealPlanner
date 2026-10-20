@@ -345,7 +345,10 @@ class InventoryViewModel @Inject constructor(
             InventoryFilter.LOW -> result.filter { it.status == com.example.chatgpt_mealplanner.core.model.ItemStatus.LOW }
             InventoryFilter.OUT -> result.filter { it.status == com.example.chatgpt_mealplanner.core.model.ItemStatus.OUT }
         }
-        return result
+        return result.sortedWith(
+            compareBy<InventoryItem> { it.useByDate ?: it.bestBeforeDate ?: "9999-12-31" }
+                .thenBy { it.displayName.lowercase() }
+        )
     }
 
     private fun formatErrorMessage(error: DomainError): String {
