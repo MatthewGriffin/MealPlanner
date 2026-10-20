@@ -25,7 +25,7 @@ object FollowerMealRequestProjector {
             }
             SyncOperationType.UPDATE_MEAL_CHANGE_REQUEST_STATUS -> {
                 val p = json.decodeFromString<UpdateMealChangeRequestStatusPayloadDto>(event.payloadJson)
-                require(p.status in setOf("ACCEPTED", "DECLINED", "DISCUSSED"))
+                require(p.status in setOf("ACCEPTED", "DECLINED", "DISCUSSED", "IN_PROGRESS", "COMPLETED"))
                 require((p.mainResponse?.length ?: 0) <= 2000)
                 val existing = dao.getById(p.requestId)
                 val snapshot = p.requestSnapshot
