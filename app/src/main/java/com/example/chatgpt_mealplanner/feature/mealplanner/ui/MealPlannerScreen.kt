@@ -438,7 +438,7 @@ fun MainRequestReviewSection(
             color = MaterialTheme.colorScheme.primary
         )
         TextButton(onClick = { showPast = !showPast }) {
-            Text(if (showPast) "Show active requests" else "View past requests (${requestsForExistingMeals.count { it.status in pastStatuses }})")
+            Text(if (showPast) "Show active requests" else "View past requests (${requests.count { it.status in pastStatuses }})")
         }
         if (visibleRequests.isEmpty()) {
             Text(if (showPast) "No past requests." else "No active requests.")
