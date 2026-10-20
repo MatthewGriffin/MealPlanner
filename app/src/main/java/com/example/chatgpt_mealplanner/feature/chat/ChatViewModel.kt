@@ -168,8 +168,27 @@ class ChatViewModel @Inject constructor(
         mealChangeRequestIdFlow.value = request.id
         latestProposalFlow.value = null
         latestProposedActionFlow.value = null
-        userMessageTextFlow.value = "Please prepare an adjusted proposal for the existing planned meal with ID \"${request.mealId}\" to address this follower request: \"${request.requestText}\". First inspect that meal, then propose a complete replacement recipe with ingredients and ordered cooking steps. Keep the same planned date and meal type. Return the complete structured proposal with the offer_add_planned_meal tool, including all ingredients and full cooking instructions. This tool prepares a proposal only; it does not add a new meal. The app's Save action applies the reviewed replacement to this existing meal. Do not create a separate meal, claim the existing recipe cannot be changed, or call add_planned_meal."
+        val initialPrompt = buildMealChangeRequestPrompt(request, mealTitle = null)
+        userMessageTextFlow.value = initialPrompt
         errorMessageFlow.value = null
+
+        viewModelScope.launch {
+            val mealTitle = runCatching {
+                mealRepository.getMealWithIngredients(request.mealId)?.meal?.title
+            }.getOrNull()
+            if (userMessageTextFlow.value == initialPrompt && !mealTitle.isNullOrBlank()) {
+                userMessageTextFlow.value = buildMealChangeRequestPrompt(request, mealTitle)
+            }
+        }
+    }
+
+    private fun buildMealChangeRequestPrompt(request: MealChangeRequestEntity, mealTitle: String?): String {
+        val target = if (mealTitle.isNullOrBlank()) {
+            "meal ID ${request.mealId}"
+        } else {
+            "'$mealTitle' (meal ID ${request.mealId})"
+        }
+        return "Prepare a replacement recipe for $target that addresses this request: ${request.requestText}. Return a complete recipe proposal for review; the app will save it to the existing meal."
     }
 
     fun onEvent(event: ChatUiEvent) {
