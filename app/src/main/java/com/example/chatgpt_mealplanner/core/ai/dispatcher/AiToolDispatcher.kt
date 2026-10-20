@@ -72,14 +72,12 @@ class AiToolDispatcher @Inject constructor(
         val entryLog = """
             [DISPATCH_TRACE] entered=true tool=${call.toolName} toolCallId=${call.toolCallId} conversationId=$conversationId
         """.trimIndent()
-        println(entryLog)
-        try { android.util.Log.i("AI_MEALPLANNER", entryLog) } catch (_: Throwable) {}
+        safeAuditLog(entryLog)
 
         val toolId = AiToolId.fromToolName(call.toolName)
             ?: run {
                 val errLog = "[DISPATCH_TRACE] returnPath=VALIDATION_FAILURE authorized=false gateEvaluated=false cacheUsed=false domainInvoked=false error=\"TOOL_NOT_FOUND\""
-                println(errLog)
-                try { android.util.Log.i("AI_MEALPLANNER", errLog) } catch (_: Throwable) {}
+        safeAuditLog(errLog)
                 return createErrorResult(call, "TOOL_NOT_FOUND", "Unknown tool name: ${call.toolName}")
             }
 
@@ -95,8 +93,7 @@ class AiToolDispatcher @Inject constructor(
                 val err = "Write tool ${toolId.toolName} is not authorized for this user message scope."
                 logExecution(logKey, conversationId, call, toolId, "FAILED", null, "UNAUTHORIZED", err)
                 val blockedLog = "[DISPATCH_TRACE] returnPath=CONFIRMATION_BLOCKED authorized=false gateEvaluated=true cacheUsed=false domainInvoked=false"
-                println(blockedLog)
-                try { android.util.Log.i("AI_MEALPLANNER", blockedLog) } catch (_: Throwable) {}
+        safeAuditLog(blockedLog)
                 return createErrorResult(call, "UNAUTHORIZED", err)
             }
         } else if (toolId.toolClass == AiToolClass.WRITE_CONFIRMATION_REQUIRED) {
@@ -106,8 +103,7 @@ class AiToolDispatcher @Inject constructor(
                 val err = gateResult.reason ?: "Destructive action ${toolId.toolName} requires explicit user confirmation."
                 logExecution(logKey, conversationId, call, toolId, "FAILED", null, "UNAUTHORIZED", err)
                 val blockedLog = "[DISPATCH_TRACE] returnPath=CONFIRMATION_BLOCKED authorized=false gateEvaluated=true cacheUsed=false domainInvoked=false"
-                println(blockedLog)
-                try { android.util.Log.i("AI_MEALPLANNER", blockedLog) } catch (_: Throwable) {}
+        safeAuditLog(blockedLog)
                 return createErrorResult(call, "UNAUTHORIZED", err)
             }
         } else {
@@ -122,13 +118,11 @@ class AiToolDispatcher @Inject constructor(
         val cacheTrace = """
             [CACHE_TRACE] toolCallId=${call.toolCallId} toolName=${call.toolName} cacheLookup=TRUE cachedEntryFound=$cachedEntryFound cachedStatus=${existingLog?.executionStatus ?: "NONE"} cachedAuthorized=${existingLog?.errorCode != "UNAUTHORIZED"} gateEvaluatedAfterCache=FALSE cacheUsed=$cacheUsed
         """.trimIndent()
-        println(cacheTrace)
-        try { android.util.Log.i("AI_MEALPLANNER", cacheTrace) } catch (_: Throwable) {}
+        safeAuditLog(cacheTrace)
 
         if (cacheUsed) {
             val hitLog = "[DISPATCH_TRACE] returnPath=CACHE_HIT authorized=true gateEvaluated=true cacheUsed=true domainInvoked=false"
-            println(hitLog)
-            try { android.util.Log.i("AI_MEALPLANNER", hitLog) } catch (_: Throwable) {}
+        safeAuditLog(hitLog)
 
             return AiToolResult(
                 toolCallId = call.toolCallId,
@@ -1022,8 +1016,7 @@ class AiToolDispatcher @Inject constructor(
             val domainTrace = """
                 [DOMAIN_TRACE] tool=delete_inventory_item targetItemId=${itemIdArg ?: "NULL"} targetItemName=${searchArg ?: "NULL"} statusBefore=UNKNOWN discardItemInvoked=false domainResult=ITEM_NOT_FOUND statusAfter=UNKNOWN mutationVerified=false
             """.trimIndent()
-            println(domainTrace)
-            try { android.util.Log.i("AI_MEALPLANNER", domainTrace) } catch (_: Throwable) {}
+        safeAuditLog(domainTrace)
             return DomainResult.Failure(DomainError.ItemNotFound("No active inventory item matching '${searchArg ?: itemIdArg}' was found."))
         }
 
@@ -1035,8 +1028,7 @@ class AiToolDispatcher @Inject constructor(
         val domainTrace = """
             [DOMAIN_TRACE] tool=delete_inventory_item targetItemId=${targetItem.id} targetItemName="${targetItem.displayName}" statusBefore=$statusBefore discardItemInvoked=true domainResult=${if (result is DomainResult.Success) "SUCCESS" else "FAILURE"} statusAfter=$statusAfter mutationVerified=$mutationVerified
         """.trimIndent()
-        println(domainTrace)
-        try { android.util.Log.i("AI_MEALPLANNER", domainTrace) } catch (_: Throwable) {}
+        safeAuditLog(domainTrace)
 
         return when (result) {
             is DomainResult.Success -> DomainResult.Success(AiToolPayload.TextPayload("Successfully removed '${targetItem.displayName}' from active inventory."))
@@ -1084,9 +1076,13 @@ class AiToolDispatcher @Inject constructor(
     }
 
     private fun logDiagnostic(tag: String, message: String) {
-        println("[$tag] $message")
+        safeAuditLog("[$tag]")
+    }
+
+    private fun safeAuditLog(message: String) {
+        val event = message.substringBefore(']').takeIf { it.startsWith("[") }?.plus("]") ?: "[AI_TOOL_EVENT]"
         try {
-            android.util.Log.i("AI_MEALPLANNER", "[$tag] $message")
+            android.util.Log.i("AI_MEALPLANNER", event)
         } catch (_: Throwable) {
             // Unstubbed in JVM unit tests
         }
@@ -1245,12 +1241,10 @@ class AiToolDispatcher @Inject constructor(
         val authTrace = """
             [AUTH_TRACE] tool=${toolId.toolName} executionClass=${toolId.toolClass} userMessageText="$messageText" pendingMutation=${pending?.javaClass?.simpleName ?: "NONE"} pendingState=$pendingState authorizationContext=$authContext explicitConfirmation=$explicitConfirmation authorizationSource=$authorizationSource finalAuthorized=$authorized
         """.trimIndent()
-        println(authTrace)
-        try { android.util.Log.i("AI_MEALPLANNER", authTrace) } catch (_: Throwable) {}
+        safeAuditLog(authTrace)
 
         val gateLog = "[AI_CONFIRMATION_GATE] tool=${toolId.toolName} toolCallId=${call.toolCallId} executionClass=${toolId.toolClass} pendingPresent=$pendingPresent pendingState=$pendingState matchesPendingAction=$matchesPendingAction userConfirmationIntent=$userIntent authorized=$authorized decision=$decision"
-        println(gateLog)
-        try { android.util.Log.i("AI_MEALPLANNER", gateLog) } catch (_: Throwable) {}
+        safeAuditLog(gateLog)
 
         if (authorized) {
             return ConfirmationGateResult(authorized = true, decision = "EXECUTE_CONFIRMED")
