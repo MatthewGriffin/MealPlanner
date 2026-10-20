@@ -79,6 +79,8 @@ fun ShoppingScreen(
 
     if (uiState.showAddManualDialog) {
         AddManualItemDialog(
+            initialName = uiState.manualItemName,
+            initialNotes = uiState.manualItemNotes,
             onDismiss = { onEvent(ShoppingUiEvent.DismissAddManualDialog) },
             onConfirmAdd = { name, qty, unit, notes ->
                 onEvent(ShoppingUiEvent.AddManualItem(name, qty, unit, notes))
