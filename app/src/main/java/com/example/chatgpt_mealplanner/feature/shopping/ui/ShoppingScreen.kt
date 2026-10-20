@@ -25,6 +25,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -138,6 +139,21 @@ fun ShoppingScreen(
                         }
                     }
 
+                    val shoppingItems = uiState.activeListWithItems?.items.orEmpty()
+                    if (shoppingItems.isNotEmpty()) {
+                        val checkedCount = shoppingItems.count {
+                            it.item.status == ShoppingItemStatus.CHECKED ||
+                                it.item.status == ShoppingItemStatus.PURCHASED_CONFIRMED
+                        }
+                        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+                            Text("$checkedCount of ${shoppingItems.size} items checked", style = MaterialTheme.typography.bodySmall)
+                            LinearProgressIndicator(
+                                progress = checkedCount.toFloat() / shoppingItems.size,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+
                     val plan = uiState.basketComparisonResult?.selectedPlan
                     if (plan != null) {
                         val matchedCount = plan.lines.size
@@ -214,6 +230,10 @@ fun ShoppingScreen(
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             uiState.retailerGroups.forEach { group ->
+                                val groupCheckedCount = group.items.count {
+                                    it.item.status == ShoppingItemStatus.CHECKED ||
+                                        it.item.status == ShoppingItemStatus.PURCHASED_CONFIRMED
+                                }
                                 item(key = "header_${group.retailerName}") {
                                     Card(
                                         modifier = Modifier
@@ -231,7 +251,7 @@ fun ShoppingScreen(
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Text(
-                                                text = group.retailerName,
+                                                text = "${group.retailerName} · $groupCheckedCount/${group.items.size}",
                                                 style = MaterialTheme.typography.titleSmall,
                                                 fontWeight = FontWeight.Bold,
                                                 color = MaterialTheme.colorScheme.onSecondaryContainer
