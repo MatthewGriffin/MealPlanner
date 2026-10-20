@@ -93,7 +93,7 @@ class MealChangeRequestRepositoryImpl @Inject constructor(
                     payloadJson = Json.encodeToString(
                         UpdateMealChangeRequestStatusPayloadDto(
                             requestId, status, mainResponse,
-                            existing.copy(status = status, mainResponse = mainResponse, updatedAt = now).toSyncDto()
+                            existing.copy(status = status, mainResponse = mainResponse ?: existing.mainResponse, updatedAt = now).toSyncDto()
                         )
                     ),
                     createdAt = now,
@@ -103,7 +103,7 @@ class MealChangeRequestRepositoryImpl @Inject constructor(
                     resultCode = "SUCCESS"
                 )
             )
-            dao.updateRequestStatus(requestId, status, mainResponse, now)
+            dao.updateRequestStatus(requestId, status, mainResponse ?: existing.mainResponse, now)
         }
     }
 }
