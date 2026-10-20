@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -28,6 +27,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
@@ -40,9 +40,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -93,6 +91,7 @@ fun InventoryScreen(
     var correctionItem by remember { mutableStateOf<InventoryItem?>(null) }
     var deleteItemTarget by remember { mutableStateOf<InventoryItem?>(null) }
     var mergeSourceItem by remember { mutableStateOf<InventoryItem?>(null) }
+    var showFilterMenu by remember { mutableStateOf(false) }
 
     LaunchedEffect(state.userMessage) {
         state.userMessage?.let { msg ->
@@ -104,23 +103,7 @@ fun InventoryScreen(
     Scaffold(
         modifier = modifier.fillMaxSize(),
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        floatingActionButton = {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                FilledTonalButton(
-                    onClick = onScanBarcodeClicked,
-                    shape = RoundedCornerShape(16.dp)
-                ) {
-                    Icon(Icons.Default.QrCodeScanner, contentDescription = null)
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Barcode")
-                }
-
-                FloatingActionButton(onClick = { showAddDialog = true }) {
-                    Icon(Icons.Default.Add, contentDescription = "Add Item")
-                }
-            }
-        }
+        snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
         Column(
             modifier = Modifier
@@ -140,17 +123,48 @@ fun InventoryScreen(
                 singleLine = true
             )
 
-            // Filter chips
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.padding(bottom = 8.dp)
+            // Keep the filter and quick actions above the list so they never cover item controls.
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                items(InventoryFilter.entries.toTypedArray()) { filter ->
-                    FilterChip(
-                        selected = state.activeFilter == filter,
-                        onClick = { onEvent(InventoryUiEvent.SelectFilter(filter)) },
-                        label = { Text(filter.name.lowercase().replaceFirstChar { it.uppercase() }) }
-                    )
+                Box(modifier = Modifier.weight(1f)) {
+                    OutlinedButton(
+                        onClick = { showFilterMenu = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(state.activeFilter.displayName, modifier = Modifier.weight(1f))
+                        Icon(Icons.Default.KeyboardArrowDown, contentDescription = null)
+                    }
+                    DropdownMenu(
+                        expanded = showFilterMenu,
+                        onDismissRequest = { showFilterMenu = false }
+                    ) {
+                        InventoryFilter.entries.forEach { filter ->
+                            DropdownMenuItem(
+                                text = { Text(filter.displayName) },
+                                onClick = {
+                                    showFilterMenu = false
+                                    onEvent(InventoryUiEvent.SelectFilter(filter))
+                                }
+                            )
+                        }
+                    }
+                }
+                IconButton(
+                    onClick = onScanBarcodeClicked,
+                    modifier = Modifier.width(48.dp)
+                ) {
+                    Icon(Icons.Default.QrCodeScanner, contentDescription = "Scan barcode")
+                }
+                IconButton(
+                    onClick = { showAddDialog = true },
+                    modifier = Modifier.width(48.dp)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Add inventory item")
                 }
             }
 
