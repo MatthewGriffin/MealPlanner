@@ -7,6 +7,8 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.Operation
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.example.chatgpt_mealplanner.core.sync.follower.engine.FollowerSyncCoordinator
 import kotlinx.coroutines.CancellationException
@@ -110,6 +112,35 @@ open class FollowerSyncScheduler @Inject constructor(
         return if (result == WorkSchedulingResult.OPERATION_FAILED) NonBlockingSchedulingResult.OPERATION_FAILED else NonBlockingSchedulingResult.SUBMITTED_NOT_CONFIRMED
     }
 
+    open fun schedulePeriodicSyncWorkNonBlocking(context: Context?): NonBlockingSchedulingResult {
+        val appContext = context?.applicationContext ?: return NonBlockingSchedulingResult.OPERATION_FAILED
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .build()
+        val inputData = androidx.work.Data.Builder()
+            .putString(KEY_WORK_LANE, LANE_AUTO)
+            .build()
+        val workRequest = PeriodicWorkRequestBuilder<FollowerOutboxSyncWorker>(
+            PERIODIC_SYNC_INTERVAL_MINUTES, TimeUnit.MINUTES
+        )
+            .setInputData(inputData)
+            .setConstraints(constraints)
+            .addTag("AUTO")
+            .build()
+
+        return try {
+            WorkManager.getInstance(appContext).enqueueUniquePeriodicWork(
+                PERIODIC_WORK_NAME,
+                ExistingPeriodicWorkPolicy.KEEP,
+                workRequest
+            )
+            NonBlockingSchedulingResult.SUBMITTED_NOT_CONFIRMED
+        } catch (e: Throwable) {
+            println("[SYNC_SCHEDULE] Periodic WorkManager enqueue failed: ${e.message}")
+            NonBlockingSchedulingResult.OPERATION_FAILED
+        }
+    }
+
     open suspend fun scheduleSyncWorkAsync(context: Context?, triggerReason: String): WorkSchedulingResult {
         return scheduleSyncWorkAsync(context, triggerReason, intentAlreadyRecorded = false)
     }
@@ -207,6 +238,8 @@ open class FollowerSyncScheduler @Inject constructor(
         const val WORK_NAME = "pantry_follower_outbox_sync"
         const val AUTO_WORK_NAME = "pantry_follower_outbox_sync"
         const val MANUAL_WORK_NAME = "pantry_follower_manual_sync"
+        const val PERIODIC_WORK_NAME = "pantry_follower_periodic_sync"
+        const val PERIODIC_SYNC_INTERVAL_MINUTES = 15L
         const val KEY_WORK_LANE = "KEY_WORK_LANE"
         const val LANE_AUTO = "LANE_AUTO"
         const val LANE_MANUAL = "LANE_MANUAL"

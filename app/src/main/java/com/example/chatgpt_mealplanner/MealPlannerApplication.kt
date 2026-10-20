@@ -4,6 +4,7 @@ import android.app.Application
 import android.util.Log
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
+import com.example.chatgpt_mealplanner.core.sync.follower.worker.FollowerNetworkCallbackListener
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
 
@@ -15,6 +16,9 @@ class MealPlannerApplication : Application(), Configuration.Provider {
     @Inject
     lateinit var workerFactory: HiltWorkerFactory
 
+    @Inject
+    lateinit var followerNetworkCallbackListener: FollowerNetworkCallbackListener
+
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
             .setWorkerFactory(workerFactory)
@@ -22,6 +26,7 @@ class MealPlannerApplication : Application(), Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
+        followerNetworkCallbackListener.registerListener()
         val buildLog = """
             [PANTRY_BUILD] buildId=$PANTRY_DEBUG_BUILD_ID
             [PANTRY_BUILD] versionName=${BuildConfig.VERSION_NAME}

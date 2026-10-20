@@ -5,6 +5,7 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
+import com.example.chatgpt_mealplanner.core.sync.follower.config.FollowerPairingStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -12,12 +13,17 @@ import javax.inject.Singleton
 @Singleton
 open class FollowerNetworkCallbackListener @Inject constructor(
     @param:ApplicationContext private val context: Context,
-    private val syncScheduler: FollowerSyncScheduler
+    private val syncScheduler: FollowerSyncScheduler,
+    private val pairingStore: FollowerPairingStore
 ) {
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
 
     open fun registerListener() {
         if (networkCallback != null) return
+
+        if (pairingStore.isPaired()) {
+            syncScheduler.schedulePeriodicSyncWorkNonBlocking(context)
+        }
 
         val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return
 
@@ -32,7 +38,9 @@ open class FollowerNetworkCallbackListener @Inject constructor(
                     android.util.Log.i("AI_MEALPLANNER", "[SYNC_NETWORK] Network onAvailable -> Enqueueing sync work")
                 } catch (_: Throwable) {}
 
-                syncScheduler.scheduleSyncWorkNonBlocking(context, "NETWORK_AVAILABLE")
+                if (pairingStore.isPaired()) {
+                    syncScheduler.scheduleSyncWorkNonBlocking(context, "NETWORK_AVAILABLE")
+                }
             }
         }
 

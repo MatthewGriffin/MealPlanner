@@ -94,6 +94,7 @@ open class FollowerEnrollmentOrchestrator @Inject constructor(
                     followerPairingStore.savePairingConfig(config)
                     followerPairingStore.clearRevoked()
                     followerSyncScheduler.scheduleSyncWorkNonBlocking(context, "REAUTHORIZATION_COMPLETE")
+                    followerSyncScheduler.schedulePeriodicSyncWorkNonBlocking(context)
 
                     EnrollmentResponseDto(
                         success = true,
@@ -165,6 +166,7 @@ open class FollowerEnrollmentOrchestrator @Inject constructor(
 
         // 4. Schedule existing sync worker for ongoing background sync
         followerSyncScheduler.scheduleSyncWorkNonBlocking(context, "ENROLLMENT_COMPLETE")
+        followerSyncScheduler.schedulePeriodicSyncWorkNonBlocking(context)
 
         return response
     }
