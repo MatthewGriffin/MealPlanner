@@ -279,6 +279,12 @@ fun ShoppingScreen(
                                                 )
                                             }
                                         }
+                                        Text(
+                                            text = group.priceScopeNotice,
+                                            modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 8.dp),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                                        )
                                     }
                                 }
 
