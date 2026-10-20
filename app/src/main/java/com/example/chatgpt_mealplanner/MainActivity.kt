@@ -89,6 +89,7 @@ class MainActivity : ComponentActivity() {
                 if (isFollower && currentScreen == Screen.CHAT) {
                     currentScreen = Screen.INVENTORY
                 }
+                val chatViewModel: ChatViewModel = hiltViewModel()
                 val scannerViewModel: ScannerViewModel = hiltViewModel()
                 val scannerState by scannerViewModel.state.collectAsState()
                 val isConfirming = scannerState is ScannerState.Confirming
@@ -183,7 +184,6 @@ class MainActivity : ComponentActivity() {
                 ) { innerPadding ->
                     when (currentScreen) {
                         Screen.CHAT -> {
-                            val chatViewModel: ChatViewModel = hiltViewModel()
                             val state by chatViewModel.uiState.collectAsState()
                             ChatScreen(
                                 uiState = state,
@@ -209,7 +209,11 @@ class MainActivity : ComponentActivity() {
                             MealPlannerScreen(
                                 uiState = state,
                                 onEvent = mealPlannerViewModel::onEvent,
-                                modifier = Modifier.padding(innerPadding)
+                                modifier = Modifier.padding(innerPadding),
+                                onAdjustWithAiRequest = { request ->
+                                    chatViewModel.prepareMealChangeRequest(request)
+                                    currentScreen = Screen.CHAT
+                                }
                             )
                         }
 
