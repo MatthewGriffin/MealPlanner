@@ -241,6 +241,7 @@ class FakeMealDao : MealDao {
             .map { MealWithIngredientEntities(it, ingredientsMap[it.id] ?: emptyList()) }
     }
     override suspend fun insertMeal(meal: MealEntity) { mealsMap[meal.id] = meal }
+    override suspend fun updateMeal(meal: MealEntity) { mealsMap[meal.id] = meal }
     override suspend fun insertMealIngredients(ingredients: List<MealIngredientEntity>) {
         ingredients.forEach {
             ingredientsMap.getOrPut(it.mealId) { mutableListOf() }.add(it)
