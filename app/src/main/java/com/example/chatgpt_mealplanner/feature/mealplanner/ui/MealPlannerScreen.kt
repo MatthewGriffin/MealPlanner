@@ -165,7 +165,9 @@ fun MealPlannerScreen(
                                         onUpdateStatus = { reqId, status, resp ->
                                             parentViewModel.updateRequestStatus(reqId, status, resp)
                                         },
-                                        onAdjustWithAi = onAdjustWithAiRequest
+                                        onAdjustWithAi = { request ->
+                                            parentViewModel.beginAiAdjustment(request.id) { onAdjustWithAiRequest(request) }
+                                        }
                                     )
                                 }
                                 DateNavigationHeader(
@@ -205,7 +207,9 @@ fun MealPlannerScreen(
                     onCookNowClicked = { mealId ->
                         navController.navigate("cook_now/$mealId")
                     },
-                    onAdjustWithAiRequest = onAdjustWithAiRequest
+                    onAdjustWithAiRequest = { request ->
+                        parentViewModel.beginAiAdjustment(request.id) { onAdjustWithAiRequest(request) }
+                    }
                 )
             }
             composable("cook_now/{plannedMealId}") { backStackEntry ->
@@ -471,7 +475,6 @@ fun MainRequestReviewSection(
                             if (req.status == "ACCEPTED") {
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Button(onClick = {
-                                    onUpdateStatus(req.id, "IN_PROGRESS", req.mainResponse)
                                     onAdjustWithAi(req)
                                 }) { Text("Adjust with AI") }
                             } else if (req.status == "IN_PROGRESS") {
