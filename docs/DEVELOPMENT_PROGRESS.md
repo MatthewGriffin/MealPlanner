@@ -290,3 +290,11 @@ The user confirmed meal-plan synchronization now works on both phones.
   with no failures/errors/skips. Sync-contract tests were cached with 9 passing
   results. No phone was connected or deployed to. Keyboard movement and Main
   response controls still require visual verification on the updated phones.
+
+
+## Feedback Follow-up After Phase 10 (2026-10-20)
+
+- Inventory filter fix committed as `0b0f296`: out-of-stock items now appear only in the dedicated Out filter.
+- Next: complete accepted meal-change requests through an AI-assisted replacement flow. Main should be able to pass an accepted Follower request and its meal context to the assistant, review the proposed replacement, and explicitly confirm it. Only after the replacement is saved should the request become completed, sync to Follower, notify the Follower, and leave active request views. Keep past requests available from the meal-plan and recipe views on both roles.
+- Data integrity requirement: `MealDomainServiceImpl.replaceMeal` currently deletes and recreates the meal row. Meal requests reference that row with `ON DELETE CASCADE`, so replacement must preserve the meal identity and update its ingredients transactionally before it can safely resolve the linked request.
+- Mockup inspiration to consider selectively: compact pantry summary, expiry sorting, low-stock shortcuts into shopping, and category-grouped shopping progress. The attached ZIP is a small React/Vite demo with hardcoded sample meal/shopping data and browser local storage; do not reuse its sample data or persistence approach. Archive code was inspected without execution.
