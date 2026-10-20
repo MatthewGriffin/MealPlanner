@@ -215,15 +215,44 @@ class ShoppingViewModel @Inject constructor(
 
     private fun addManualItem(name: String, quantity: Double?, unit: QuantityUnit?, notes: String?) {
         viewModelScope.launch {
-            val list = uiState.value.activeListWithItems?.shoppingList
-                ?: return@launch
             isLoadingFlow.value = true
-            val result = shoppingDomainService.addManualShoppingItem(list.id, name, quantity, unit, notes)
+            var activeList = when (val result = shoppingDomainService.getActiveShoppingList()) {
+                is DomainResult.Success -> result.value
+                is DomainResult.Failure -> {
+                    isLoadingFlow.value = false
+                    userMessageFlow.value = formatDomainError(result.error)
+                    return@launch
+                }
+            }
+            if (activeList == null) {
+                activeList = when (val result = shoppingDomainService.generateOrRegenerateShoppingList()) {
+                    is DomainResult.Success -> result.value
+                    is DomainResult.Failure -> {
+                        isLoadingFlow.value = false
+                        userMessageFlow.value = formatDomainError(result.error)
+                        return@launch
+                    }
+                }
+            }
+            val duplicate = activeList.items.firstOrNull {
+                it.item.displayName.trim().equals(name.trim(), ignoreCase = true)
+            }
+            if (duplicate != null) {
+                isLoadingFlow.value = false
+                showAddManualDialogFlow.value = false
+                userMessageFlow.value = "${duplicate.item.displayName} is already on the shopping list"
+                return@launch
+            }
+            val result = shoppingDomainService.addManualShoppingItem(activeList.shoppingList.id, name, quantity, unit, notes)
             isLoadingFlow.value = false
             showAddManualDialogFlow.value = false
 
             when (result) {
-                is DomainResult.Success -> userMessageFlow.value = "Item added to shopping list"
+                is DomainResult.Success -> {
+                    manualItemNameFlow.value = ""
+                    manualItemNotesFlow.value = ""
+                    userMessageFlow.value = "Item added to shopping list"
+                }
                 is DomainResult.Failure -> userMessageFlow.value = formatDomainError(result.error)
             }
         }
