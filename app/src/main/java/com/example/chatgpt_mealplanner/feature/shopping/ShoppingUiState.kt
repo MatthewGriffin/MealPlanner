@@ -22,6 +22,7 @@ data class RetailerGroup(
     val retailerName: String,
     val subtotal: Money?,
     val items: List<ShoppingListItemWithSources>,
+    val priceScopeNotice: String = "Price estimate · branch stock not confirmed",
     val lineByItemId: Map<String, BasketLine> = emptyMap()
 )
 
