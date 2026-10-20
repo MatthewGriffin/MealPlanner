@@ -102,23 +102,33 @@ class MealDomainServiceImpl @Inject constructor(
         oldMealId: String,
         newMeal: Meal,
         newIngredients: List<MealIngredient>
-    ): DomainResult<Meal> {
+    ): DomainResult<Meal> = transactionRunner.runInDomainTransaction {
         val existing = mealDao.getMealWithIngredients(oldMealId)
-            ?: return DomainResult.Failure(DomainError.ItemNotFound(oldMealId))
+            ?: return@runInDomainTransaction DomainResult.Failure(DomainError.ItemNotFound(oldMealId))
 
         if (existing.meal.status == MealStatus.COOKED) {
-            return DomainResult.Failure(
+            return@runInDomainTransaction DomainResult.Failure(
                 DomainError.TransactionFailed("Cooked meals cannot be replaced")
             )
         }
 
-        val validationError = validatePortionInvariants(newMeal)
-        if (validationError != null) return validationError
+        val updatedMeal = newMeal.copy(
+            id = oldMealId,
+            status = existing.meal.status,
+            createdAt = existing.meal.createdAt,
+            updatedAt = System.currentTimeMillis()
+        )
+        val validationError = validatePortionInvariants(updatedMeal)
+        if (validationError != null) return@runInDomainTransaction validationError
 
-        mealDao.deleteMeal(oldMealId)
-        mealDao.insertMeal(newMeal.toEntity())
-        mealDao.insertMealIngredients(newIngredients.map { it.toEntity() })
-        return DomainResult.Success(newMeal)
+        // Update the parent row in place. Deleting/reinserting it would cascade-delete
+        // meal-change requests that refer to this meal.
+        mealDao.updateMeal(updatedMeal.toEntity())
+        mealDao.deleteMealIngredients(oldMealId)
+        mealDao.insertMealIngredients(newIngredients.map {
+            it.copy(id = UUID.randomUUID().toString(), mealId = oldMealId).toEntity()
+        })
+        DomainResult.Success(updatedMeal)
     }
 
     override suspend fun deletePlannedMeal(mealId: String): DomainResult<Unit> {
