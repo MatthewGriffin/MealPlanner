@@ -563,13 +563,14 @@ class AiMealPlannerOrchestrator @Inject constructor(
                 )
 
                 val res = toolDispatcher.executeToolCall(conversationId, authContext, toolCall)
-                pendingMutationStore.clearPendingMutation(conversationId, reason = "DIRECT_CONFIRM_SUCCESS")
-
-                val text = if (res.success) {
-                    "I have removed **${pending.targetName}** from your inventory."
-                } else {
-                    "I couldn't remove **${pending.targetName}** from your inventory due to an error. Please try again."
+                if (!res.success) {
+                    return AiOrchestrationResult.Error(
+                        code = res.errorCode ?: "CONFIRMATION_FAILED",
+                        userFacingMessage = "I couldn't remove **${pending.targetName}** from your inventory. Tap Retry to try again."
+                    )
                 }
+                pendingMutationStore.clearPendingMutation(conversationId, reason = "DIRECT_CONFIRM_SUCCESS")
+                val text = "I have removed **${pending.targetName}** from your inventory."
                 saveAssistantMessage(conversationId, text)
                 AiOrchestrationResult.Final(assistantText = text)
             }
@@ -586,13 +587,14 @@ class AiMealPlannerOrchestrator @Inject constructor(
                 )
 
                 val res = toolDispatcher.executeToolCall(conversationId, authContext, toolCall)
-                pendingMutationStore.clearPendingMutation(conversationId, reason = "DIRECT_CONFIRM_SUCCESS")
-
-                val text = if (res.success) {
-                    "I have removed all active items from your inventory."
-                } else {
-                    "I couldn't clear your inventory due to an error. Please try again."
+                if (!res.success) {
+                    return AiOrchestrationResult.Error(
+                        code = res.errorCode ?: "CONFIRMATION_FAILED",
+                        userFacingMessage = "I couldn't clear your inventory. Tap Retry to try again."
+                    )
                 }
+                pendingMutationStore.clearPendingMutation(conversationId, reason = "DIRECT_CONFIRM_SUCCESS")
+                val text = "I have removed all active items from your inventory."
                 saveAssistantMessage(conversationId, text)
                 AiOrchestrationResult.Final(assistantText = text)
             }
@@ -611,13 +613,14 @@ class AiMealPlannerOrchestrator @Inject constructor(
                 )
 
                 val res = toolDispatcher.executeToolCall(conversationId, authContext, toolCall)
-                pendingMutationStore.clearPendingMutation(conversationId, reason = "DIRECT_CONFIRM_SUCCESS")
-
-                val text = if (res.success) {
-                    "Marked **${pending.mealTitle}** as cooked and updated inventory."
-                } else {
-                    "I couldn't mark **${pending.mealTitle}** as cooked due to an error. Please try again."
+                if (!res.success) {
+                    return AiOrchestrationResult.Error(
+                        code = res.errorCode ?: "CONFIRMATION_FAILED",
+                        userFacingMessage = "I couldn't mark **${pending.mealTitle}** as cooked. Tap Retry to try again."
+                    )
                 }
+                pendingMutationStore.clearPendingMutation(conversationId, reason = "DIRECT_CONFIRM_SUCCESS")
+                val text = "Marked **${pending.mealTitle}** as cooked and updated inventory."
                 saveAssistantMessage(conversationId, text)
                 AiOrchestrationResult.Final(assistantText = text)
             }
@@ -696,13 +699,12 @@ class AiMealPlannerOrchestrator @Inject constructor(
                 proposedAction = null
             )
         } else {
-            val userFacingText = "I couldn't add **${pending.title}** to your plan due to an error. Please try again."
+            val userFacingText = "I couldn't add **${pending.title}** to your plan. Tap Retry to try again."
             safeLog("[AI_TURN_END] conversationId=\"$conversationId\" activeProposalPresent=true pendingMutationPresent=true pendingMutationState=AWAITING_CONFIRMATION plannerMutationCommitted=false")
 
-            return AiOrchestrationResult.Final(
-                assistantText = userFacingText,
-                validatedProposal = null,
-                proposedAction = null
+            return AiOrchestrationResult.Error(
+                code = "CONFIRMATION_FAILED",
+                userFacingMessage = userFacingText
             )
         }
     }

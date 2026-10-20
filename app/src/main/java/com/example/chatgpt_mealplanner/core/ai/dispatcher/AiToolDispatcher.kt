@@ -176,6 +176,9 @@ class AiToolDispatcher @Inject constructor(
 
         return when (payloadResult) {
             is DomainResult.Success -> {
+                if (gateResult?.decision == "EXECUTE_CONFIRMED") {
+                    pendingMutationStore.clearPendingMutation(conversationId, reason = "EXECUTE_CONFIRMED_SUCCESS")
+                }
                 val payloadJsonStr = json.encodeToString(payloadResult.value)
                 logExecution(logKey, conversationId, call, toolId, "SUCCEEDED", payloadJsonStr, null, null)
                 AiToolResult(
@@ -1250,7 +1253,6 @@ class AiToolDispatcher @Inject constructor(
         try { android.util.Log.i("AI_MEALPLANNER", gateLog) } catch (_: Throwable) {}
 
         if (authorized) {
-            pendingMutationStore.clearPendingMutation(conversationId, reason = "EXECUTE_CONFIRMED")
             return ConfirmationGateResult(authorized = true, decision = "EXECUTE_CONFIRMED")
         }
 

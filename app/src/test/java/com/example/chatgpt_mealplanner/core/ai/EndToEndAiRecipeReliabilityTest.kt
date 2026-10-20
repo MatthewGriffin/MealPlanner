@@ -529,6 +529,77 @@ class EndToEndAiRecipeReliabilityTest {
         collectJob.cancel()
     }
 
+    @Test
+    fun failedConfirmationCanBeRetriedWithoutLosingPendingActionOrDuplicatingUserMessage() = runTest(testDispatcher) {
+        val itemId = "retry-confirmation-item"
+        pendingMutationStore.setPendingMutation(
+            "default_conversation",
+            PendingAiMutation.DeleteInventoryItem(itemId = itemId, targetName = "Milk")
+        )
+
+        val noNetworkProvider = object : MealPlannerAiProvider {
+            override suspend fun send(request: AiProviderRequest) =
+                AiProviderResponse.Error("UNEXPECTED_AI_CALL", "Confirmation should stay app-owned")
+
+            override suspend fun continueWithToolResults(request: AiContinueWithToolsRequest) =
+                AiProviderResponse.Error("UNEXPECTED_AI_CALL", "Confirmation should stay app-owned")
+        }
+        val orchestrator = AiMealPlannerOrchestrator(
+            provider = noNetworkProvider,
+            contextBuilder = contextBuilder,
+            toolDispatcher = aiToolDispatcher,
+            recipeValidator = RecipeValidator(inventoryDao, mealDao),
+            intentResolver = intentResolver,
+            chatRepository = chatRepository,
+            pendingMutationStore = pendingMutationStore,
+            activeProposalStore = activeProposalStore
+        )
+        val viewModel = ChatViewModel(orchestrator, chatRepository, mealDomainService)
+        val collectJob = launch { viewModel.uiState.collect {} }
+        testScheduler.advanceUntilIdle()
+
+        viewModel.onEvent(ChatUiEvent.UpdateMessageText("yes"))
+        viewModel.onEvent(ChatUiEvent.SendMessage)
+        testScheduler.advanceUntilIdle()
+
+        val failedState = viewModel.uiState.value
+        assertEquals(com.example.chatgpt_mealplanner.feature.chat.ChatRequestState.FAILED_RETRYABLE, failedState.requestState)
+        assertTrue("Failed confirmation must expose Retry", failedState.isRetryAvailable)
+        assertNotNull("Failed confirmation must preserve its pending action", pendingMutationStore.getPendingMutation("default_conversation"))
+
+        inventoryDao.insertItem(
+            com.example.chatgpt_mealplanner.core.database.entity.InventoryItemEntity(
+                id = itemId,
+                canonicalName = "milk",
+                displayName = "Milk",
+                category = com.example.chatgpt_mealplanner.core.model.FoodCategory.FRIDGE,
+                storageLocation = com.example.chatgpt_mealplanner.core.model.StorageLocation.FRIDGE,
+                quantity = 1.0,
+                quantityUnit = com.example.chatgpt_mealplanner.core.model.QuantityUnit.UNIT,
+                quantityConfidence = com.example.chatgpt_mealplanner.core.model.QuantityConfidence.EXACT,
+                status = com.example.chatgpt_mealplanner.core.model.ItemStatus.AVAILABLE,
+                frozen = false,
+                staple = false,
+                createdAt = 1L,
+                updatedAt = 1L
+            )
+        )
+        viewModel.onEvent(ChatUiEvent.RetryLastFailedMessage)
+        testScheduler.advanceUntilIdle()
+
+        val succeededState = viewModel.uiState.value
+        assertEquals(com.example.chatgpt_mealplanner.feature.chat.ChatRequestState.SUCCEEDED, succeededState.requestState)
+        assertFalse("Successful retry must clear Retry", succeededState.isRetryAvailable)
+        assertNull("Successful retry must clear the pending action", pendingMutationStore.getPendingMutation("default_conversation"))
+        assertEquals(com.example.chatgpt_mealplanner.core.model.ItemStatus.DISCARDED, inventoryDao.getItemById(itemId)?.status)
+        assertEquals(
+            "Retry must reuse the original confirmation message instead of inserting a duplicate",
+            1,
+            chatRepository.getMessagesForConversation("default_conversation").count { it.role == "USER" }
+        )
+        collectJob.cancel()
+    }
+
     // Assertion 13: Repeated Retry tap cannot launch concurrent requests
     @Test
     fun test13_repeatedRetryTapCannotLaunchConcurrentRequests() = runTest(testDispatcher) {
