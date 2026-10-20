@@ -500,6 +500,15 @@ fun FollowerRequestStatusSection(
     val visibleRequests = requests.filter { (it.status in pastStatuses) == showPast }
     Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
         Text("Meal change requests", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        val completedCount = requests.count { it.status == "COMPLETED" }
+        if (completedCount > 0) {
+            Text(
+                if (completedCount == 1) "Main completed your meal change request."
+                else "Main completed $completedCount meal change requests.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
         TextButton(onClick = { showPast = !showPast }) {
             Text(if (showPast) "Show active requests" else "View past requests (${requests.count { it.status in pastStatuses }})")
         }
