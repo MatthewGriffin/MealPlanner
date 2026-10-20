@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.chatgpt_mealplanner.core.model.DomainError
 import com.example.chatgpt_mealplanner.core.model.DomainResult
+import com.example.chatgpt_mealplanner.core.model.InventoryItem
 import com.example.chatgpt_mealplanner.core.model.QuantityConfidence
 import com.example.chatgpt_mealplanner.core.model.QuantityUnit
 import com.example.chatgpt_mealplanner.core.model.ShoppingItemStatus
@@ -41,6 +42,8 @@ class ShoppingViewModel @Inject constructor(
     private val isLoadingFlow = MutableStateFlow(false)
     private val selectedItemDetailFlow = MutableStateFlow<ShoppingListItemWithSources?>(null)
     private val showAddManualDialogFlow = MutableStateFlow(false)
+    private val manualItemNameFlow = MutableStateFlow("")
+    private val manualItemNotesFlow = MutableStateFlow("")
     private val basketOptimizationFlow = MutableStateFlow<BasketComparisonResult?>(null)
 
     private val activeShoppingListFlow = shoppingRepository.observeActiveShoppingListWithItems()
@@ -58,7 +61,9 @@ class ShoppingViewModel @Inject constructor(
         isLoadingFlow,
         selectedItemDetailFlow,
         showAddManualDialogFlow,
-        basketOptimizationFlow
+        basketOptimizationFlow,
+        manualItemNameFlow,
+        manualItemNotesFlow
     ) { flows ->
         val listWithItems = flows[0] as ShoppingListWithItems?
         val stapleRules = flows[1] as List<StapleRule>
@@ -68,6 +73,8 @@ class ShoppingViewModel @Inject constructor(
         val itemDetail = flows[5] as ShoppingListItemWithSources?
         val showAddDialog = flows[6] as Boolean
         val basketResult = flows[7] as BasketComparisonResult?
+        val manualItemName = flows[8] as String
+        val manualItemNotes = flows[9] as String
 
         val items = listWithItems?.items ?: emptyList()
         val groups = computeRetailerGroups(items, basketResult)
@@ -92,7 +99,9 @@ class ShoppingViewModel @Inject constructor(
             selectedItemForDetail = itemDetail,
             showAddManualDialog = showAddDialog,
             basketComparisonResult = basketResult,
-            retailerGroups = groups
+            retailerGroups = groups,
+            manualItemName = manualItemName,
+            manualItemNotes = manualItemNotes
         )
     }.stateIn(
         scope = viewModelScope,
@@ -140,8 +149,17 @@ class ShoppingViewModel @Inject constructor(
             is ShoppingUiEvent.ToggleItemChecked -> toggleItemChecked(event.itemId, event.currentStatus)
             is ShoppingUiEvent.RemoveItem -> removeItem(event.itemId)
             is ShoppingUiEvent.SelectItemDetail -> selectedItemDetailFlow.value = event.itemWithSources
-            ShoppingUiEvent.RequestAddManualItem -> showAddManualDialogFlow.value = true
-            ShoppingUiEvent.DismissAddManualDialog -> showAddManualDialogFlow.value = false
+            ShoppingUiEvent.RequestAddManualItem -> {
+                manualItemNameFlow.value = ""
+                manualItemNotesFlow.value = ""
+                showAddManualDialogFlow.value = true
+            }
+            is ShoppingUiEvent.RequestLowStockShortcut -> prepareLowStockShortcut(event.item)
+            ShoppingUiEvent.DismissAddManualDialog -> {
+                showAddManualDialogFlow.value = false
+                manualItemNameFlow.value = ""
+                manualItemNotesFlow.value = ""
+            }
             is ShoppingUiEvent.AddManualItem -> addManualItem(event.name, event.quantity, event.unit, event.notes)
             is ShoppingUiEvent.ResolveUncertainty -> resolveUncertainty(
                 event.inventoryItemId,
@@ -186,6 +204,13 @@ class ShoppingViewModel @Inject constructor(
                 is DomainResult.Failure -> userMessageFlow.value = formatDomainError(result.error)
             }
         }
+    }
+
+    private fun prepareLowStockShortcut(item: InventoryItem) {
+        activeTabFlow.value = ShoppingTab.SHOPPING_LIST
+        manualItemNameFlow.value = item.displayName
+        manualItemNotesFlow.value = "Low pantry stock. Check the amount on hand before choosing how much to buy."
+        showAddManualDialogFlow.value = true
     }
 
     private fun addManualItem(name: String, quantity: Double?, unit: QuantityUnit?, notes: String?) {
