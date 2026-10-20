@@ -63,14 +63,21 @@ class MealChangeRequestRepositoryImpl @Inject constructor(
 
     override suspend fun updateRequestStatus(requestId: String, status: String, mainResponse: String?) {
         check(appRoleResolver.isMainAsync()) { "Only Main can decide meal-change requests" }
-        require(status in setOf("ACCEPTED", "DECLINED", "DISCUSSED")) { "Invalid request status" }
+        require(status in setOf("ACCEPTED", "DECLINED", "DISCUSSED", "IN_PROGRESS", "COMPLETED")) { "Invalid request status" }
         require(mainResponse == null || mainResponse.length <= 2000) { "Response exceeds 2000 characters" }
         transactionRunner.runInTransaction {
             val existing = dao.getRequestById(requestId)
                 ?: throw IllegalArgumentException("Meal request not found")
-            check(existing.status == "PENDING" || existing.status == "DISCUSSED") {
-                "This meal request has already been decided"
+            val allowedTransition = when (existing.status) {
+                "PENDING", "DISCUSSED" -> status in setOf("ACCEPTED", "DECLINED", "DISCUSSED")
+                "ACCEPTED" -> status == "IN_PROGRESS"
+                "IN_PROGRESS" -> status == "COMPLETED" || status == "ACCEPTED"
+                else -> false
             }
+            check(allowedTransition || existing.status == status) {
+                "This meal request cannot move from ${existing.status} to $status"
+            }
+            if (existing.status == status) return@runInTransaction
             val now = System.currentTimeMillis()
             val sequence = canonicalSyncDao.getSequenceEntity()
                 ?: CanonicalSyncSequenceEntity(singletonId = 1, nextSequence = 1L)
