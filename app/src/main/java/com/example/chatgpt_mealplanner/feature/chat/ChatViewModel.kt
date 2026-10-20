@@ -372,7 +372,7 @@ class ChatViewModel @Inject constructor(
                             mealChangeRequestRepository.updateRequestStatus(
                                 linkedRequest.id,
                                 "COMPLETED",
-                                linkedRequest.mainResponse ?: "Updated meal: ${meal.title}"
+                                "Completed: ${meal.title}"
                             )
                             mealChangeRequestIdFlow.value = null
                             errorMessageFlow.value = "Updated '${meal.title}' and completed the change request."
