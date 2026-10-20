@@ -7,6 +7,7 @@ import com.example.chatgpt_mealplanner.core.model.Meal
 import com.example.chatgpt_mealplanner.core.model.MealIngredient
 import com.example.chatgpt_mealplanner.core.model.MealWithIngredients
 import com.example.chatgpt_mealplanner.core.model.StorageLocation
+import com.example.chatgpt_mealplanner.core.database.entity.MealChangeRequestEntity
 
 enum class MealPlannerTab(val displayName: String) {
     PLANNER("Meal Plan"),
@@ -29,6 +30,11 @@ data class MealPlannerUiState(
     val showAddDialog: Boolean = false,
     val mealTitleMap: Map<String, String> = emptyMap()
 )
+
+internal fun requestsForExistingMealIds(
+    requests: List<MealChangeRequestEntity>,
+    existingMealIds: Set<String>
+): List<MealChangeRequestEntity> = requests.filter { it.mealId in existingMealIds }
 
 sealed interface MealPlannerUiEvent {
     data class SelectDate(val date: String) : MealPlannerUiEvent

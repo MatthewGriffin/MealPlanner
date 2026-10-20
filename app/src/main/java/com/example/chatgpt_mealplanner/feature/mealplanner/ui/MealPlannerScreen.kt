@@ -58,6 +58,7 @@ import com.example.chatgpt_mealplanner.feature.mealplanner.MealPlannerTab
 import com.example.chatgpt_mealplanner.feature.mealplanner.MealPlannerUiEvent
 import com.example.chatgpt_mealplanner.feature.mealplanner.MealPlannerUiState
 import com.example.chatgpt_mealplanner.feature.mealplanner.MealPlannerViewModel
+import com.example.chatgpt_mealplanner.feature.mealplanner.requestsForExistingMealIds
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
@@ -437,7 +438,7 @@ fun MainRequestReviewSection(
             color = MaterialTheme.colorScheme.primary
         )
         TextButton(onClick = { showPast = !showPast }) {
-            Text(if (showPast) "Show active requests" else "View past requests (${requests.count { it.status in pastStatuses }})")
+            Text(if (showPast) "Show active requests" else "View past requests (${requestsForExistingMeals.count { it.status in pastStatuses }})")
         }
         if (visibleRequests.isEmpty()) {
             Text(if (showPast) "No past requests." else "No active requests.")
@@ -496,12 +497,15 @@ fun FollowerRequestStatusSection(
     requests: List<com.example.chatgpt_mealplanner.core.database.entity.MealChangeRequestEntity>,
     mealTitleMap: Map<String, String> = emptyMap()
 ) {
+    val requestsForExistingMeals = requestsForExistingMealIds(requests, mealTitleMap.keys)
+    if (requestsForExistingMeals.isEmpty()) return
+
     var showPast by remember { mutableStateOf(false) }
     val pastStatuses = setOf("COMPLETED", "DECLINED")
-    val visibleRequests = requests.filter { (it.status in pastStatuses) == showPast }
+    val visibleRequests = requestsForExistingMeals.filter { (it.status in pastStatuses) == showPast }
     Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
         Text("Meal change requests", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        val completedCount = requests.count { it.status == "COMPLETED" }
+        val completedCount = requestsForExistingMeals.count { it.status == "COMPLETED" }
         if (completedCount > 0) {
             Text(
                 if (completedCount == 1) "Main completed your meal change request."
