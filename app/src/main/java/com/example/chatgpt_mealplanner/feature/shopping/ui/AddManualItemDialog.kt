@@ -30,13 +30,15 @@ import com.example.chatgpt_mealplanner.core.model.QuantityUnit
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddManualItemDialog(
+    initialName: String = "",
+    initialNotes: String = "",
     onDismiss: () -> Unit,
     onConfirmAdd: (name: String, quantity: Double?, unit: QuantityUnit?, notes: String?) -> Unit
 ) {
-    var name by remember { mutableStateOf("") }
+    var name by remember(initialName) { mutableStateOf(initialName) }
     var quantityText by remember { mutableStateOf("") }
     var unit by remember { mutableStateOf(QuantityUnit.GRAM) }
-    var notes by remember { mutableStateOf("") }
+    var notes by remember(initialNotes) { mutableStateOf(initialNotes) }
     var unitExpanded by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
