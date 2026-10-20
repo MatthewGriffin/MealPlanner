@@ -15,6 +15,9 @@ import com.example.chatgpt_mealplanner.core.model.Meal
 import com.example.chatgpt_mealplanner.core.model.MealIngredient
 import com.example.chatgpt_mealplanner.core.model.MealTag
 import com.example.chatgpt_mealplanner.core.repository.ChatRepository
+import com.example.chatgpt_mealplanner.core.repository.MealRepository
+import com.example.chatgpt_mealplanner.core.repository.MealChangeRequestRepository
+import com.example.chatgpt_mealplanner.core.database.entity.MealChangeRequestEntity
 import com.example.chatgpt_mealplanner.core.service.MealDomainService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -24,6 +27,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -39,7 +43,9 @@ private data class RequestStateHolder(
 class ChatViewModel @Inject constructor(
     private val orchestrator: AiMealPlannerOrchestrator,
     private val chatRepository: ChatRepository,
-    private val mealDomainService: MealDomainService
+    private val mealDomainService: MealDomainService,
+    private val mealRepository: MealRepository,
+    private val mealChangeRequestRepository: MealChangeRequestRepository
 ) : ViewModel() {
 
     private val conversationIdFlow = MutableStateFlow("default_conversation")
@@ -51,6 +57,7 @@ class ChatViewModel @Inject constructor(
     private val progressStatusTextFlow = MutableStateFlow<String?>(null)
     private var progressTickerJob: Job? = null
 
+    private val mealChangeRequestIdFlow = MutableStateFlow<String?>(null)
     private val latestProposalFlow = MutableStateFlow<ValidatedMealProposal?>(null)
     private val latestProposedActionFlow = MutableStateFlow<AiProposedAction?>(null)
 
@@ -118,6 +125,12 @@ class ChatViewModel @Inject constructor(
                 )
             }
         }
+    }
+
+    fun prepareMealChangeRequest(request: MealChangeRequestEntity) {
+        mealChangeRequestIdFlow.value = request.id
+        userMessageTextFlow.value = "Please adjust the existing planned meal to address this follower request: \"${request.requestText}\". Keep it as a replacement for the same planned meal, retain its planned date and meal type, and provide a complete adjusted recipe with ingredients and ordered cooking steps. Do not create a separate meal."
+        errorMessageFlow.value = null
     }
 
     fun onEvent(event: ChatUiEvent) {
@@ -269,7 +282,33 @@ class ChatViewModel @Inject constructor(
             )
             val parsedTags = proposal.tags.mapNotNull { runCatching { MealTag.valueOf(it.uppercase()) }.getOrNull() }.toSet()
 
-            val meal = Meal(
+            val changeRequestId = mealChangeRequestIdFlow.value
+            val linkedRequest = if (changeRequestId != null) {
+                mealChangeRequestRepository.observeAllRequests().firstOrNull()?.firstOrNull { it.id == changeRequestId }
+            } else null
+            if (changeRequestId != null && (linkedRequest == null || linkedRequest.status != "IN_PROGRESS")) {
+                errorMessageFlow.value = "This meal change request is no longer available. Reopen it from the planner and try again."
+                return@launch
+            }
+            val existingMeal = linkedRequest?.let { mealRepository.getMealWithIngredients(it.mealId)?.meal }
+            if (linkedRequest != null && existingMeal == null) {
+                errorMessageFlow.value = "The planned meal could not be found, so the request was left open."
+                return@launch
+            }
+            val stepText = proposal.steps.sortedBy { it.order }.joinToString("\\n") { "${it.order}. ${it.instruction}" }.ifBlank { existingMeal?.instructions }
+            val meal = if (existingMeal != null) {
+                existingMeal.copy(
+                    title = proposal.title,
+                    servings = proposal.servings,
+                    batchPortions = proposal.batchPortions,
+                    immediatePortions = proposal.immediatePortions,
+                    leftoverPortions = proposal.leftoverPortions,
+                    cookInTwoBatches = proposal.cookInTwoBatches,
+                    tags = parsedTags,
+                    instructions = stepText,
+                    updatedAt = System.currentTimeMillis()
+                )
+            } else Meal(
                 id = UUID.randomUUID().toString(),
                 date = resolvedSlot.date,
                 mealType = resolvedSlot.mealType,
@@ -279,7 +318,8 @@ class ChatViewModel @Inject constructor(
                 immediatePortions = proposal.immediatePortions,
                 leftoverPortions = proposal.leftoverPortions,
                 cookInTwoBatches = proposal.cookInTwoBatches,
-                tags = parsedTags
+                tags = parsedTags,
+                instructions = stepText
             )
 
             val ingredients = proposal.ingredients.map {
@@ -296,12 +336,26 @@ class ChatViewModel @Inject constructor(
                 )
             }
 
-            val createResult = mealDomainService.createPlannedMeal(meal, ingredients)
+            val createResult = if (existingMeal != null) {
+                mealDomainService.replaceMeal(existingMeal.id, meal, ingredients)
+            } else {
+                mealDomainService.createPlannedMeal(meal, ingredients)
+            }
 
             when (createResult) {
                 is DomainResult.Success -> {
                     latestProposalFlow.value = null
-                    errorMessageFlow.value = "Saved '${meal.title}' to meal plan for ${meal.date}!"
+                    if (linkedRequest != null) {
+                        mealChangeRequestRepository.updateRequestStatus(
+                            linkedRequest.id,
+                            "COMPLETED",
+                            linkedRequest.mainResponse ?: "Updated meal: ${meal.title}"
+                        )
+                        mealChangeRequestIdFlow.value = null
+                        errorMessageFlow.value = "Updated '${meal.title}' and completed the change request."
+                    } else {
+                        errorMessageFlow.value = "Saved '${meal.title}' to meal plan for ${meal.date}!"
+                    }
                 }
                 is DomainResult.Failure -> {
                     errorMessageFlow.value = formatDomainError(createResult.error)
