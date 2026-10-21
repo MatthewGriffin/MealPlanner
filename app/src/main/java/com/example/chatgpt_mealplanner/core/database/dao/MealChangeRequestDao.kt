@@ -18,6 +18,9 @@ interface MealChangeRequestDao {
     @Query("SELECT * FROM meal_change_requests WHERE id = :requestId")
     suspend fun getRequestById(requestId: String): MealChangeRequestEntity?
 
+    @Query("SELECT * FROM meal_change_requests WHERE mealId = :mealId ORDER BY createdAt ASC")
+    suspend fun getRequestsForMealSync(mealId: String): List<MealChangeRequestEntity>
+
     @Query("SELECT * FROM meal_change_requests ORDER BY createdAt ASC")
     suspend fun getAllRequestsSync(): List<MealChangeRequestEntity>
 

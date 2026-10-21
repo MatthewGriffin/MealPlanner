@@ -2,6 +2,7 @@ package com.example.chatgpt_mealplanner.core.service
 
 import com.example.chatgpt_mealplanner.core.database.DatabaseTransactionRunner
 import com.example.chatgpt_mealplanner.core.database.dao.InventoryDao
+import com.example.chatgpt_mealplanner.core.database.dao.MealChangeRequestDao
 import com.example.chatgpt_mealplanner.core.database.dao.LeftoverDao
 import com.example.chatgpt_mealplanner.core.database.dao.MealDao
 import com.example.chatgpt_mealplanner.core.database.dao.TransactionDao
@@ -18,6 +19,7 @@ import com.example.chatgpt_mealplanner.core.sync.AppRole
 import com.example.chatgpt_mealplanner.core.sync.AppRoleResolver
 import com.example.chatgpt_mealplanner.core.sync.HouseholdIdentityManager
 import com.example.chatgpt_mealplanner.sync.contract.SetQuantityPayloadDto
+import com.example.chatgpt_mealplanner.sync.contract.UpdateMealChangeRequestStatusPayloadDto
 import com.example.chatgpt_mealplanner.sync.contract.SYNC_PROTOCOL_VERSION
 import com.example.chatgpt_mealplanner.sync.contract.SyncOperationStatus
 import com.example.chatgpt_mealplanner.sync.contract.SyncOperationType
@@ -66,7 +68,8 @@ class MealDomainServiceImpl @Inject constructor(
     private val transactionRunner: DatabaseTransactionRunner,
     private val appRoleResolver: AppRoleResolver? = null,
     private val canonicalSyncDao: CanonicalSyncDao? = null,
-    private val householdIdentityManager: HouseholdIdentityManager? = null
+    private val householdIdentityManager: HouseholdIdentityManager? = null,
+    private val mealChangeRequestDao: MealChangeRequestDao? = null
 ) : MealDomainService {
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -131,19 +134,79 @@ class MealDomainServiceImpl @Inject constructor(
         DomainResult.Success(updatedMeal)
     }
 
-    override suspend fun deletePlannedMeal(mealId: String): DomainResult<Unit> {
-        val existing = mealDao.getMealWithIngredients(mealId)
-            ?: return DomainResult.Failure(DomainError.ItemNotFound(mealId))
+    override suspend fun deletePlannedMeal(mealId: String): DomainResult<Unit> =
+        transactionRunner.runInDomainTransaction {
+            val existing = mealDao.getMealWithIngredients(mealId)
+                ?: return@runInDomainTransaction DomainResult.Failure(DomainError.ItemNotFound(mealId))
 
-        if (existing.meal.status != MealStatus.PLANNED) {
-            return DomainResult.Failure(
-                DomainError.TransactionFailed("Cannot delete meal with status ${existing.meal.status}. Only PLANNED meals can be deleted.")
-            )
+            if (existing.meal.status != MealStatus.PLANNED) {
+                return@runInDomainTransaction DomainResult.Failure(
+                    DomainError.TransactionFailed("Cannot delete meal with status ${existing.meal.status}. Only PLANNED meals can be deleted.")
+                )
+            }
+
+            val appRole = appRoleResolver?.getAppRoleAsync()
+            val linkedRequests = if (appRole == AppRole.MAIN) {
+                val requestDao = mealChangeRequestDao
+                    ?: return@runInDomainTransaction DomainResult.Failure(
+                        DomainError.TransactionFailed("Meal request sync is unavailable; the meal was not deleted.")
+                    )
+                requestDao.getRequestsForMealSync(mealId)
+            } else {
+                emptyList()
+            }
+
+            if (linkedRequests.isNotEmpty()) {
+                val syncDao = canonicalSyncDao
+                    ?: return@runInDomainTransaction DomainResult.Failure(
+                        DomainError.TransactionFailed("Canonical sync is unavailable; the meal was not deleted.")
+                    )
+                val identityManager = householdIdentityManager
+                    ?: return@runInDomainTransaction DomainResult.Failure(
+                        DomainError.TransactionFailed("Household identity is unavailable; the meal was not deleted.")
+                    )
+                val mainDeviceId = identityManager.getOrCreateHouseholdIdentity().mainDeviceId
+                if (mainDeviceId.isBlank()) {
+                    return@runInDomainTransaction DomainResult.Failure(
+                        DomainError.TransactionFailed("Main device identity is invalid; the meal was not deleted.")
+                    )
+                }
+
+                val now = System.currentTimeMillis()
+                linkedRequests.forEach { request ->
+                    val sequence = syncDao.getSequenceEntity()
+                        ?: CanonicalSyncSequenceEntity(singletonId = 1, nextSequence = 1L)
+                    val next = sequence.nextSequence
+                    syncDao.updateSequenceEntity(sequence.copy(nextSequence = next + 1L))
+                    syncDao.insertCanonicalOperation(
+                        CanonicalSyncOperationEntity(
+                            operationId = UUID.randomUUID().toString(),
+                            deviceId = mainDeviceId,
+                            deviceSequence = next,
+                            protocolVersion = SYNC_PROTOCOL_VERSION,
+                            operationType = SyncOperationType.UPDATE_MEAL_CHANGE_REQUEST_STATUS.name,
+                            payloadJson = json.encodeToString(
+                                UpdateMealChangeRequestStatusPayloadDto(
+                                    requestId = request.id,
+                                    status = "DELETED",
+                                    mainResponse = null
+                                )
+                            ),
+                            createdAt = now,
+                            canonicalSequence = next,
+                            receivedAt = now,
+                            status = SyncOperationStatus.APPLIED.name,
+                            resultCode = "SUCCESS"
+                        )
+                    )
+                }
+            }
+
+            // The feed events and FK-cascading meal deletion share this Room transaction.
+            // A Follower can replay each exact request ID later, including after being offline.
+            mealDao.deleteMeal(mealId)
+            DomainResult.Success(Unit)
         }
-
-        mealDao.deleteMeal(mealId)
-        return DomainResult.Success(Unit)
-    }
 
     override suspend fun markMealSkipped(mealId: String): DomainResult<Unit> {
         val existing = mealDao.getMealWithIngredients(mealId)

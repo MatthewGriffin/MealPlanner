@@ -6,7 +6,10 @@ import androidx.test.core.app.ApplicationProvider
 import com.example.chatgpt_mealplanner.core.database.AppDatabase
 import com.example.chatgpt_mealplanner.core.database.RoomTransactionRunner
 import com.example.chatgpt_mealplanner.core.database.entity.PairedDeviceEntity
+import com.example.chatgpt_mealplanner.core.database.entity.MealChangeRequestEntity
 import com.example.chatgpt_mealplanner.core.database.entity.toEntity
+import com.example.chatgpt_mealplanner.core.service.MealDomainServiceImpl
+import com.example.chatgpt_mealplanner.core.sync.HouseholdIdentityManager
 import com.example.chatgpt_mealplanner.core.model.Meal
 import com.example.chatgpt_mealplanner.core.repository.MealChangeRequestRepositoryImpl
 import com.example.chatgpt_mealplanner.core.sync.AppRoleResolver
@@ -19,6 +22,7 @@ import com.example.chatgpt_mealplanner.core.sync.follower.engine.FollowerBootstr
 import com.example.chatgpt_mealplanner.core.sync.follower.engine.FollowerLocalSyncEngine
 import com.example.chatgpt_mealplanner.core.sync.follower.engine.FollowerMealRequestProjector
 import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerSyncMetadataEntity
+import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerMealRequestEntity
 import com.example.chatgpt_mealplanner.sync.contract.*
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -62,6 +66,60 @@ class Phase10MealRequestSyncTest {
 
     private suspend fun assertFails(block: suspend () -> Unit) {
         try { block(); fail("Expected operation to fail") } catch (expected: Exception) { /* expected */ }
+    }
+
+    @Test
+    fun deletingMainMealPublishesExactLinkedRequestDeletionsAndFollowerReplayIsIdempotent() = runBlocking {
+        val mealId = "meal_delete"
+        main.mealDao().insertMeal(Meal(mealId, "2026-10-18", title = "Dinner").toEntity())
+        val linkedRequestId = "req_${UUID.randomUUID()}"
+        val unrelatedRequestId = "req_${UUID.randomUUID()}"
+        main.mealChangeRequestDao().insertRequest(
+            MealChangeRequestEntity(linkedRequestId, mealId, deviceId, "Change dinner", "PENDING", null, 10L, 10L)
+        )
+
+        val pairingStore = FollowerPairingStore(null)
+        val identityManager = HouseholdIdentityManager(main.householdIdentityDao())
+        identityManager.getOrCreateHouseholdIdentity()
+        val roleResolver = AppRoleResolver(pairingStore, main.householdIdentityDao())
+        val service = MealDomainServiceImpl(
+            main.mealDao(), main.inventoryDao(), main.transactionDao(), main.leftoverDao(),
+            RoomTransactionRunner(main), roleResolver, main.canonicalSyncDao(), identityManager,
+            main.mealChangeRequestDao()
+        )
+
+        val result = service.deletePlannedMeal(mealId)
+        assertTrue("Main meal deletion should succeed", result is com.example.chatgpt_mealplanner.core.model.DomainResult.Success)
+        assertNull(main.mealDao().getMealWithIngredients(mealId))
+        assertTrue(main.mealChangeRequestDao().getAllRequestsSync().isEmpty())
+
+        val deletionEvent = main.canonicalSyncDao().getFeedOperationsSince(0L, 10).single()
+        assertEquals(SyncOperationType.UPDATE_MEAL_CHANGE_REQUEST_STATUS.name, deletionEvent.operationType)
+        val deletionPayload = Json.decodeFromString<UpdateMealChangeRequestStatusPayloadDto>(deletionEvent.payloadJson)
+        assertEquals(linkedRequestId, deletionPayload.requestId)
+        assertEquals("DELETED", deletionPayload.status)
+
+        follower.mealRequestDao().upsert(
+            FollowerMealRequestEntity(linkedRequestId, mealId, deviceId, "Change dinner", "PENDING", null, 10L, 10L, 1L)
+        )
+        follower.mealRequestDao().upsert(
+            FollowerMealRequestEntity(unrelatedRequestId, "another_meal", deviceId, "Keep this request", "PENDING", null, 11L, 11L, 1L)
+        )
+        val feedEvent = SyncFeedItemDto(
+            canonicalSequence = deletionEvent.canonicalSequence!!,
+            operationId = deletionEvent.operationId,
+            sourceDeviceId = deletionEvent.deviceId,
+            operationType = SyncOperationType.valueOf(deletionEvent.operationType),
+            payloadJson = deletionEvent.payloadJson,
+            status = SyncOperationStatus.valueOf(deletionEvent.status),
+            resultCode = deletionEvent.resultCode,
+            occurredAt = deletionEvent.createdAt
+        )
+        FollowerMealRequestProjector.apply(follower.mealRequestDao(), feedEvent)
+        FollowerMealRequestProjector.apply(follower.mealRequestDao(), feedEvent)
+
+        assertNull("Only the linked request should be removed", follower.mealRequestDao().getById(linkedRequestId))
+        assertNotNull("Unrelated request must survive", follower.mealRequestDao().getById(unrelatedRequestId))
     }
 
     @Test

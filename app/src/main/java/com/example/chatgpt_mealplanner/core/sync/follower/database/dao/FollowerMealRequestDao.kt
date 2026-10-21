@@ -15,6 +15,9 @@ interface FollowerMealRequestDao {
     @Query("SELECT * FROM follower_meal_requests WHERE id = :id")
     suspend fun getById(id: String): FollowerMealRequestEntity?
 
+    @Query("DELETE FROM follower_meal_requests WHERE id = :id")
+    suspend fun deleteById(id: String)
+
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(request: FollowerMealRequestEntity)
 

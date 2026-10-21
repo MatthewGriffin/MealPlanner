@@ -25,6 +25,17 @@ object FollowerMealRequestProjector {
             }
             SyncOperationType.UPDATE_MEAL_CHANGE_REQUEST_STATUS -> {
                 val p = json.decodeFromString<UpdateMealChangeRequestStatusPayloadDto>(event.payloadJson)
+                if (p.status == "DELETED") {
+                    require(p.requestId.startsWith("req_") &&
+                        SyncContractValidation.isValidUuid(p.requestId.removePrefix("req_"))) {
+                        "Invalid deleted meal request ID"
+                    }
+                    require(p.mainResponse == null && p.requestSnapshot == null) {
+                        "Meal request deletion must not carry a replacement snapshot"
+                    }
+                    dao.deleteById(p.requestId)
+                    return
+                }
                 require(p.status in setOf("ACCEPTED", "DECLINED", "DISCUSSED", "IN_PROGRESS", "COMPLETED"))
                 require((p.mainResponse?.length ?: 0) <= 2000)
                 val existing = dao.getById(p.requestId)
