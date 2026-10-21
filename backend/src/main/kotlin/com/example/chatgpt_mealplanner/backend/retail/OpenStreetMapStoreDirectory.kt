@@ -368,11 +368,12 @@ class OpenStreetMapStoreDirectory(
         request: StoreDirectorySearchRequest,
         onProgress: (String) -> Unit
     ): Pair<Double, Double> {
+        val geocodeStarted = System.nanoTime()
         val postcodeCacheKey = request.postcode?.trim()?.uppercase(Locale.UK)?.filterNot(Char::isWhitespace)
         if (postcodeCacheKey != null) {
             val cachedLocation = geocodeCache[postcodeCacheKey]
             if (cachedLocation != null && cachedLocation.expiresAt > clock()) {
-                logTiming("postcode_lookup_cache_hit", System.nanoTime())
+                logTiming("postcode_lookup_cache_hit", geocodeStarted)
                 return cachedLocation.latitude to cachedLocation.longitude
             }
             if (cachedLocation != null) geocodeCache.remove(postcodeCacheKey, cachedLocation)
