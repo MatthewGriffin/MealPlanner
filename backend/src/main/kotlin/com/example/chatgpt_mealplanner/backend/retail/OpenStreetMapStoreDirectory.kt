@@ -76,8 +76,9 @@ class OpenStreetMapStoreDirectory(
         val cached = cache[key]
         if (cached != null) {
             if (cached.expiresAt > clock()) {
-                val matching = cached.response.stores.filter { it.retailerId == request.retailerId }
-                if (matching.isNotEmpty()) {
+                val matching = if (request.searchAllRetailers) cached.response.stores
+                    else cached.response.stores.filter { it.retailerId == request.retailerId }
+                if (matching.isNotEmpty() || request.searchAllRetailers) {
                     return cached.response.copy(stores = matching, fromCache = true)
                 }
                 // The area has already had its shared search. If this retailer was absent,
@@ -127,7 +128,7 @@ class OpenStreetMapStoreDirectory(
             // Only perform the slower text search when the shared map query did not find
             // the retailer the user actually asked for. Other retailers reuse the shared result.
             val requestedStores = mappedStores.filter { it.retailerId == request.retailerId }
-            val fallbackStores = if (requestedStores.isEmpty() && configuredApiKey == null) {
+            val fallbackStores = if (!request.searchAllRetailers && requestedStores.isEmpty() && configuredApiKey == null) {
                 onProgress("Looking for missing ${displayName(request.retailerId)} listings…")
                 try {
                     kotlinx.coroutines.withTimeout(12_000L) {
@@ -143,6 +144,12 @@ class OpenStreetMapStoreDirectory(
             if (e is kotlinx.coroutines.CancellationException) throw e
             if (configuredApiKey != null) throw e
             usedNominatimFallback = true
+            if (request.searchAllRetailers) {
+                throw IllegalStateException(
+                    "The shared nearby-store search is unavailable. Please retry later or add a branch manually.",
+                    e
+                )
+            }
             onProgress("The shared branch search is unavailable; checking ${displayName(request.retailerId)} listings…")
             val fallbackStores = try {
                 kotlinx.coroutines.withTimeout(12_000L) {
@@ -163,14 +170,14 @@ class OpenStreetMapStoreDirectory(
             fallbackStores
         }.sortedBy { it.distanceMeters ?: Int.MAX_VALUE }
 
-        val requestedStores = allStores.filter { it.retailerId == request.retailerId }
-            .sortedBy { it.distanceMeters ?: Int.MAX_VALUE }.take(50)
+        val requestedStores = (if (request.searchAllRetailers) allStores else allStores.filter { it.retailerId == request.retailerId })
+            .sortedBy { it.distanceMeters ?: Int.MAX_VALUE }.take(if (request.searchAllRetailers) 100 else 50)
         val response = StoreDirectorySearchResponse(
             stores = requestedStores,
             observedAt = clock(),
             warnings = when {
                 usedNominatimFallback -> listOf("The shared branch directory was unavailable. These branch details came from OpenStreetMap search listings; verify them before saving.")
-                requestedStores.isEmpty() -> listOf("No matching branch was found nearby. Coverage may be incomplete; verify with the retailer.")
+                requestedStores.isEmpty() -> listOf("No matching supported retailer branches were found nearby. Coverage may be incomplete; verify with the retailer.")
                 else -> emptyList()
             }
         )
