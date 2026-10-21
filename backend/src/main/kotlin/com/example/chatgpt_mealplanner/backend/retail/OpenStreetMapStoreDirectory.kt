@@ -4,7 +4,6 @@ import com.example.chatgpt_mealplanner.retail.contract.*
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout
-import io.ktor.client.plugins.timeout.timeout
 import io.ktor.client.request.*
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
@@ -40,8 +39,8 @@ class OpenStreetMapStoreDirectory(
     constructor() : this(HttpClient(OkHttp) {
         install(HttpTimeout) {
             connectTimeoutMillis = 15_000
-            socketTimeoutMillis = 45_000
-            requestTimeoutMillis = 45_000
+            socketTimeoutMillis = 30_000
+            requestTimeoutMillis = 30_000
         }
     })
 
@@ -94,16 +93,15 @@ class OpenStreetMapStoreDirectory(
                 if (index > 0) {
                     onProgress("The first branch-search service did not respond; trying backup service ${index} of ${OVERPASS_ENDPOINTS.lastIndex}…")
                 }
-                return client.post(endpoint) {
-                    timeout {
-                        requestTimeoutMillis = 30_000
-                        socketTimeoutMillis = 30_000
-                    }
-                    expectSuccess = true
+                val response = client.post(endpoint) {
                     contentType(ContentType.Text.Plain)
                     header(HttpHeaders.UserAgent, USER_AGENT)
                     setBody(query)
-                }.bodyAsText()
+                }
+                if (!response.status.isSuccess()) {
+                    throw IllegalStateException("Overpass returned HTTP ${response.status.value}.")
+                }
+                return response.bodyAsText()
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 lastFailure = e
