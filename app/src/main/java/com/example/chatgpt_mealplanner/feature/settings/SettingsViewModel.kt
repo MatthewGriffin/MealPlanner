@@ -57,6 +57,7 @@ data class SettingsUiState(
     val isStoreSearchInProgress: Boolean = false,
     val storeSearchMessage: String? = null,
     val discoveredStores: List<StoreDirectoryEntry> = emptyList(),
+    val branchSearchRadiusMeters: Int = RetailStorePreferenceStore.DEFAULT_BRANCH_SEARCH_RADIUS_METERS,
     val isStoreDirectoryApiKeyConfigured: Boolean = false,
     val storeDirectoryApiKeyMessage: String? = null
 )
@@ -86,6 +87,7 @@ class SettingsViewModel @Inject constructor(
         _uiState.update {
             it.copy(
                 enabledRetailers = retailerPreferenceStore.getEnabledRetailers(),
+                branchSearchRadiusMeters = retailStorePreferenceStore.getBranchSearchRadiusMeters(),
                 isStoreDirectoryApiKeyConfigured = !savedDirectoryKey.isNullOrBlank()
             )
         }
@@ -157,6 +159,14 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun setBranchSearchRadiusMeters(radiusMeters: Int) {
+        if (retailStorePreferenceStore.setBranchSearchRadiusMeters(radiusMeters)) {
+            _uiState.update { it.copy(branchSearchRadiusMeters = radiusMeters, discoveredStores = emptyList()) }
+        } else {
+            _uiState.update { it.copy(storeSearchMessage = "Could not save branch search distance.") }
+        }
+    }
+
     fun searchStoreDirectory(postcode: String) {
         val cleanPostcode = postcode.trim().uppercase()
         if (cleanPostcode.isBlank()) {
@@ -175,7 +185,12 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val response = withContext(Dispatchers.IO) {
-                    val request = StoreDirectorySearchRequest(retailerId = RetailerId.ASDA, postcode = cleanPostcode, searchAllRetailers = true)
+                    val request = StoreDirectorySearchRequest(
+                        retailerId = RetailerId.ASDA,
+                        postcode = cleanPostcode,
+                        searchAllRetailers = true,
+                        radiusMeters = _uiState.value.branchSearchRadiusMeters
+                    )
                     val progressProvider = storeDirectoryProvider as? StoreDirectoryProgressProvider
                     if (progressProvider != null) {
                         progressProvider.search(request) { status ->
