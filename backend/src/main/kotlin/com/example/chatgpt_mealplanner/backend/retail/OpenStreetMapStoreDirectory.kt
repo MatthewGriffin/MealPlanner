@@ -362,7 +362,11 @@ class OpenStreetMapStoreDirectory(
                 directorySource = StoreDirectorySource.OPENSTREETMAP,
                 directorySourceId = "$osmType/$osmId",
                 retailerId = retailerId,
-                name = name,
+                name = if (
+                    retailerId == RetailerId.ICELAND &&
+                    name.contains("food warehouse", ignoreCase = true) &&
+                    !name.contains("iceland", ignoreCase = true)
+                ) "Iceland Food Warehouse" else name,
                 address = address,
                 postcode = postcode,
                 latitude = lat,
