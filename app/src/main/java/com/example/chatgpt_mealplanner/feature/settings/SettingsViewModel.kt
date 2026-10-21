@@ -57,8 +57,6 @@ data class SettingsUiState(
     val isStoreSearchInProgress: Boolean = false,
     val storeSearchMessage: String? = null,
     val discoveredStores: List<StoreDirectoryEntry> = emptyList(),
-    val manualFallbackRetailer: RetailerId? = null,
-    val manualFallbackPostcode: String? = null,
     val isStoreDirectoryApiKeyConfigured: Boolean = false,
     val storeDirectoryApiKeyMessage: String? = null
 )
@@ -172,8 +170,6 @@ class SettingsViewModel @Inject constructor(
                 isStoreSearchInProgress = true,
                 storeSearchMessage = "Step 1 of 2: Preparing postcode lookup…",
                 discoveredStores = emptyList(),
-                manualFallbackRetailer = null,
-                manualFallbackPostcode = null
             )
         }
         viewModelScope.launch {
@@ -193,12 +189,10 @@ class SettingsViewModel @Inject constructor(
                     it.copy(
                         isStoreSearchInProgress = false,
                         discoveredStores = response.stores,
-                        manualFallbackRetailer = null,
-                        manualFallbackPostcode = null,
-                        storeSearchMessage = if (response.stores.isEmpty()) {
-                            response.warnings.firstOrNull() ?: "No matching branches found."
-                        } else {
-                            "Found ${response.stores.size} possible branches. Check the details before adding."
+                        storeSearchMessage = when {
+                            response.stores.isEmpty() -> response.warnings.firstOrNull() ?: "No matching branches found."
+                            response.warnings.isNotEmpty() -> "${response.warnings.first()} Found ${response.stores.size} possible branches; check the details before adding."
+                            else -> "Found ${response.stores.size} possible branches. Check the details before adding."
                         }
                     )
                 }
@@ -208,8 +202,6 @@ class SettingsViewModel @Inject constructor(
                     it.copy(
                         isStoreSearchInProgress = false,
                         discoveredStores = emptyList(),
-                        manualFallbackRetailer = retailerId,
-                        manualFallbackPostcode = cleanPostcode,
                         storeSearchMessage = buildString {
                             val currentStage = _uiState.value.storeSearchMessage.orEmpty()
                             append(
