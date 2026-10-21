@@ -80,7 +80,7 @@ class OpenStreetMapStoreDirectoryTest {
     }
 
     @Test
-    fun successfulOverpassSearchIsSupplementedWithExplicitAsdaExpressFuelSiteListing() = runBlocking {
+    fun successfulOverpassSearchIsSupplementedWithNamedRetailFeatureWithoutShopTag() = runBlocking {
         val client = HttpClient(MockEngine { request ->
             if (request.url.host == "nominatim.openstreetmap.org") {
                 assertEquals("ASDA", request.url.parameters["q"])
