@@ -230,7 +230,7 @@ class PantrySyncPhase4gHostLifecycleTest {
 
         val jsonStr = vm.uiState.value.activeInvitationPayloadJson
         assertNotNull(jsonStr)
-        val payload = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }.decodeFromString<com.example.chatgpt_mealplanner.sync.contract.QrInvitationPayloadDto>(jsonStr!!)
+        val payload = json.decodeFromString<com.example.chatgpt_mealplanner.sync.contract.QrInvitationPayloadDto>(jsonStr!!)
         assertTrue("Re-authorization QR MUST contain valid SHA256 TLS fingerprint", SyncContractValidation.isValidSha256Fingerprint(payload.tlsCertificateFingerprint))
     }
 
