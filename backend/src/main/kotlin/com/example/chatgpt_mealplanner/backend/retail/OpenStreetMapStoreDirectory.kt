@@ -261,9 +261,10 @@ class OpenStreetMapStoreDirectory(
             val identity = listOfNotNull(name, extratags?.text("brand"), extratags?.text("operator")).joinToString(" ")
             val effectiveShopType = extratags?.text("shop")?.lowercase() ?: listingType
             val isMappedShop = listingClass == "shop" && effectiveShopType !in NON_RETAIL_SHOP_TYPES
-            val isNamedRetailFuelFeature = matchesRetailer(identity, retailerId) &&
-                effectiveShopType == null && listingClass == "amenity" && listingType == "fuel"
-            if (!isMappedShop && !isNamedRetailFuelFeature) return@mapNotNull null
+            val isNamedRetailFeature = effectiveShopType == null &&
+                listingType !in NON_RETAIL_FEATURE_TYPES &&
+                matchesRetailer(identity, retailerId)
+            if (!isMappedShop && !isNamedRetailFeature) return@mapNotNull null
             if (!matchesRetailer(identity, retailerId)) return@mapNotNull null
             val addressTags = item["address"]?.jsonObject
             val postcode = addressTags?.text("postcode")?.uppercase()
@@ -302,10 +303,13 @@ class OpenStreetMapStoreDirectory(
                 tags.text("official_name"), tags.text("alt_name")
             ).joinToString(" ")
             val amenity = tags.text("amenity")?.lowercase()
+            val healthcare = tags.text("healthcare")?.lowercase()
             val isMappedShop = shopType != null && shopType !in NON_RETAIL_SHOP_TYPES
-            val isNamedRetailFuelFeature = shopType == null && amenity == "fuel" &&
+            val isNamedRetailFeature = shopType == null &&
+                amenity !in NON_RETAIL_FEATURE_TYPES &&
+                healthcare !in NON_RETAIL_FEATURE_TYPES &&
                 matchesRetailer(identity, retailerId)
-            if (!isMappedShop && !isNamedRetailFuelFeature) return@mapNotNull null
+            if (!isMappedShop && !isNamedRetailFeature) return@mapNotNull null
             if (!matchesRetailer(identity, retailerId)) return@mapNotNull null
             val lat = item.number("lat") ?: item["center"]?.jsonObject?.number("lat") ?: return@mapNotNull null
             val lon = item.number("lon") ?: item["center"]?.jsonObject?.number("lon") ?: return@mapNotNull null
@@ -391,6 +395,9 @@ class OpenStreetMapStoreDirectory(
         // Other OSM shop types remain eligible so the search supports new store formats.
         private val NON_RETAIL_SHOP_TYPES = setOf(
             "optician", "medical_supply", "hearing_aids", "doctor", "clinic", "dentist"
+        )
+        private val NON_RETAIL_FEATURE_TYPES = setOf(
+            "optician", "doctors", "doctor", "clinic", "dentist", "hospital", "pharmacy", "parking"
         )
 
         private fun overpassRetailerPattern(id: RetailerId): String = when (id) {
