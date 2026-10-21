@@ -54,7 +54,9 @@ data class SettingsUiState(
     val preferredStores: List<RetailStoreLocation> = emptyList(),
     val isStoreSearchInProgress: Boolean = false,
     val storeSearchMessage: String? = null,
-    val discoveredStores: List<StoreDirectoryEntry> = emptyList()
+    val discoveredStores: List<StoreDirectoryEntry> = emptyList(),
+    val manualFallbackRetailer: RetailerId? = null,
+    val manualFallbackPostcode: String? = null
 )
 
 @HiltViewModel
@@ -117,7 +119,9 @@ class SettingsViewModel @Inject constructor(
             it.copy(
                 isStoreSearchInProgress = true,
                 storeSearchMessage = "Step 1 of 2: Preparing postcode lookup…",
-                discoveredStores = emptyList()
+                discoveredStores = emptyList(),
+                manualFallbackRetailer = null,
+                manualFallbackPostcode = null
             )
         }
         viewModelScope.launch {
@@ -137,6 +141,8 @@ class SettingsViewModel @Inject constructor(
                     it.copy(
                         isStoreSearchInProgress = false,
                         discoveredStores = response.stores,
+                        manualFallbackRetailer = null,
+                        manualFallbackPostcode = null,
                         storeSearchMessage = if (response.stores.isEmpty()) {
                             response.warnings.firstOrNull() ?: "No matching branches found."
                         } else {
@@ -150,6 +156,8 @@ class SettingsViewModel @Inject constructor(
                     it.copy(
                         isStoreSearchInProgress = false,
                         discoveredStores = emptyList(),
+                        manualFallbackRetailer = retailerId,
+                        manualFallbackPostcode = cleanPostcode,
                         storeSearchMessage = buildString {
                             val currentStage = _uiState.value.storeSearchMessage.orEmpty()
                             append(
