@@ -76,7 +76,7 @@ class OpenStreetMapStoreDirectory(
         }
         onProgress("Searching for ${displayName(request.retailerId)} branches near the postcode…")
         overpassMutex.withLock {
-            val wait = 1_100L - (clock() - lastOverpassAt)
+            val wait = 2_100L - (clock() - lastOverpassAt)
             if (wait > 0) delay(wait)
             lastOverpassAt = clock()
         }
