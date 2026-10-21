@@ -48,7 +48,7 @@ class OpenStreetMapStoreDirectoryTest {
             assertEquals("api.overpass.ch", request.url.host)
             assertEquals("/v1/test-key/interpreter", request.url.encodedPath)
             respond(
-                content = "Keyed endpoint unavailable",
+                content = "Keyed endpoint unavailable at /v1/test-key/interpreter",
                 status = HttpStatusCode.ServiceUnavailable,
                 headers = headersOf(HttpHeaders.ContentType, "text/plain")
             )
@@ -66,6 +66,7 @@ class OpenStreetMapStoreDirectoryTest {
                 )
             }.exceptionOrNull()
             assertTrue(error?.message.orEmpty().contains("api.overpass.ch"))
+            assertTrue(!error?.message.orEmpty().contains("test-key"))
         } finally {
             client.close()
         }
