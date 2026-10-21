@@ -125,6 +125,31 @@ class OpenStreetMapStoreDirectoryTest {
     }
 
     @Test
+    fun asdaQueryAlsoIncludesExplicitlyNamedExpressListings() {
+        val query = directory.buildQuery(
+            com.example.chatgpt_mealplanner.retail.contract.StoreDirectorySearchRequest(
+                retailerId = RetailerId.ASDA,
+                postcode = "SW1A 1AA"
+            ),
+            51.5,
+            -0.1
+        )
+        assertTrue(query.contains("""nwr["name"~"ASDA\\s*Express",i]"""))
+        assertTrue(query.contains("""nwr["brand"~"ASDA\\s*Express",i]"""))
+    }
+
+    @Test
+    fun parserAcceptsExplicitAsdaExpressWithoutShopTagButRejectsTaggedOptician() {
+        val raw = """{"elements":[
+          {"type":"node","id":611,"lat":51.5,"lon":-0.1,"tags":{"name":"ASDA Express","brand":"ASDA Express"}},
+          {"type":"node","id":612,"lat":51.501,"lon":-0.101,"tags":{"name":"ASDA Express Opticians","brand":"ASDA Express","shop":"optician"}}
+        ]}"""
+        val stores = directory.parseOverpassResponse(raw, RetailerId.ASDA, 51.5, -0.1)
+        assertEquals(1, stores.size)
+        assertEquals("ASDA Express", stores.single().name)
+        assertEquals("ASDA_EXPRESS", stores.single().format.name)
+    }
+    @Test
     fun parserExcludesRetailerBrandedOpticianButKeepsGroceryStores() {
         val raw = """{"elements":[
           {"type":"node","id":601,"lat":51.5,"lon":-0.1,"tags":{"name":"ASDA Opticians","brand":"ASDA","shop":"optician"}},
