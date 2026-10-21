@@ -19,6 +19,46 @@ class OpenStreetMapStoreDirectoryTest {
     private val directory = OpenStreetMapStoreDirectory(HttpClient())
 
     @Test
+    fun repeatedPostcodeSearchReusesGeocodeAndNearbyStoreCache() = runBlocking {
+        var postcodeLookups = 0
+        var overpassRequests = 0
+        val client = HttpClient(MockEngine { request ->
+            if (request.url.host == "nominatim.openstreetmap.org") {
+                postcodeLookups++
+                assertEquals("SW1A 1AA, United Kingdom", request.url.parameters["q"])
+                respond(
+                    content = """[{"lat":"51.5","lon":"-0.1"}]""",
+                    status = HttpStatusCode.OK,
+                    headers = headersOf(HttpHeaders.ContentType, "application/json")
+                )
+            } else {
+                overpassRequests++
+                respond(
+                    content = """{"elements":[{"type":"node","id":99101,"lat":51.5,"lon":-0.1,"tags":{"name":"ASDA Superstore","brand":"ASDA","shop":"supermarket","addr:postcode":"SW1A 1AA"}}]}""",
+                    status = HttpStatusCode.OK,
+                    headers = headersOf(HttpHeaders.ContentType, "application/json")
+                )
+            }
+        })
+        try {
+            val directory = OpenStreetMapStoreDirectory(client)
+            val request = com.example.chatgpt_mealplanner.retail.contract.StoreDirectorySearchRequest(
+                retailerId = RetailerId.ASDA,
+                postcode = "SW1A 1AA",
+                radiusMeters = 3000
+            )
+            val first = directory.search(request)
+            val second = directory.search(request)
+            assertEquals("ASDA Superstore", first.stores.single().name)
+            assertTrue(second.fromCache)
+            assertEquals(1, postcodeLookups)
+            assertEquals(1, overpassRequests)
+        } finally {
+            client.close()
+        }
+    }
+
+    @Test
     fun configuredApiKeyUsesOverpassChEndpointFirstWithPost() = runBlocking {
         val client = HttpClient(MockEngine { request ->
             assertEquals(HttpMethod.Post, request.method)
