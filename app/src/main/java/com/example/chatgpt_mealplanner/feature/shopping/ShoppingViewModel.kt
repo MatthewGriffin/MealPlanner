@@ -363,8 +363,9 @@ class ShoppingViewModel @Inject constructor(
 
             val groups = mutableListOf<RetailerGroup>()
 
-            val orderedStores = listOf(RetailerId.ASDA, RetailerId.ICELAND, RetailerId.FOOD_WAREHOUSE) +
-                    selectedPlan.stores.filter { it !in listOf(RetailerId.ASDA, RetailerId.ICELAND, RetailerId.FOOD_WAREHOUSE) }
+            // Display order must not imply that any retailer is preferred by the app.
+            // The user's enabled-retailer settings control eligibility; group display is neutral.
+            val orderedStores = selectedPlan.stores.sortedBy(::formatRetailerName)
 
             orderedStores.distinct().forEach { storeId ->
                 val groupItems = itemMapByRetailer[storeId]
