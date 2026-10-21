@@ -60,6 +60,8 @@ data class RetailOffer(
     val promotion: RetailPromotion? = null,
     val availability: RetailAvailability = RetailAvailability.UNKNOWN,
     val priceScope: RetailPriceScope = RetailPriceScope.ONLINE,
+    /** Stable ID of the physical branch when the source truly reports branch-specific data. */
+    val storeLocationId: String? = null,
     val sourceType: RetailOfferSourceType = RetailOfferSourceType.LIVE,
     val observedAt: Long = System.currentTimeMillis()
 ) {
@@ -170,6 +172,7 @@ data class RemainderPenaltyConfig(
 @Serializable
 data class UserShoppingPreferences(
     val enabledRetailers: Set<RetailerId> = RetailerId.entries.toSet(),
+    val preferredStores: List<RetailStoreLocation> = emptyList(),
     val avoidExtraStoreTrips: Boolean = true,
     val minimumSavingsForExtraStore: Money = Money(300L), // £3.00
     val preferFrozenVegetables: Boolean = true,
