@@ -323,7 +323,6 @@ open class RealRoomFollowerDatabase(private val conn: java.sql.Connection) : Fol
     override fun createOpenHelper(config: androidx.room.DatabaseConfiguration): androidx.sqlite.db.SupportSQLiteOpenHelper = error("")
     override fun createInvalidationTracker(): androidx.room.InvalidationTracker = error("")
     @Deprecated("Deprecated in Room")
-    @Deprecated("Deprecated in Room")
     override fun clearAllTables() {}
 }
 
