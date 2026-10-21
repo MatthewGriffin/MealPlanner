@@ -324,8 +324,8 @@ class OpenStreetMapStoreDirectoryTest {
             } else {
                 val term = request.url.parameters["q"]
                 val body = when (term) {
-                    "Tesco" -> """[{"osm_type":"node","osm_id":2102,"lat":"51.501","lon":"-0.101","category":"amenity","type":"atm","name":"Tesco Express","display_name":"Tesco Express ATM, Example Road, London, SW1A 1AB","address":{"road":"Example Road","city":"London","postcode":"SW1A 1AB"},"extratags":{"brand":"Tesco","amenity":"atm"}}]"""
-                    "Morrisons" -> """[{"osm_type":"way","osm_id":2103,"lat":"51.502","lon":"-0.102","category":"shop","type":"convenience","name":"Morrisons Daily","display_name":"Morrisons Daily, Example Road, London, SW1A 1AC","address":{"road":"Example Road","city":"London","postcode":"SW1A 1AC"},"extratags":{"brand":"Morrisons","shop":"convenience"}}]"""
+                    "Tesco Express", "Tesco" -> """[{"osm_type":"node","osm_id":2102,"lat":"51.501","lon":"-0.101","category":"amenity","type":"atm","name":"Tesco Express","display_name":"Tesco Express ATM, Example Road, London, SW1A 1AB","address":{"road":"Example Road","city":"London","postcode":"SW1A 1AB"},"extratags":{"brand":"Tesco","amenity":"atm"}}]"""
+                    "Morrisons Daily", "Morrisons" -> """[{"osm_type":"way","osm_id":2103,"lat":"51.502","lon":"-0.102","category":"shop","type":"convenience","name":"Morrisons Daily","display_name":"Morrisons Daily, Example Road, London, SW1A 1AC","address":{"road":"Example Road","city":"London","postcode":"SW1A 1AC"},"extratags":{"brand":"Morrisons","shop":"convenience"}}]"""
                     else -> "[]"
                 }
                 respond(
