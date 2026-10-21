@@ -64,7 +64,7 @@ class OpenStreetMapStoreDirectory(
             if (it.expiresAt > clock()) return it.response.copy(fromCache = true)
             cache.remove(key, it)
         }
-        onProgress("Searching OpenStreetMap data for ${displayName(request.retailerId)} branches near the postcode…")
+        onProgress("Searching for ${displayName(request.retailerId)} branches near the postcode…")
         overpassMutex.withLock {
             val wait = 1_100L - (clock() - lastOverpassAt)
             if (wait > 0) delay(wait)
@@ -77,7 +77,7 @@ class OpenStreetMapStoreDirectory(
         val response = StoreDirectorySearchResponse(
             stores = stores,
             observedAt = clock(),
-            warnings = if (stores.isEmpty()) listOf("No matching branch was found in OpenStreetMap. Coverage may be incomplete; verify with the retailer.") else emptyList()
+            warnings = if (stores.isEmpty()) listOf("No matching branch was found nearby. Coverage may be incomplete; verify with the retailer.") else emptyList()
         )
         cache[key] = CacheEntry(clock() + 6 * 60 * 60 * 1000L, response)
         if (cache.size > 200) cache.entries.sortedBy { it.value.expiresAt }
@@ -154,7 +154,7 @@ class OpenStreetMapStoreDirectory(
         require(!postcode.isNullOrBlank() && postcode.length <= 12 && postcode.matches(Regex("^[A-Z0-9 ]+$"))) {
             "A valid UK postcode or coordinates are required."
         }
-        onProgress("Looking up the UK postcode location with Nominatim…")
+        onProgress("Finding the location for the UK postcode…")
         geocodeMutex.withLock {
             val wait = 1_100L - (clock() - lastGeocodeAt)
             if (wait > 0) delay(wait)
