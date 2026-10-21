@@ -349,8 +349,8 @@ class AiMealPlannerOrchestrator @Inject constructor(
                         validatedProposal = recipeValidator.validateProposal(structuredProposal)
                         activeProposalStore.setActiveProposal(conversationId, structuredProposal)
                     }
-                    safeLog("[PROPOSAL_STATE_PRECEDENCE] existingSource=\"STRUCTURED_TOOL\" incomingSource=\"FINAL_TEXT\" existingIngredientCount=${currentPending.ingredients.size} action=KEEP_EXISTING_DETERMINISTIC_DISPLAY")
-                    safeLog("[OFFER_CAPTURE] Retained authoritative structured offer title=\"${currentPending.title}\" date=\"${currentPending.date}\" mealType=\"${currentPending.mealType?.name}\" ingredientCount=${currentPending.ingredients.size} state=AWAITING_CONFIRMATION reason=\"STRUCTURED_STATE_PRECEDENCE\"")
+                    safeLog("[PROPOSAL_STATE_PRECEDENCE] existingSource=\"STRUCTURED_TOOL\" incomingSource=\"FINAL_TEXT\" existingIngredientCount=${pendingOffer.ingredients.size} action=KEEP_EXISTING_DETERMINISTIC_DISPLAY")
+                    safeLog("[OFFER_CAPTURE] Retained authoritative structured offer title=\"${pendingOffer.title}\" date=\"${pendingOffer.date}\" mealType=\"${pendingOffer.mealType?.name}\" ingredientCount=${pendingOffer.ingredients.size} state=AWAITING_CONFIRMATION reason=\"STRUCTURED_STATE_PRECEDENCE\"")
                 } else {
                     val proposal = finalRes.proposal
                     val offeredAction = finalRes.proposedAction
