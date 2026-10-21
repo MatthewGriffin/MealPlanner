@@ -14,11 +14,12 @@ import org.junit.Test
 
 class PreferredBranchOfferSelectorTest {
     private val selectedStore = RetailStoreLocation(
-        id = "tesco-branch-a",
+        id = "local-preference-uuid",
         retailerId = RetailerId.TESCO,
         name = "High Street",
         postcode = "AB1 2CD",
-        format = RetailStoreFormat.TESCO_EXPRESS
+        format = RetailStoreFormat.TESCO_EXPRESS,
+        retailerStoreId = "tesco-branch-a"
     )
 
     private fun offer(
@@ -47,7 +48,7 @@ class PreferredBranchOfferSelectorTest {
     fun selectedBranchOfferWinsOverOnlineAndOtherBranchesForSameProduct() {
         val selectedBranchOffer = offer(
             RetailerId.TESCO, "milk", RetailPriceScope.STORE_SPECIFIC,
-            selectedStore.id, RetailAvailability.IN_STOCK
+            selectedStore.retailerStoreId, RetailAvailability.IN_STOCK
         )
         val otherBranchOffer = offer(
             RetailerId.TESCO, "milk", RetailPriceScope.IN_STORE,
@@ -72,13 +73,31 @@ class PreferredBranchOfferSelectorTest {
     fun branchSpecificOutOfStockOfferIsNotSelectedAndDoesNotHideOnlinePrice() {
         val outOfStock = offer(
             RetailerId.TESCO, "eggs", RetailPriceScope.STORE_SPECIFIC,
-            selectedStore.id, RetailAvailability.OUT_OF_STOCK
+            selectedStore.retailerStoreId, RetailAvailability.OUT_OF_STOCK
         )
         val online = offer(RetailerId.TESCO, "eggs", RetailPriceScope.ONLINE)
 
         assertEquals(
             listOf(online),
             PreferredBranchOfferSelector.select(listOf(outOfStock, online), listOf(selectedStore))
+        )
+    }
+
+    @Test
+    fun localPreferenceIdIsNotMistakenForRetailerBranchId() {
+        val storeWithoutSourceId = selectedStore.copy(retailerStoreId = null)
+        val unverifiableBranchOffer = offer(
+            RetailerId.TESCO, "milk", RetailPriceScope.STORE_SPECIFIC,
+            storeWithoutSourceId.id, RetailAvailability.IN_STOCK
+        )
+        val online = offer(RetailerId.TESCO, "milk", RetailPriceScope.ONLINE)
+
+        assertEquals(
+            listOf(online),
+            PreferredBranchOfferSelector.select(
+                listOf(unverifiableBranchOffer, online),
+                listOf(storeWithoutSourceId)
+            )
         )
     }
 
