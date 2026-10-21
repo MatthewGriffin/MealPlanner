@@ -883,6 +883,7 @@ open class FakeAppDatabase : AppDatabase() {
     @Deprecated("Deprecated in Room")
     override fun createOpenHelper(config: androidx.room.DatabaseConfiguration): androidx.sqlite.db.SupportSQLiteOpenHelper = error("")
     override fun createInvalidationTracker(): androidx.room.InvalidationTracker = error("")
+    @Deprecated("Deprecated in Room")
     override fun clearAllTables() {}
 }
 
