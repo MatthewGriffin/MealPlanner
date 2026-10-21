@@ -1,7 +1,12 @@
 package com.example.chatgpt_mealplanner
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.padding
@@ -24,6 +29,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import javax.inject.Inject
 import androidx.compose.runtime.collectAsState
+import androidx.core.content.ContextCompat
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -85,6 +91,17 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             ChatGPT_MealPlannerTheme {
+                val notificationPermissionLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.RequestPermission(),
+                    onResult = { }
+                )
+                LaunchedEffect(Unit) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                        ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                    ) {
+                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                }
                 var currentScreen by remember { mutableStateOf(Screen.INVENTORY) }
                 var lowStockItemToAdd by remember { mutableStateOf<com.example.chatgpt_mealplanner.core.model.InventoryItem?>(null) }
                 var mealChangeRequestForAi by remember { mutableStateOf<com.example.chatgpt_mealplanner.core.database.entity.MealChangeRequestEntity?>(null) }
@@ -130,7 +147,7 @@ class MainActivity : ComponentActivity() {
                                 }
                             },
                             actions = {
-                                if (currentScreen != Screen.SETTINGS) {
+                                if (currentScreen != Screen.HOUSEHOLD) {
                                     IconButton(onClick = { currentScreen = Screen.HOUSEHOLD }) {
                                         Icon(
                                             Icons.Default.Devices,

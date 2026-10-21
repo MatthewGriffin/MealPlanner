@@ -1,5 +1,7 @@
 package com.example.chatgpt_mealplanner.feature.chat
 
+import android.content.Context
+import android.os.PowerManager
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.chatgpt_mealplanner.contract.AiOrchestrationResult
@@ -20,6 +22,7 @@ import com.example.chatgpt_mealplanner.core.repository.MealChangeRequestReposito
 import com.example.chatgpt_mealplanner.core.database.entity.MealChangeRequestEntity
 import com.example.chatgpt_mealplanner.core.service.MealDomainService
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -67,7 +70,8 @@ class ChatViewModel @Inject constructor(
     private val chatRepository: ChatRepository,
     private val mealDomainService: MealDomainService,
     private val mealRepository: MealRepository = UnavailableMealRepository,
-    private val mealChangeRequestRepository: MealChangeRequestRepository = UnavailableMealChangeRequestRepository
+    private val mealChangeRequestRepository: MealChangeRequestRepository = UnavailableMealChangeRequestRepository,
+    @param:ApplicationContext private val appContext: Context? = null
 ) : ViewModel() {
 
     private val conversationIdFlow = MutableStateFlow("default_conversation")
@@ -343,7 +347,7 @@ class ChatViewModel @Inject constructor(
 
         viewModelScope.launch {
             safeLog("[CHAT_ORCHESTRATOR_CALL] conversationId=\"default_conversation\" messageId=\"$userMsgId\"")
-            val result = orchestrator.processUserMessage("default_conversation", text, userMessageId = userMsgId, displayUserMessageText = displayMessageText)
+            val result = processAiMessage(text, userMsgId, displayMessageText)
 
             when (result) {
                 is AiOrchestrationResult.Final -> {
@@ -365,6 +369,25 @@ class ChatViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Keep the CPU awake during a user-initiated foreground AI request. This is a bounded
+     * partial wake lock, not a battery-optimization exemption; Android still controls network policy.
+     */
+    private suspend fun processAiMessage(requestText: String, messageId: String?, displayMessageText: String?): AiOrchestrationResult {
+        val context = appContext
+        val powerManager = context?.getSystemService(Context.POWER_SERVICE) as? PowerManager
+        val wakeLock = if (context != null && powerManager != null) {
+            powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "${context.packageName}:AiRequest")
+        } else { null }
+        return try {
+            // Auto-release after five minutes even if a provider call stalls unexpectedly.
+            wakeLock?.acquire(5 * 60 * 1000L)
+            orchestrator.processUserMessage("default_conversation", requestText, userMessageId = messageId, displayUserMessageText = displayMessageText)
+        } finally {
+            if (wakeLock?.isHeld == true) wakeLock.release()
+        }
+    }
+
     private fun retryLastFailedMessage() {
         val currentHolder = requestStateHolderFlow.value
         if (currentHolder.requestState == ChatRequestState.IN_FLIGHT) return
@@ -379,7 +402,7 @@ class ChatViewModel @Inject constructor(
         transitionRequestState(ChatRequestState.IN_FLIGHT, retainedMessage = visibleText, retainedMessageId = messageId, retainedRequestText = text)
 
         viewModelScope.launch {
-            val result = orchestrator.processUserMessage("default_conversation", text, userMessageId = messageId, displayUserMessageText = visibleText)
+            val result = processAiMessage(text, messageId, visibleText)
 
             when (result) {
                 is AiOrchestrationResult.Final -> {

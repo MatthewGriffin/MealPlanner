@@ -14,6 +14,11 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.IOException
+import java.net.ConnectException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
+import javax.net.ssl.SSLHandshakeException
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -69,10 +74,35 @@ class RemoteMealPlannerAiProvider @Inject constructor(
 
         val response = try {
             client.newCall(httpRequest).execute()
+        } catch (e: SocketTimeoutException) {
+            return AiProviderResponse.Error(
+                code = "REQUEST_TIMEOUT",
+                message = "The AI backend did not respond before the request timed out. Wi-Fi can still be connected; the server may be slow or Android may be restricting network activity."
+            )
+        } catch (e: UnknownHostException) {
+            return AiProviderResponse.Error(
+                code = "DNS_FAILURE",
+                message = "Android could not resolve the AI backend address (DNS lookup failed). This does not necessarily mean Wi-Fi is disconnected."
+            )
+        } catch (e: SSLHandshakeException) {
+            return AiProviderResponse.Error(
+                code = "TLS_ERROR",
+                message = "A secure TLS connection to the AI backend could not be established. Check device date/time or network filtering."
+            )
+        } catch (e: ConnectException) {
+            return AiProviderResponse.Error(
+                code = "CONNECTION_REFUSED",
+                message = "The AI backend refused the connection. The service may be unavailable or its address/port may be incorrect."
+            )
+        } catch (e: IOException) {
+            return AiProviderResponse.Error(
+                code = "NETWORK_IO_ERROR",
+                message = "The AI request was interrupted during network I/O. Wi-Fi may still be connected; retry and check power-saving restrictions if it repeats."
+            )
         } catch (e: Exception) {
             return AiProviderResponse.Error(
-                code = "NETWORK_ERROR",
-                message = "AI chat needs an internet connection."
+                code = "REQUEST_FAILED",
+                message = "The AI request failed before a response was received. This is not enough to conclude that internet access is unavailable."
             )
         }
 

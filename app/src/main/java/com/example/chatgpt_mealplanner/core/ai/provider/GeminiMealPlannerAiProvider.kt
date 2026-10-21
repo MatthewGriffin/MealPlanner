@@ -248,7 +248,7 @@ class GeminiMealPlannerAiProvider @Inject constructor(
 
         return result ?: AiProviderResponse.Error(
             "REQUEST_TIMEOUT",
-            "Gemini request timed out after ${GLOBAL_TIMEOUT_CAP_MS / 1000}s. Please check network connection and try again."
+            "The AI request exceeded the ${GLOBAL_TIMEOUT_CAP_MS / 1000}-second time limit. The server may be busy, or Android may have paused network activity in power-saving mode. Your Wi-Fi can still be connected; please retry."
         )
     }
 
@@ -353,7 +353,7 @@ class GeminiMealPlannerAiProvider @Inject constructor(
                 parseGeminiResponse(statusCode, responseText, conversationId, historyContents, startTime, currentModel)
             } catch (e: SocketTimeoutException) {
                 safeLog("[GEMINI_HTTP] phase=timeout, exception=${e.javaClass.simpleName}, elapsedMs=${System.currentTimeMillis() - startTime}")
-                AiProviderResponse.Error("CONNECT_TIMEOUT", "Connection to Gemini timed out after ${System.currentTimeMillis() - startTime}ms.")
+                AiProviderResponse.Error("CONNECT_TIMEOUT", "Could not establish a connection to the Gemini server within ${System.currentTimeMillis() - startTime}ms. This is a connection setup timeout, not proof that Wi-Fi is disconnected.")
             }
         }
 
@@ -384,10 +384,10 @@ class GeminiMealPlannerAiProvider @Inject constructor(
                 connection.responseCode
             } catch (e: SocketTimeoutException) {
                 safeLog("[GEMINI_HTTP] phase=response_code_timeout, exception=SocketTimeoutException, elapsedMs=${System.currentTimeMillis() - startTime}")
-                return AiProviderResponse.Error("READ_TIMEOUT", "Gemini connection timed out waiting for server response.")
+                return AiProviderResponse.Error("READ_TIMEOUT", "The Gemini server did not begin responding before the request timed out. Your Wi-Fi may still be connected; the service may be slow or the phone may be restricting network activity.")
             } catch (e: UnknownHostException) {
                 safeLog("[GEMINI_HTTP] phase=dns_failure, exception=UnknownHostException, elapsedMs=${System.currentTimeMillis() - startTime}")
-                return AiProviderResponse.Error("DNS_FAILURE", "DNS lookup failed for Gemini server. Please check internet connection.")
+                return AiProviderResponse.Error("DNS_FAILURE", "Android could not resolve the Gemini server address (DNS lookup failed). Wi-Fi can be connected even when DNS resolution fails.")
             }
 
             val retryAfterHeader = connection.getHeaderField("Retry-After")
@@ -403,13 +403,13 @@ class GeminiMealPlannerAiProvider @Inject constructor(
             parseGeminiResponse(statusCode, responseText, conversationId, historyContents, startTime, currentModel)
         } catch (e: SocketTimeoutException) {
             safeLog("[GEMINI_HTTP] phase=timeout, exception=${e.javaClass.simpleName}, elapsedMs=${System.currentTimeMillis() - startTime}")
-            AiProviderResponse.Error("CONNECT_TIMEOUT", "Connection to Gemini API timed out. Please check network connection.")
+            AiProviderResponse.Error("CONNECT_TIMEOUT", "The connection to Gemini timed out before it was established. Wi-Fi may still be connected; the server or network route did not respond in time.")
         } catch (e: UnknownHostException) {
             safeLog("[GEMINI_HTTP] phase=dns_failure, exception=UnknownHostException, elapsedMs=${System.currentTimeMillis() - startTime}")
-            AiProviderResponse.Error("NETWORK_UNAVAILABLE", "Network lookup failed for Gemini server. Please check network connection.")
+            AiProviderResponse.Error("NETWORK_UNAVAILABLE", "Android could not resolve the Gemini server address (DNS lookup failed). This is a name-resolution failure, not confirmation that Wi-Fi is disconnected.")
         } catch (e: SSLHandshakeException) {
             safeLog("[GEMINI_HTTP] phase=tls_failure, exception=SSLHandshakeException, elapsedMs=${System.currentTimeMillis() - startTime}")
-            AiProviderResponse.Error("TLS_ERROR", "SSL/TLS handshake failed connecting to Gemini API.")
+            AiProviderResponse.Error("TLS_ERROR", "A secure TLS connection to Gemini could not be established. Check the device date/time or whether a network filter is intercepting secure connections.")
         } catch (e: IOException) {
             safeLog("[GEMINI_HTTP] phase=io_error, exception=${e.javaClass.simpleName}, elapsedMs=${System.currentTimeMillis() - startTime}")
             AiProviderResponse.Error("NETWORK_UNAVAILABLE", "Network connection error. Please check your internet connection.")

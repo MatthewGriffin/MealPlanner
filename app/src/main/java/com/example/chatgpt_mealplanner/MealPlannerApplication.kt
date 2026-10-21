@@ -27,6 +27,7 @@ class MealPlannerApplication : Application(), Configuration.Provider {
     override fun onCreate() {
         super.onCreate()
         followerNetworkCallbackListener.registerListener()
+        com.example.chatgpt_mealplanner.core.notification.AppNotificationManager(this).createNotificationChannel()
         val buildLog = """
             [PANTRY_BUILD] buildId=$PANTRY_DEBUG_BUILD_ID
             [PANTRY_BUILD] versionName=${BuildConfig.VERSION_NAME}

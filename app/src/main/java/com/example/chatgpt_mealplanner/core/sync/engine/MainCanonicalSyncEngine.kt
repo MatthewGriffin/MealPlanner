@@ -1,6 +1,7 @@
 package com.example.chatgpt_mealplanner.core.sync.engine
 
 import com.example.chatgpt_mealplanner.core.database.DatabaseTransactionRunner
+import com.example.chatgpt_mealplanner.core.notification.AppNotificationManager
 import com.example.chatgpt_mealplanner.core.database.dao.CanonicalSyncDao
 import com.example.chatgpt_mealplanner.core.database.dao.MealChangeRequestDao
 import com.example.chatgpt_mealplanner.core.database.dao.MealDao
@@ -44,7 +45,8 @@ open class MainCanonicalSyncEngine @Inject constructor(
     private val inventoryDao: InventoryDao,
     private val transactionRunner: DatabaseTransactionRunner,
     private val mealChangeRequestDao: MealChangeRequestDao? = null,
-    private val mealDao: MealDao? = null
+    private val mealDao: MealDao? = null,
+    private val notificationManager: AppNotificationManager? = null
 ) {
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -52,7 +54,7 @@ open class MainCanonicalSyncEngine @Inject constructor(
         sessionDeviceId: String,
         dto: SyncOperationDto
     ): SyncOperationResultDto {
-        return transactionRunner.runInTransaction {
+        val result = transactionRunner.runInTransaction {
             val now = System.currentTimeMillis()
 
             // 1. Auth Binding & Device Status Check
@@ -679,5 +681,20 @@ open class MainCanonicalSyncEngine @Inject constructor(
                 }
             }
         }
+        if (result.status == SyncOperationStatus.APPLIED) {
+            if (dto.operationType == SyncOperationType.CREATE_MEAL_CHANGE_REQUEST) {
+                notificationManager?.notifyHouseholdUpdate(
+                    title = "New meal change request",
+                    message = "A household member has requested a change to a planned meal.",
+                    notificationId = AppNotificationManager.MEAL_REQUEST_NOTIFICATION_ID
+                )
+            } else {
+                notificationManager?.notifyHouseholdUpdate(
+                    title = "Household pantry updated",
+                    message = "A paired household device sent an update to shared pantry data."
+                )
+            }
+        }
+        return result
     }
 }

@@ -2,6 +2,7 @@ package com.example.chatgpt_mealplanner.core.sync.follower.engine
 
 import androidx.room.withTransaction
 import com.example.chatgpt_mealplanner.core.sync.client.PantrySyncTestClient
+import com.example.chatgpt_mealplanner.core.notification.AppNotificationManager
 import com.example.chatgpt_mealplanner.core.sync.follower.database.FollowerDatabase
 import com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerDao
 import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerInventoryItemEntity
@@ -30,7 +31,8 @@ open class FollowerFeedPullEngine @Inject constructor(
     private val followerDatabase: FollowerDatabase?,
     private val pantrySyncTestClient: PantrySyncTestClient,
     private val localSyncEngine: FollowerLocalSyncEngine,
-    private val mealRequestDao: FollowerMealRequestDao? = null
+    private val mealRequestDao: FollowerMealRequestDao? = null,
+    private val notificationManager: AppNotificationManager? = null
 ) {
     private val cacheJson = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     open suspend fun performFeedPullPass(
@@ -49,6 +51,7 @@ open class FollowerFeedPullEngine @Inject constructor(
         var totalProcessed = 0
         var totalApplied = 0
         var totalOwnSkipped = 0
+        var totalMealRequestUpdates = 0
 
         var hasMore = true
         var currentCursor = dao.getSyncMetadata()?.lastReconciledCanonicalSequence ?: 0L
@@ -151,6 +154,7 @@ open class FollowerFeedPullEngine @Inject constructor(
                         if (feedItem.status == SyncOperationStatus.APPLIED) {
                             val requests = checkNotNull(mealRequestDao) { "Meal projection unavailable; retaining feed cursor" }
                             FollowerMealRequestProjector.apply(requests, feedItem)
+                            totalMealRequestUpdates++
                         }
                     } else if (feedItem.sourceDeviceId == followerDeviceId) {
                         // Own-device operation: Already reconciled during upload, BUT still advance cursor!
@@ -245,6 +249,18 @@ open class FollowerFeedPullEngine @Inject constructor(
             )
         )
         println("[SYNC_FEED] complete pages=$pageCount duration_ms=$totalFeedMs")
+
+        if (totalApplied > 0 || totalMealRequestUpdates > 0) {
+            val message = when {
+                totalMealRequestUpdates > 0 && totalApplied > 0 -> "Your household has new pantry updates and meal request changes."
+                totalMealRequestUpdates > 0 -> "Your household has new meal request updates."
+                else -> "Your household pantry has new updates."
+            }
+            notificationManager?.notifyHouseholdUpdate(
+                title = "Household updated",
+                message = message
+            )
+        }
 
         return FollowerFeedPullSummary(
             success = true,
