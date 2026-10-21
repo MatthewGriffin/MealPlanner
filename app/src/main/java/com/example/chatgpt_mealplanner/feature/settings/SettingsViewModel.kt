@@ -219,6 +219,10 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun clearStoreSearchResults() {
+        _uiState.update { it.copy(discoveredStores = emptyList(), storeSearchMessage = null) }
+    }
+
     fun addDiscoveredStore(store: StoreDirectoryEntry) {
         val current = _uiState.value.preferredStores
         val normalizedPostcode = store.postcode.orEmpty().replace(" ", "").uppercase()
