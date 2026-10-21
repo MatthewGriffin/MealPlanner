@@ -92,7 +92,7 @@ class OpenStreetMapStoreDirectory(
             onProgress("Checking OpenStreetMap listings for nearby ${displayName(request.retailerId)} branches…")
             val osmListings = if (configuredApiKey == null) {
                 try {
-                    kotlinx.coroutines.withTimeout(5_000L) {
+                    kotlinx.coroutines.withTimeout(12_000L) {
                         searchNominatimFallback(request.retailerId, lat, lon, request.radiusMeters)
                     }
                 } catch (e: Exception) {
@@ -111,7 +111,7 @@ class OpenStreetMapStoreDirectory(
             usedNominatimFallback = true
             onProgress("The main branch directory is unavailable; checking OpenStreetMap place listings…")
             val fallbackStores = try {
-                kotlinx.coroutines.withTimeout(5_000L) {
+                kotlinx.coroutines.withTimeout(12_000L) {
                     searchNominatimFallback(request.retailerId, lat, lon, request.radiusMeters)
                 }
             } catch (timeout: kotlinx.coroutines.TimeoutCancellationException) {
