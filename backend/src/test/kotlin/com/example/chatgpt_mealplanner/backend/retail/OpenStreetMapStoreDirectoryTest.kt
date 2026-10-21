@@ -1,6 +1,7 @@
 package com.example.chatgpt_mealplanner.backend.retail
 
 import com.example.chatgpt_mealplanner.retail.contract.RetailerId
+import com.example.chatgpt_mealplanner.retail.contract.RetailStoreFormat
 import com.example.chatgpt_mealplanner.retail.contract.StoreDirectorySource
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
