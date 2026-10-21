@@ -162,7 +162,7 @@ fun ShoppingScreen(
                         Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
                             Text("$checkedCount of ${shoppingItems.size} items checked", style = MaterialTheme.typography.bodySmall)
                             LinearProgressIndicator(
-                                progress = checkedCount.toFloat() / shoppingItems.size,
+                                progress = { checkedCount.toFloat() / shoppingItems.size },
                                 modifier = Modifier.fillMaxWidth()
                             )
                         }
@@ -436,6 +436,5 @@ private fun formatQuantityAndUnit(quantity: Double?, unit: QuantityUnit?): Strin
         QuantityUnit.SLICE -> "$formattedQty slice${if (quantity > 1.0) "s" else ""}"
         QuantityUnit.PORTION -> "$formattedQty portion${if (quantity > 1.0) "s" else ""}"
         null -> formattedQty
-        else -> "$formattedQty ${unit.name}"
     }
 }
