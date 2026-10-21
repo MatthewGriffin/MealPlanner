@@ -9,6 +9,7 @@ import com.example.chatgpt_mealplanner.core.model.*
 import com.example.chatgpt_mealplanner.core.model.MealWithIngredients
 import com.example.chatgpt_mealplanner.core.sync.client.PantrySyncTestClient
 import com.example.chatgpt_mealplanner.core.sync.client.NetworkResultStatus
+import com.example.chatgpt_mealplanner.core.notification.AppNotificationManager
 import com.example.chatgpt_mealplanner.core.sync.follower.database.FollowerDatabase
 import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerMealEntity
 import com.example.chatgpt_mealplanner.sync.contract.BootstrapResponseDto
@@ -21,7 +22,8 @@ data class MealPlanRefreshResult(val success: Boolean, val message: String, val 
 class FollowerMealPlanSyncEngine @Inject constructor(
     private val database: FollowerDatabase,
     private val client: PantrySyncTestClient,
-    private val appDatabase: AppDatabase
+    private val appDatabase: AppDatabase,
+    private val notificationManager: AppNotificationManager? = null
 ) {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
@@ -76,6 +78,16 @@ class FollowerMealPlanSyncEngine @Inject constructor(
             require(model.ingredients.all { it.mealId == model.meal.id && it.plannedQuantity.isFinite() && it.plannedQuantity >= 0 })
             FollowerMealEntity(model.meal.id, payload, model.meal.date)
         }
+        val previousRows = database.mealDao().getAll().filter { it.id != "basket_comparison_cache" }
+        val previousById = previousRows.associateBy { it.id }
+        val incomingById = rows.associateBy { it.id }
+        val changedIds = (previousById.keys + incomingById.keys).filter { id ->
+            previousById[id]?.payloadJson != incomingById[id]?.payloadJson
+        }
+        val changedDate = changedIds.mapNotNull { id ->
+            incomingById[id]?.mealDate ?: previousById[id]?.mealDate
+        }.maxOrNull()
+
         val shoppingListDtos = snapshot.shoppingLists
         val shoppingLists = shoppingListDtos?.map { dto ->
             ShoppingListEntity(dto.id, dto.name, dto.startDate, dto.endDate,
@@ -118,6 +130,9 @@ class FollowerMealPlanSyncEngine @Inject constructor(
         database.withTransaction {
             database.mealDao().clear()
             database.mealDao().insertAll(rows)
+        }
+        if (changedIds.isNotEmpty() && changedDate != null) {
+            notificationManager?.notifyMealPlanChanged(changedDate, changedIds.size)
         }
         appDatabase.withTransaction {
             if (shoppingLists != null) {
