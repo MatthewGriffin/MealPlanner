@@ -309,7 +309,6 @@ fun DateNavigationHeader(
 }
 
 @Composable
-@Composable
 fun MealPlanContent(
     meals: List<MealWithIngredients>,
     onMealClicked: (MealWithIngredients) -> Unit,
