@@ -49,7 +49,7 @@ class OpenStreetMapStoreDirectoryTest {
                 assertEquals("/search", request.url.encodedPath)
                 assertEquals("ASDA", request.url.parameters["q"])
                 respond(
-                    content = """[{"osm_type":"way","osm_id":123,"lat":"51.5","lon":"-0.1","name":"ASDA Superstore","display_name":"ASDA Superstore, Example Road, London, SW1A 1AA, United Kingdom","address":{"road":"Example Road","city":"London","postcode":"SW1A 1AA"},"extratags":{"brand":"ASDA"}}]""",
+                    content = """[{"osm_type":"way","osm_id":123,"lat":"51.5","lon":"-0.1","category":"shop","type":"supermarket","name":"ASDA Superstore","display_name":"ASDA Superstore, Example Road, London, SW1A 1AA, United Kingdom","address":{"road":"Example Road","city":"London","postcode":"SW1A 1AA"},"extratags":{"brand":"ASDA"}}]""",
                     status = HttpStatusCode.OK,
                     headers = headersOf(HttpHeaders.ContentType, "application/json")
                 )
@@ -90,7 +90,7 @@ class OpenStreetMapStoreDirectoryTest {
             -0.1
         )
         assertTrue(query.contains("[out:json][timeout:20]"))
-        assertTrue(query.contains("""nwr["shop"](around:5000,51.5,-0.1)"""))
+        assertTrue(query.contains("""nwr["shop"~"^(supermarket|convenience)$"](around:5000,51.5,-0.1)"""))
         assertTrue(query.contains("out center tags"))
         assertTrue(!query.contains("""["name"~"""))
         assertTrue(!query.contains("""["brand"~"""))
@@ -124,6 +124,18 @@ class OpenStreetMapStoreDirectoryTest {
         assertTrue(stores.any { it.name == "Asda Express" && it.format.name == "ASDA_EXPRESS" })
     }
 
+    @Test
+    fun parserExcludesRetailerBrandedOpticianButKeepsGroceryStores() {
+        val raw = """{"elements":[
+          {"type":"node","id":601,"lat":51.5,"lon":-0.1,"tags":{"name":"ASDA Opticians","brand":"ASDA","shop":"optician"}},
+          {"type":"node","id":602,"lat":51.501,"lon":-0.101,"tags":{"name":"Asda Express","brand":"Asda Express","shop":"convenience"}},
+          {"type":"node","id":603,"lat":51.502,"lon":-0.102,"tags":{"name":"ASDA Superstore","brand":"ASDA","shop":"supermarket"}}
+        ]}"""
+        val stores = directory.parseOverpassResponse(raw, RetailerId.ASDA, 51.5, -0.1)
+        assertEquals(2, stores.size)
+        assertTrue(stores.none { it.name.contains("Optician", ignoreCase = true) })
+        assertTrue(stores.any { it.name == "Asda Express" })
+    }
     @Test
     fun parserAcceptsUtf8BomBeforeJsonResponse() {
         val raw = "\uFEFF" + """{"elements":[{"type":"node","id":42,"lat":51.5,"lon":-0.1,"tags":{"name":"Tesco","brand":"Tesco","shop":"supermarket"}}]}"""
