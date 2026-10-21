@@ -160,6 +160,7 @@ class PantrySyncPhase4gFollowerRoomTest {
         @Deprecated("Deprecated in Room")
         override fun clearAllTables() {}
         override fun createInvalidationTracker(): androidx.room.InvalidationTracker = org.mockito.kotlin.mock()
+        @Deprecated("Deprecated in Room")
         override fun createOpenHelper(config: androidx.room.DatabaseConfiguration): androidx.sqlite.db.SupportSQLiteOpenHelper = error("")
     }
 
