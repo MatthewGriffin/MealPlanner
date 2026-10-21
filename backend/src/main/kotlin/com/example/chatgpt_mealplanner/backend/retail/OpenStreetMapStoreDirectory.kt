@@ -186,16 +186,20 @@ class OpenStreetMapStoreDirectory(
     }
 
     internal fun buildQuery(request: StoreDirectorySearchRequest, lat: Double, lon: Double): String {
-        // Search only this retailer's identity tags to keep the query selective and fast.
-        // No shop-type/format filter is applied: Express, fuel-site, and supermarket branches
-        // are all candidates when their name, brand, or operator identifies the retailer.
+        // Match retailer identity against every shop type, without restricting the branch format.
+        // Include named fuel amenities too, because petrol-site convenience branches can be mapped
+        // as amenity=fuel without any shop tag. Keep identity filters paired with feature tags
+        // so the query doesn't scan every nearby OSM object.
         val radius = request.radiusMeters
         val retailerPattern = overpassRetailerPattern(request.retailerId)
         return """[out:json][timeout:20];
           (
-            nwr["name"~"$retailerPattern",i](around:$radius,$lat,$lon);
-            nwr["brand"~"$retailerPattern",i](around:$radius,$lat,$lon);
-            nwr["operator"~"$retailerPattern",i](around:$radius,$lat,$lon);
+            nwr["shop"]["name"~"$retailerPattern",i](around:$radius,$lat,$lon);
+            nwr["shop"]["brand"~"$retailerPattern",i](around:$radius,$lat,$lon);
+            nwr["shop"]["operator"~"$retailerPattern",i](around:$radius,$lat,$lon);
+            nwr["amenity"="fuel"]["name"~"$retailerPattern",i](around:$radius,$lat,$lon);
+            nwr["amenity"="fuel"]["brand"~"$retailerPattern",i](around:$radius,$lat,$lon);
+            nwr["amenity"="fuel"]["operator"~"$retailerPattern",i](around:$radius,$lat,$lon);
           );
           out center tags;"""
     }
