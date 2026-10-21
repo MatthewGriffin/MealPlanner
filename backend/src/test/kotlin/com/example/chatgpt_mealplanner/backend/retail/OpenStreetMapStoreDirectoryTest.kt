@@ -3,12 +3,44 @@ package com.example.chatgpt_mealplanner.backend.retail
 import com.example.chatgpt_mealplanner.retail.contract.RetailerId
 import com.example.chatgpt_mealplanner.retail.contract.StoreDirectorySource
 import io.ktor.client.HttpClient
+import io.ktor.client.engine.mock.MockEngine
+import io.ktor.client.engine.mock.respond
+import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpMethod
+import io.ktor.http.HttpStatusCode
+import io.ktor.http.headersOf
+import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class OpenStreetMapStoreDirectoryTest {
     private val directory = OpenStreetMapStoreDirectory(HttpClient())
+
+    @Test
+    fun configuredApiKeyUsesOverpassChEndpointFirstWithPost() = runBlocking {
+        val client = HttpClient(MockEngine { request ->
+            assertEquals(HttpMethod.Post, request.method)
+            assertEquals("api.overpass.ch", request.url.host)
+            assertEquals("/v1/test-key/interpreter", request.url.encodedPath)
+            respond(
+                content = """{"elements":[]}""",
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, "application/json")
+            )
+        })
+        val keyedDirectory = OpenStreetMapStoreDirectory(client)
+        keyedDirectory.configureApiKey("test-key")
+        val response = keyedDirectory.search(
+            com.example.chatgpt_mealplanner.retail.contract.StoreDirectorySearchRequest(
+                retailerId = RetailerId.TESCO,
+                latitude = 51.5,
+                longitude = -0.1
+            )
+        )
+        assertTrue(response.stores.isEmpty())
+        client.close()
+    }
 
     @Test
     fun queryUsesOneBoundedNearbyShopScan() {
