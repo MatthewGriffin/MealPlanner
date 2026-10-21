@@ -474,7 +474,7 @@ class OpenStreetMapStoreDirectory(
             // A broad "Tesco" text search can be dominated by larger supermarkets and
             // may omit the local convenience branch from Nominatim's limited result set.
             RetailerId.TESCO -> listOf("Tesco Express", "Tesco")
-            RetailerId.MORRISONS -> listOf("Morrisons Daily", "Morrisons", "McColls")
+            RetailerId.MORRISONS -> listOf("Morrisons Daily", "Morrisons", "McColl's")
             else -> listOf(displayName(retailerId))
         }
         return searchTerms.flatMap { term ->
