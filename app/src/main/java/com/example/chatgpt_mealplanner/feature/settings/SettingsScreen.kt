@@ -27,7 +27,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -73,17 +72,6 @@ fun SettingsScreen(
     var formatMenuExpanded by remember { mutableStateOf(false) }
     var showClearChatHistoryDialog by remember { mutableStateOf(false) }
     var showStoreDataSourcesDialog by remember { mutableStateOf(false) }
-
-    LaunchedEffect(uiState.manualFallbackRetailer, uiState.manualFallbackPostcode) {
-        val fallbackRetailer = uiState.manualFallbackRetailer
-        val fallbackPostcode = uiState.manualFallbackPostcode
-        if (fallbackRetailer != null && !fallbackPostcode.isNullOrBlank()) {
-            selectedStoreRetailer = fallbackRetailer
-            selectedStoreFormat = storeFormatsFor(fallbackRetailer).first()
-            storeNameInput = retailerLabel(fallbackRetailer)
-            storePostcodeInput = fallbackPostcode
-        }
-    }
 
     if (showStoreDataSourcesDialog) {
         AlertDialog(
