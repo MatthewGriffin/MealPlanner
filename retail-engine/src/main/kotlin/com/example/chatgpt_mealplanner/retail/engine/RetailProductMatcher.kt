@@ -150,6 +150,19 @@ class RetailProductMatcher(
             }
         }
 
+        // UK retailers commonly use "beef mince" where the list says "minced beef".
+        // Accept this ingredient alias while excluding prepared dishes and meat alternatives.
+        val normalizedRequirement = reqLower.trim().replace(Regex("\\s+"), " ")
+        val wantsMincedBeef = normalizedRequirement in setOf("minced beef", "beef mince", "lean minced beef", "lean beef mince")
+        if (wantsMincedBeef) {
+            val hasBeef = Regex("\\bbeef\\b").containsMatchIn(nameLower)
+            val hasMince = Regex("\\bmince(?:d)?\\b").containsMatchIn(nameLower)
+            val excluded = listOf("burger", "meatball", "cottage pie", "shepherds pie", "shepherd's pie", "bolognese", "lasagne", "sausage", "dog food", "plant based", "meat free", "vegetarian", "vegan").any { nameLower.contains(it) }
+            if (hasBeef && hasMince && !excluded) {
+                return returnMatch(requirementDisplayName, candidateProduct, RetailMatchCandidate(candidateProduct, MatchType.CATEGORY_MATCH, MatchConfidence.HIGH, true, "UK minced-beef/beef-mince naming alias with prepared dishes and meat alternatives excluded."))
+            }
+        }
+
         // Primary Product Identity & Composite Product Guard
         val isCompositeCandidate = nameLower.contains(" in $reqLower") ||
                 nameLower.contains(" with $reqLower") ||

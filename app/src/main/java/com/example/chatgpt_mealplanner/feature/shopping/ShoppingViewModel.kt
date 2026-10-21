@@ -197,7 +197,7 @@ class ShoppingViewModel @Inject constructor(
             isLoadingFlow.value = false
 
             when (result) {
-                is DomainResult.Success -> userMessageFlow.value = "Shopping list updated"
+                is DomainResult.Success -> Unit
                 is DomainResult.Failure -> userMessageFlow.value = formatDomainError(result.error)
             }
         }

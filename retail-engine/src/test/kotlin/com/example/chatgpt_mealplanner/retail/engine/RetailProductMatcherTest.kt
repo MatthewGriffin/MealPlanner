@@ -36,6 +36,19 @@ class RetailProductMatcherTest {
     }
 
     @Test
+    fun matcher_mincedBeef_matchesRetailerBeefMinceNames_butRejectsPreparedDishes() {
+        val matcher = RetailProductMatcher()
+        listOf("Beef Mince 500g", "Lean Beef Mince 5% Fat", "Minced Beef 500g").forEachIndexed { index, name ->
+            val product = RetailProduct(RetailerId.ASDA, "beef_mince_$index", name, storageClass = RetailStorageClass.FRESH)
+            assertTrue(matcher.evaluateMatch(null, "Minced Beef", product).isAutoBasketEligible, "Expected '$name' to match Minced Beef")
+        }
+        listOf("Beef Burgers", "Beef Meatballs", "Cottage Pie with Beef Mince", "Plant Based Mince").forEachIndexed { index, name ->
+            val product = RetailProduct(RetailerId.ASDA, "beef_mince_invalid_$index", name, storageClass = RetailStorageClass.FRESH)
+            assertFalse(matcher.evaluateMatch(null, "Minced Beef", product).isAutoBasketEligible, "Expected '$name' not to auto-match Minced Beef")
+        }
+    }
+
+    @Test
     fun matcher_userRejectedMapping_overridesAutomatedMatch() {
         val rejectedKey = UserProductMappingKey(
             retailerId = RetailerId.ASDA.name,
