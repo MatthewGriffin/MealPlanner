@@ -58,10 +58,12 @@ class ShoppingViewModel @Inject constructor(
     private var basketOptimizationJob: kotlinx.coroutines.Job? = null
     private var basketOptimizationVersion = 0L
 
-    private val activeShoppingListFlow = shoppingRepository.observeActiveShoppingListWithItems()
-        .onEach { listWithItems ->
-            runBasketOptimization(listWithItems)
-        }
+    private val activeShoppingListFlow = combine(
+        shoppingRepository.observeActiveShoppingListWithItems(),
+        retailerPreferenceStore.observeEnabledRetailers(),
+        retailStorePreferenceStore.observePreferredStores()
+    ) { listWithItems, _, _ -> listWithItems }
+        .onEach { listWithItems -> runBasketOptimization(listWithItems) }
     private val stapleRulesFlow = stapleRuleRepository.observeAllStapleRules()
 
     @Suppress("UNCHECKED_CAST")

@@ -3,6 +3,10 @@ package com.example.chatgpt_mealplanner.core.service
 import android.content.Context
 import com.example.chatgpt_mealplanner.retail.contract.RetailerId
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -21,6 +25,20 @@ class RetailerPreferenceStore @Inject constructor(
             .toSet()
     }
 
+    fun observeEnabledRetailers(): Flow<Set<RetailerId>> = callbackFlow {
+        val prefs = runCatching { context?.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE) }.getOrNull()
+        if (prefs == null) {
+            trySend(getEnabledRetailers())
+            close()
+            return@callbackFlow
+        }
+        val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == KEY_ENABLED_RETAILERS) trySend(getEnabledRetailers())
+        }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        trySend(getEnabledRetailers())
+        awaitClose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }.distinctUntilChanged()
     fun setEnabledRetailers(retailers: Set<RetailerId>): Boolean {
         if (retailers.isEmpty()) return false
         return runCatching {

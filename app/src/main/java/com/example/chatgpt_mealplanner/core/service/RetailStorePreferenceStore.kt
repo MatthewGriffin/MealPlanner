@@ -8,6 +8,10 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import java.util.UUID
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -30,6 +34,20 @@ class RetailStorePreferenceStore @Inject constructor(
         json.decodeFromString(ListSerializer(RetailStoreLocation.serializer()), raw)
     }.getOrDefault(emptyList())
 
+    fun observePreferredStores(): Flow<List<RetailStoreLocation>> = callbackFlow {
+        val prefs = runCatching { context?.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE) }.getOrNull()
+        if (prefs == null) {
+            trySend(getPreferredStores())
+            close()
+            return@callbackFlow
+        }
+        val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == KEY_PREFERRED_STORES) trySend(getPreferredStores())
+        }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        trySend(getPreferredStores())
+        awaitClose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }.distinctUntilChanged()
     fun savePreferredStores(stores: List<RetailStoreLocation>): Boolean = runCatching {
         context?.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
             ?.edit()
