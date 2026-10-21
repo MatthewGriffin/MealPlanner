@@ -199,7 +199,8 @@ class OpenStreetMapStoreDirectory(
             stores = requestedStores,
             observedAt = clock(),
             warnings = when {
-                usedNominatimFallback -> listOf("The shared branch directory was unavailable. These branch details came from OpenStreetMap search listings; verify them before saving.")
+                usedNominatimFallback && overpassSucceeded -> listOf("Some branches were found using OpenStreetMap search listings because the main map query may miss smaller stores. Branch coverage and details may be incomplete; check the branch name before saving.")
+                usedNominatimFallback -> listOf("The main branch map search was unavailable. These results came from OpenStreetMap search listings and may be incomplete; check the branch name before saving.")
                 requestedStores.isEmpty() -> listOf("No matching supported retailer branches were found nearby. Coverage may be incomplete; verify with the retailer.")
                 else -> emptyList()
             }
