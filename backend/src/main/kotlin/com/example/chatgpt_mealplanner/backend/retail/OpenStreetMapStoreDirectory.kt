@@ -90,7 +90,12 @@ class OpenStreetMapStoreDirectory(
             // Supplement successful Overpass results with nearby OSM place search results.
             if (request.retailerId == RetailerId.ASDA) {
                 onProgress("Checking OpenStreetMap listings for nearby ASDA Express branches…")
-                val osmListings = searchNominatimFallback(request.retailerId, lat, lon, request.radiusMeters, "ASDA Express")
+                val osmListings = try {
+                    searchNominatimFallback(request.retailerId, lat, lon, request.radiusMeters, "ASDA Express")
+                } catch (e: Exception) {
+                    if (e is kotlinx.coroutines.CancellationException) throw e
+                    emptyList()
+                }
                 (overpassStores + osmListings).distinctBy { it.directorySourceId }
             } else {
                 overpassStores
