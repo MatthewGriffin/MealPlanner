@@ -10,7 +10,12 @@ data class RetailStoreLocation(
     val name: String,
     val postcode: String,
     val format: RetailStoreFormat,
-    val isPreferred: Boolean = true
+    val isPreferred: Boolean = true,
+    /**
+     * Stable identifier supplied by the retailer's authorised store directory/feed.
+     * This is distinct from [id], which is the app's local preference-record ID.
+     */
+    val retailerStoreId: String? = null
 )
 
 @Serializable
