@@ -52,6 +52,8 @@ import com.example.chatgpt_mealplanner.feature.shopping.ShoppingViewModel
 import com.example.chatgpt_mealplanner.feature.shopping.ui.ShoppingScreen
 import com.example.chatgpt_mealplanner.feature.spend.ReceiptSpendScreen
 import com.example.chatgpt_mealplanner.ui.theme.ChatGPT_MealPlannerTheme
+import com.example.chatgpt_mealplanner.core.notification.AppNotificationManager
+import com.example.chatgpt_mealplanner.feature.mealplanner.MealPlannerUiEvent
 import dagger.hilt.android.AndroidEntryPoint
 
 import androidx.compose.material.icons.filled.Devices
@@ -77,6 +79,23 @@ enum class Screen(val label: String) {
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+    private data class NotificationRoute(val date: String?) {
+        companion object {
+            fun from(intent: android.content.Intent?): NotificationRoute? {
+                val targetScreen = intent?.getStringExtra(AppNotificationManager.EXTRA_TARGET_SCREEN)
+                val date = intent?.getStringExtra(AppNotificationManager.EXTRA_TARGET_DATE)
+                return if (targetScreen == AppNotificationManager.TARGET_SCREEN_MEAL_PLANNER || date != null) NotificationRoute(date) else null
+            }
+        }
+    }
+
+    private val notificationRouteState = mutableStateOf<NotificationRoute?>(null)
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        notificationRouteState.value = NotificationRoute.from(intent)
+    }
 
     @Inject
     lateinit var hostController: com.example.chatgpt_mealplanner.core.sync.server.PantrySyncHostController
@@ -87,6 +106,7 @@ class MainActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        notificationRouteState.value = NotificationRoute.from(intent)
         hostController.ensureHostStarted(this)
         enableEdgeToEdge()
         setContent {
@@ -102,7 +122,10 @@ class MainActivity : ComponentActivity() {
                         notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                     }
                 }
-                var currentScreen by remember { mutableStateOf(Screen.INVENTORY) }
+                var currentScreen by remember { mutableStateOf(if (notificationRouteState.value != null) Screen.MEAL_PLANNER else Screen.INVENTORY) }
+                LaunchedEffect(notificationRouteState.value) {
+                    if (notificationRouteState.value != null) currentScreen = Screen.MEAL_PLANNER
+                }
                 var lowStockItemToAdd by remember { mutableStateOf<com.example.chatgpt_mealplanner.core.model.InventoryItem?>(null) }
                 var mealChangeRequestForAi by remember { mutableStateOf<com.example.chatgpt_mealplanner.core.database.entity.MealChangeRequestEntity?>(null) }
                 val isFollower = remember { appRoleResolver.isFollower() }
@@ -238,6 +261,12 @@ class MainActivity : ComponentActivity() {
 
                         Screen.MEAL_PLANNER -> {
                             val mealPlannerViewModel: MealPlannerViewModel = hiltViewModel()
+                            LaunchedEffect(notificationRouteState.value) {
+                                notificationRouteState.value?.date?.let { date ->
+                                    mealPlannerViewModel.onEvent(MealPlannerUiEvent.SelectDate(date))
+                                }
+                                notificationRouteState.value = null
+                            }
                             val state by mealPlannerViewModel.uiState.collectAsState()
                             MealPlannerScreen(
                                 uiState = state,
