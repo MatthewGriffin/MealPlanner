@@ -213,6 +213,49 @@ class OpenStreetMapStoreDirectoryTest {
     }
 
     @Test
+    fun emptySharedSearchFallsBackToTargetedListingsForAllRetailers() = runBlocking {
+        var fakeTime = 100_000L
+        val client = HttpClient(MockEngine { request ->
+            if (request.url.host.contains("overpass")) {
+                respond(
+                    content = """{"elements":[]}""",
+                    status = HttpStatusCode.OK,
+                    headers = headersOf(HttpHeaders.ContentType, "application/json")
+                )
+            } else {
+                val term = request.url.parameters["q"]
+                val body = if (term == "Aldi") {
+                    """[{"osm_type":"way","osm_id":778,"lat":"51.5","lon":"-0.1","category":"shop","type":"supermarket","name":"Aldi","display_name":"Aldi, Example Road, London, SW1A 1AA, United Kingdom","address":{"road":"Example Road","city":"London","postcode":"SW1A 1AA"},"extratags":{"brand":"Aldi","shop":"supermarket"}}]"""
+                } else "[]"
+                respond(
+                    content = body,
+                    status = HttpStatusCode.OK,
+                    headers = headersOf(HttpHeaders.ContentType, "application/json")
+                )
+            }
+        })
+        try {
+            val directoryWithFastClock = OpenStreetMapStoreDirectory(client) {
+                fakeTime += 1_200L
+                fakeTime
+            }
+            val response = directoryWithFastClock.search(
+                com.example.chatgpt_mealplanner.retail.contract.StoreDirectorySearchRequest(
+                    retailerId = RetailerId.ASDA,
+                    latitude = 51.5,
+                    longitude = -0.1,
+                    searchAllRetailers = true
+                )
+            )
+            assertEquals(1, response.stores.size)
+            assertEquals(RetailerId.ALDI, response.stores.single().retailerId)
+            assertTrue(response.warnings.any { it.contains("OpenStreetMap search listings") })
+        } finally {
+            client.close()
+        }
+    }
+
+    @Test
     fun sharedQuerySearchesAllSupportedRetailers() {
         val query = directory.buildMultiRetailerQuery(51.5, -0.1, 3000)
         assertTrue(query.contains("ASDA|Iceland|Food.*Warehouse|Tesco|Morrisons|Sainsbury|Aldi|Lidl"))
