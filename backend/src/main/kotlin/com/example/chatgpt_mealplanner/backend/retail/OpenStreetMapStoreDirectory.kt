@@ -118,22 +118,13 @@ class OpenStreetMapStoreDirectory(
     }
 
     internal fun buildQuery(request: StoreDirectorySearchRequest, lat: Double, lon: Double): String {
-        // Filter by retailer on the Overpass side; downloading every supermarket in a
-        // large radius made requests needlessly slow and prone to socket timeouts.
-        val retailerPattern = when (request.retailerId) {
-            RetailerId.ASDA -> "asda"
-            RetailerId.ICELAND -> "iceland"
-            RetailerId.FOOD_WAREHOUSE -> "food[[:space:]]*warehouse|foodwarehouse"
-            RetailerId.TESCO -> "tesco"
-            RetailerId.MORRISONS -> "morrisons"
-            RetailerId.SAINSBURYS -> "sainsbury"
-        }
+        // Keep the remote query small: fetch nearby shop features once, then match the
+        // selected retailer locally. Three separate name/brand/operator scans can time out
+        // on public Overpass instances even for otherwise modest postcode searches.
         val radius = request.radiusMeters
-        return """[out:json][timeout:25];(
-          nwr["shop"~"^(supermarket|convenience)$"]["name"~"$retailerPattern",i](around:$radius,$lat,$lon);
-          nwr["shop"~"^(supermarket|convenience)$"]["brand"~"$retailerPattern",i](around:$radius,$lat,$lon);
-          nwr["shop"~"^(supermarket|convenience)$"]["operator"~"$retailerPattern",i](around:$radius,$lat,$lon);
-        );out center tags;"""
+        return """[out:json][timeout:15];
+          nwr["shop"~"^(supermarket|convenience)$"](around:$radius,$lat,$lon);
+          out center tags;"""
     }
 
     private suspend fun resolveCenter(
