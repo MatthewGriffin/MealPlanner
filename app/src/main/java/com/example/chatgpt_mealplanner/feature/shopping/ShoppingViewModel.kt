@@ -149,9 +149,14 @@ class ShoppingViewModel @Inject constructor(
             val count = listWithItems?.items?.size ?: 0
             println("[AI_MEALPLANNER] [SHOPPING_ASSIGNMENT_CALL] shoppingItemCount=$count")
             val result = try {
+                // A saved preferred branch is the user's explicit signal that this
+                // retailer should participate in basket comparisons. Avoid a separate,
+                // easy-to-forget retailer checkbox list.
+                val preferredStores = retailStorePreferenceStore.getPreferredStores()
+                    .filter { it.isPreferred }
                 val preferences = UserShoppingPreferences(
-                    enabledRetailers = retailerPreferenceStore.getEnabledRetailers(),
-                    preferredStores = retailStorePreferenceStore.getPreferredStores()
+                    enabledRetailers = preferredStores.map { it.retailerId }.toSet(),
+                    preferredStores = preferredStores
                 )
                 val res = retailShoppingDomainService.optimizeShoppingBasket(preferences)
                 if (res is DomainResult.Success) {
@@ -401,7 +406,7 @@ class ShoppingViewModel @Inject constructor(
             val groups = mutableListOf<RetailerGroup>()
 
             // Display order must not imply that any retailer is preferred by the app.
-            // The user's enabled-retailer settings control eligibility; group display is neutral.
+            // Saved preferred branches determine eligible retailers; group display is neutral.
             val orderedStores = selectedPlan.stores.sortedBy(::formatRetailerName)
 
             orderedStores.distinct().forEach { storeId ->
