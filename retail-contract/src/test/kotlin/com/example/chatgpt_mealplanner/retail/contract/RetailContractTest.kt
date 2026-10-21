@@ -34,7 +34,8 @@ class RetailContractTest {
             name = "High Street",
             postcode = "AB1 2CD",
             format = RetailStoreFormat.TESCO_EXPRESS,
-            isPreferred = true
+            isPreferred = true,
+            retailerStoreId = "tesco-store-1"
         )
 
         val encoded = json.encodeToString(RetailStoreLocation.serializer(), store)
@@ -49,14 +50,15 @@ class RetailContractTest {
             retailerId = RetailerId.TESCO,
             name = "High Street",
             postcode = "AB1 2CD",
-            format = RetailStoreFormat.TESCO_EXPRESS
+            format = RetailStoreFormat.TESCO_EXPRESS,
+            retailerStoreId = "tesco-store-1"
         )
         val offer = RetailOffer(
             retailerId = RetailerId.TESCO,
             retailerProductId = "milk-1",
             price = Money(150L),
             priceScope = RetailPriceScope.STORE_SPECIFIC,
-            storeLocationId = store.id,
+            storeLocationId = store.retailerStoreId,
             availability = RetailAvailability.IN_STOCK
         )
         val preferences = UserShoppingPreferences(
