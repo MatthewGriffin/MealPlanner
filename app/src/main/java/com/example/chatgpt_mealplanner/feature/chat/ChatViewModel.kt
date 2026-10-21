@@ -328,16 +328,24 @@ class ChatViewModel @Inject constructor(
         }
     }
 
-    private fun saveMealProposalToPlan(proposal: MealProposal) {
+    private fun saveMealProposalToPlan(uiProposal: MealProposal) {
         if (isSavingProposalFlow.value) return
         isSavingProposalFlow.value = true
         viewModelScope.launch {
             try {
-                if (proposal.ingredients.isEmpty()) {
+                // The structured SaveMeal action is the AI's authoritative proposal. The card's
+                // proposal can be stale or incomplete when a meal-change request was edited.
+                val proposalToSave = MealProposalSaveResolver.resolve(
+                    uiProposal = uiProposal,
+                    latestValidatedProposal = latestProposalFlow.value,
+                    latestProposedAction = latestProposedActionFlow.value
+                )
+                if (proposalToSave.ingredients.isEmpty()) {
                     errorMessageFlow.value = "Cannot save a proposal without ingredients. Please ask AI to suggest complete ingredients first."
                     return@launch
                 }
 
+                val proposal = proposalToSave
                 val resolvedSlot = com.example.chatgpt_mealplanner.core.ai.resolver.MealSlotResolver.resolveSlot(
                     requestedDateStr = proposal.suggestedDate,
                     requestedMealTypeStr = proposal.mealType
