@@ -273,7 +273,7 @@ fun SettingsScreen(
                 Text("Preferred Store Locations", fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    "Save branches you use. Search results help identify a location, but retailer feeds still do not provide verified branch-specific prices or stock.",
+                    "Save branches you use. Branch discovery is separate from product lookup: live catalogue search is currently available for ASDA and Iceland (Food Warehouse shares Iceland's catalogue). Tesco, Morrisons, Sainsbury's, Aldi and Lidl are branch-only for now; comparison may use saved/manual data where available, not live retailer prices.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -499,6 +499,8 @@ private fun retailerLabel(retailerId: RetailerId): String = when (retailerId) {
     RetailerId.TESCO -> "Tesco"
     RetailerId.MORRISONS -> "Morrisons"
     RetailerId.SAINSBURYS -> "Sainsbury's"
+    RetailerId.ALDI -> "Aldi"
+    RetailerId.LIDL -> "Lidl"
 }
 
 private fun storeDistanceLabel(meters: Int?): String = when {
@@ -534,6 +536,7 @@ private fun storeFormatsFor(retailerId: RetailerId): List<RetailStoreFormat> = w
     RetailerId.TESCO -> listOf(RetailStoreFormat.TESCO_EXPRESS, RetailStoreFormat.TESCO_METRO, RetailStoreFormat.TESCO_SUPERMARKET, RetailStoreFormat.TESCO_SUPERSTORE, RetailStoreFormat.TESCO_EXTRA)
     RetailerId.MORRISONS -> listOf(RetailStoreFormat.MORRISONS_DAILY, RetailStoreFormat.MORRISONS_SUPERMARKET)
     RetailerId.SAINSBURYS -> listOf(RetailStoreFormat.SAINSBURYS_LOCAL, RetailStoreFormat.SAINSBURYS_SUPERMARKET, RetailStoreFormat.SAINSBURYS_SUPERSTORE)
+    RetailerId.ALDI, RetailerId.LIDL -> listOf(RetailStoreFormat.UNKNOWN)
 }
 
 @Composable
