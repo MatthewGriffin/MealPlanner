@@ -9,7 +9,7 @@ This is a **store directory**, not a price or stock API. Each result carries an 
 ## Reliability and privacy
 
 - Results are cached in memory for six hours; the cache is bounded.
-- Nominatim and Overpass requests are throttled per service instance. This is best-effort courtesy throttling, not a substitute for a production proxy/cache policy at scale.
+- Nominatim requests are throttled per service instance. Overpass requests are spaced at least 2.1 seconds apart to stay below Overpass.ch's published 30 requests/minute limit; this is best-effort local throttling, not a substitute for a production proxy/cache policy at scale.
 - Overpass queries are sent as HTTP POST with the query in the URL-encoded `data` form field. If a user saves an Overpass.ch key, the keyed endpoint is tried first, followed by public instances if it fails. The query uses one bounded nearby-shop scan; the app filters returned records to the selected retailer locally. Public instances can still be slow or unavailable; users can retry or add a branch manually.
 - Only public OSM tags matching the selected retailer are returned. Coverage and brand tags can be missing or stale; users should verify a result before saving it.
 - Postcode search is UK-only. The backend does not request device GPS permission; coordinates from a future UI should be sent only after the user chooses nearby search.
