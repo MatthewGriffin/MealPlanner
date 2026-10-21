@@ -87,6 +87,7 @@ class PantrySyncPhase4hFollowerRecoveryReplayTest {
             override fun mealRequestDao(): com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerMealRequestDao = error("Meal projection not used in this inventory fixture")
             override fun clearAllTables() {}
             override fun createInvalidationTracker(): androidx.room.InvalidationTracker = mock()
+            @Deprecated("Deprecated in Room")
             override fun createOpenHelper(config: androidx.room.DatabaseConfiguration): androidx.sqlite.db.SupportSQLiteOpenHelper = mock()
         }
 
@@ -222,6 +223,7 @@ class PantrySyncPhase4hFollowerRecoveryReplayTest {
             override fun mealRequestDao(): com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerMealRequestDao = error("Meal projection not used in this inventory fixture")
             override fun clearAllTables() {}
             override fun createInvalidationTracker(): androidx.room.InvalidationTracker = mock()
+            @Deprecated("Deprecated in Room")
             override fun createOpenHelper(config: androidx.room.DatabaseConfiguration): androidx.sqlite.db.SupportSQLiteOpenHelper = mock()
         }
 
