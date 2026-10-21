@@ -6,6 +6,10 @@ import com.example.chatgpt_mealplanner.core.sync.follower.database.FollowerDatab
 import com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerDao
 import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerInventoryItemEntity
 import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerSyncMetadataEntity
+import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerMealEntity
+import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerBasketComparisonCachePayload
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import com.example.chatgpt_mealplanner.sync.contract.SyncOperationStatus
 import com.example.chatgpt_mealplanner.sync.contract.SyncOperationType
 import com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerMealRequestDao
@@ -28,6 +32,7 @@ open class FollowerFeedPullEngine @Inject constructor(
     private val localSyncEngine: FollowerLocalSyncEngine,
     private val mealRequestDao: FollowerMealRequestDao? = null
 ) {
+    private val cacheJson = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     open suspend fun performFeedPullPass(
         hostIp: String,
         port: Int = 8443,
@@ -106,6 +111,23 @@ open class FollowerFeedPullEngine @Inject constructor(
             hasMore = response.hasMore
 
             println("[SYNC_FEED] decoded entries=${response.items.size} latest=${response.latestCanonicalSequence} hasMore=${response.hasMore}")
+
+            val cacheFingerprint = response.basketComparisonFingerprint
+            val cachePayload = response.basketComparisonJson
+            if (!cacheFingerprint.isNullOrBlank() && !cachePayload.isNullOrBlank()) {
+                try {
+                    followerDatabase?.mealDao()?.upsert(
+                        FollowerMealEntity(
+                            id = "basket_comparison_cache",
+                            payloadJson = cacheJson.encodeToString(
+                                FollowerBasketComparisonCachePayload(cacheFingerprint, cachePayload)
+                            )
+                        )
+                    )
+                } catch (e: Exception) {
+                    println("[SYNC_FEED] basket_cache_persist_failed type=${e.javaClass.simpleName}")
+                }
+            }
 
             if (response.items.isEmpty()) {
                 break

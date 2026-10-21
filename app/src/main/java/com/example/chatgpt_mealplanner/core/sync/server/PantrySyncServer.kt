@@ -6,6 +6,7 @@ import com.example.chatgpt_mealplanner.core.database.dao.CanonicalSyncDao
 import com.example.chatgpt_mealplanner.core.database.dao.InventoryDao
 import com.example.chatgpt_mealplanner.core.database.dao.MealChangeRequestDao
 import com.example.chatgpt_mealplanner.core.database.dao.ShoppingDao
+import com.example.chatgpt_mealplanner.core.database.dao.RetailDao
 import com.example.chatgpt_mealplanner.core.database.dao.StapleRuleDao
 import com.example.chatgpt_mealplanner.core.database.entity.toSyncDto
 import com.example.chatgpt_mealplanner.core.sync.HouseholdIdentityManager
@@ -72,7 +73,8 @@ open class PantrySyncServer @Inject constructor(
     private val mealChangeRequestDao: MealChangeRequestDao? = null,
     private val mealDao: com.example.chatgpt_mealplanner.core.database.dao.MealDao? = null,
     private val shoppingDao: ShoppingDao? = null,
-    private val stapleRuleDao: StapleRuleDao? = null
+    private val stapleRuleDao: StapleRuleDao? = null,
+    private val retailDao: RetailDao? = null
 ) {
     private var engine: io.ktor.server.engine.ApplicationEngine? = null
     private var serverState = PantryServerState.STOPPED
@@ -194,7 +196,9 @@ open class PantrySyncServer @Inject constructor(
             mealPlan = mealPlan,
             shoppingLists = shoppingLists,
             shoppingItems = shoppingItems,
-            stapleRules = stapleRules
+            stapleRules = stapleRules,
+            basketComparisonFingerprint = try { retailDao?.getBasketComparisonCache()?.fingerprint } catch (_: Exception) { null },
+            basketComparisonJson = try { retailDao?.getBasketComparisonCache()?.payloadJson } catch (_: Exception) { null }
         )
         onAfterSnapshotReadHook?.invoke()
         return dto
@@ -502,7 +506,9 @@ open class PantrySyncServer @Inject constructor(
                             householdId = identityManager.getOrCreateHouseholdIdentity().householdId,
                             latestCanonicalSequence = latestSeq,
                             items = feedItems,
-                            hasMore = hasMore
+                            hasMore = hasMore,
+                            basketComparisonFingerprint = try { retailDao?.getBasketComparisonCache()?.fingerprint } catch (_: Exception) { null },
+                            basketComparisonJson = try { retailDao?.getBasketComparisonCache()?.payloadJson } catch (_: Exception) { null }
                         )
 
                         val durMs = (System.nanoTime() - reqStartNanos) / 1_000_000

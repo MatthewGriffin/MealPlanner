@@ -15,6 +15,7 @@ import com.example.chatgpt_mealplanner.core.repository.ShoppingRepository
 import com.example.chatgpt_mealplanner.core.repository.StapleRuleRepository
 import com.example.chatgpt_mealplanner.core.service.ShoppingDomainService
 import com.example.chatgpt_mealplanner.core.sync.AppRoleResolver
+import com.example.chatgpt_mealplanner.core.sync.follower.FollowerBasketComparisonCacheStore
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -41,7 +42,8 @@ class ShoppingViewModel @Inject constructor(
     private val retailShoppingDomainService: RetailShoppingDomainService,
     private val appRoleResolver: AppRoleResolver,
     private val retailerPreferenceStore: RetailerPreferenceStore = RetailerPreferenceStore(null),
-    private val retailStorePreferenceStore: RetailStorePreferenceStore = RetailStorePreferenceStore(null)
+    private val retailStorePreferenceStore: RetailStorePreferenceStore = RetailStorePreferenceStore(null),
+    private val followerBasketComparisonCacheStore: FollowerBasketComparisonCacheStore = FollowerBasketComparisonCacheStore(null)
 ) : ViewModel() {
 
     private val activeTabFlow = MutableStateFlow(ShoppingTab.SHOPPING_LIST)
@@ -118,6 +120,23 @@ class ShoppingViewModel @Inject constructor(
     )
 
     private fun runBasketOptimization(listWithItems: ShoppingListWithItems?) {
+        if (appRoleResolver.isFollower()) {
+            val version = ++basketOptimizationVersion
+            basketOptimizationJob?.cancel()
+            basketOptimizationFlow.value = null
+            if (listWithItems?.items.isNullOrEmpty()) return
+            basketOptimizationJob = viewModelScope.launch {
+                val cached = followerBasketComparisonCacheStore.getCachedComparison()
+                val expectedIds = listWithItems?.items?.map { it.item.id }?.toSet().orEmpty()
+                val cachedIds = cached?.let { result ->
+                    (result.selectedPlan.lines.map { it.shoppingRequirementId } + result.unmatchedRequirements).toSet()
+                }.orEmpty()
+                if (version == basketOptimizationVersion) {
+                    basketOptimizationFlow.value = cached?.takeIf { expectedIds == cachedIds }
+                }
+            }
+            return
+        }
         val version = ++basketOptimizationVersion
         basketOptimizationJob?.cancel()
         basketOptimizationFlow.value = null

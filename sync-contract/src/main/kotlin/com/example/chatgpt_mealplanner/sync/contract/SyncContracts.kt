@@ -90,7 +90,9 @@ data class SyncFeedResponseDto(
     val householdId: String,
     val latestCanonicalSequence: Long,
     val items: List<SyncFeedItemDto>,
-    val hasMore: Boolean
+    val hasMore: Boolean,
+    val basketComparisonFingerprint: String? = null,
+    val basketComparisonJson: String? = null
 )
 
 @Serializable
@@ -103,7 +105,9 @@ data class BootstrapResponseDto(
     val mealPlan: List<MealWithIngredientsSyncDto>? = null,
     val shoppingLists: List<ShoppingListSyncDto>? = null,
     val shoppingItems: List<ShoppingItemSyncDto>? = null,
-    val stapleRules: List<StapleRuleSyncDto>? = null
+    val stapleRules: List<StapleRuleSyncDto>? = null,
+    val basketComparisonFingerprint: String? = null,
+    val basketComparisonJson: String? = null
 )
 
 @Serializable
