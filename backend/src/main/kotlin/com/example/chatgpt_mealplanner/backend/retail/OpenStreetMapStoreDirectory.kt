@@ -9,9 +9,14 @@ import io.ktor.client.request.forms.FormDataContent
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
 import io.ktor.http.Parameters
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.serialization.json.*
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
@@ -61,6 +66,9 @@ class OpenStreetMapStoreDirectory(
     private val geocodeCache = ConcurrentHashMap<String, GeocodeCacheEntry>()
     private val overpassMutex = Mutex()
     private val geocodeMutex = Mutex()
+    // Keep a small number of fallback requests in flight while the shared gate below
+    // spaces request starts to respect the public Nominatim service's usage policy.
+    private val nominatimFallbackSemaphore = Semaphore(2)
     @Volatile private var lastOverpassAt = 0L
     @Volatile private var lastGeocodeAt = 0L
     private val json = Json { ignoreUnknownKeys = true }
@@ -439,10 +447,15 @@ class OpenStreetMapStoreDirectory(
         originLon: Double,
         radiusMeters: Int,
         missingRetailers: List<RetailerId>
-    ): List<StoreDirectoryEntry> =
-        missingRetailers.flatMap { retailerId ->
-            searchNominatimFallback(retailerId, originLat, originLon, radiusMeters)
-        }.distinctBy { it.directorySourceId }
+    ): List<StoreDirectoryEntry> = coroutineScope {
+        missingRetailers.map { retailerId ->
+            async {
+                nominatimFallbackSemaphore.withPermit {
+                    searchNominatimFallback(retailerId, originLat, originLon, radiusMeters)
+                }
+            }
+        }.awaitAll().flatten().distinctBy { it.directorySourceId }
+    }
 
     private suspend fun searchNominatimFallback(
         retailerId: RetailerId,
