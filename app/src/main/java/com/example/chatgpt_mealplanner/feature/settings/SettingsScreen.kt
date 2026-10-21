@@ -244,7 +244,7 @@ fun SettingsScreen(
                 Text("Preferred Store Locations", fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    "Save branches you use. Directory discovery helps identify a location, but retailer feeds still do not provide verified branch-specific prices or stock.",
+                    "Save branches you use. Search results help identify a location, but retailer feeds still do not provide verified branch-specific prices or stock.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -252,7 +252,7 @@ fun SettingsScreen(
 
                 Text("Find a branch", fontWeight = FontWeight.SemiBold)
                 Text(
-                    "Branch search uses two services: the postcode is first converted to a location, then public map listings are searched for the selected retailer. Results can be incomplete, so verify the branch before saving it.",
+                    "Searches for nearby branches using the postcode you enter. Results can be incomplete, so verify the branch before saving it.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
