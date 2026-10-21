@@ -152,8 +152,19 @@ class ShoppingViewModel @Inject constructor(
                 // A saved preferred branch is the user's explicit signal that this
                 // retailer should participate in basket comparisons. Avoid a separate,
                 // easy-to-forget retailer checkbox list.
+                // Iceland and The Food Warehouse share one comparison setting and
+                // catalogue. Normalize older saved Food Warehouse branch preferences in
+                // memory so they remain usable without rewriting local persisted data.
                 val preferredStores = retailStorePreferenceStore.getPreferredStores()
                     .filter { it.isPreferred }
+                    .map { store ->
+                        if (store.retailerId == RetailerId.FOOD_WAREHOUSE) {
+                            store.copy(
+                                retailerId = RetailerId.ICELAND,
+                                format = RetailStoreFormat.ICELAND
+                            )
+                        } else store
+                    }
                 val preferences = UserShoppingPreferences(
                     enabledRetailers = preferredStores.map { it.retailerId }.toSet(),
                     preferredStores = preferredStores
