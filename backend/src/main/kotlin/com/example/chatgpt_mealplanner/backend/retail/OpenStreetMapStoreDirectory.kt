@@ -21,6 +21,10 @@ fun interface StoreDirectoryProvider {
     suspend fun search(request: StoreDirectorySearchRequest): StoreDirectorySearchResponse
 }
 
+interface ApiKeyConfigurableStoreDirectoryProvider {
+    fun configureApiKey(apiKey: String?)
+}
+
 interface StoreDirectoryProgressProvider : StoreDirectoryProvider {
     suspend fun search(
         request: StoreDirectorySearchRequest,
@@ -35,7 +39,13 @@ interface StoreDirectoryProgressProvider : StoreDirectoryProvider {
 class OpenStreetMapStoreDirectory(
     private val client: HttpClient,
     private val clock: () -> Long = System::currentTimeMillis
-) : StoreDirectoryProgressProvider {
+) : StoreDirectoryProgressProvider, ApiKeyConfigurableStoreDirectoryProvider {
+    @Volatile private var configuredApiKey: String? = null
+
+    override fun configureApiKey(apiKey: String?) {
+        configuredApiKey = apiKey?.trim()?.takeIf { it.isNotBlank() }
+    }
+
     constructor() : this(HttpClient(OkHttp) {
         install(HttpTimeout) {
             connectTimeoutMillis = 15_000
@@ -88,8 +98,17 @@ class OpenStreetMapStoreDirectory(
 
     private suspend fun fetchOverpassResponse(query: String, onProgress: (String) -> Unit): String {
         val failures = mutableListOf<String>()
-        OVERPASS_ENDPOINTS.forEachIndexed { index, endpoint ->
-            val serviceName = endpoint.removePrefix("https://").substringBefore('/')
+        val key = configuredApiKey
+        val endpoints = if (key != null) {
+            require(key.matches(Regex("^[A-Za-z0-9._~-]+$"))) {
+                "The Overpass.ch API key contains unsupported characters. Check the key in Settings."
+            }
+            listOf("https://api.overpass.ch/v1/$key/interpreter") + OVERPASS_ENDPOINTS
+        } else {
+            OVERPASS_ENDPOINTS
+        }
+        endpoints.forEachIndexed { index, endpoint ->
+            val serviceName = if (index == 0 && key != null) "api.overpass.ch" else endpoint.removePrefix("https://").substringBefore('/')
             try {
                 if (index > 0) {
                     onProgress("The first branch-search service did not respond; trying backup service ${index} of ${OVERPASS_ENDPOINTS.lastIndex}…")
