@@ -3,6 +3,7 @@ package com.example.chatgpt_mealplanner.backend.retail
 import com.example.chatgpt_mealplanner.retail.contract.*
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
+import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.request.*
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
@@ -25,7 +26,13 @@ class OpenStreetMapStoreDirectory(
     private val client: HttpClient,
     private val clock: () -> Long = System::currentTimeMillis
 ) : StoreDirectoryProvider {
-    constructor() : this(HttpClient(OkHttp))
+    constructor() : this(HttpClient(OkHttp) {
+        install(HttpTimeout) {
+            connectTimeoutMillis = 15_000
+            socketTimeoutMillis = 45_000
+            requestTimeoutMillis = 45_000
+        }
+    })
 
     private data class CacheEntry(val expiresAt: Long, val response: StoreDirectorySearchResponse)
     private val cache = ConcurrentHashMap<String, CacheEntry>()
@@ -48,11 +55,7 @@ class OpenStreetMapStoreDirectory(
             if (wait > 0) delay(wait)
             lastOverpassAt = clock()
         }
-        val query = """[out:json][timeout:20];(
-          node["shop"~"^(supermarket|convenience)$"](around:${request.radiusMeters},$lat,$lon);
-          way["shop"~"^(supermarket|convenience)$"](around:${request.radiusMeters},$lat,$lon);
-          relation["shop"~"^(supermarket|convenience)$"](around:${request.radiusMeters},$lat,$lon);
-        );out center tags;"""
+        val query = buildQuery(request, lat, lon)
         val raw = client.post("https://overpass-api.de/api/interpreter") {
             contentType(ContentType.Text.Plain)
             header(HttpHeaders.UserAgent, USER_AGENT)
@@ -69,6 +72,25 @@ class OpenStreetMapStoreDirectory(
         if (cache.size > 200) cache.entries.sortedBy { it.value.expiresAt }
             .take(cache.size - 200).forEach { cache.remove(it.key, it.value) }
         return response
+    }
+
+    internal fun buildQuery(request: StoreDirectorySearchRequest, lat: Double, lon: Double): String {
+        // Filter by retailer on the Overpass side; downloading every supermarket in a
+        // large radius made requests needlessly slow and prone to socket timeouts.
+        val retailerPattern = when (request.retailerId) {
+            RetailerId.ASDA -> "asda"
+            RetailerId.ICELAND -> "iceland"
+            RetailerId.FOOD_WAREHOUSE -> "food[[:space:]]*warehouse|foodwarehouse"
+            RetailerId.TESCO -> "tesco"
+            RetailerId.MORRISONS -> "morrisons"
+            RetailerId.SAINSBURYS -> "sainsbury"
+        }
+        val radius = request.radiusMeters
+        return """[out:json][timeout:25];(
+          nwr["shop"~"^(supermarket|convenience)$"]["name"~"$retailerPattern",i](around:$radius,$lat,$lon);
+          nwr["shop"~"^(supermarket|convenience)$"]["brand"~"$retailerPattern",i](around:$radius,$lat,$lon);
+          nwr["shop"~"^(supermarket|convenience)$"]["operator"~"$retailerPattern",i](around:$radius,$lat,$lon);
+        );out center tags;"""
     }
 
     private suspend fun resolveCenter(request: StoreDirectorySearchRequest): Pair<Double, Double> {
