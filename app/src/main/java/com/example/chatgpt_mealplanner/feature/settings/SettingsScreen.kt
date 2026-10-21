@@ -200,13 +200,6 @@ fun SettingsScreen(
                     Text("Save Threshold")
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
-                Text("Iceland price refresh", fontWeight = FontWeight.Bold)
-                Text(
-                    "Manual Iceland refresh is not connected yet. The button has been removed rather than implying that prices were refreshed. Retailer catalogue refresh and freshness reporting remain to be completed.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
             }
         }
 
