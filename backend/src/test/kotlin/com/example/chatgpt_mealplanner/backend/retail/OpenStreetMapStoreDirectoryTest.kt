@@ -659,4 +659,51 @@ class OpenStreetMapStoreDirectoryTest {
         assertEquals("way/42", store.directorySourceId)
         assertTrue(store.distanceMeters!! > 0)
     }
+    @Test
+    fun morrisonsDailyFallbackFindsLegacyMcCollsMapListing() = runBlocking {
+        var fakeTime = 100_000L
+        val searchedTerms = mutableListOf<String>()
+        val client = HttpClient(MockEngine { request ->
+            if (request.url.host.contains("overpass")) {
+                respond(
+                    content = """{"elements":[]}""",
+                    status = HttpStatusCode.OK,
+                    headers = headersOf(HttpHeaders.ContentType, "application/json")
+                )
+            } else {
+                val term = request.url.parameters["q"].orEmpty()
+                searchedTerms += term
+                val body = if (term == "McColl's") {
+                    """[{"osm_type":"node","osm_id":6504,"lat":"53.278","lon":"-2.900","category":"shop","type":"convenience","name":"McColl's","display_name":"McColl's, 6 Cromwell Road, Ellesmere Port, CH65 4AA","address":{"house_number":"6","road":"Cromwell Road","town":"Ellesmere Port","postcode":"CH65 4AA"},"extratags":{"shop":"convenience"}}]"""
+                } else "[]"
+                respond(
+                    content = body,
+                    status = HttpStatusCode.OK,
+                    headers = headersOf(HttpHeaders.ContentType, "application/json")
+                )
+            }
+        })
+        try {
+            val directory = OpenStreetMapStoreDirectory(client) {
+                fakeTime += 1_200L
+                fakeTime
+            }
+            val response = directory.search(
+                com.example.chatgpt_mealplanner.retail.contract.StoreDirectorySearchRequest(
+                    retailerId = RetailerId.MORRISONS,
+                    latitude = 53.278,
+                    longitude = -2.900,
+                    radiusMeters = 5000
+                )
+            )
+            assertTrue(searchedTerms.contains("McColl'"), "Expected a legacy McColl's lookup; got $searchedTerms")
+            assertEquals(1, response.stores.size)
+            assertEquals("Morrisons Daily", response.stores.single().name)
+            assertEquals("CH65 4AA", response.stores.single().postcode)
+            assertEquals(RetailStoreFormat.MORRISONS_DAILY, response.stores.single().format)
+        } finally {
+            client.close()
+        }
+    }
+
 }
