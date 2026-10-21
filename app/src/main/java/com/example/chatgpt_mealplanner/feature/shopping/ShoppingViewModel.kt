@@ -27,6 +27,7 @@ import com.example.chatgpt_mealplanner.retail.contract.BasketComparisonResult
 import com.example.chatgpt_mealplanner.retail.contract.BasketLine
 import com.example.chatgpt_mealplanner.retail.contract.Money
 import com.example.chatgpt_mealplanner.retail.contract.RetailerId
+import com.example.chatgpt_mealplanner.retail.contract.RetailStoreFormat
 import com.example.chatgpt_mealplanner.retail.contract.UserShoppingPreferences
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.collect
