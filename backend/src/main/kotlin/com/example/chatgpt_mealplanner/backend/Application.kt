@@ -112,7 +112,7 @@ fun Application.module(
                 RetailerId.ICELAND -> icelandAdapter.searchProducts(req.query)
                 RetailerId.ASDA -> asdaAdapter.searchProducts(req.query)
                 RetailerId.FOOD_WAREHOUSE -> foodWarehouseAdapter.searchProducts(req.query)
-                RetailerId.TESCO, RetailerId.MORRISONS, RetailerId.SAINSBURYS ->
+                RetailerId.TESCO, RetailerId.MORRISONS, RetailerId.SAINSBURYS, RetailerId.ALDI, RetailerId.LIDL ->
                     com.example.chatgpt_mealplanner.retail.contract.RetailProductSearchResult.Unavailable(
                         reason = "Live price search is not configured for this retailer yet.",
                         errorCode = "SOURCE_UNAVAILABLE",
