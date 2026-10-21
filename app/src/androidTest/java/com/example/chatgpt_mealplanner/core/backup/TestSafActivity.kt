@@ -3,6 +3,7 @@ package com.example.chatgpt_mealplanner.core.backup
 import android.app.Activity
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -10,7 +11,12 @@ class TestSafActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val targetUri = intent.getParcelableExtra<Uri>("target_uri")
+        val targetUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            intent.getParcelableExtra("target_uri", Uri::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            intent.getParcelableExtra<Uri>("target_uri")
+        }
         if (targetUri != null) {
             val resultIntent = Intent().apply {
                 data = targetUri
