@@ -270,6 +270,57 @@ class OpenStreetMapStoreDirectoryTest {
     }
 
     @Test
+    fun allRetailerSearchFallsBackForRetailersMissingFromNonEmptySharedResults() = runBlocking {
+        var fakeTime = 100_000L
+        val client = HttpClient(MockEngine { request ->
+            if (request.url.host.contains("overpass")) {
+                respond(
+                    content = """{"elements":[
+                      {"type":"node","id":2101,"lat":51.5,"lon":-0.1,"tags":{"name":"ASDA Superstore","brand":"ASDA","shop":"supermarket","addr:postcode":"SW1A 1AA"}}
+                    ]}""",
+                    status = HttpStatusCode.OK,
+                    headers = headersOf(HttpHeaders.ContentType, "application/json")
+                )
+            } else {
+                val term = request.url.parameters["q"]
+                val body = when (term) {
+                    "Tesco" -> """[{"osm_type":"way","osm_id":2102,"lat":"51.501","lon":"-0.101","category":"shop","type":"convenience","name":"Tesco Express","display_name":"Tesco Express, Example Road, London, SW1A 1AB","address":{"road":"Example Road","city":"London","postcode":"SW1A 1AB"},"extratags":{"brand":"Tesco","shop":"convenience"}}]"""
+                    "Morrisons" -> """[{"osm_type":"way","osm_id":2103,"lat":"51.502","lon":"-0.102","category":"shop","type":"convenience","name":"Morrisons Daily","display_name":"Morrisons Daily, Example Road, London, SW1A 1AC","address":{"road":"Example Road","city":"London","postcode":"SW1A 1AC"},"extratags":{"brand":"Morrisons","shop":"convenience"}}]"""
+                    else -> "[]"
+                }
+                respond(
+                    content = body,
+                    status = HttpStatusCode.OK,
+                    headers = headersOf(HttpHeaders.ContentType, "application/json")
+                )
+            }
+        })
+        try {
+            val directory = OpenStreetMapStoreDirectory(client) {
+                fakeTime += 1_200L
+                fakeTime
+            }
+            val response = directory.search(
+                com.example.chatgpt_mealplanner.retail.contract.StoreDirectorySearchRequest(
+                    retailerId = RetailerId.ASDA,
+                    latitude = 51.5,
+                    longitude = -0.1,
+                    radiusMeters = 3000,
+                    searchAllRetailers = true
+                )
+            )
+            assertEquals(
+                setOf(RetailerId.ASDA, RetailerId.TESCO, RetailerId.MORRISONS),
+                response.stores.map { it.retailerId }.toSet()
+            )
+            assertTrue(response.stores.any { it.name == "Tesco Express" })
+            assertTrue(response.stores.any { it.name == "Morrisons Daily" })
+        } finally {
+            client.close()
+        }
+    }
+
+    @Test
     fun allRetailerSearchReturnsMixedRetailersWithoutFiltering() = runBlocking {
         val client = HttpClient(MockEngine {
             respond(
