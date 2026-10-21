@@ -281,36 +281,11 @@ fun SettingsScreen(
 
                 Text("Find a branch", fontWeight = FontWeight.SemiBold)
                 Text(
-                    "Searches for nearby branches using the postcode you enter. Results can be incomplete, so verify the branch before saving it.",
+                    "Searches once for all supported retailers near the postcode. Each result is labelled by retailer; results can be incomplete, so verify before saving.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
-                androidx.compose.foundation.layout.Box {
-                    TextButton(onClick = { retailerMenuExpanded = true }) {
-                        Text("Search retailer: ${retailerLabel(selectedStoreRetailer)}")
-                    }
-                    DropdownMenu(expanded = retailerMenuExpanded, onDismissRequest = { retailerMenuExpanded = false }) {
-                        RetailerId.entries.filter { it != RetailerId.FOOD_WAREHOUSE }.forEach { retailer ->
-                            DropdownMenuItem(
-                                text = { Text(retailerLabel(retailer)) },
-                                onClick = {
-                                    if (selectedStoreRetailer != retailer) {
-                                        selectedStoreRetailer = retailer
-                                        selectedStoreFormat = storeFormatsFor(retailer).first()
-                                        viewModel.clearStoreSearchResults()
-                                    }
-                                    retailerMenuExpanded = false
-                                }
-                            )
-                        }
-                    }
-                }
-                Text(
-                    "Choose the retailer here before searching. Results below are for this retailer only.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
                 OutlinedTextField(
                     value = storeSearchPostcodeInput,
                     onValueChange = { storeSearchPostcodeInput = it },
@@ -319,7 +294,7 @@ fun SettingsScreen(
                     singleLine = true
                 )
                 Button(
-                    onClick = { viewModel.searchStoreDirectory(selectedStoreRetailer, storeSearchPostcodeInput) },
+                    onClick = { viewModel.searchStoreDirectory(storeSearchPostcodeInput) },
                     enabled = storeSearchPostcodeInput.isNotBlank() && !uiState.isStoreSearchInProgress,
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -333,7 +308,7 @@ fun SettingsScreen(
                     val alreadyAdded = isDirectoryStoreAlreadySaved(store, uiState.preferredStores)
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Column(modifier = Modifier.padding(10.dp)) {
-                            Text(store.name, fontWeight = FontWeight.SemiBold)
+                            Text("${retailerLabel(store.retailerId)} · ${store.name}", fontWeight = FontWeight.SemiBold)
                             if (store.address.isNotBlank()) {
                                 Text(store.address, style = MaterialTheme.typography.bodySmall)
                             }
@@ -382,6 +357,23 @@ fun SettingsScreen(
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
                 )
+                androidx.compose.foundation.layout.Box {
+                    TextButton(onClick = { retailerMenuExpanded = true }) {
+                        Text("Manual retailer: ${retailerLabel(selectedStoreRetailer)}")
+                    }
+                    DropdownMenu(expanded = retailerMenuExpanded, onDismissRequest = { retailerMenuExpanded = false }) {
+                        RetailerId.entries.filter { it != RetailerId.FOOD_WAREHOUSE }.forEach { retailer ->
+                            DropdownMenuItem(
+                                text = { Text(retailerLabel(retailer)) },
+                                onClick = {
+                                    selectedStoreRetailer = retailer
+                                    selectedStoreFormat = storeFormatsFor(retailer).first()
+                                    retailerMenuExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
                 androidx.compose.foundation.layout.Box {
                     TextButton(onClick = { formatMenuExpanded = true }) {
                         Text("Format: ${formatLabel(selectedStoreFormat)}")
