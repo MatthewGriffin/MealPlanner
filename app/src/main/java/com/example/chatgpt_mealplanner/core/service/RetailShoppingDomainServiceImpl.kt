@@ -12,6 +12,7 @@ import com.example.chatgpt_mealplanner.retail.contract.PackAlternative
 import com.example.chatgpt_mealplanner.retail.contract.PriceFreshness
 import com.example.chatgpt_mealplanner.retail.contract.RetailFreshnessPolicy
 import com.example.chatgpt_mealplanner.retail.contract.RetailProductSearchResult
+import com.example.chatgpt_mealplanner.retail.contract.RetailPriceScope
 import com.example.chatgpt_mealplanner.retail.contract.RetailProductWithOffer
 import com.example.chatgpt_mealplanner.retail.contract.RetailerId
 import com.example.chatgpt_mealplanner.retail.contract.UserShoppingPreferences
@@ -199,10 +200,11 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
             }
         }
 
+        val branchScopedCandidates = PreferredBranchOfferSelector.select(candidateProducts, preferences.preferredStores)
         val optimizer = BasketOptimizer(matcher)
         val comparison = optimizer.optimizeBasket(
             requirements = requirementSpecs,
-            availableProductsWithOffers = candidateProducts,
+            availableProductsWithOffers = branchScopedCandidates,
             preferences = preferences
         )
 
