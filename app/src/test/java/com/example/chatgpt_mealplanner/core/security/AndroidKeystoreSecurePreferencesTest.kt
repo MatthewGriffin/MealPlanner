@@ -31,7 +31,7 @@ class AndroidKeystoreSecurePreferencesTest {
     }
 
     @Test
-    fun migratesLegacyEncryptedValuesAndPreservesLegacyFile() {
+    fun migratesCredentialPairingIdentityAndTlsPasswordWithoutDeletingLegacyData() {
         val name = "legacy_encrypted_test"
         context.getSharedPreferences(name, Context.MODE_PRIVATE).edit()
             .putString("legacy_file_sentinel", "keep-me")
@@ -39,13 +39,30 @@ class AndroidKeystoreSecurePreferencesTest {
         val prefs = AndroidKeystoreSecurePreferences(
             context,
             name,
-            mapOf("secret" to 'S', "port" to 'I'),
+            mapOf(
+                "KEY_GEMINI_API_KEY" to 'S',
+                "KEY_HOST_IP" to 'S',
+                "KEY_PORT" to 'I',
+                "KEY_FOLLOWER_DEVICE_ID" to 'S',
+                "KEY_TLS_P12_PASSWORD" to 'S'
+            ),
             FakeCipher(),
-            legacyEncryptedReader = { mapOf("secret" to "S:old-secret", "port" to "I:8443") }
+            legacyEncryptedReader = {
+                mapOf(
+                    "KEY_GEMINI_API_KEY" to "S:old-api-key",
+                    "KEY_HOST_IP" to "S:192.0.2.10",
+                    "KEY_PORT" to "I:8443",
+                    "KEY_FOLLOWER_DEVICE_ID" to "S:stable-device-id",
+                    "KEY_TLS_P12_PASSWORD" to "S:existing-p12-password"
+                )
+            }
         )
 
-        assertEquals("old-secret", prefs.getString("secret"))
-        assertEquals(8443, prefs.getInt("port", 0))
+        assertEquals("old-api-key", prefs.getString("KEY_GEMINI_API_KEY"))
+        assertEquals("192.0.2.10", prefs.getString("KEY_HOST_IP"))
+        assertEquals(8443, prefs.getInt("KEY_PORT", 0))
+        assertEquals("stable-device-id", prefs.getString("KEY_FOLLOWER_DEVICE_ID"))
+        assertEquals("existing-p12-password", prefs.getString("KEY_TLS_P12_PASSWORD"))
         assertEquals(
             "keep-me",
             context.getSharedPreferences(name, Context.MODE_PRIVATE).getString("legacy_file_sentinel", null)
