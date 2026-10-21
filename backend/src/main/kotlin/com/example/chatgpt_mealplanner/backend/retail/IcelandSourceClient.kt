@@ -1,10 +1,13 @@
 package com.example.chatgpt_mealplanner.backend.retail
 
 import io.ktor.client.HttpClient
+import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
+import io.ktor.http.URLBuilder
+import io.ktor.http.isSuccess
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -22,7 +25,14 @@ class IcelandSourceClient(
     private val rateLimiterMutex = Mutex()
     private var lastRequestTimestamp = 0L
 
+    /**
+     * Fetch the retailer's real search route for every free-text query.
+     *
+     * Do not map arbitrary search terms to hand-picked category pages: that can return
+     * unrelated products while appearing to have searched successfully.
+     */
     suspend fun fetchSearchHtml(query: String): String {
+        require(query.isNotBlank()) { "Iceland search query must not be blank" }
         rateLimiterMutex.withLock {
             val now = System.currentTimeMillis()
             val timeSinceLast = now - lastRequestTimestamp
@@ -32,20 +42,17 @@ class IcelandSourceClient(
             lastRequestTimestamp = System.currentTimeMillis()
         }
 
-        val url = when {
-            query.startsWith("http://") || query.startsWith("https://") -> query
-            query.contains("egg", ignoreCase = true) -> "https://www.iceland.co.uk/fresh/milk-butter-and-eggs/eggs"
-            query.contains("cheese", ignoreCase = true) || query.contains("cheddar", ignoreCase = true) -> "https://www.iceland.co.uk/fresh/cheese/cheddar-cheese"
-            query.contains("bread", ignoreCase = true) -> "https://www.iceland.co.uk/fresh/bakery/bread"
-            query.contains("spinach", ignoreCase = true) || query.contains("mushroom", ignoreCase = true) || query.contains("veg", ignoreCase = true) || query.contains("salad", ignoreCase = true) -> "https://www.iceland.co.uk/frozen/frozen-vegetables-and-rice"
-            else -> "https://www.iceland.co.uk/search?q=${query.replace(" ", "+")}"
-        }
+        val url = URLBuilder("https://www.iceland.co.uk/search").apply {
+            parameters.append("q", query.trim())
+        }.buildString()
 
         val response = httpClient.get(url) {
             header(HttpHeaders.UserAgent, config.userAgent)
             header(HttpHeaders.Accept, "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
         }
-
+        if (!response.status.isSuccess()) {
+            throw IllegalStateException("Iceland search returned HTTP " + response.status.value)
+        }
         return response.bodyAsText()
     }
 }
