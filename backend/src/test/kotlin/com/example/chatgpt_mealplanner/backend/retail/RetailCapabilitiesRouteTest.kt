@@ -16,7 +16,7 @@ import kotlin.test.assertNotNull
 class RetailCapabilitiesRouteTest {
 
     @Test
-    fun getCapabilities_returnsConfiguredModesForAllThreeRetailers() = testApplication {
+    fun getCapabilitiesDistinguishesLiveAndBranchOnlyRetailers() = testApplication {
         application { module() }
 
         val response = client.get("/v1/retail/capabilities")
@@ -25,7 +25,7 @@ class RetailCapabilitiesRouteTest {
         val jsonStr = response.bodyAsText()
         val capsRes = Json { ignoreUnknownKeys = true }.decodeFromString<RetailerCapabilitiesResponse>(jsonStr)
 
-        assertEquals(3, capsRes.capabilities.size)
+        assertEquals(8, capsRes.capabilities.size)
 
         val icelandCap = capsRes.capabilities.first { it.retailerId == RetailerId.ICELAND }
         assertEquals(RetailerCapabilityMode.LIVE_SEARCH_AVAILABLE, icelandCap.mode)
@@ -35,5 +35,12 @@ class RetailCapabilitiesRouteTest {
 
         val fwCap = capsRes.capabilities.first { it.retailerId == RetailerId.FOOD_WAREHOUSE }
         assertEquals(RetailerCapabilityMode.SHARED_CATALOGUE_WITH_ICELAND, fwCap.mode)
+
+        listOf(RetailerId.TESCO, RetailerId.MORRISONS, RetailerId.SAINSBURYS, RetailerId.ALDI, RetailerId.LIDL).forEach { retailerId ->
+            val capability = capsRes.capabilities.first { it.retailerId == retailerId }
+            assertEquals(RetailerCapabilityMode.MANUAL_AND_CACHED_ONLY, capability.mode)
+            assertEquals(false, capability.searchSupported)
+            assertEquals(false, capability.livePriceSupported)
+        }
     }
 }
