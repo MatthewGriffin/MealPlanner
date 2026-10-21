@@ -69,28 +69,40 @@ class OpenStreetMapStoreDirectory(
     ): StoreDirectorySearchResponse {
         require(request.radiusMeters in 500..15_000) { "Radius must be between 500 and 15000 metres." }
         val (lat, lon) = resolveCenter(request, onProgress)
-        // Version the cache to invalidate results from the previous petrol-station-inclusive search.
-        val key = "shops-v8:${request.retailerId}:${"%.4f".format(Locale.US, lat)}:${"%.4f".format(Locale.US, lon)}:${request.radiusMeters}"
-        onProgress("Checking cached branch results…")
-        cache[key]?.let {
-            if (it.expiresAt > clock()) return it.response.copy(fromCache = true)
-            cache.remove(key, it)
+        // Shared cache is keyed only by location/radius because each Overpass request
+        // now retrieves all supported retailers in the area.
+        val key = "shops-v9:${"%.4f".format(Locale.US, lat)}:${"%.4f".format(Locale.US, lon)}:${request.radiusMeters}"
+        onProgress("Checking cached nearby-store results…")
+        val cached = cache[key]
+        if (cached != null) {
+            if (cached.expiresAt > clock()) {
+                val matching = cached.response.stores.filter { it.retailerId == request.retailerId }
+                if (matching.isNotEmpty()) {
+                    return cached.response.copy(stores = matching, fromCache = true)
+                }
+            } else {
+                cache.remove(key, cached)
+            }
         }
-        onProgress("Searching for ${displayName(request.retailerId)} branches near the postcode…")
+
+        onProgress("Searching once for all supported grocery retailers nearby…")
         overpassMutex.withLock {
             val wait = 2_100L - (clock() - lastOverpassAt)
             if (wait > 0) delay(wait)
             lastOverpassAt = clock()
         }
-        val query = buildQuery(request, lat, lon)
+
         var usedNominatimFallback = false
-        val stores = try {
-            val raw = fetchOverpassResponse(query, onProgress)
-            val overpassStores = parseOverpassResponse(raw, request.retailerId, lat, lon)
-            // Supplement mapped features with the selected retailer's place listings.
-            // This is generic across retailers and can recover branches with incomplete tags.
-            onProgress("Checking OpenStreetMap listings for nearby ${displayName(request.retailerId)} branches…")
-            val osmListings = if (configuredApiKey == null) {
+        var overpassSucceeded = false
+        val allStores = try {
+            val raw = fetchOverpassResponse(buildMultiRetailerQuery(lat, lon, request.radiusMeters), onProgress)
+            overpassSucceeded = true
+            val mappedStores = parseAllRetailersOverpassResponse(raw, lat, lon)
+            // Only perform the slower text search when the shared map query did not find
+            // the retailer the user actually asked for. Other retailers reuse the shared result.
+            val requestedStores = mappedStores.filter { it.retailerId == request.retailerId }
+            val fallbackStores = if (requestedStores.isEmpty() && configuredApiKey == null) {
+                onProgress("Looking for missing ${displayName(request.retailerId)} listings…")
                 try {
                     kotlinx.coroutines.withTimeout(12_000L) {
                         searchNominatimFallback(request.retailerId, lat, lon, request.radiusMeters)
@@ -99,17 +111,13 @@ class OpenStreetMapStoreDirectory(
                     if (e is kotlinx.coroutines.CancellationException && e !is kotlinx.coroutines.TimeoutCancellationException) throw e
                     emptyList()
                 }
-            } else {
-                // With a keyed provider configured, return its results promptly instead of
-                // blocking the search on an additional public Nominatim request.
-                emptyList()
-            }
-            (overpassStores + osmListings).distinctBy { it.directorySourceId }
+            } else emptyList()
+            (mappedStores + fallbackStores).distinctBy { it.directorySourceId }
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
             if (configuredApiKey != null) throw e
             usedNominatimFallback = true
-            onProgress("The main branch directory is unavailable; checking OpenStreetMap place listings…")
+            onProgress("The shared branch search is unavailable; checking ${displayName(request.retailerId)} listings…")
             val fallbackStores = try {
                 kotlinx.coroutines.withTimeout(12_000L) {
                     searchNominatimFallback(request.retailerId, lat, lon, request.radiusMeters)
@@ -127,22 +135,63 @@ class OpenStreetMapStoreDirectory(
                 )
             }
             fallbackStores
-        }.sortedBy { it.distanceMeters ?: Int.MAX_VALUE }.take(50)
+        }.sortedBy { it.distanceMeters ?: Int.MAX_VALUE }
+
+        val requestedStores = allStores.filter { it.retailerId == request.retailerId }
+            .sortedBy { it.distanceMeters ?: Int.MAX_VALUE }.take(50)
         val response = StoreDirectorySearchResponse(
-            stores = stores,
+            stores = requestedStores,
             observedAt = clock(),
             warnings = when {
-                usedNominatimFallback -> listOf("Overpass was unavailable. These branch details came from OpenStreetMap search listings; verify them before saving.")
-                stores.isEmpty() -> listOf("No matching branch was found nearby. Coverage may be incomplete; verify with the retailer.")
+                usedNominatimFallback -> listOf("The shared branch directory was unavailable. These branch details came from OpenStreetMap search listings; verify them before saving.")
+                requestedStores.isEmpty() -> listOf("No matching branch was found nearby. Coverage may be incomplete; verify with the retailer.")
                 else -> emptyList()
             }
         )
-        cache[key] = CacheEntry(clock() + 6 * 60 * 60 * 1000L, response)
-        if (cache.size > 200) cache.entries.sortedBy { it.value.expiresAt }
-            .take(cache.size - 200).forEach { cache.remove(it.key, it.value) }
+        // Only cache a complete multi-retailer map result. If Overpass failed, the fallback
+        // contains only one retailer and must not be mistaken for the whole area's inventory.
+        if (overpassSucceeded) {
+            val combined = (cached?.response?.stores.orEmpty() + allStores).distinctBy { it.directorySourceId }
+            cache[key] = CacheEntry(
+                clock() + 6 * 60 * 60 * 1000L,
+                StoreDirectorySearchResponse(stores = combined, observedAt = clock())
+            )
+            if (cache.size > 200) cache.entries.sortedBy { it.value.expiresAt }
+                .take(cache.size - 200).forEach { cache.remove(it.key, it.value) }
+        }
         return response
     }
 
+    private fun parseAllRetailersOverpassResponse(
+        raw: String,
+        originLat: Double,
+        originLon: Double
+    ): List<StoreDirectoryEntry> {
+        val supportedRetailers = listOf(
+            RetailerId.ASDA,
+            RetailerId.TESCO,
+            RetailerId.MORRISONS,
+            RetailerId.SAINSBURYS,
+            RetailerId.ICELAND
+        )
+        return supportedRetailers.flatMap { retailerId ->
+            parseOverpassResponse(raw, retailerId, originLat, originLon)
+        }.distinctBy { it.directorySourceId }
+    }
+
+    internal fun buildMultiRetailerQuery(lat: Double, lon: Double, radiusMeters: Int): String {
+        val allRetailersPattern = "ASDA|Iceland|Food.*Warehouse|Tesco|Morrisons|Sainsbury"
+        return """[out:json][timeout:60];
+          (
+            nwr["shop"]["name"~"$allRetailersPattern",i](around:$radiusMeters,$lat,$lon);
+            nwr["shop"]["brand"~"$allRetailersPattern",i](around:$radiusMeters,$lat,$lon);
+            nwr["shop"]["operator"~"$allRetailersPattern",i](around:$radiusMeters,$lat,$lon);
+            nwr["name"~"$allRetailersPattern",i](around:$radiusMeters,$lat,$lon);
+            nwr["brand"~"$allRetailersPattern",i](around:$radiusMeters,$lat,$lon);
+            nwr["operator"~"$allRetailersPattern",i](around:$radiusMeters,$lat,$lon);
+          );
+          out center tags;"""
+    }
 
     private suspend fun fetchOverpassResponse(query: String, onProgress: (String) -> Unit): String {
         val failures = mutableListOf<String>()
