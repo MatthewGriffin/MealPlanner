@@ -42,7 +42,7 @@ class MealPlannerViewModel @Inject constructor(
     leftoverRepository: LeftoverRepository,
     private val mealChangeRequestRepository: MealChangeRequestRepository,
     private val appRoleResolver: AppRoleResolver,
-    @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context? = null,
+    @param:dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context? = null,
     private val followerSyncScheduler: com.example.chatgpt_mealplanner.core.sync.follower.worker.FollowerSyncScheduler? = null
 ) : ViewModel() {
 
