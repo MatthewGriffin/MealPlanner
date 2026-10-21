@@ -34,6 +34,8 @@ class IcelandSourceClient(
     private val rateLimiterMutex = Mutex()
     private var lastRequestTimestamp = 0L
     private val json = Json { ignoreUnknownKeys = true }
+    @Volatile
+    private var cachedAlgoliaConfig: IcelandAlgoliaConfigDiscovery.Config? = null
 
     /**
      * Discover Iceland's public browser-side Algolia settings from the retailer's own
@@ -42,32 +44,9 @@ class IcelandSourceClient(
      */
     suspend fun fetchAlgoliaSearchJson(query: String): String? {
         require(query.isNotBlank()) { "Iceland search query must not be blank" }
-        val homepage = getText("https://www.iceland.co.uk/")
-        val sources = mutableListOf(homepage)
-        val scriptUrls = Regex("""(?i)<script[^>]+src=["']([^"']+\.js(?:\?[^"']*)?)["']""")
-            .findAll(homepage)
-            .mapNotNull { match ->
-                runCatching { URI("https://www.iceland.co.uk/").resolve(match.groupValues[1]).toString() }
-                    .getOrNull()
-            }
-            .filter { url ->
-                runCatching {
-                    val host = URI(url).host.orEmpty().lowercase()
-                    (host == "iceland.co.uk" || host.endsWith(".iceland.co.uk")) &&
-                        url.startsWith("https://")
-                }.getOrDefault(false)
-            }
-            .distinct()
-            .take(30)
-            .toList()
-
-        for (scriptUrl in scriptUrls) {
-            val source = runCatching { getText(scriptUrl) }.getOrNull() ?: continue
-            sources += source
-            if (IcelandAlgoliaConfigDiscovery.find(sources) != null) break
-        }
-
-        val discovered = IcelandAlgoliaConfigDiscovery.find(sources) ?: return null
+        val discovered = cachedAlgoliaConfig ?: discoverAlgoliaConfig().also { config ->
+            if (config != null) cachedAlgoliaConfig = config
+        } ?: return null
         val url = "https://${discovered.applicationId}-dsn.algolia.net/1/indexes/${encodePathSegment(discovered.indexName)}/query"
         val requestBody = json.encodeToString(
             buildJsonObject {
@@ -75,6 +54,7 @@ class IcelandSourceClient(
                 put("hitsPerPage", 30)
             }
         )
+        awaitRequestSlot()
         val response = httpClient.post(url) {
             header("x-algolia-application-id", discovered.applicationId)
             header("x-algolia-api-key", discovered.searchApiKey)
@@ -100,7 +80,36 @@ class IcelandSourceClient(
         return getText(url)
     }
 
-    private suspend fun getText(url: String): String {
+    private suspend fun discoverAlgoliaConfig(): IcelandAlgoliaConfigDiscovery.Config? {
+        val homepage = getText("https://www.iceland.co.uk/")
+        val sources = mutableListOf(homepage)
+        val scriptUrls = Regex("""(?i)<script[^>]+src=["']([^"']+\\.js(?:\\?[^"']*)?)["']""")
+            .findAll(homepage)
+            .mapNotNull { match ->
+                runCatching { URI("https://www.iceland.co.uk/").resolve(match.groupValues[1]).toString() }
+                    .getOrNull()
+            }
+            .filter { url ->
+                runCatching {
+                    val host = URI(url).host.orEmpty().lowercase()
+                    (host == "iceland.co.uk" || host.endsWith(".iceland.co.uk")) &&
+                        url.startsWith("https://")
+                }.getOrDefault(false)
+            }
+            .distinct()
+            // Keep first-run discovery bounded; do not fan out across every site asset.
+            .take(12)
+            .toList()
+
+        for (scriptUrl in scriptUrls) {
+            val source = runCatching { getText(scriptUrl) }.getOrNull() ?: continue
+            sources += source
+            IcelandAlgoliaConfigDiscovery.find(sources)?.let { return it }
+        }
+        return IcelandAlgoliaConfigDiscovery.find(sources)
+    }
+
+    private suspend fun awaitRequestSlot() {
         rateLimiterMutex.withLock {
             val now = System.currentTimeMillis()
             val timeSinceLast = now - lastRequestTimestamp
@@ -109,6 +118,10 @@ class IcelandSourceClient(
             }
             lastRequestTimestamp = System.currentTimeMillis()
         }
+    }
+
+    private suspend fun getText(url: String): String {
+        awaitRequestSlot()
         val response = httpClient.get(url) {
             header(HttpHeaders.UserAgent, config.userAgent)
             header(HttpHeaders.Accept, "text/html,application/xhtml+xml,application/javascript,application/json;q=0.9,*/*;q=0.8")
