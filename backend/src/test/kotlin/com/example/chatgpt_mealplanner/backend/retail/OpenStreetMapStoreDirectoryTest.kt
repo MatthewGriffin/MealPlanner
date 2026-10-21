@@ -44,6 +44,13 @@ class OpenStreetMapStoreDirectoryTest {
     }
 
     @Test
+    fun parserAcceptsUtf8BomBeforeJsonResponse() {
+        val raw = "\uFEFF" + """{"elements":[{"type":"node","id":42,"lat":51.5,"lon":-0.1,"tags":{"name":"Tesco","brand":"Tesco","shop":"supermarket"}}]}"""
+        val stores = directory.parseOverpassResponse(raw, RetailerId.TESCO, 51.5, -0.1)
+        assertEquals("node/42", stores.single().directorySourceId)
+    }
+
+    @Test
     fun parserDoesNotTreatFoodWarehouseAsIceland() {
         val raw = """{"elements":[
           {"type":"node","id":1,"lat":51.5,"lon":-0.1,"tags":{"name":"The Food Warehouse","brand":"The Food Warehouse","shop":"supermarket"}},
