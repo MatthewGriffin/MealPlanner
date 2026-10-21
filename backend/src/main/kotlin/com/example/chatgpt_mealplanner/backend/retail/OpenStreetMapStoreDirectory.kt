@@ -153,6 +153,7 @@ class OpenStreetMapStoreDirectory(
                 }
                 else -> emptyList()
             }
+            if (fallbackStores.isNotEmpty()) usedNominatimFallback = true
             (mappedStores + fallbackStores).distinctBy { it.directorySourceId }
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
