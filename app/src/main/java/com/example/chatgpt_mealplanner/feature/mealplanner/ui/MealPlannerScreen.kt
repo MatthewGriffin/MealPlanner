@@ -156,31 +156,37 @@ fun MealPlannerScreen(
                     when (uiState.activeTab) {
                         MealPlannerTab.PLANNER -> {
                             Column(modifier = Modifier.fillMaxSize()) {
-                                if (uiState.isFollower && uiState.allChangeRequests.isNotEmpty()) {
-                                    FollowerRequestStatusSection(uiState.allChangeRequests, uiState.mealTitleMap)
-                                }
-                                if (!uiState.isFollower && uiState.allChangeRequests.isNotEmpty()) {
-                                    MainRequestReviewSection(
-                                        requests = uiState.allChangeRequests,
-                                        mealTitleMap = uiState.mealTitleMap,
-                                        onUpdateStatus = { reqId, status, resp ->
-                                            parentViewModel.updateRequestStatus(reqId, status, resp)
-                                        },
-                                        onAdjustWithAi = { request ->
-                                            parentViewModel.beginAiAdjustment(request.id) { onAdjustWithAiRequest(request) }
-                                        }
-                                    )
-                                }
                                 DateNavigationHeader(
                                     selectedDate = uiState.selectedDate,
                                     onDateSelected = { date -> onEvent(MealPlannerUiEvent.SelectDate(date)) }
+                                )
+                                val requestsForSelectedDate = requestsForExistingMealIds(
+                                    requests = uiState.allChangeRequests,
+                                    existingMealIds = uiState.mealsForSelectedDate.map { it.meal.id }.toSet()
                                 )
                                 MealPlanContent(
                                     meals = uiState.mealsForSelectedDate,
                                     onMealClicked = { mealWithIngredients ->
                                         navController.navigate("recipe_details/${mealWithIngredients.meal.id}")
                                     },
-                                    onDeleteClicked = { mealId -> onEvent(MealPlannerUiEvent.DeleteMeal(mealId)) }
+                                    onDeleteClicked = { mealId -> onEvent(MealPlannerUiEvent.DeleteMeal(mealId)) },
+                                    belowContent = {
+                                        if (uiState.isFollower && requestsForSelectedDate.isNotEmpty()) {
+                                            FollowerRequestStatusSection(requestsForSelectedDate, uiState.mealTitleMap)
+                                        }
+                                        if (!uiState.isFollower && requestsForSelectedDate.isNotEmpty()) {
+                                            MainRequestReviewSection(
+                                                requests = requestsForSelectedDate,
+                                                mealTitleMap = uiState.mealTitleMap,
+                                                onUpdateStatus = { reqId, status, resp ->
+                                                    parentViewModel.updateRequestStatus(reqId, status, resp)
+                                                },
+                                                onAdjustWithAi = { request ->
+                                                    parentViewModel.beginAiAdjustment(request.id) { onAdjustWithAiRequest(request) }
+                                                }
+                                            )
+                                        }
+                                    }
                                 )
                             }
                         }
@@ -303,38 +309,42 @@ fun DateNavigationHeader(
 }
 
 @Composable
+@Composable
 fun MealPlanContent(
     meals: List<MealWithIngredients>,
     onMealClicked: (MealWithIngredients) -> Unit,
-    onDeleteClicked: (String) -> Unit
+    onDeleteClicked: (String) -> Unit,
+    belowContent: @Composable () -> Unit = {}
 ) {
-    if (meals.isEmpty()) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(32.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Text(
-                text = "No meals planned for this date",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "Tap + to plan a meal for today or select another date.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    } else {
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        if (meals.isEmpty()) {
+            item(key = "empty_meal_plan") {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = "No meals planned for this date",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Tap + to plan a meal for today or select another date.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        } else {
             items(meals, key = { it.meal.id }) { mealWithIngredients ->
                 MealCard(
                     mealWithIngredients = mealWithIngredients,
@@ -342,6 +352,9 @@ fun MealPlanContent(
                     onDeleteClicked = { onDeleteClicked(mealWithIngredients.meal.id) }
                 )
             }
+        }
+        item(key = "meal_request_section") {
+            belowContent()
         }
     }
 }

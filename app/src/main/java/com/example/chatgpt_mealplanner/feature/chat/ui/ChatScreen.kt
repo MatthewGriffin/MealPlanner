@@ -328,6 +328,14 @@ fun ChatScreen(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f)
                             )
+                            uiState.failureReason?.takeIf { it.isNotBlank() }?.let { reason ->
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = reason,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                            }
                         }
                         Spacer(modifier = Modifier.width(8.dp))
                         Button(

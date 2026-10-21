@@ -130,11 +130,13 @@ class MainActivity : ComponentActivity() {
                                 }
                             },
                             actions = {
-                                IconButton(onClick = { currentScreen = Screen.HOUSEHOLD }) {
-                                    Icon(
-                                        Icons.Default.Devices,
-                                        contentDescription = "Household Sync"
-                                    )
+                                if (currentScreen != Screen.SETTINGS) {
+                                    IconButton(onClick = { currentScreen = Screen.HOUSEHOLD }) {
+                                        Icon(
+                                            Icons.Default.Devices,
+                                            contentDescription = "Household Sync"
+                                        )
+                                    }
                                 }
                                 if (currentScreen != Screen.SETTINGS) {
                                     IconButton(onClick = { currentScreen = Screen.SETTINGS }) {
@@ -208,6 +210,7 @@ class MainActivity : ComponentActivity() {
                                 state = state,
                                 onEvent = inventoryViewModel::onEvent,
                                 onScanBarcodeClicked = { currentScreen = Screen.SCANNER },
+                                onSearchProducts = inventoryViewModel::searchProductsByName,
                                 modifier = Modifier.padding(innerPadding),
                                 onAddLowStockToShopping = if (isFollower) null else { item ->
                                     lowStockItemToAdd = item

@@ -18,6 +18,19 @@ class MealRequestVisibilityTest {
         assertEquals(listOf(existingRequest), visible)
     }
 
+    @Test
+    fun requestsForExistingMealIds_onlyShowsRequestsForSelectedDateMeals() {
+        val selectedDayRequest = request(id = "request_selected_day", mealId = "meal_today")
+        val otherDayRequest = request(id = "request_other_day", mealId = "meal_tomorrow")
+
+        val visible = requestsForExistingMealIds(
+            requests = listOf(selectedDayRequest, otherDayRequest),
+            existingMealIds = setOf("meal_today")
+        )
+
+        assertEquals(listOf(selectedDayRequest), visible)
+    }
+
     private fun request(id: String, mealId: String) = MealChangeRequestEntity(
         id = id,
         mealId = mealId,

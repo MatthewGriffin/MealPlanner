@@ -25,6 +25,7 @@ data class ChatUiState(
     val errorMessage: String? = null,
     val requestState: ChatRequestState = ChatRequestState.IDLE,
     val retainedUserMessage: String? = null,
+    val failureReason: String? = null,
     val showCookConfirmationDialog: Boolean = false,
     val cookConfirmationMealId: String? = null,
     val cookConfirmationMealTitle: String? = null,

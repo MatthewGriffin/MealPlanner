@@ -57,7 +57,8 @@ private data class RequestStateHolder(
     val requestState: ChatRequestState = ChatRequestState.IDLE,
     val retainedUserMessage: String? = null,
     val retainedUserMessageId: String? = null,
-    val retainedRequestText: String? = retainedUserMessage
+    val retainedRequestText: String? = retainedUserMessage,
+    val failureReason: String? = null
 )
 
 @HiltViewModel
@@ -127,6 +128,7 @@ class ChatViewModel @Inject constructor(
             errorMessage = flows[6] as String?,
             requestState = reqHolder.requestState,
             retainedUserMessage = reqHolder.retainedUserMessage,
+            failureReason = reqHolder.failureReason,
             showCookConfirmationDialog = flows[9] as Boolean,
             cookConfirmationMealId = flows[10] as String?,
             cookConfirmationMealTitle = flows[11] as String?,
@@ -308,7 +310,13 @@ class ChatViewModel @Inject constructor(
         retainedRequestText: String? = retainedMessage
     ) {
         val fromState = requestStateHolderFlow.value.requestState
-        requestStateHolderFlow.value = RequestStateHolder(toState, retainedMessage, retainedMessageId, retainedRequestText)
+        requestStateHolderFlow.value = RequestStateHolder(
+            requestState = toState,
+            retainedUserMessage = retainedMessage,
+            retainedUserMessageId = retainedMessageId,
+            retainedRequestText = retainedRequestText,
+            failureReason = if (toState == ChatRequestState.FAILED_RETRYABLE) reason else null
+        )
         if (toState != ChatRequestState.IN_FLIGHT) {
             stopProgressTicker()
         }
@@ -351,7 +359,6 @@ class ChatViewModel @Inject constructor(
                     }
                 }
                 is AiOrchestrationResult.Error -> {
-                    errorMessageFlow.value = result.userFacingMessage
                     transitionRequestState(ChatRequestState.FAILED_RETRYABLE, retainedMessage = visibleText, retainedMessageId = userMsgId, reason = result.userFacingMessage, retainedRequestText = text)
                 }
             }
@@ -388,7 +395,6 @@ class ChatViewModel @Inject constructor(
                     }
                 }
                 is AiOrchestrationResult.Error -> {
-                    errorMessageFlow.value = result.userFacingMessage
                     transitionRequestState(ChatRequestState.FAILED_RETRYABLE, retainedMessage = visibleText, retainedMessageId = messageId, reason = result.userFacingMessage, retainedRequestText = text)
                 }
             }
