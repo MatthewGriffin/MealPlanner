@@ -26,7 +26,19 @@ import java.security.Signature
 import java.util.Base64
 
 internal class TestPantryTlsKeyManager : PantryTlsKeyManager(null) {
-    override fun getOrCreateEncryptedPassword(allowCreate: Boolean): CharArray = "test-only-pantry-tls-password".toCharArray()
+    private val isolatedKeyStoreDir = java.nio.file.Files
+        .createTempDirectory("pantry-tls-test-")
+        .toFile()
+        .apply { deleteOnExit() }
+
+    override fun getOrCreateEncryptedPassword(allowCreate: Boolean): CharArray =
+        "test-only-pantry-tls-password".toCharArray()
+
+    override fun getOrCreateMainTlsKeyStore(
+        householdId: String,
+        customFilesDir: java.io.File?
+    ): java.security.KeyStore =
+        super.getOrCreateMainTlsKeyStore(householdId, customFilesDir ?: isolatedKeyStoreDir)
 }
 
 class FakeSyncPairedDeviceDao : PairedDeviceDao {
