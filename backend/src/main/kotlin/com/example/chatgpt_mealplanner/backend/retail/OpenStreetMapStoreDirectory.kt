@@ -371,7 +371,9 @@ class OpenStreetMapStoreDirectory(
             val amenity = tags.text("amenity")?.lowercase()
             val healthcare = tags.text("healthcare")?.lowercase()
             if (isExcludedPetrolVariant(identity, retailerId, amenity, null, null)) return@mapNotNull null
-            val isMappedShop = shopType != null && shopType !in NON_RETAIL_SHOP_TYPES
+            if (shopType in NON_RETAIL_SHOP_TYPES || amenity in NON_RETAIL_FEATURE_TYPES ||
+                healthcare in NON_RETAIL_FEATURE_TYPES) return@mapNotNull null
+            val isMappedShop = shopType != null
             val isNamedRetailFeature = shopType == null &&
                 amenity !in NON_RETAIL_FEATURE_TYPES &&
                 healthcare !in NON_RETAIL_FEATURE_TYPES &&
@@ -387,6 +389,10 @@ class OpenStreetMapStoreDirectory(
                 listOfNotNull(tags.text("addr:housenumber"), tags.text("addr:street")).joinToString(" ").takeIf(String::isNotBlank),
                 tags.text("addr:suburb"), tags.text("addr:city") ?: tags.text("addr:town"), postcode
             ).joinToString(", ")
+            // Avoid low-information brand-only matches with neither a named branch nor address.
+            val explicitName = listOf("name", "name:en", "official_name", "alt_name")
+                .firstNotNullOfOrNull { tags.text(it) }
+            if (explicitName == null && address.isBlank()) return@mapNotNull null
             StoreDirectoryEntry(
                 directorySource = StoreDirectorySource.OPENSTREETMAP,
                 directorySourceId = "$type/$id",
@@ -481,10 +487,12 @@ class OpenStreetMapStoreDirectory(
         // Exclude known non-retail services even when they carry a retailer brand.
         // Other OSM shop types remain eligible so the search supports new store formats.
         private val NON_RETAIL_SHOP_TYPES = setOf(
-            "optician", "medical_supply", "hearing_aids", "doctor", "clinic", "dentist"
+            "optician", "medical_supply", "hearing_aids", "doctor", "clinic", "dentist",
+            "cafe", "restaurant", "fast_food", "food_court", "bar", "pub", "ice_cream"
         )
         private val NON_RETAIL_FEATURE_TYPES = setOf(
-            "optician", "doctors", "doctor", "clinic", "dentist", "hospital", "pharmacy", "parking"
+            "optician", "doctors", "doctor", "clinic", "dentist", "hospital", "pharmacy", "parking",
+            "cafe", "restaurant", "fast_food", "food_court", "bar", "pub", "ice_cream"
         )
 
         private fun overpassRetailerPattern(id: RetailerId): String = when (id) {
