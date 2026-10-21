@@ -310,8 +310,9 @@ class OpenStreetMapStoreDirectoryTest {
     }
 
     @Test
-    fun allRetailerSearchFallsBackForRetailersMissingFromNonEmptySharedResults() = runBlocking {
+    fun allRetailerSearchSupplementsEveryRetailerEvenWhenSomeAreAlreadyFound() = runBlocking {
         var fakeTime = 100_000L
+        val searchedTerms = mutableSetOf<String>()
         val client = HttpClient(MockEngine { request ->
             if (request.url.host.contains("overpass")) {
                 respond(
@@ -323,6 +324,7 @@ class OpenStreetMapStoreDirectoryTest {
                 )
             } else {
                 val term = request.url.parameters["q"]
+                searchedTerms += term.orEmpty()
                 val body = when (term) {
                     "Tesco Express", "Tesco" -> """[{"osm_type":"node","osm_id":2102,"lat":"51.501","lon":"-0.101","category":"amenity","type":"atm","name":"Tesco Express","display_name":"Tesco Express ATM, Example Road, London, SW1A 1AB","address":{"road":"Example Road","city":"London","postcode":"SW1A 1AB"},"extratags":{"brand":"Tesco","amenity":"atm"}}]"""
                     "Morrisons Daily", "Morrisons" -> """[{"osm_type":"way","osm_id":2103,"lat":"51.502","lon":"-0.102","category":"shop","type":"convenience","name":"Morrisons Daily","display_name":"Morrisons Daily, Example Road, London, SW1A 1AC","address":{"road":"Example Road","city":"London","postcode":"SW1A 1AC"},"extratags":{"brand":"Morrisons","shop":"convenience"}}]"""
@@ -355,6 +357,13 @@ class OpenStreetMapStoreDirectoryTest {
             )
             assertTrue(response.stores.any { it.name == "Tesco Express" })
             assertTrue(response.stores.any { it.name == "Morrisons Daily" })
+            assertTrue(
+                searchedTerms.containsAll(
+                    setOf("ASDA", "Tesco Express", "Tesco", "Morrisons Daily", "Morrisons",
+                        "Sainsbury's", "Iceland", "Food Warehouse", "Aldi", "Lidl")
+                ),
+                "Expected supplemental lookup terms for every supported retailer; got $searchedTerms"
+            )
         } finally {
             client.close()
         }
