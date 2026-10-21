@@ -46,6 +46,7 @@ import com.example.chatgpt_mealplanner.sync.contract.SyncOperationStatus
 import com.example.chatgpt_mealplanner.sync.contract.SyncOperationType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -675,7 +676,7 @@ class PantrySyncPhase3eBootstrapTest {
     // 6. real_manualSyncTrigger_schedulesUniqueWorker
     @Test
     fun real_manualSyncTrigger_schedulesUniqueWorker() = runTest {
-        val testDispatcher = kotlinx.coroutines.test.UnconfinedTestDispatcher(testScheduler)
+        val testDispatcher = StandardTestDispatcher(testScheduler)
         Dispatchers.setMain(testDispatcher)
         try {
             var capturedTrigger: String? = null
