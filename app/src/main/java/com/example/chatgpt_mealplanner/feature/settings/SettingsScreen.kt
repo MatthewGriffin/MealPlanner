@@ -342,11 +342,13 @@ fun SettingsScreen(
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Column(modifier = Modifier.padding(10.dp)) {
                             Text("${retailerLabel(store.retailerId)} · ${store.name}", fontWeight = FontWeight.SemiBold)
-                            if (store.address.isNotBlank()) {
-                                Text(store.address, style = MaterialTheme.typography.bodySmall)
-                            }
+                            // Full addresses from community map data can be incomplete or misleading.
+                            // Keep the branch picker focused on the store name, postcode, and distance.
                             Text(
-                                "${store.postcode ?: "Postcode unavailable"} · ${storeDistanceLabel(store.distanceMeters)}",
+                                listOfNotNull(
+                                    store.postcode?.takeIf { it.isNotBlank() },
+                                    storeDistanceLabel(store.distanceMeters)
+                                ).joinToString(" · "),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
