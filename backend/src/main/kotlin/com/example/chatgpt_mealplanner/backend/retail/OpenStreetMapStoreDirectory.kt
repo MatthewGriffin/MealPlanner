@@ -50,8 +50,8 @@ class OpenStreetMapStoreDirectory(
         install(HttpTimeout) {
             connectTimeoutMillis = 15_000
             // Allow time for a bounded Overpass query to wait for a worker and return its payload.
-            socketTimeoutMillis = 60_000
-            requestTimeoutMillis = 60_000
+            socketTimeoutMillis = 75_000
+            requestTimeoutMillis = 75_000
         }
     })
 
@@ -209,7 +209,7 @@ class OpenStreetMapStoreDirectory(
         // so the query doesn't scan every nearby OSM object.
         val radius = request.radiusMeters
         val retailerPattern = overpassRetailerPattern(request.retailerId)
-        return """[out:json][timeout:45];
+        return """[out:json][timeout:60];
           (
             nwr["shop"]["name"~"$retailerPattern",i](around:$radius,$lat,$lon);
             nwr["shop"]["brand"~"$retailerPattern",i](around:$radius,$lat,$lon);
