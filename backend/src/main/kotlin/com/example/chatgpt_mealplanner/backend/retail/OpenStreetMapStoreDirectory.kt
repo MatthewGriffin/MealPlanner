@@ -83,7 +83,7 @@ class OpenStreetMapStoreDirectory(
         logTiming(if (request.postcode.isNullOrBlank()) "coordinate_resolution" else "postcode_lookup", locationStarted)
         // Shared cache is keyed only by location/radius because each Overpass request
         // now retrieves all supported retailers in the area.
-        val key = "shops-v16:${"%.4f".format(Locale.US, lat)}:${"%.4f".format(Locale.US, lon)}:${request.radiusMeters}"
+        val key = "shops-v17:${"%.4f".format(Locale.US, lat)}:${"%.4f".format(Locale.US, lon)}:${request.radiusMeters}"
         onProgress("Checking cached nearby-store results…")
         val cached = cache[key]
         if (cached != null) {
@@ -147,14 +147,11 @@ class OpenStreetMapStoreDirectory(
             val fallbackStarted = System.nanoTime()
             val fallbackStores = when {
                 request.searchAllRetailers -> {
-                    val foundRetailers = mappedStores.map { it.retailerId }.toSet()
-                    // Tesco Express / Morrisons Daily branches are sometimes represented by
-                    // a branded ATM point or incomplete shop tags. Supplement these two
-                    // retailer searches even when larger branches were found by Overpass.
-                    val retailersToSupplement = (
-                        supportedBranchRetailers().filterNot { it in foundRetailers } +
-                            listOf(RetailerId.TESCO, RetailerId.MORRISONS)
-                        ).distinct()
+                    // A retailer appearing in the shared map response does not mean all
+                    // of its nearby branches were found. Supplement every supported retailer,
+                    // not just retailers absent from the response, so smaller formats and
+                    // branches omitted by the bounded map query can still be discovered.
+                    val retailersToSupplement = supportedBranchRetailers()
                     if (retailersToSupplement.isEmpty()) {
                         emptyList()
                     } else {
