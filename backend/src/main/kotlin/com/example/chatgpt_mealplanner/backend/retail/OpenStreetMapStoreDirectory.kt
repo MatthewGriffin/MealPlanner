@@ -71,7 +71,7 @@ class OpenStreetMapStoreDirectory(
         val (lat, lon) = resolveCenter(request, onProgress)
         // Shared cache is keyed only by location/radius because each Overpass request
         // now retrieves all supported retailers in the area.
-        val key = "shops-v12:${"%.4f".format(Locale.US, lat)}:${"%.4f".format(Locale.US, lon)}:${request.radiusMeters}"
+        val key = "shops-v13:${"%.4f".format(Locale.US, lat)}:${"%.4f".format(Locale.US, lon)}:${request.radiusMeters}"
         onProgress("Checking cached nearby-store results…")
         val cached = cache[key]
         if (cached != null) {
@@ -125,22 +125,30 @@ class OpenStreetMapStoreDirectory(
             val raw = fetchOverpassResponse(buildMultiRetailerQuery(lat, lon, request.radiusMeters), onProgress)
             overpassSucceeded = true
             val mappedStores = parseAllRetailersOverpassResponse(raw, lat, lon)
-            // If the shared map query yields no usable branches at all, recover with targeted
-            // Nominatim searches bounded to the same nearby area.
+            // Recover each missing retailer independently. A shared query can find ASDA or
+            // Aldi while missing Tesco Express / Morrisons Daily, so falling back only when
+            // the entire combined result is empty silently hides valid nearby branches.
             val fallbackStores = when {
-                request.searchAllRetailers && mappedStores.isEmpty() -> {
-                    onProgress("The map search found no usable branches; checking targeted nearby store listings…")
-                    try {
-                        kotlinx.coroutines.withTimeout(30_000L) {
-                            searchNominatimAllRetailersFallback(lat, lon, request.radiusMeters)
-                        }
-                    } catch (e: Exception) {
-                        if (e is kotlinx.coroutines.CancellationException && e !is kotlinx.coroutines.TimeoutCancellationException) throw e
+                request.searchAllRetailers -> {
+                    val foundRetailers = mappedStores.map { it.retailerId }.toSet()
+                    val missingRetailers = supportedBranchRetailers().filterNot { it in foundRetailers }
+                    if (missingRetailers.isEmpty()) {
                         emptyList()
+                    } else {
+                        onProgress("Checking nearby listings for retailers missing from the map results…")
+                        try {
+                            kotlinx.coroutines.withTimeout(30_000L) {
+                                searchNominatimMissingRetailersFallback(
+                                    lat, lon, request.radiusMeters, missingRetailers
+                                )
+                            }
+                        } catch (e: Exception) {
+                            if (e is kotlinx.coroutines.CancellationException && e !is kotlinx.coroutines.TimeoutCancellationException) throw e
+                            emptyList()
+                        }
                     }
                 }
-                !request.searchAllRetailers &&
-                    mappedStores.none { it.retailerId == request.retailerId } -> {
+                mappedStores.none { it.retailerId == request.retailerId } -> {
                     onProgress("Looking for missing ${displayName(request.retailerId)} listings…")
                     try {
                         kotlinx.coroutines.withTimeout(12_000L) {
@@ -384,24 +392,25 @@ class OpenStreetMapStoreDirectory(
         return lat to lon
     }
 
-    private suspend fun searchNominatimAllRetailersFallback(
+    private fun supportedBranchRetailers() = listOf(
+        RetailerId.ASDA,
+        RetailerId.TESCO,
+        RetailerId.MORRISONS,
+        RetailerId.SAINSBURYS,
+        RetailerId.ICELAND,
+        RetailerId.ALDI,
+        RetailerId.LIDL
+    )
+
+    private suspend fun searchNominatimMissingRetailersFallback(
         originLat: Double,
         originLon: Double,
-        radiusMeters: Int
-    ): List<StoreDirectoryEntry> {
-        val retailers = listOf(
-            RetailerId.ASDA,
-            RetailerId.TESCO,
-            RetailerId.MORRISONS,
-            RetailerId.SAINSBURYS,
-            RetailerId.ICELAND,
-            RetailerId.ALDI,
-            RetailerId.LIDL
-        )
-        return retailers.flatMap { retailerId ->
+        radiusMeters: Int,
+        missingRetailers: List<RetailerId>
+    ): List<StoreDirectoryEntry> =
+        missingRetailers.flatMap { retailerId ->
             searchNominatimFallback(retailerId, originLat, originLon, radiusMeters)
         }.distinctBy { it.directorySourceId }
-    }
 
     private suspend fun searchNominatimFallback(
         retailerId: RetailerId,
