@@ -70,6 +70,7 @@ fun SettingsScreen(
     var selectedStoreFormat by remember { mutableStateOf(RetailStoreFormat.ASDA_SUPERMARKET) }
     var retailerMenuExpanded by remember { mutableStateOf(false) }
     var formatMenuExpanded by remember { mutableStateOf(false) }
+    var branchRadiusMenuExpanded by remember { mutableStateOf(false) }
     var showClearChatHistoryDialog by remember { mutableStateOf(false) }
     var showStoreDataSourcesDialog by remember { mutableStateOf(false) }
 
@@ -292,6 +293,38 @@ fun SettingsScreen(
                     label = { Text("Search postcode") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Search distance",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.weight(1f)
+                    )
+                    TextButton(onClick = { branchRadiusMenuExpanded = true }) {
+                        Text("${uiState.branchSearchRadiusMeters / 1000} km")
+                    }
+                    DropdownMenu(
+                        expanded = branchRadiusMenuExpanded,
+                        onDismissRequest = { branchRadiusMenuExpanded = false }
+                    ) {
+                        listOf(1_000, 3_000, 5_000, 10_000, 15_000).forEach { radiusMeters ->
+                            DropdownMenuItem(
+                                text = { Text("${radiusMeters / 1000} km") },
+                                onClick = {
+                                    viewModel.setBranchSearchRadiusMeters(radiusMeters)
+                                    branchRadiusMenuExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+                Text(
+                    "Choose how far away branches can be: 1, 3, 5, 10 or 15 km.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Button(
                     onClick = { viewModel.searchStoreDirectory(storeSearchPostcodeInput) },
