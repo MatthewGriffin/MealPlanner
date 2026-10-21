@@ -1,6 +1,7 @@
 package com.example.chatgpt_mealplanner.core.service
 
 import com.example.chatgpt_mealplanner.core.database.dao.RetailDao
+import com.example.chatgpt_mealplanner.core.database.entity.BasketComparisonCacheEntity
 import com.example.chatgpt_mealplanner.core.database.entity.BasketLineEntity
 import com.example.chatgpt_mealplanner.core.database.entity.BasketPlanEntity
 import com.example.chatgpt_mealplanner.core.database.entity.RetailPriceSnapshotEntity
@@ -17,6 +18,7 @@ class FakeRetailDao : RetailDao {
     private val mappings = mutableMapOf<String, RetailProductMappingEntity>()
     private val plans = mutableListOf<BasketPlanEntity>()
     private val lines = mutableListOf<BasketLineEntity>()
+    private var basketComparisonCache: BasketComparisonCacheEntity? = null
 
     override suspend fun getProduct(retailerId: RetailerId, productId: String): RetailProductEntity? {
         return products["${retailerId.name}_$productId"]
@@ -76,5 +78,13 @@ class FakeRetailDao : RetailDao {
 
     override suspend fun insertBasketLines(lines: List<BasketLineEntity>) {
         this.lines.addAll(lines)
+    }
+
+    override suspend fun getBasketComparisonCache(): BasketComparisonCacheEntity? {
+        return basketComparisonCache
+    }
+
+    override suspend fun saveBasketComparisonCache(cache: BasketComparisonCacheEntity) {
+        basketComparisonCache = cache
     }
 }
