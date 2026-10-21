@@ -103,7 +103,7 @@ object ReceiptSummaryParser {
         val mathChecksOut = gross != null && finalPaid != null && (gross - explicitSavingsPence == finalPaid)
         val cardMatchesPaid = cardPaymentPence == null || finalPaid == null || cardPaymentPence == finalPaid
         val summaryArithmeticValid = mathChecksOut && cardMatchesPaid
-        val isHighConfidence = summaryArithmeticValid && finalPaid != null && finalPaid > 0L
+        val isHighConfidence = summaryArithmeticValid && (finalPaid ?: 0L) > 0L
 
         try {
             Log.d("RECEIPT_PIPELINE_TRACE", "[SUMMARY_PARSER] explicitGross=$explicitGrossPence, savings=$explicitSavingsPence, explicitPaid=$explicitPaidPence, cardPence=$cardPaymentPence -> finalPaid=$finalPaid, gross=$gross")
