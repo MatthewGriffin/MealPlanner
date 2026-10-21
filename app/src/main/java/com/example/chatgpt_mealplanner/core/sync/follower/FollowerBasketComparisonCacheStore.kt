@@ -12,7 +12,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class FollowerBasketComparisonCacheStore @Inject constructor(
+class FollowerBasketComparisonCacheStore(
     private val database: FollowerDatabase? = null
 ) {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
