@@ -1,42 +1,82 @@
 package com.example.chatgpt_mealplanner.backend.retail
 
+import com.example.chatgpt_mealplanner.retail.contract.RetailOfferSourceType
 import com.example.chatgpt_mealplanner.retail.contract.RetailProductSearchResult
+import com.example.chatgpt_mealplanner.retail.contract.RetailSourceMetadata
 import com.example.chatgpt_mealplanner.retail.contract.RetailerCapabilityDto
 import com.example.chatgpt_mealplanner.retail.contract.RetailerCapabilityMode
 import com.example.chatgpt_mealplanner.retail.contract.RetailerId
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 
 /**
- * ASDA live product retrieval is deliberately gated until ASDA grants permission for automated
- * third-party use of its product data or provides an approved API/feed.
- *
- * Keep the parser and client injectable for a future authorised integration, but do not call the
- * undocumented Algolia endpoint merely because it is technically reachable. Cached or manually
- * entered offers can still be used by the shopping optimizer.
+ * ASDA's website-backed Algolia search integration.
+ * Prices are online catalogue prices; stock remains UNKNOWN without product- and
+ * scope-specific availability evidence.
  */
 open class AsdaRetailerAdapter(
-    @Suppress("unused") private val client: AsdaSourceClient = AsdaSourceClient(HttpClient(OkHttp)),
-    @Suppress("unused") private val parser: AsdaProductParser = AsdaProductParser()
+    private val client: AsdaSourceClient = AsdaSourceClient(HttpClient(OkHttp)),
+    private val parser: AsdaProductParser = AsdaProductParser()
 ) {
-
-    open fun getCapability(): RetailerCapabilityDto {
-        return RetailerCapabilityDto(
-            retailerId = RetailerId.ASDA,
-            mode = RetailerCapabilityMode.MANUAL_AND_CACHED_ONLY,
-            searchSupported = false,
-            livePriceSupported = false,
-            availabilitySupported = false,
-            promotionsSupported = false,
-            description = "Automated ASDA product-data retrieval is disabled pending explicit permission or an approved API/feed. Cached and manually entered offers remain available; branch stock is not confirmed."
-        )
-    }
+    open fun getCapability(): RetailerCapabilityDto = RetailerCapabilityDto(
+        retailerId = RetailerId.ASDA,
+        mode = RetailerCapabilityMode.LIVE_SEARCH_AVAILABLE,
+        searchSupported = true,
+        livePriceSupported = true,
+        availabilitySupported = false,
+        promotionsSupported = true,
+        description = "Live ASDA website-backed product search and online catalogue prices; branch stock is not confirmed."
+    )
 
     open suspend fun searchProducts(query: String): RetailProductSearchResult {
-        return RetailProductSearchResult.Unavailable(
-            reason = "Automated ASDA product-data retrieval requires explicit permission or an approved API/feed.",
-            errorCode = "SOURCE_PERMISSION_REQUIRED",
-            cachedFallbackAvailable = true
+        if (query.isBlank()) {
+            return RetailProductSearchResult.Unavailable(
+                reason = "Enter a product to search for.",
+                errorCode = "EMPTY_QUERY",
+                cachedFallbackAvailable = true
+            )
+        }
+
+        val responseJson = try {
+            client.search(query.trim())
+        } catch (e: Exception) {
+            val message = e.message ?: "Unknown source error"
+            return RetailProductSearchResult.Unavailable(
+                reason = "ASDA live search failed: " + message,
+                errorCode = if (message.contains("not configured", ignoreCase = true)) "CONFIG_MISSING" else "SOURCE_UNAVAILABLE",
+                cachedFallbackAvailable = true
+            )
+        }
+
+        val parsed = parser.parseAlgoliaResponse(responseJson)
+        if (parsed.productsWithOffers.isEmpty()) {
+            return RetailProductSearchResult.Unavailable(
+                reason = "ASDA returned no parseable product hits (" + parsed.hitsReceived + " received, " + parsed.hitsRejected + " rejected).",
+                errorCode = if (parsed.hitsReceived == 0) "NO_HITS" else "SOURCE_FORMAT_CHANGED",
+                cachedFallbackAvailable = true
+            )
+        }
+
+        val encodedQuery = URLEncoder.encode(query.trim(), StandardCharsets.UTF_8.name())
+        val warnings = if (parsed.hitsRejected > 0) {
+            listOf("ASDA returned " + parsed.hitsRejected + " product hits that could not be parsed.")
+        } else {
+            emptyList()
+        }
+        val metadata = RetailSourceMetadata(
+            retailerId = RetailerId.ASDA,
+            sourceType = RetailOfferSourceType.LIVE,
+            sourceReference = "https://groceries.asda.com/search/" + encodedQuery,
+            observedAt = System.currentTimeMillis(),
+            isLive = true,
+            parseWarnings = warnings
         )
+        return if (warnings.isNotEmpty()) {
+            RetailProductSearchResult.PartialSuccess(parsed.productsWithOffers, warnings, metadata)
+        } else {
+            RetailProductSearchResult.Success(parsed.productsWithOffers, metadata)
+        }
     }
 }
