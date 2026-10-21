@@ -290,7 +290,7 @@ class Phase10MealRequestSyncTest {
         fun open() = Room.databaseBuilder(context, FollowerDatabase::class.java, name)
             .allowMainThreadQueries()
             .addMigrations(com.example.chatgpt_mealplanner.core.sync.follower.database.FOLLOWER_MIGRATION_4_5,
-                com.example.chatgpt_mealplanner.core.sync.follower.database.FOLLOWER_MIGRATION_5_6).build()
+                com.example.chatgpt_mealplanner.core.sync.follower.database.FOLLOWER_MIGRATION_5_6, com.example.chatgpt_mealplanner.core.sync.follower.database.FOLLOWER_MIGRATION_6_7).build()
         var disk = open()
         try {
             val beforeUpgrade = FollowerLocalSyncEngine(disk, null, null, disk.mealRequestDao())
