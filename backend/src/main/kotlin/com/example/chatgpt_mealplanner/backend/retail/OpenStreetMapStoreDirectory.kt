@@ -83,7 +83,7 @@ class OpenStreetMapStoreDirectory(
         logTiming(if (request.postcode.isNullOrBlank()) "coordinate_resolution" else "postcode_lookup", locationStarted)
         // Shared cache is keyed only by location/radius because each Overpass request
         // now retrieves all supported retailers in the area.
-        val key = "shops-v15:${"%.4f".format(Locale.US, lat)}:${"%.4f".format(Locale.US, lon)}:${request.radiusMeters}"
+        val key = "shops-v16:${"%.4f".format(Locale.US, lat)}:${"%.4f".format(Locale.US, lon)}:${request.radiusMeters}"
         onProgress("Checking cached nearby-store results…")
         val cached = cache[key]
         if (cached != null) {
@@ -472,10 +472,13 @@ class OpenStreetMapStoreDirectory(
     ): List<StoreDirectoryEntry> {
         // Iceland searches must also query the related Food Warehouse brand: Nominatim
         // does not guarantee that an "Iceland" text search returns Food Warehouse branches.
-        val searchTerms = if (retailerId == RetailerId.ICELAND) {
-            listOf("Iceland", "Food Warehouse")
-        } else {
-            listOf(displayName(retailerId))
+        val searchTerms = when (retailerId) {
+            RetailerId.ICELAND -> listOf("Iceland", "Food Warehouse")
+            // A broad "Tesco" text search can be dominated by larger supermarkets and
+            // may omit the local convenience branch from Nominatim's limited result set.
+            RetailerId.TESCO -> listOf("Tesco Express", "Tesco")
+            RetailerId.MORRISONS -> listOf("Morrisons Daily", "Morrisons")
+            else -> listOf(displayName(retailerId))
         }
         return searchTerms.flatMap { term ->
             searchNominatimTerm(retailerId, originLat, originLon, radiusMeters, term)
