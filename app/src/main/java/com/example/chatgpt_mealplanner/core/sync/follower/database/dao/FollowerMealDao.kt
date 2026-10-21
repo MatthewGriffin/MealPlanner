@@ -8,6 +8,8 @@ import kotlinx.coroutines.flow.Flow
 interface FollowerMealDao {
     @Query("SELECT * FROM follower_meals")
     fun observeAll(): Flow<List<FollowerMealEntity>>
+    @Query("SELECT * FROM follower_meals WHERE mealDate = :date")
+    fun observeForDate(date: String): Flow<List<FollowerMealEntity>>
     @Query("SELECT * FROM follower_meals")
     suspend fun getAll(): List<FollowerMealEntity>
     @Query("SELECT * FROM follower_meals WHERE id = :id LIMIT 1")

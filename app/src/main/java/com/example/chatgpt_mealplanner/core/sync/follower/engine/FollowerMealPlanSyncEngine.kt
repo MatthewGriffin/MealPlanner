@@ -74,7 +74,7 @@ class FollowerMealPlanSyncEngine @Inject constructor(
             java.time.LocalDate.parse(model.meal.date)
             require(model.meal.servings > 0)
             require(model.ingredients.all { it.mealId == model.meal.id && it.plannedQuantity.isFinite() && it.plannedQuantity >= 0 })
-            FollowerMealEntity(model.meal.id, payload)
+            FollowerMealEntity(model.meal.id, payload, model.meal.date)
         }
         val shoppingListDtos = snapshot.shoppingLists
         val shoppingLists = shoppingListDtos?.map { dto ->

@@ -108,6 +108,14 @@ val FOLLOWER_MIGRATION_5_6 = object : Migration(5, 6) {
     }
 }
 
+val FOLLOWER_MIGRATION_6_7 = object : Migration(6, 7) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE follower_meals ADD COLUMN mealDate TEXT")
+        db.execSQL("UPDATE follower_meals SET mealDate = json_extract(payloadJson, '$.meal.date') WHERE json_valid(payloadJson) AND json_type(payloadJson, '$.meal.date') = 'text'")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_follower_meals_mealDate ON follower_meals (mealDate)")
+    }
+}
+
 @Database(
     entities = [
         FollowerInventoryItemEntity::class,
@@ -117,7 +125,7 @@ val FOLLOWER_MIGRATION_5_6 = object : Migration(5, 6) {
         com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerMealEntity::class,
         FollowerMealRequestEntity::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 abstract class FollowerDatabase : RoomDatabase() {

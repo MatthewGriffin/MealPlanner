@@ -27,7 +27,7 @@ class MealRepositoryImpl @Inject constructor(
     override fun observeMealsForDate(date: String): Flow<List<MealWithIngredients>> {
         return kotlinx.coroutines.flow.flow {
             if (roleResolver.isFollowerAsync()) {
-                emitAll(followerDatabase.mealDao().observeAll().map { rows -> rows.map(::decode).filter { it.meal.date == date } })
+                emitAll(followerDatabase.mealDao().observeForDate(date).map { rows -> rows.map(::decode) })
             } else emitAll(mealDao.observeMealsForDate(date).map { list ->
             list.map { item ->
                 MealWithIngredients(
