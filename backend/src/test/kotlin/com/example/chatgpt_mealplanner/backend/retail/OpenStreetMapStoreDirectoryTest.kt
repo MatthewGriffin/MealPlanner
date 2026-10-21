@@ -134,8 +134,8 @@ class OpenStreetMapStoreDirectoryTest {
             51.5,
             -0.1
         )
-        assertTrue(query.contains("""nwr["name"~"ASDA\\s*Express",i]"""))
-        assertTrue(query.contains("""nwr["brand"~"ASDA\\s*Express",i]"""))
+        assertTrue(query.contains("""nwr["name"~"ASDA.*Express",i]"""))
+        assertTrue(query.contains("""nwr["brand"~"ASDA.*Express",i]"""))
     }
 
     @Test
