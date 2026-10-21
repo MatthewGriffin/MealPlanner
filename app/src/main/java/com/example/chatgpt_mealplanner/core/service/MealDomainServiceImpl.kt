@@ -1,6 +1,7 @@
 package com.example.chatgpt_mealplanner.core.service
 
 import com.example.chatgpt_mealplanner.core.database.DatabaseTransactionRunner
+import com.example.chatgpt_mealplanner.core.notification.AppNotificationManager
 import com.example.chatgpt_mealplanner.core.database.dao.InventoryDao
 import com.example.chatgpt_mealplanner.core.database.dao.MealChangeRequestDao
 import com.example.chatgpt_mealplanner.core.database.dao.LeftoverDao
@@ -69,10 +70,17 @@ class MealDomainServiceImpl @Inject constructor(
     private val appRoleResolver: AppRoleResolver? = null,
     private val canonicalSyncDao: CanonicalSyncDao? = null,
     private val householdIdentityManager: HouseholdIdentityManager? = null,
-    private val mealChangeRequestDao: MealChangeRequestDao? = null
+    private val mealChangeRequestDao: MealChangeRequestDao? = null,
+    private val notificationManager: AppNotificationManager? = null
 ) : MealDomainService {
 
     private val json = Json { ignoreUnknownKeys = true }
+
+    private suspend fun notifyMealPlanChangedIfMain(date: String) {
+        if (appRoleResolver?.getAppRoleAsync() == AppRole.MAIN) {
+            notificationManager?.notifyMealPlanChanged(date, 1)
+        }
+    }
 
     override suspend fun createPlannedMeal(
         meal: Meal,
@@ -83,6 +91,7 @@ class MealDomainServiceImpl @Inject constructor(
 
         mealDao.insertMeal(meal.toEntity())
         mealDao.insertMealIngredients(ingredients.map { it.toEntity() })
+        notifyMealPlanChangedIfMain(meal.date)
         return DomainResult.Success(meal)
     }
 
@@ -98,6 +107,7 @@ class MealDomainServiceImpl @Inject constructor(
             updatedAt = System.currentTimeMillis()
         )
         mealDao.insertMeal(updatedMeal.toEntity())
+        notifyMealPlanChangedIfMain(newDate)
         return DomainResult.Success(Unit)
     }
 
@@ -134,6 +144,7 @@ class MealDomainServiceImpl @Inject constructor(
         mealDao.insertMealIngredients(newIngredients.map {
             it.copy(id = UUID.randomUUID().toString(), mealId = oldMealId).toEntity()
         })
+        notifyMealPlanChangedIfMain(updatedMeal.date)
         DomainResult.Success(updatedMeal)
     }
 
@@ -208,6 +219,7 @@ class MealDomainServiceImpl @Inject constructor(
             // The feed events and FK-cascading meal deletion share this Room transaction.
             // A Follower can replay each exact request ID later, including after being offline.
             mealDao.deleteMeal(mealId)
+            notifyMealPlanChangedIfMain(existing.meal.date)
             DomainResult.Success(Unit)
         }
 
