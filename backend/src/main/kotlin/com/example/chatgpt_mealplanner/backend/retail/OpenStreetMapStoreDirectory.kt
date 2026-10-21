@@ -70,7 +70,7 @@ class OpenStreetMapStoreDirectory(
         require(request.radiusMeters in 500..15_000) { "Radius must be between 500 and 15000 metres." }
         val (lat, lon) = resolveCenter(request, onProgress)
         // Version the cache to invalidate results from the previous petrol-station-inclusive search.
-        val key = "shops-v5:${request.retailerId}:${"%.4f".format(Locale.US, lat)}:${"%.4f".format(Locale.US, lon)}:${request.radiusMeters}"
+        val key = "shops-v6:${request.retailerId}:${"%.4f".format(Locale.US, lat)}:${"%.4f".format(Locale.US, lon)}:${request.radiusMeters}"
         onProgress("Checking cached branch results…")
         cache[key]?.let {
             if (it.expiresAt > clock()) return it.response.copy(fromCache = true)
@@ -208,21 +208,17 @@ class OpenStreetMapStoreDirectory(
         // intentionally excluded because they are not useful branch matches for this finder.
         val radius = request.radiusMeters
         val retailerPattern = overpassRetailerPattern(request.retailerId)
-        // Some Food Warehouse locations have retailer identity tags but lack a usable
-        // shop=* tag. Query only those narrowly named features as a targeted recovery path.
-        val incompleteFoodWarehouseTags = if (request.retailerId == RetailerId.FOOD_WAREHOUSE) {
-            """
-            nwr["name"~"Food.*Warehouse",i](around:$radius,$lat,$lon);
-            nwr["brand"~"Food.*Warehouse",i](around:$radius,$lat,$lon);
-            nwr["operator"~"Food.*Warehouse",i](around:$radius,$lat,$lon);
-            """
-        } else ""
+        // Keep the normal shop-tagged scans, but also search retailer identity tags
+        // without requiring shop=*. Tesco Express, Morrisons Daily and Sainsbury's Local
+        // branches are inconsistently tagged in OSM; the parser filters non-retail matches.
         return """[out:json][timeout:60];
           (
             nwr["shop"]["name"~"$retailerPattern",i](around:$radius,$lat,$lon);
             nwr["shop"]["brand"~"$retailerPattern",i](around:$radius,$lat,$lon);
             nwr["shop"]["operator"~"$retailerPattern",i](around:$radius,$lat,$lon);
-            $incompleteFoodWarehouseTags
+            nwr["name"~"$retailerPattern",i](around:$radius,$lat,$lon);
+            nwr["brand"~"$retailerPattern",i](around:$radius,$lat,$lon);
+            nwr["operator"~"$retailerPattern",i](around:$radius,$lat,$lon);
           );
           out center tags;"""
     }
