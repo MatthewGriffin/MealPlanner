@@ -204,8 +204,15 @@ class SettingsViewModel @Inject constructor(
                         discoveredStores = emptyList(),
                         storeSearchMessage = buildString {
                             val currentStage = _uiState.value.storeSearchMessage.orEmpty()
+                            val errorMessage = e.message.orEmpty()
+                            // Prefer the actual failing operation over potentially stale progress text.
+                            // A directory timeout can occur after postcode lookup has already succeeded.
+                            val isDirectoryFailure =
+                                errorMessage.contains("All branch directory services failed", ignoreCase = true) ||
+                                errorMessage.contains("branch directory", ignoreCase = true) ||
+                                errorMessage.contains("Overpass.ch", ignoreCase = true)
                             append(
-                                if (currentStage.contains("postcode", ignoreCase = true)) {
+                                if (!isDirectoryFailure && currentStage.contains("postcode", ignoreCase = true)) {
                                     "Postcode lookup failed"
                                 } else {
                                     "Branch directory search failed"
