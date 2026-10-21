@@ -214,7 +214,7 @@ fun SettingsScreen(
                 Text("Preferred Store Locations", fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    "Save the branches you use and their exact format, such as Tesco Express or Sainsbury's Local. These preferences stay on this device; current prices remain retailer-wide estimates and branch stock checks are not connected yet.",
+                    "Save the branches you use and their exact format, such as Tesco Express or Sainsbury's Local. These preferences stay on this device. Current feeds do not provide a verified retailer branch ID, so prices remain online/retailer-wide estimates and branch stock is not confirmed.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
