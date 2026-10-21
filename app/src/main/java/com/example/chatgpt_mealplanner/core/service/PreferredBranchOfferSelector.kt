@@ -6,31 +6,36 @@ import com.example.chatgpt_mealplanner.retail.contract.RetailProductWithOffer
 import com.example.chatgpt_mealplanner.retail.contract.RetailStoreLocation
 
 /**
- * Prevents a known branch-specific offer from another branch being used for a user's selected
- * branch. If the selected branch has an offer for the same retailer product, prefer that offer
- * over a retailer-wide online/general offer for the same product.
+ * Keeps offers from unselected physical branches out of a preferred-branch comparison.
  *
- * Offers without branch identity remain usable as online/general price evidence, but they are
- * never promoted into branch-confirmed stock evidence.
+ * The app-local [RetailStoreLocation.id] is not a retailer branch identifier. Only
+ * [RetailStoreLocation.retailerStoreId], populated from an authorised retailer directory/feed,
+ * may match an offer's storeLocationId. If a preferred branch has no retailer ID yet, its
+ * branch-scoped offers cannot be verified and are excluded; online/general offers remain usable.
  */
 object PreferredBranchOfferSelector {
     fun select(
         candidates: List<RetailProductWithOffer>,
         preferredStores: List<RetailStoreLocation>
     ): List<RetailProductWithOffer> {
-        val preferredIdsByRetailer = preferredStores
+        val preferredRetailers = preferredStores
             .filter { it.isPreferred }
-            .groupBy({ it.retailerId }, { it.id })
-            .mapValues { (_, ids) -> ids.toSet() }
+            .map { it.retailerId }
+            .toSet()
+        if (preferredRetailers.isEmpty()) return candidates
 
-        if (preferredIdsByRetailer.isEmpty()) return candidates
+        val preferredSourceIdsByRetailer = preferredStores
+            .filter { it.isPreferred && !it.retailerStoreId.isNullOrBlank() }
+            .groupBy({ it.retailerId }, { it.retailerStoreId!! })
+            .mapValues { (_, ids) -> ids.toSet() }
 
         fun isBranchScoped(candidate: RetailProductWithOffer): Boolean =
             candidate.offer.priceScope == RetailPriceScope.STORE_SPECIFIC ||
                 candidate.offer.priceScope == RetailPriceScope.IN_STORE
 
         val validSelectedBranchOffers = candidates.filter { candidate ->
-            val selectedIds = preferredIdsByRetailer[candidate.product.retailerId] ?: return@filter false
+            val selectedIds = preferredSourceIdsByRetailer[candidate.product.retailerId]
+                ?: return@filter false
             candidate.offer.storeLocationId?.let { it in selectedIds } == true &&
                 isBranchScoped(candidate) &&
                 candidate.offer.availability != RetailAvailability.OUT_OF_STOCK
@@ -41,16 +46,17 @@ object PreferredBranchOfferSelector {
         }.toSet()
 
         return candidates.filter { candidate ->
-            val selectedIds = preferredIdsByRetailer[candidate.product.retailerId]
-                ?: return@filter true
-            val branchId = candidate.offer.storeLocationId
+            val retailer = candidate.product.retailerId
+            if (retailer !in preferredRetailers) return@filter true
 
+            val branchId = candidate.offer.storeLocationId
             if (branchId != null) {
+                val selectedIds = preferredSourceIdsByRetailer[retailer].orEmpty()
                 branchId in selectedIds &&
                     isBranchScoped(candidate) &&
                     candidate.offer.availability != RetailAvailability.OUT_OF_STOCK
             } else {
-                (candidate.product.retailerId to candidate.product.retailerProductId) !in selectedBranchProductKeys
+                (retailer to candidate.product.retailerProductId) !in selectedBranchProductKeys
             }
         }
     }
