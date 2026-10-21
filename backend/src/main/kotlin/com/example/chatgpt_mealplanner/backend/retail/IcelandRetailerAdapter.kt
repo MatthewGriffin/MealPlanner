@@ -4,6 +4,7 @@ import com.example.chatgpt_mealplanner.retail.contract.RetailOfferSourceType
 import com.example.chatgpt_mealplanner.retail.contract.RetailProductSearchResult
 import com.example.chatgpt_mealplanner.retail.contract.RetailSourceMetadata
 import com.example.chatgpt_mealplanner.retail.contract.RetailerId
+import io.ktor.http.URLBuilder
 
 open class IcelandRetailerAdapter(
     private val client: IcelandSourceClient,
@@ -43,7 +44,7 @@ open class IcelandRetailerAdapter(
         val metadata = RetailSourceMetadata(
             retailerId = RetailerId.ICELAND,
             sourceType = RetailOfferSourceType.LIVE,
-            sourceReference = "https://www.iceland.co.uk/search?q=${query.replace(" ", "+")}",
+            sourceReference = URLBuilder("https://www.iceland.co.uk/search").apply { parameters.append("q", query.trim()) }.buildString(),
             observedAt = System.currentTimeMillis(),
             isLive = true,
             parseWarnings = allWarnings
