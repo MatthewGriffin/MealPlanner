@@ -18,7 +18,10 @@ class PantrySyncPhase4gWorkManagerConstructionTest {
     @Test
     fun testMealPlannerApplication_implementsConfigurationProvider() {
         val app = MealPlannerApplication()
-        assertTrue("MealPlannerApplication MUST implement Configuration.Provider", app is Configuration.Provider)
+        assertTrue(
+            "MealPlannerApplication MUST implement Configuration.Provider",
+            Configuration.Provider::class.java.isAssignableFrom(app.javaClass)
+        )
     }
 
     @Test
