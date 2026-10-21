@@ -170,6 +170,7 @@ class OpenStreetMapStoreDirectory(
                 if (response.status.value !in 200..299) {
                     val detail = response.bodyAsText().lineSequence().firstOrNull()
                         ?.replace(Regex("\\s+"), " ")
+                        ?.let { redactApiKey(it, key) }
                         ?.take(160)
                         ?.takeIf { it.isNotBlank() }
                     failures += buildString {
@@ -181,7 +182,9 @@ class OpenStreetMapStoreDirectory(
                 return response.bodyAsText()
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
-                val reason = e.message?.lineSequence()?.firstOrNull()?.take(120)
+                val reason = e.message?.lineSequence()?.firstOrNull()
+                    ?.let { redactApiKey(it, key) }
+                    ?.take(120)
                     ?.takeIf { it.isNotBlank() } ?: e::class.simpleName ?: "request failed"
                 failures += "$serviceName: $reason"
             }
@@ -190,6 +193,12 @@ class OpenStreetMapStoreDirectory(
             "All branch directory services failed (${failures.joinToString("; ")}). " +
                 "Please retry later, or add the branch manually."
         )
+    }
+
+    /** Prevent the keyed endpoint path from leaking through server or exception diagnostics. */
+    private fun redactApiKey(message: String, apiKey: String?): String {
+        if (apiKey.isNullOrBlank()) return message
+        return message.replace(apiKey, "[redacted]")
     }
 
     internal fun buildQuery(request: StoreDirectorySearchRequest, lat: Double, lon: Double): String {
