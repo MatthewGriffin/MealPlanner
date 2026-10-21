@@ -24,6 +24,7 @@ data class MealPlannerUiState(
     val selectedDate: String = "", // Populated dynamically with today's ISO date YYYY-MM-DD
     val activeTab: MealPlannerTab = MealPlannerTab.PLANNER,
     val isLoading: Boolean = false,
+    val isMealPlanLoading: Boolean = true,
     val userMessage: String? = null,
     val mealToCook: MealWithIngredients? = null,
     val mealToAddOrEdit: MealWithIngredients? = null,

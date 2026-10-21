@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -166,6 +167,7 @@ fun MealPlannerScreen(
                                 )
                                 MealPlanContent(
                                     meals = uiState.mealsForSelectedDate,
+                                    isLoading = uiState.isMealPlanLoading,
                                     onMealClicked = { mealWithIngredients ->
                                         navController.navigate("recipe_details/${mealWithIngredients.meal.id}")
                                     },
@@ -313,6 +315,7 @@ fun MealPlanContent(
     meals: List<MealWithIngredients>,
     onMealClicked: (MealWithIngredients) -> Unit,
     onDeleteClicked: (String) -> Unit,
+    isLoading: Boolean = false,
     belowContent: @Composable () -> Unit = {}
 ) {
     LazyColumn(
@@ -321,7 +324,23 @@ fun MealPlanContent(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        if (meals.isEmpty()) {
+        if (isLoading) {
+            item(key = "loading_meal_plan") {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 40.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    CircularProgressIndicator()
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "Loading meal plan…",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        } else if (meals.isEmpty()) {
             item(key = "empty_meal_plan") {
                 Column(
                     modifier = Modifier
@@ -352,8 +371,10 @@ fun MealPlanContent(
                 )
             }
         }
-        item(key = "meal_request_section") {
-            belowContent()
+        if (!isLoading) {
+            item(key = "meal_request_section") {
+                belowContent()
+            }
         }
     }
 }

@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -71,13 +72,17 @@ class MealPlannerViewModel @Inject constructor(
     val isPollingActive: Boolean
         get() = pollingJob?.isActive == true
 
+    private data class SelectedDateMeals(val date: String, val meals: List<MealWithIngredients>)
+
     private val mealsForSelectedDateFlow = selectedDateFlow.flatMapLatest { date ->
-        mealRepository.observeMealsForDate(date).onEach { meals ->
-            val ids = meals.map { it.meal.id }
-            val today = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE)
-            logDiagnostic("PLANNER_QUERY", "selectedDate=\"$date\" returnedMealIds=$ids")
-            logDiagnostic("PLANNER_UI_STATE", "selectedDate=\"$date\" today=\"$today\" visibleMealIds=$ids")
-        }
+        mealRepository.observeMealsForDate(date)
+            .map { meals -> SelectedDateMeals(date, meals) }
+            .onEach { result ->
+                val ids = result.meals.map { it.meal.id }
+                val today = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE)
+                logDiagnostic("PLANNER_QUERY", "selectedDate=\"$date\" returnedMealIds=$ids")
+                logDiagnostic("PLANNER_UI_STATE", "selectedDate=\"$date\" today=\"$today\" visibleMealIds=$ids")
+            }
     }
 
     private val availableLeftoversFlow = leftoverRepository.observeAvailableLeftovers()
@@ -87,7 +92,6 @@ class MealPlannerViewModel @Inject constructor(
     }
 
     private val allChangeRequestsFlow = mealChangeRequestRepository.observeAllRequests()
-    private val mealTitleMapFlow = mealRepository.observeAllMealTitles()
 
     @Suppress("UNCHECKED_CAST")
     val uiState: StateFlow<MealPlannerUiState> = combine(
@@ -101,13 +105,13 @@ class MealPlannerViewModel @Inject constructor(
         mealToCookFlow,
         mealToAddOrEditFlow,
         showAddDialogFlow,
-        allChangeRequestsFlow,
-        mealTitleMapFlow
+        allChangeRequestsFlow
     ) { flows ->
         MealPlannerUiState(
             selectedDate = flows[0] as String,
             activeTab = flows[1] as MealPlannerTab,
-            mealsForSelectedDate = flows[2] as List<MealWithIngredients>,
+            mealsForSelectedDate = (flows[2] as? SelectedDateMeals)?.takeIf { it.date == flows[0] }?.meals.orEmpty(),
+            isMealPlanLoading = (flows[2] as? SelectedDateMeals)?.date != flows[0],
             leftovers = flows[3] as List<Leftover>,
             recentCookedMeals = flows[4] as List<MealWithIngredients>,
             userMessage = flows[5] as String?,
@@ -117,7 +121,7 @@ class MealPlannerViewModel @Inject constructor(
             showAddDialog = flows[9] as Boolean,
             allChangeRequests = flows[10] as List<com.example.chatgpt_mealplanner.core.database.entity.MealChangeRequestEntity>,
             isFollower = appRoleResolver.isFollower(),
-            mealTitleMap = flows[11] as Map<String, String>
+            mealTitleMap = (flows[2] as? SelectedDateMeals)?.takeIf { it.date == flows[0] }?.meals.orEmpty().associate { it.meal.id to it.meal.title }
         )
     }.onEach { state ->
         updatePollingState(state.allChangeRequests, state.isFollower)

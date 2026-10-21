@@ -22,6 +22,7 @@ class PlannerNavigationTest {
     fun plannerState_defaultsToPlannerTab() {
         val state = MealPlannerUiState()
         assertEquals(MealPlannerTab.PLANNER, state.activeTab)
+        assertEquals(true, state.isMealPlanLoading)
     }
 
     @Test
