@@ -213,6 +213,59 @@ class OpenStreetMapStoreDirectoryTest {
     }
 
     @Test
+    fun sharedQuerySearchesAllSupportedRetailers() {
+        val query = directory.buildMultiRetailerQuery(51.5, -0.1, 3000)
+        assertTrue(query.contains("ASDA|Iceland|Food.*Warehouse|Tesco|Morrisons|Sainsbury"))
+        assertTrue(query.contains("""nwr["shop"]["name"~"""))
+        assertTrue(query.contains("""nwr["brand"~"""))
+        assertTrue(query.contains("""nwr["operator"~"""))
+        assertTrue(query.contains("around:3000,51.5,-0.1"))
+        assertTrue(!query.contains("""["amenity"="fuel"]"""))
+    }
+
+    @Test
+    fun nearbyRetailerResultsAreSharedFromOneOverpassRequest() = runBlocking {
+        var overpassRequests = 0
+        val client = HttpClient(MockEngine { request ->
+            assertEquals("overpass-api.de", request.url.host)
+            overpassRequests++
+            respond(
+                content = """{"elements":[
+                  {"type":"node","id":1001,"lat":51.5,"lon":-0.1,"tags":{"name":"ASDA Superstore","brand":"ASDA","shop":"supermarket","addr:postcode":"SW1A 1AA"}},
+                  {"type":"node","id":1002,"lat":51.501,"lon":-0.101,"tags":{"name":"Tesco Express","brand":"Tesco","shop":"convenience","addr:postcode":"SW1A 1AB"}}
+                ]}""",
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, "application/json")
+            )
+        })
+        try {
+            val sharedDirectory = OpenStreetMapStoreDirectory(client)
+            val asda = sharedDirectory.search(
+                com.example.chatgpt_mealplanner.retail.contract.StoreDirectorySearchRequest(
+                    retailerId = RetailerId.ASDA,
+                    latitude = 51.5,
+                    longitude = -0.1,
+                    radiusMeters = 3000
+                )
+            )
+            val tesco = sharedDirectory.search(
+                com.example.chatgpt_mealplanner.retail.contract.StoreDirectorySearchRequest(
+                    retailerId = RetailerId.TESCO,
+                    latitude = 51.5,
+                    longitude = -0.1,
+                    radiusMeters = 3000
+                )
+            )
+            assertEquals("ASDA Superstore", asda.stores.single().name)
+            assertEquals("Tesco Express", tesco.stores.single().name)
+            assertTrue(tesco.fromCache)
+            assertEquals(1, overpassRequests)
+        } finally {
+            client.close()
+        }
+    }
+
+    @Test
     fun queryUsesBoundedRetailerFilteredShopScans() {
         val query = directory.buildQuery(
             com.example.chatgpt_mealplanner.retail.contract.StoreDirectorySearchRequest(
