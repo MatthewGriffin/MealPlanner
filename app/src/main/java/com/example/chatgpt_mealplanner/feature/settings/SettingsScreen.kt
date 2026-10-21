@@ -260,7 +260,7 @@ fun SettingsScreen(
 
                 Text("Overpass.ch API key (optional)", fontWeight = FontWeight.SemiBold)
                 Text(
-                    "If you have an Overpass.ch key, save it here to try that service first. The key is stored encrypted on this device. Public directory services may still be tried if it fails.",
+                    "If you have an Overpass.ch key, save it here to send branch queries to that service directly. The key is stored encrypted on this device. If it fails, the app reports the error instead of waiting on other public Overpass servers. Postcode lookup still uses OpenStreetMap search.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
