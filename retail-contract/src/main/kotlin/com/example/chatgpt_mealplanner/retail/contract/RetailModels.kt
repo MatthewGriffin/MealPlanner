@@ -61,7 +61,9 @@ data class RetailOffer(
     val availability: RetailAvailability = RetailAvailability.UNKNOWN,
     val priceScope: RetailPriceScope = RetailPriceScope.ONLINE,
     val sourceType: RetailOfferSourceType = RetailOfferSourceType.LIVE,
-    val observedAt: Long = System.currentTimeMillis()
+    val observedAt: Long = System.currentTimeMillis(),
+    /** Stable ID of the physical branch when the source truly reports branch-specific data. */
+    val storeLocationId: String? = null
 ) {
     fun calculateFreshness(policy: RetailFreshnessPolicy): PriceFreshness {
         val ageMs = System.currentTimeMillis() - observedAt
@@ -176,7 +178,8 @@ data class UserShoppingPreferences(
     val allowLargeFrozenValuePacks: Boolean = true,
     val enableAsdaRewards: Boolean = false,
     val enableIcelandBonusCard: Boolean = false,
-    val additionalStorePenalty: Money = Money(200L) // £2.00 convenience penalty
+    val additionalStorePenalty: Money = Money(200L), // £2.00 convenience penalty
+    val preferredStores: List<RetailStoreLocation> = emptyList()
 )
 
 @Serializable

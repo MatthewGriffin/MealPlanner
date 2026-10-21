@@ -14,6 +14,7 @@ import com.example.chatgpt_mealplanner.core.security.CredentialStore
 import com.example.chatgpt_mealplanner.core.sync.AppRoleResolver
 import com.example.chatgpt_mealplanner.core.sync.follower.worker.FollowerSyncScheduler
 import com.example.chatgpt_mealplanner.core.service.RetailerPreferenceStore
+import com.example.chatgpt_mealplanner.core.service.RetailStorePreferenceStore
 import com.example.chatgpt_mealplanner.retail.contract.RetailerId
 import com.example.chatgpt_mealplanner.retail.contract.RetailStoreFormat
 import com.example.chatgpt_mealplanner.retail.contract.RetailStoreLocation
@@ -27,11 +28,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.builtins.ListSerializer
-import kotlinx.serialization.json.Json
 import java.io.IOException
 import java.util.Arrays
-import java.util.UUID
 import javax.inject.Inject
 
 data class SettingsUiState(
@@ -60,18 +58,18 @@ class SettingsViewModel @Inject constructor(
     private val followerSyncScheduler: FollowerSyncScheduler,
     private val appRoleResolver: AppRoleResolver,
     private val mainBackupSaveCoordinator: MainEncryptedBackupSaveCoordinator,
-    private val retailerPreferenceStore: RetailerPreferenceStore = RetailerPreferenceStore(null)
+    private val retailerPreferenceStore: RetailerPreferenceStore = RetailerPreferenceStore(null),
+    private val retailStorePreferenceStore: RetailStorePreferenceStore = RetailStorePreferenceStore(null)
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
-    private val storesJson = Json { ignoreUnknownKeys = true }
 
     init {
         _uiState.update { it.copy(enabledRetailers = retailerPreferenceStore.getEnabledRetailers()) }
         checkCredentialStatus()
         resolveAppRole()
-        _uiState.update { it.copy(preferredStores = getPreferredStores()) }
+        _uiState.update { it.copy(preferredStores = retailStorePreferenceStore.getPreferredStores()) }
     }
 
     fun setRetailerEnabled(retailer: RetailerId, enabled: Boolean) {
@@ -93,40 +91,29 @@ class SettingsViewModel @Inject constructor(
         val cleanName = name.trim()
         val cleanPostcode = postcode.trim().uppercase()
         if (cleanName.isBlank() || cleanPostcode.isBlank()) return
-        val newStore = RetailStoreLocation(
-            id = UUID.randomUUID().toString(),
-            retailerId = retailerId,
-            name = cleanName,
-            postcode = cleanPostcode,
-            format = format
+        val updated = retailStorePreferenceStore.addPreferredStore(
+            _uiState.value.preferredStores, retailerId, cleanName, cleanPostcode, format
         )
-        val updated = (_uiState.value.preferredStores + newStore)
-            .distinctBy { "${it.retailerId}:${it.name.lowercase()}:${it.postcode.replace(" ", "")}" }
         persistPreferredStores(updated)
     }
 
     fun setPreferredStore(storeId: String, preferred: Boolean) {
-        persistPreferredStores(_uiState.value.preferredStores.map {
-            if (it.id == storeId) it.copy(isPreferred = preferred) else it
-        })
+        persistPreferredStores(retailStorePreferenceStore.setPreferred(
+            _uiState.value.preferredStores, storeId, preferred
+        ))
     }
 
     fun removePreferredStore(storeId: String) {
-        persistPreferredStores(_uiState.value.preferredStores.filterNot { it.id == storeId })
+        persistPreferredStores(retailStorePreferenceStore.removePreferred(_uiState.value.preferredStores, storeId))
     }
 
     private fun persistPreferredStores(stores: List<RetailStoreLocation>) {
-        context?.getSharedPreferences(STORE_PREFS, Context.MODE_PRIVATE)?.edit()
-            ?.putString(STORE_KEY, storesJson.encodeToString(ListSerializer(RetailStoreLocation.serializer()), stores))
-            ?.apply()
-        _uiState.update { it.copy(preferredStores = stores) }
+        if (retailStorePreferenceStore.savePreferredStores(stores)) {
+            _uiState.update { it.copy(preferredStores = stores, syncStatusMessage = null) }
+        } else {
+            _uiState.update { it.copy(syncStatusMessage = "Could not save preferred branches.") }
+        }
     }
-
-    private fun getPreferredStores(): List<RetailStoreLocation> = runCatching {
-        val raw = context?.getSharedPreferences(STORE_PREFS, Context.MODE_PRIVATE)?.getString(STORE_KEY, null)
-            ?: return emptyList()
-        storesJson.decodeFromString(ListSerializer(RetailStoreLocation.serializer()), raw)
-    }.getOrDefault(emptyList())
 
     private fun checkCredentialStatus() {
         _uiState.update { it.copy(isApiKeyConfigured = credentialStore.hasKey()) }
@@ -148,11 +135,6 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             scheduler.scheduleSyncWorkAsync(context, "MANUAL_SYNC", intentAlreadyRecorded = true)
         }
-    }
-
-    private companion object {
-        const val STORE_PREFS = "retail_store_preferences_v1"
-        const val STORE_KEY = "preferred_stores"
     }
 
     fun saveApiKey(key: String) {

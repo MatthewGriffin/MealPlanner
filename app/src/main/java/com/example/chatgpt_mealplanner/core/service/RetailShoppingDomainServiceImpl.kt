@@ -199,10 +199,11 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
             }
         }
 
+        val branchScopedCandidates = PreferredBranchOfferSelector.select(candidateProducts, preferences.preferredStores)
         val optimizer = BasketOptimizer(matcher)
         val comparison = optimizer.optimizeBasket(
             requirements = requirementSpecs,
-            availableProductsWithOffers = candidateProducts,
+            availableProductsWithOffers = branchScopedCandidates,
             preferences = preferences
         )
 

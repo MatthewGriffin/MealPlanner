@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import com.example.chatgpt_mealplanner.core.service.RetailShoppingDomainService
 import com.example.chatgpt_mealplanner.core.service.RetailerPreferenceStore
+import com.example.chatgpt_mealplanner.core.service.RetailStorePreferenceStore
 import com.example.chatgpt_mealplanner.retail.contract.BasketComparisonResult
 import com.example.chatgpt_mealplanner.retail.contract.BasketLine
 import com.example.chatgpt_mealplanner.retail.contract.Money
@@ -39,7 +40,8 @@ class ShoppingViewModel @Inject constructor(
     private val stapleRuleRepository: StapleRuleRepository,
     private val retailShoppingDomainService: RetailShoppingDomainService,
     private val appRoleResolver: AppRoleResolver,
-    private val retailerPreferenceStore: RetailerPreferenceStore = RetailerPreferenceStore(null)
+    private val retailerPreferenceStore: RetailerPreferenceStore = RetailerPreferenceStore(null),
+    private val retailStorePreferenceStore: RetailStorePreferenceStore = RetailStorePreferenceStore(null)
 ) : ViewModel() {
 
     private val activeTabFlow = MutableStateFlow(ShoppingTab.SHOPPING_LIST)
@@ -126,7 +128,8 @@ class ShoppingViewModel @Inject constructor(
             println("[AI_MEALPLANNER] [SHOPPING_ASSIGNMENT_CALL] shoppingItemCount=$count")
             val result = try {
                 val preferences = UserShoppingPreferences(
-                    enabledRetailers = retailerPreferenceStore.getEnabledRetailers()
+                    enabledRetailers = retailerPreferenceStore.getEnabledRetailers(),
+                    preferredStores = retailStorePreferenceStore.getPreferredStores()
                 )
                 val res = retailShoppingDomainService.optimizeShoppingBasket(preferences)
                 if (res is DomainResult.Success) {
