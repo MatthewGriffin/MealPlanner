@@ -265,10 +265,11 @@ class Phase10MealRequestSyncTest {
             disk.followerDao().updateSyncMetadata(FollowerSyncMetadataEntity(1, 19L))
             val before = disk.followerDao().getItemById(op.targetItemId!!)
             disk.close()
-            // Remove the v5 addition to recreate the v4 table layout, then exercise
-            // Room's migration and generated schema validation on reopen.
+            // Remove tables introduced in v5 and v6 to recreate the v4 layout,
+            // then exercise Room's migrations and generated schema validation on reopen.
             android.database.sqlite.SQLiteDatabase.openDatabase(context.getDatabasePath(name).path, null, 0).use { raw ->
                 raw.execSQL("DROP TABLE follower_meal_requests")
+                raw.execSQL("DROP TABLE follower_meals")
                 raw.version = 4
             }
             disk = open()
@@ -303,6 +304,7 @@ class Phase10MealRequestSyncTest {
             disk.close()
             android.database.sqlite.SQLiteDatabase.openDatabase(context.getDatabasePath(name).path, null, 0).use { raw ->
                 raw.execSQL("DROP TABLE follower_meal_requests")
+                raw.execSQL("DROP TABLE follower_meals")
                 raw.version = 4
             }
             disk = open()
