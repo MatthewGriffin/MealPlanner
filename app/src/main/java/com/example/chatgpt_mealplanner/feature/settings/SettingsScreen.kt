@@ -192,6 +192,18 @@ fun SettingsScreen(
             }
         }
 
+        Spacer(modifier = Modifier.height(16.dp))
+        Button(
+            onClick = { viewModel.testAiConnection() },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Test Connection")
+        }
+        if (uiState.connectionTestResult != null) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text("Result: ${uiState.connectionTestResult}", color = MaterialTheme.colorScheme.primary)
+        }
+
         Spacer(modifier = Modifier.height(12.dp))
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp)) {
@@ -238,18 +250,6 @@ fun SettingsScreen(
                     )
                 }
             }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-        Button(
-            onClick = { viewModel.testAiConnection() },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Test Connection")
-        }
-        if (uiState.connectionTestResult != null) {
-            Spacer(modifier = Modifier.height(8.dp))
-            Text("Result: ${uiState.connectionTestResult}", color = MaterialTheme.colorScheme.primary)
         }
 
         Spacer(modifier = Modifier.height(24.dp))
