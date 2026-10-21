@@ -59,11 +59,12 @@ class OpenStreetMapStoreDirectory(
         require(request.radiusMeters in 500..15_000) { "Radius must be between 500 and 15000 metres." }
         val (lat, lon) = resolveCenter(request, onProgress)
         val key = "${request.retailerId}:${"%.4f".format(Locale.US, lat)}:${"%.4f".format(Locale.US, lon)}:${request.radiusMeters}"
+        onProgress("Checking cached branch results…")
         cache[key]?.let {
             if (it.expiresAt > clock()) return it.response.copy(fromCache = true)
             cache.remove(key, it)
         }
-        onProgress("Searching OpenStreetMap data for ${request.retailerId} branches near the postcode…")
+        onProgress("Searching OpenStreetMap data for ${displayName(request.retailerId)} branches near the postcode…")
         overpassMutex.withLock {
             val wait = 1_100L - (clock() - lastOverpassAt)
             if (wait > 0) delay(wait)
