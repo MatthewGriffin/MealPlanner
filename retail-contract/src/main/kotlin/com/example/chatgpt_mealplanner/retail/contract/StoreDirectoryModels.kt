@@ -24,6 +24,8 @@ data class StoreDirectoryEntry(
 data class StoreDirectorySearchRequest(
     val retailerId: RetailerId,
     val postcode: String? = null,
+    /** When true, return all supported retailers for this area in one shared search. */
+    val searchAllRetailers: Boolean = false,
     val latitude: Double? = null,
     val longitude: Double? = null,
     val radiusMeters: Int = 5_000
