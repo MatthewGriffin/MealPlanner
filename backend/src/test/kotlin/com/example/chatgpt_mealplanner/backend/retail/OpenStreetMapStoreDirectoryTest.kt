@@ -273,6 +273,33 @@ class OpenStreetMapStoreDirectoryTest {
     }
 
     @Test
+    fun foodWarehouseQueryIncludesNarrowRecoveryForMissingShopTags() {
+        val query = directory.buildQuery(
+            com.example.chatgpt_mealplanner.retail.contract.StoreDirectorySearchRequest(
+                retailerId = RetailerId.FOOD_WAREHOUSE,
+                postcode = "CH65 6TF"
+            ),
+            53.27776,
+            -2.90437
+        )
+        assertTrue(query.contains("""nwr["shop"]["name"~"Food.*Warehouse",i]"""))
+        assertTrue(query.contains("""nwr["name"~"Food.*Warehouse",i]"""))
+        assertTrue(query.contains("""nwr["brand"~"Food.*Warehouse",i]"""))
+        assertTrue(query.contains("""nwr["operator"~"Food.*Warehouse",i]"""))
+    }
+
+    @Test
+    fun parserAcceptsFoodWarehouseListingWithoutShopTag() {
+        val raw = """{"elements":[
+          {"type":"node","id":801,"lat":53.27776,"lon":-2.90437,"tags":{"name":"The Food Warehouse","addr:postcode":"CH65 6TF"}}
+        ]}"""
+        val stores = directory.parseOverpassResponse(raw, RetailerId.FOOD_WAREHOUSE, 53.27776, -2.90437)
+        assertEquals(1, stores.size)
+        assertEquals("The Food Warehouse", stores.single().name)
+        assertEquals(RetailStoreFormat.FOOD_WAREHOUSE, stores.single().format)
+    }
+
+    @Test
     fun parserDoesNotTreatFoodWarehouseAsIceland() {
         val raw = """{"elements":[
           {"type":"node","id":1,"lat":51.5,"lon":-0.1,"tags":{"name":"The Food Warehouse","brand":"The Food Warehouse","shop":"supermarket"}},
