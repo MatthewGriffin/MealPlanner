@@ -39,7 +39,7 @@ class PairDeviceViewModel @Inject constructor(
     private val tlsKeyManager: PantryTlsKeyManager,
     private val invitationManager: PantryEnrollmentInvitationManager,
     private val hostController: PantrySyncHostController? = null,
-    @ApplicationContext private val appContext: Context? = null
+    @param:ApplicationContext private val appContext: Context? = null
 ) : ViewModel() {
 
     private val json = Json { ignoreUnknownKeys = true }
