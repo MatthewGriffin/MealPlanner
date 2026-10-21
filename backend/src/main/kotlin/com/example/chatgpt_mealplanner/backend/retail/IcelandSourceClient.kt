@@ -4,12 +4,21 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.request.get
 import io.ktor.client.request.header
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
+import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.URLBuilder
+import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import java.net.URI
 
 data class IcelandClientConfig(
     val minRequestIntervalMs: Long = 1000L,
@@ -24,15 +33,74 @@ class IcelandSourceClient(
 ) {
     private val rateLimiterMutex = Mutex()
     private var lastRequestTimestamp = 0L
+    private val json = Json { ignoreUnknownKeys = true }
 
     /**
-     * Fetch the retailer's real search route for every free-text query.
-     *
-     * Do not map arbitrary search terms to hand-picked category pages: that can return
-     * unrelated products while appearing to have searched successfully.
+     * Discover Iceland's public browser-side Algolia settings from the retailer's own
+     * homepage and same-site JavaScript assets. No credentials or index names are guessed.
+     * Returns null when the live site no longer exposes a recognizable configuration.
+     */
+    suspend fun fetchAlgoliaSearchJson(query: String): String? {
+        require(query.isNotBlank()) { "Iceland search query must not be blank" }
+        val homepage = getText("https://www.iceland.co.uk/")
+        val sources = mutableListOf(homepage)
+        val scriptUrls = Regex("""(?i)<script[^>]+src=["']([^"']+\.js(?:\?[^"']*)?)["']""")
+            .findAll(homepage)
+            .mapNotNull { match ->
+                runCatching { URI("https://www.iceland.co.uk/").resolve(match.groupValues[1]).toString() }
+                    .getOrNull()
+            }
+            .filter { url ->
+                runCatching {
+                    val host = URI(url).host.orEmpty().lowercase()
+                    (host == "iceland.co.uk" || host.endsWith(".iceland.co.uk")) &&
+                        url.startsWith("https://")
+                }.getOrDefault(false)
+            }
+            .distinct()
+            .take(30)
+            .toList()
+
+        for (scriptUrl in scriptUrls) {
+            val source = runCatching { getText(scriptUrl) }.getOrNull() ?: continue
+            sources += source
+            if (IcelandAlgoliaConfigDiscovery.find(sources) != null) break
+        }
+
+        val discovered = IcelandAlgoliaConfigDiscovery.find(sources) ?: return null
+        val url = "https://${discovered.applicationId}-dsn.algolia.net/1/indexes/${encodePathSegment(discovered.indexName)}/query"
+        val requestBody = json.encodeToString(
+            buildJsonObject {
+                put("query", query.trim())
+                put("hitsPerPage", 30)
+            }
+        )
+        val response = httpClient.post(url) {
+            header("x-algolia-application-id", discovered.applicationId)
+            header("x-algolia-api-key", discovered.searchApiKey)
+            header(HttpHeaders.UserAgent, config.userAgent)
+            contentType(ContentType.Application.Json)
+            setBody(requestBody)
+        }
+        if (!response.status.isSuccess()) {
+            throw IllegalStateException("Iceland Algolia search returned HTTP " + response.status.value)
+        }
+        return response.bodyAsText()
+    }
+
+    /**
+     * Fetch the retailer's real search route as the HTML/JSON-LD fallback.
+     * Never map arbitrary terms to hand-picked categories and imply they were searched.
      */
     suspend fun fetchSearchHtml(query: String): String {
         require(query.isNotBlank()) { "Iceland search query must not be blank" }
+        val url = URLBuilder("https://www.iceland.co.uk/search").apply {
+            parameters.append("q", query.trim())
+        }.buildString()
+        return getText(url)
+    }
+
+    private suspend fun getText(url: String): String {
         rateLimiterMutex.withLock {
             val now = System.currentTimeMillis()
             val timeSinceLast = now - lastRequestTimestamp
@@ -41,18 +109,16 @@ class IcelandSourceClient(
             }
             lastRequestTimestamp = System.currentTimeMillis()
         }
-
-        val url = URLBuilder("https://www.iceland.co.uk/search").apply {
-            parameters.append("q", query.trim())
-        }.buildString()
-
         val response = httpClient.get(url) {
             header(HttpHeaders.UserAgent, config.userAgent)
-            header(HttpHeaders.Accept, "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+            header(HttpHeaders.Accept, "text/html,application/xhtml+xml,application/javascript,application/json;q=0.9,*/*;q=0.8")
         }
         if (!response.status.isSuccess()) {
-            throw IllegalStateException("Iceland search returned HTTP " + response.status.value)
+            throw IllegalStateException("Iceland source returned HTTP " + response.status.value)
         }
         return response.bodyAsText()
     }
+
+    private fun encodePathSegment(value: String): String =
+        java.net.URLEncoder.encode(value, Charsets.UTF_8.name()).replace("+", "%20")
 }
