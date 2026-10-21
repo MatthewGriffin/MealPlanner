@@ -89,8 +89,8 @@ class OpenStreetMapStoreDirectoryTest {
             51.5,
             -0.1
         )
-        assertTrue(query.contains("[out:json][timeout:15]"))
-        assertTrue(query.contains("""nwr["shop"~"^(supermarket|convenience)$"](around:5000,51.5,-0.1)"""))
+        assertTrue(query.contains("[out:json][timeout:20]"))
+        assertTrue(query.contains("""nwr["shop"](around:5000,51.5,-0.1)"""))
         assertTrue(query.contains("out center tags"))
         assertTrue(!query.contains("""["name"~"""))
         assertTrue(!query.contains("""["brand"~"""))
@@ -111,6 +111,17 @@ class OpenStreetMapStoreDirectoryTest {
         assertEquals(StoreDirectorySource.OPENSTREETMAP, stores.first().directorySource)
         assertEquals("SW1A 1AA", stores.first().postcode)
         assertTrue(stores.first().distanceMeters!! < stores.last().distanceMeters!!)
+    }
+
+    @Test
+    fun parserIncludesAsdaExpressAsAnAsdaBranch() {
+        val raw = """{"elements":[
+          {"type":"node","id":501,"lat":51.5,"lon":-0.1,"tags":{"name":"Asda Express","brand":"Asda Express","shop":"convenience","addr:postcode":"SW1A 1AA"}},
+          {"type":"node","id":502,"lat":51.501,"lon":-0.101,"tags":{"name":"ASDA","brand":"ASDA","shop":"supermarket","addr:postcode":"SW1A 1AB"}}
+        ]}"""
+        val stores = directory.parseOverpassResponse(raw, RetailerId.ASDA, 51.5, -0.1)
+        assertEquals(2, stores.size)
+        assertTrue(stores.any { it.name == "Asda Express" && it.format.name == "ASDA_EXPRESS" })
     }
 
     @Test
