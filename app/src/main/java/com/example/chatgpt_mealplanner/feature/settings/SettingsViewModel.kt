@@ -161,9 +161,6 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun refreshIcelandPrices() {
-        // Manual Iceland refresh
-    }
 
     fun clearChatHistory() {
         viewModelScope.launch {
