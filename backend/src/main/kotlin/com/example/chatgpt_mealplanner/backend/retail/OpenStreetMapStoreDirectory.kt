@@ -166,8 +166,8 @@ class OpenStreetMapStoreDirectory(
             """[out:json][timeout:20];
               (
                 nwr["shop"~"^(supermarket|convenience)$"](around:$radius,$lat,$lon);
-                nwr["name"~"ASDA\\s*Express",i](around:$radius,$lat,$lon);
-                nwr["brand"~"ASDA\\s*Express",i](around:$radius,$lat,$lon);
+                nwr["name"~"ASDA.*Express",i](around:$radius,$lat,$lon);
+                nwr["brand"~"ASDA.*Express",i](around:$radius,$lat,$lon);
               );
               out center tags;"""
         } else {
