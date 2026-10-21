@@ -43,6 +43,43 @@ class OpenStreetMapStoreDirectoryTest {
     }
 
     @Test
+    fun fallsBackToActualOpenStreetMapNameAndPostcodeWhenOverpassFails() = runBlocking {
+        val client = HttpClient(MockEngine { request ->
+            if (request.url.host == "nominatim.openstreetmap.org") {
+                assertEquals("/search", request.url.encodedPath)
+                assertEquals("ASDA", request.url.parameters["q"])
+                respond(
+                    content = """[{"osm_type":"way","osm_id":123,"lat":"51.5","lon":"-0.1","name":"ASDA Superstore","display_name":"ASDA Superstore, Example Road, London, SW1A 1AA, United Kingdom","address":{"road":"Example Road","city":"London","postcode":"SW1A 1AA"},"extratags":{"brand":"ASDA"}}]""",
+                    status = HttpStatusCode.OK,
+                    headers = headersOf(HttpHeaders.ContentType, "application/json")
+                )
+            } else {
+                respond(
+                    content = "Overpass unavailable",
+                    status = HttpStatusCode.ServiceUnavailable,
+                    headers = headersOf(HttpHeaders.ContentType, "text/plain")
+                )
+            }
+        })
+        try {
+            val fallbackDirectory = OpenStreetMapStoreDirectory(client)
+            val response = fallbackDirectory.search(
+                com.example.chatgpt_mealplanner.retail.contract.StoreDirectorySearchRequest(
+                    retailerId = RetailerId.ASDA,
+                    latitude = 51.5,
+                    longitude = -0.1
+                )
+            )
+            assertEquals("ASDA Superstore", response.stores.single().name)
+            assertEquals("SW1A 1AA", response.stores.single().postcode)
+            assertEquals("way/123", response.stores.single().directorySourceId)
+            assertTrue(response.warnings.single().contains("Overpass was unavailable"))
+        } finally {
+            client.close()
+        }
+    }
+
+    @Test
     fun queryUsesOneBoundedNearbyShopScan() {
         val query = directory.buildQuery(
             com.example.chatgpt_mealplanner.retail.contract.StoreDirectorySearchRequest(
