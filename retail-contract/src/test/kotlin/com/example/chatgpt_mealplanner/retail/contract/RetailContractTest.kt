@@ -42,4 +42,39 @@ class RetailContractTest {
 
         assertEquals(store, decoded)
     }
+    @Test
+    fun preferredBranchOfferAndShoppingPreferences_roundTrip() {
+        val store = RetailStoreLocation(
+            id = "branch-1",
+            retailerId = RetailerId.TESCO,
+            name = "High Street",
+            postcode = "AB1 2CD",
+            format = RetailStoreFormat.TESCO_EXPRESS
+        )
+        val offer = RetailOffer(
+            retailerId = RetailerId.TESCO,
+            retailerProductId = "milk-1",
+            price = Money(150L),
+            priceScope = RetailPriceScope.STORE_SPECIFIC,
+            storeLocationId = store.id,
+            availability = RetailAvailability.IN_STOCK
+        )
+        val preferences = UserShoppingPreferences(
+            enabledRetailers = setOf(RetailerId.TESCO, RetailerId.MORRISONS),
+            preferredStores = listOf(store)
+        )
+
+        val decodedOffer = json.decodeFromString(
+            RetailOffer.serializer(),
+            json.encodeToString(RetailOffer.serializer(), offer)
+        )
+        val decodedPreferences = json.decodeFromString(
+            UserShoppingPreferences.serializer(),
+            json.encodeToString(UserShoppingPreferences.serializer(), preferences)
+        )
+
+        assertEquals(offer, decodedOffer)
+        assertEquals(preferences, decodedPreferences)
+    }
+
 }
