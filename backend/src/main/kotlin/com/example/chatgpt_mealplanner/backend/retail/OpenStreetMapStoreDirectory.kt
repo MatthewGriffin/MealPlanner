@@ -69,7 +69,7 @@ class OpenStreetMapStoreDirectory(
         require(request.radiusMeters in 500..15_000) { "Radius must be between 500 and 15000 metres." }
         val (lat, lon) = resolveCenter(request, onProgress)
         // Version the cache so earlier incomplete results cannot hide newly discovered Express shops.
-        val key = "shops-v2:${request.retailerId}:${"%.4f".format(Locale.US, lat)}:${"%.4f".format(Locale.US, lon)}:${request.radiusMeters}"
+        val key = "shops-v3:${request.retailerId}:${"%.4f".format(Locale.US, lat)}:${"%.4f".format(Locale.US, lon)}:${request.radiusMeters}"
         onProgress("Checking cached branch results…")
         cache[key]?.let {
             if (it.expiresAt > clock()) return it.response.copy(fromCache = true)
