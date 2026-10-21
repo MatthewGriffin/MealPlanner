@@ -80,6 +80,32 @@ class OpenStreetMapStoreDirectory(
                 if (matching.isNotEmpty()) {
                     return cached.response.copy(stores = matching, fromCache = true)
                 }
+                // The area has already had its shared search. If this retailer was absent,
+                // use only its targeted fallback rather than repeating the multi-retailer query.
+                if (configuredApiKey == null) {
+                    val fallbackStores = try {
+                        kotlinx.coroutines.withTimeout(12_000L) {
+                            searchNominatimFallback(request.retailerId, lat, lon, request.radiusMeters)
+                        }
+                    } catch (e: Exception) {
+                        if (e is kotlinx.coroutines.CancellationException && e !is kotlinx.coroutines.TimeoutCancellationException) throw e
+                        emptyList()
+                    }
+                    val combined = (cached.response.stores + fallbackStores).distinctBy { it.directorySourceId }
+                    cache[key] = cached.copy(response = cached.response.copy(stores = combined))
+                    val found = fallbackStores.sortedBy { it.distanceMeters ?: Int.MAX_VALUE }.take(50)
+                    return StoreDirectorySearchResponse(
+                        stores = found,
+                        observedAt = clock(),
+                        warnings = if (found.isEmpty()) listOf("No matching branch was found nearby. Coverage may be incomplete; verify with the retailer.") else emptyList()
+                    )
+                }
+                return StoreDirectorySearchResponse(
+                    stores = emptyList(),
+                    observedAt = cached.response.observedAt,
+                    warnings = listOf("No matching branch was found nearby. Coverage may be incomplete; verify with the retailer."),
+                    fromCache = true
+                )
             } else {
                 cache.remove(key, cached)
             }
