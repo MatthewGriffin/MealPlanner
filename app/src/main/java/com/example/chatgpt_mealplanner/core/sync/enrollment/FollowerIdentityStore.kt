@@ -1,8 +1,7 @@
 package com.example.chatgpt_mealplanner.core.sync.enrollment
 
 import android.content.Context
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
+import com.example.chatgpt_mealplanner.core.security.AndroidKeystoreSecurePreferences
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.util.UUID
 import javax.inject.Inject
@@ -17,37 +16,17 @@ open class FollowerIdentityStore @Inject constructor(
     open fun getOrCreateDeviceId(): String? {
         val ctx = context ?: return null
         return try {
-            val masterKey = MasterKey.Builder(ctx)
-                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-                .build()
-            val prefs = EncryptedSharedPreferences.create(
-                ctx,
-                prefsName,
-                masterKey,
-                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-            )
-            var devId = prefs.getString("KEY_FOLLOWER_DEVICE_ID", null)
-            if (devId.isNullOrBlank()) {
-                devId = UUID.randomUUID().toString()
-                val saved = prefs.edit().putString("KEY_FOLLOWER_DEVICE_ID", devId).commit()
-                if (!saved) return null
+            val prefs = AndroidKeystoreSecurePreferences(ctx, prefsName, mapOf("KEY_FOLLOWER_DEVICE_ID" to 'S'))
+            var id = prefs.getString("KEY_FOLLOWER_DEVICE_ID")
+            if (id.isNullOrBlank()) {
+                id = UUID.randomUUID().toString()
+                if (!prefs.putString("KEY_FOLLOWER_DEVICE_ID", id)) return null
             }
-            val verifiedId = prefs.getString("KEY_FOLLOWER_DEVICE_ID", null)
-            if (verifiedId != devId) null else devId
+            if (prefs.getString("KEY_FOLLOWER_DEVICE_ID") == id) id else null
         } catch (e: Exception) {
-            println("[IDENTITY_STORE] Encrypted identity store unavailable, falling back to standard prefs: ${e.message}")
-            try {
-                val stdPrefs = ctx.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
-                var devId = stdPrefs.getString("KEY_FOLLOWER_DEVICE_ID", null)
-                if (devId.isNullOrBlank()) {
-                    devId = UUID.randomUUID().toString()
-                    stdPrefs.edit().putString("KEY_FOLLOWER_DEVICE_ID", devId).commit()
-                }
-                stdPrefs.getString("KEY_FOLLOWER_DEVICE_ID", null)
-            } catch (_: Exception) {
-                null
-            }
+            // Never expose the identity in ordinary preferences when encryption is unavailable.
+            println("[IDENTITY_STORE] Secure identity store unavailable: ${e.message}")
+            null
         }
     }
 }

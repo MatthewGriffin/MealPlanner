@@ -27,38 +27,32 @@ open class PantryTlsKeyManager @Inject constructor(
     private val fileName = "pantry_tls_keystore.p12"
     private val defaultFallbackPassword = "pantry_tls_password_12345".toCharArray()
 
-    private fun getOrCreateEncryptedPassword(): CharArray {
-        val ctx = context ?: return defaultFallbackPassword
-        return try {
-            val masterKey = MasterKey.Builder(ctx)
-                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-                .build()
-
-            val prefs = EncryptedSharedPreferences.create(
-                ctx,
-                "pantry_tls_secure_prefs",
-                masterKey,
-                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-            )
-
-            var pwd = prefs.getString("KEY_TLS_P12_PASSWORD", null)
-            if (pwd.isNullOrBlank()) {
-                val pwdBytes = ByteArray(32)
-                SecureRandom().nextBytes(pwdBytes)
-                pwd = java.util.Base64.getEncoder().encodeToString(pwdBytes)
-                prefs.edit().putString("KEY_TLS_P12_PASSWORD", pwd).apply()
+    private fun getOrCreateEncryptedPassword(allowCreate: Boolean): CharArray {
+        val ctx = context ?: throw SecurityException("Application context unavailable; refusing to use an unprotected TLS password")
+        val prefs = com.example.chatgpt_mealplanner.core.security.AndroidKeystoreSecurePreferences(
+            ctx,
+            "pantry_tls_secure_prefs",
+            mapOf("KEY_TLS_P12_PASSWORD" to 'S')
+        )
+        var password = prefs.getString("KEY_TLS_P12_PASSWORD")
+        if (password.isNullOrBlank()) {
+            if (!allowCreate) {
+                throw SecurityException("Existing TLS keystore has no recoverable stored password; refusing to rotate its identity")
             }
-            pwd.toCharArray()
-        } catch (e: Exception) {
-            defaultFallbackPassword
+            val bytes = ByteArray(32)
+            SecureRandom().nextBytes(bytes)
+            password = java.util.Base64.getEncoder().encodeToString(bytes)
+            if (!prefs.putString("KEY_TLS_P12_PASSWORD", password)) {
+                throw SecurityException("Could not persist TLS keystore password securely")
+            }
         }
+        return password.toCharArray()
     }
 
     open fun getOrCreateMainTlsKeyStore(householdId: String, customFilesDir: File? = null): KeyStore {
         val targetDir = customFilesDir ?: context?.filesDir ?: File(System.getProperty("java.io.tmpdir") ?: "/tmp")
         val ksFile = File(targetDir, fileName)
-        val password = getOrCreateEncryptedPassword()
+        val password = getOrCreateEncryptedPassword(allowCreate = !ksFile.exists())
 
         if (ksFile.exists()) {
             return try {
@@ -272,5 +266,5 @@ open class PantryTlsKeyManager @Inject constructor(
         return clean1 == clean2
     }
 
-    fun getTlsPassword(): CharArray = getOrCreateEncryptedPassword()
+    fun getTlsPassword(): CharArray = getOrCreateEncryptedPassword(allowCreate = true)
 }
