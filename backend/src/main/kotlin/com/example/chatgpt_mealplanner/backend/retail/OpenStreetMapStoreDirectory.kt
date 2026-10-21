@@ -5,8 +5,10 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.request.*
+import io.ktor.client.request.forms.FormDataContent
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
+import io.ktor.http.Parameters
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -92,11 +94,10 @@ class OpenStreetMapStoreDirectory(
                 if (index > 0) {
                     onProgress("The first branch-search service did not respond; trying backup service ${index} of ${OVERPASS_ENDPOINTS.lastIndex}…")
                 }
-                val response = client.get(endpoint) {
+                val response = client.post(endpoint) {
                     header(HttpHeaders.UserAgent, USER_AGENT)
-                    // Use Overpass's GET query parameter so intermediaries that stall POST
-                    // bodies can still reach the public directory endpoint.
-                    parameter("data", query)
+                    // Overpass quick start: POST the query as URL-encoded form field "data".
+                    setBody(FormDataContent(Parameters.build { append("data", query) }))
                 }
                 if (response.status.value !in 200..299) {
                     failures += "$serviceName: HTTP ${response.status.value}"
