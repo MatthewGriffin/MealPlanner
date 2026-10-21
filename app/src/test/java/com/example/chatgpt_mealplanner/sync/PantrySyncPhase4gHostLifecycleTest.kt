@@ -75,7 +75,7 @@ class PantrySyncPhase4gHostLifecycleTest {
         mainPairedDeviceDao = TestSyncPairedDeviceDao()
         mainInventoryDao = com.example.chatgpt_mealplanner.core.service.FakeInventoryDao()
         keyStoreManager = TestEnrollmentKeyStoreManager()
-        tlsKeyManager = com.example.chatgpt_mealplanner.core.sync.security.PantryTlsKeyManager(null)
+        tlsKeyManager = TestPantryTlsKeyManager()
         invitationManager = PantryEnrollmentInvitationManager(mainPairedDeviceDao, keyStoreManager)
 
         val transactionRunner = TestTransactionRunner()

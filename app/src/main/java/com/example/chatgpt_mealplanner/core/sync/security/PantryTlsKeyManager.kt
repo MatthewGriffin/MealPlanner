@@ -26,7 +26,7 @@ open class PantryTlsKeyManager @Inject constructor(
     // Read-only compatibility for existing installations created while the old encrypted store failed.
     private val defaultFallbackPassword = "pantry_tls_password_12345".toCharArray()
 
-    private fun getOrCreateEncryptedPassword(allowCreate: Boolean): CharArray {
+    internal open fun getOrCreateEncryptedPassword(allowCreate: Boolean): CharArray {
         val ctx = context ?: throw SecurityException("Application context unavailable; refusing to use an unprotected TLS password")
         val prefs = com.example.chatgpt_mealplanner.core.security.AndroidKeystoreSecurePreferences(
             ctx,

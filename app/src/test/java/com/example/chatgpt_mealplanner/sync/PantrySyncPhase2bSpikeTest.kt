@@ -25,6 +25,10 @@ import java.security.KeyPairGenerator
 import java.security.Signature
 import java.util.Base64
 
+internal class TestPantryTlsKeyManager : PantryTlsKeyManager(null) {
+    override fun getOrCreateEncryptedPassword(allowCreate: Boolean): CharArray = "test-only-pantry-tls-password".toCharArray()
+}
+
 class FakeSyncPairedDeviceDao : PairedDeviceDao {
     private val devicesMap = mutableMapOf<String, PairedDeviceEntity>()
 
@@ -77,7 +81,7 @@ class PantrySyncPhase2bSpikeTest {
         pairedDeviceDao = FakeSyncPairedDeviceDao()
         keyStoreManager = AndroidKeyStoreManager()
         sessionManager = SyncSessionManager(keyStoreManager, pairedDeviceDao)
-        tlsKeyManager = PantryTlsKeyManager(null)
+        tlsKeyManager = TestPantryTlsKeyManager()
     }
 
     @Test
