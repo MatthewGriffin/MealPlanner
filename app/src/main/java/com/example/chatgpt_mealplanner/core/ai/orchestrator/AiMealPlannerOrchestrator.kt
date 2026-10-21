@@ -44,7 +44,8 @@ class AiMealPlannerOrchestrator @Inject constructor(
     suspend fun processUserMessage(
         conversationId: String,
         userMessageText: String,
-        userMessageId: String? = null
+        userMessageId: String? = null,
+        displayUserMessageText: String? = null
     ): AiOrchestrationResult {
         if (appRoleResolver.isFollower()) {
             return AiOrchestrationResult.Error(
@@ -78,7 +79,7 @@ class AiMealPlannerOrchestrator @Inject constructor(
                         id = newId,
                         conversationId = conversationId,
                         role = "USER",
-                        content = userMessageText,
+                        content = displayUserMessageText ?: userMessageText,
                         timestamp = System.currentTimeMillis()
                     )
                 )
@@ -144,8 +145,13 @@ class AiMealPlannerOrchestrator @Inject constructor(
         val contextPayloadJson = contextBuilder.buildContextPayloadJson(conversationId)
 
         val historicalMessages = try {
-            chatRepository.getMessagesForConversation(conversationId).takeLast(20).map {
-                AiChatMessage(role = it.role.lowercase(), content = it.content)
+            chatRepository.getMessagesForConversation(conversationId).takeLast(20).map { message ->
+                // Persist a concise summary for the user, but send the full internal prompt to Gemini.
+                if (message.id == userMsgId && message.role.equals("USER", ignoreCase = true)) {
+                    AiChatMessage(role = "user", content = userMessageText)
+                } else {
+                    AiChatMessage(role = message.role.lowercase(), content = message.content)
+                }
             }
         } catch (_: Exception) {
             listOf(AiChatMessage(role = "user", content = userMessageText))
@@ -634,7 +640,15 @@ class AiMealPlannerOrchestrator @Inject constructor(
                 AiOrchestrationResult.Final(assistantText = text)
             }
             is com.example.chatgpt_mealplanner.core.ai.pending.PendingAiMutation.AddPlannedMeal -> {
-                executeDirectConfirmationAddMeal(conversationId, userMsgId, pending)
+                // Recipe offers are accepted through the card's explicit Save action.
+                val proposal = restorePendingMealProposal(conversationId)
+                val text = "This recipe is ready to review. Use **Save meal** on the recipe card when you're ready; no changes have been saved yet."
+                saveAssistantMessage(conversationId, text)
+                AiOrchestrationResult.Final(
+                    assistantText = text,
+                    validatedProposal = proposal,
+                    proposedAction = null
+                )
             }
         }
     }
@@ -718,6 +732,39 @@ class AiMealPlannerOrchestrator @Inject constructor(
         }
     }
 
+    /**
+     * Rehydrates a complete, still-unaccepted meal card from durable state after process death.
+     * Only valid structured offers are restored; this never commits the proposed meal.
+     */
+    suspend fun restorePendingMealProposal(
+        conversationId: String
+    ): com.example.chatgpt_mealplanner.contract.ValidatedMealProposal? {
+        val pending = pendingMutationStore.getPendingMutation(conversationId)
+            as? com.example.chatgpt_mealplanner.core.ai.pending.PendingAiMutation.AddPlannedMeal
+            ?: return null
+        if (pending.state != com.example.chatgpt_mealplanner.core.ai.pending.PendingMutationState.AWAITING_CONFIRMATION ||
+            pending.ingredients.isEmpty() || pending.instructions.isNullOrBlank()
+        ) return null
+
+        val proposal = activeProposalStore.getActiveProposal(conversationId)
+            ?.takeIf { it.ingredients.isNotEmpty() }
+            ?: proposalFromPendingSnapshot(pending)
+        return recipeValidator.validateProposal(proposal)
+    }
+
+    /** Clear only a proposal after the user has saved it; never clear unrelated pending actions. */
+    suspend fun clearPendingMealProposal(conversationId: String) {
+        try {
+            if (pendingMutationStore.getPendingMutation(conversationId) is
+                com.example.chatgpt_mealplanner.core.ai.pending.PendingAiMutation.AddPlannedMeal
+            ) {
+                pendingMutationStore.clearPendingMutation(conversationId, "MEAL_CARD_SAVED")
+            }
+        } finally {
+            activeProposalStore.clearActiveProposal(conversationId)
+        }
+    }
+
     private fun proposalFromPendingSnapshot(
         pending: com.example.chatgpt_mealplanner.core.ai.pending.PendingAiMutation.AddPlannedMeal
     ): com.example.chatgpt_mealplanner.contract.MealProposal {
@@ -787,9 +834,7 @@ class AiMealPlannerOrchestrator @Inject constructor(
             sb.append("\n")
         }
 
-        val dateLabel = if (pending.date == java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE)) "today's" else pending.date ?: "today's"
-        val slotLabel = pending.mealType?.name?.lowercase() ?: "meal plan"
-        sb.append("\nWould you like me to add **${pending.title.trim()}** to $dateLabel $slotLabel?")
+        sb.append("\n\nReview this recipe card and select **Save meal** when you're ready. No changes have been saved yet.")
 
         return sb.toString().trim()
     }
@@ -815,7 +860,7 @@ class AiMealPlannerOrchestrator @Inject constructor(
         val normalized = text.replace("’", "'").replace(Regex("(?i)\\bI've\\b"), "I have")
         val completion = Regex("(?i)(?:I (?:have )?(?:now )?(?:added|scheduled|put|placed|saved)[^.!\n]*(?:meal|plan|dinner|week|calendar|lunch|breakfast|menu)|(?:meals?|dinners?|plan)[^.!\n]*(?:have been|has been|were|was|are now|is now) (?:added|saved|scheduled)|(?:added|saved|scheduled)[^.!\n]*(?:meal plan|planner|calendar)|(?:meal plan|planner) (?:is|has been) (?:updated|saved))")
         return if (completion.containsMatchIn(normalized)) {
-            "No meal-plan changes were saved in this turn. Please ask me to try again or confirm a meal proposal before adding it."
+            "No meal-plan changes were saved in this turn. Please retry or use Save meal on a recipe card when ready."
         } else text
     }
 
@@ -866,11 +911,11 @@ class AiMealPlannerOrchestrator @Inject constructor(
         3. Manual shopping tool 'add_manual_shopping_item' remains available for explicitly non-meal user items (e.g. 'add kitchen towels to my shopping list').
 
         RECIPE PROPOSAL AND ADD OFFER MANDATE:
-        1. When suggesting a recipe or meal idea, describe the dish clearly in text.
-        2. If you want to offer to add the meal to the user's plan (e.g. "Would you like me to add Shakshuka to your meal plan for today's lunch?"), invoke the 'offer_add_planned_meal' tool with complete parameters (title, optional date YYYY-MM-DD, optional mealType, servings, ingredients).
-           - Calling 'offer_add_planned_meal' DOES NOT modify the database or save the meal; it prepares a structured offer for user confirmation.
-           - Do NOT call 'add_planned_meal' when suggesting a recipe or asking if the user wants to add it. Use 'offer_add_planned_meal'.
-        3. Only invoke 'add_planned_meal' when the user explicitly requests an immediate write (e.g. 'add Shakshuka to my plan') or confirms an offered meal (e.g. 'yes', 'sure', 'add it').
+        1. When suggesting a recipe or meal idea, invoke 'offer_add_planned_meal' with complete parameters (title, optional date YYYY-MM-DD, optional mealType, servings, all ingredients, and complete cooking instructions).
+           - Calling 'offer_add_planned_meal' DOES NOT modify the database or save the meal; it creates the recipe card shown by the app.
+           - Do not ask whether to add the recipe or tell the user to confirm it in chat. The card has an explicit **Save meal** action.
+           - If a valid offer is created, provide a short helpful summary; the app renders the recipe details and Save action.
+        2. Only invoke 'add_planned_meal' for an explicit immediate-write request (e.g. "add Shakshuka to my plan"). A conversational "yes" or "sounds good" after a recipe card is shown is not a save command; direct the user to the card's **Save meal** action instead.
 
         REFERENTIAL SELECTION RULES:
         1. When you present the user with named or numbered choices/options (such as Option 1, Option 2, Option A, Option B, titles, or numbered list choices), and the user's next message selects or refers to one of those choices (e.g. 'option 2', 'the second one', 'first one', 'easy comfort food', 'that dinner', 'go with that', 'use that plan', 'the comfort food option'):

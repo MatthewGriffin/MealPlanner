@@ -149,6 +149,35 @@ fun ChatScreen(
         }
     }
 
+    if (uiState.showMealChangeRequestDialog) {
+        AlertDialog(
+            onDismissRequest = { onEvent(ChatUiEvent.CancelMealChangeRequestDraft) },
+            title = { Text("What change would you like to make to ${uiState.mealChangeRequestTitle}?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Edit the request before sending it to the AI assistant.")
+                    OutlinedTextField(
+                        value = uiState.mealChangeRequestDraft,
+                        onValueChange = { onEvent(ChatUiEvent.UpdateMealChangeRequestDraft(it)) },
+                        label = { Text("Requested change") },
+                        minLines = 3,
+                        maxLines = 6,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { onEvent(ChatUiEvent.SubmitMealChangeRequest) },
+                    enabled = uiState.mealChangeRequestDraft.isNotBlank() && !uiState.isLoading
+                ) { Text("Send") }
+            },
+            dismissButton = {
+                TextButton(onClick = { onEvent(ChatUiEvent.CancelMealChangeRequestDraft) }) { Text("Cancel") }
+            }
+        )
+    }
+
     if (uiState.showCookConfirmationDialog && uiState.cookConfirmationMealId != null) {
         AlertDialog(
             onDismissRequest = { onEvent(ChatUiEvent.DismissCookConfirmation) },

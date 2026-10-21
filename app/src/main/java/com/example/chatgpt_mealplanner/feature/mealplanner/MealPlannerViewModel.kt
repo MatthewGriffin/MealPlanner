@@ -158,17 +158,13 @@ class MealPlannerViewModel @Inject constructor(
     }
 
     fun beginAiAdjustment(requestId: String, onStarted: () -> Unit) {
-        viewModelScope.launch {
-            try {
-                val currentRequest = uiState.value.allChangeRequests.firstOrNull { it.id == requestId }
-                mealChangeRequestRepository.updateRequestStatus(requestId, "IN_PROGRESS", currentRequest?.mainResponse)
-                onStarted()
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                userMessageFlow.value = e.message ?: "Could not start the meal adjustment."
-            }
+        // Opening the editor is not yet a commitment to start AI work. Mark IN_PROGRESS
+        // only when the Main user sends the edited request from the dialog.
+        if (uiState.value.allChangeRequests.none { it.id == requestId }) {
+            userMessageFlow.value = "This meal change request is no longer available."
+            return
         }
+        onStarted()
     }
 
     fun updateRequestStatus(requestId: String, status: String, mainResponse: String?) {

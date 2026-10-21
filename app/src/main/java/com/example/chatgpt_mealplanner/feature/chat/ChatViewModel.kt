@@ -56,7 +56,8 @@ private object UnavailableMealChangeRequestRepository : MealChangeRequestReposit
 private data class RequestStateHolder(
     val requestState: ChatRequestState = ChatRequestState.IDLE,
     val retainedUserMessage: String? = null,
-    val retainedUserMessageId: String? = null
+    val retainedUserMessageId: String? = null,
+    val retainedRequestText: String? = retainedUserMessage
 )
 
 @HiltViewModel
@@ -78,6 +79,9 @@ class ChatViewModel @Inject constructor(
     private var progressTickerJob: Job? = null
 
     private val mealChangeRequestIdFlow = MutableStateFlow<String?>(null)
+    private val showMealChangeRequestDialogFlow = MutableStateFlow(false)
+    private val mealChangeRequestDraftFlow = MutableStateFlow("")
+    private val mealChangeRequestTitleFlow = MutableStateFlow("")
     private val latestProposalFlow = MutableStateFlow<ValidatedMealProposal?>(null)
     private val latestProposedActionFlow = MutableStateFlow<AiProposedAction?>(null)
     private val isSavingProposalFlow = MutableStateFlow(false)
@@ -101,7 +105,10 @@ class ChatViewModel @Inject constructor(
         showCookConfirmationDialogFlow,
         cookConfirmationMealIdFlow,
         cookConfirmationMealTitleFlow,
-        isSavingProposalFlow
+        isSavingProposalFlow,
+        showMealChangeRequestDialogFlow,
+        mealChangeRequestDraftFlow,
+        mealChangeRequestTitleFlow
     ) { flows ->
         @Suppress("UNCHECKED_CAST")
         val reqHolder = flows[4] as RequestStateHolder
@@ -122,7 +129,10 @@ class ChatViewModel @Inject constructor(
             retainedUserMessage = reqHolder.retainedUserMessage,
             showCookConfirmationDialog = flows[9] as Boolean,
             cookConfirmationMealId = flows[10] as String?,
-            cookConfirmationMealTitle = flows[11] as String?
+            cookConfirmationMealTitle = flows[11] as String?,
+            showMealChangeRequestDialog = flows[13] as Boolean,
+            mealChangeRequestDraft = flows[14] as String,
+            mealChangeRequestTitle = flows[15] as String
         )
     }.stateIn(
         scope = viewModelScope,
@@ -132,6 +142,22 @@ class ChatViewModel @Inject constructor(
 
     init {
         ensureDefaultConversationExists()
+        viewModelScope.launch {
+            val restoredProposal = runCatching {
+                orchestrator.restorePendingMealProposal("default_conversation")
+            }.getOrNull()
+            if (restoredProposal != null && latestProposalFlow.value == null) {
+                latestProposalFlow.value = restoredProposal
+                // Reattach to a request so Save replaces the original meal instead of creating a duplicate.
+                val inProgressRequests = runCatching {
+                    mealChangeRequestRepository.observeAllRequests().firstOrNull().orEmpty()
+                        .filter { it.status == "IN_PROGRESS" }
+                }.getOrDefault(emptyList())
+                if (inProgressRequests.size == 1) {
+                    mealChangeRequestIdFlow.value = inProgressRequests.single().id
+                }
+            }
+        }
         viewModelScope.launch {
             messagesFlow.collect { messages ->
                 if (messages.isEmpty() && requestStateHolderFlow.value.requestState == ChatRequestState.FAILED_RETRYABLE) {
@@ -168,33 +194,71 @@ class ChatViewModel @Inject constructor(
         mealChangeRequestIdFlow.value = request.id
         latestProposalFlow.value = null
         latestProposedActionFlow.value = null
-        val initialPrompt = buildMealChangeRequestPrompt(request, mealTitle = null)
-        userMessageTextFlow.value = initialPrompt
+        mealChangeRequestDraftFlow.value = request.requestText
+        mealChangeRequestTitleFlow.value = "this meal"
+        showMealChangeRequestDialogFlow.value = false
         errorMessageFlow.value = null
 
         viewModelScope.launch {
             val mealTitle = runCatching {
                 mealRepository.getMealWithIngredients(request.mealId)?.meal?.title
-            }.getOrNull()
-            if (userMessageTextFlow.value == initialPrompt && !mealTitle.isNullOrBlank()) {
-                userMessageTextFlow.value = buildMealChangeRequestPrompt(request, mealTitle)
+            }.getOrNull().orEmpty().ifBlank { "this meal" }
+            if (mealChangeRequestIdFlow.value == request.id) {
+                mealChangeRequestTitleFlow.value = mealTitle
+                showMealChangeRequestDialogFlow.value = true
             }
         }
     }
 
-    private fun buildMealChangeRequestPrompt(request: MealChangeRequestEntity, mealTitle: String?): String {
-        val target = if (mealTitle.isNullOrBlank()) {
-            "meal ID ${request.mealId}"
-        } else {
-            "'$mealTitle' (meal ID ${request.mealId})"
+    private fun buildMealChangeRequestPrompt(request: MealChangeRequestEntity, mealTitle: String, editedRequest: String): String {
+        return "Prepare a replacement recipe for '$mealTitle' (meal ID ${request.mealId}) that addresses this request: $editedRequest. Preserve the existing meal's scheduled date and meal type. Return a complete recipe proposal for review, including all ingredients and complete cooking instructions. Do not save it directly; the app will replace the existing meal only after I select Save meal."
+    }
+
+    private fun submitMealChangeRequestDraft() {
+        val requestId = mealChangeRequestIdFlow.value ?: return
+        val editedRequest = mealChangeRequestDraftFlow.value.trim()
+        val mealTitle = mealChangeRequestTitleFlow.value.ifBlank { "this meal" }
+        if (editedRequest.isBlank()) {
+            errorMessageFlow.value = "Please describe the change you want."
+            return
         }
-        return "Prepare a replacement recipe for $target that addresses this request: ${request.requestText}. Return a complete recipe proposal for review; the app will save it to the existing meal."
+        if (requestStateHolderFlow.value.requestState == ChatRequestState.IN_FLIGHT) return
+
+        viewModelScope.launch {
+            try {
+                val request = mealChangeRequestRepository.observeAllRequests().firstOrNull()
+                    ?.firstOrNull { it.id == requestId }
+                    ?: throw IllegalStateException("This meal change request is no longer available.")
+                if (request.status != "IN_PROGRESS") {
+                    mealChangeRequestRepository.updateRequestStatus(requestId, "IN_PROGRESS", request.mainResponse)
+                }
+                val fullPrompt = buildMealChangeRequestPrompt(request, mealTitle, editedRequest)
+                val displaySummary = "Request change to $mealTitle\nRequest: $editedRequest"
+                showMealChangeRequestDialogFlow.value = false
+                userMessageTextFlow.value = fullPrompt
+                sendMessage(displayMessageText = displaySummary)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                errorMessageFlow.value = e.message ?: "Could not start the meal adjustment."
+            }
+        }
+    }
+
+    private fun cancelMealChangeRequestDraft() {
+        showMealChangeRequestDialogFlow.value = false
+        mealChangeRequestIdFlow.value = null
+        mealChangeRequestDraftFlow.value = ""
+        mealChangeRequestTitleFlow.value = ""
     }
 
     fun onEvent(event: ChatUiEvent) {
         when (event) {
             is ChatUiEvent.UpdateMessageText -> userMessageTextFlow.value = event.text
             ChatUiEvent.SendMessage -> sendMessage()
+            ChatUiEvent.SubmitMealChangeRequest -> submitMealChangeRequestDraft()
+            is ChatUiEvent.UpdateMealChangeRequestDraft -> mealChangeRequestDraftFlow.value = event.text
+            ChatUiEvent.CancelMealChangeRequestDraft -> cancelMealChangeRequestDraft()
             ChatUiEvent.RetryLastFailedMessage -> retryLastFailedMessage()
             is ChatUiEvent.SaveMealProposalToPlan -> saveMealProposalToPlan(event.proposal)
             is ChatUiEvent.ConfirmCookedMeal -> confirmCookedMeal(event.mealId)
@@ -240,10 +304,11 @@ class ChatViewModel @Inject constructor(
         toState: ChatRequestState,
         retainedMessage: String? = null,
         retainedMessageId: String? = null,
-        reason: String? = null
+        reason: String? = null,
+        retainedRequestText: String? = retainedMessage
     ) {
         val fromState = requestStateHolderFlow.value.requestState
-        requestStateHolderFlow.value = RequestStateHolder(toState, retainedMessage, retainedMessageId)
+        requestStateHolderFlow.value = RequestStateHolder(toState, retainedMessage, retainedMessageId, retainedRequestText)
         if (toState != ChatRequestState.IN_FLIGHT) {
             stopProgressTicker()
         }
@@ -254,22 +319,23 @@ class ChatViewModel @Inject constructor(
         }
     }
 
-    private fun sendMessage() {
+    private fun sendMessage(displayMessageText: String? = null) {
         val text = userMessageTextFlow.value.trim()
         if (text.isBlank()) return
         if (requestStateHolderFlow.value.requestState == ChatRequestState.IN_FLIGHT) return
 
+        val visibleText = displayMessageText ?: text
         safeLog("[CHAT_SEND] messageLength=${text.length}")
 
         val userMsgId = "msg_${System.currentTimeMillis()}"
         userMessageTextFlow.value = ""
         errorMessageFlow.value = null
         startProgressTicker()
-        transitionRequestState(ChatRequestState.IN_FLIGHT, retainedMessage = text, retainedMessageId = userMsgId)
+        transitionRequestState(ChatRequestState.IN_FLIGHT, retainedMessage = visibleText, retainedMessageId = userMsgId, retainedRequestText = text)
 
         viewModelScope.launch {
             safeLog("[CHAT_ORCHESTRATOR_CALL] conversationId=\"default_conversation\" messageId=\"$userMsgId\"")
-            val result = orchestrator.processUserMessage("default_conversation", text, userMessageId = userMsgId)
+            val result = orchestrator.processUserMessage("default_conversation", text, userMessageId = userMsgId, displayUserMessageText = displayMessageText)
 
             when (result) {
                 is AiOrchestrationResult.Final -> {
@@ -286,7 +352,7 @@ class ChatViewModel @Inject constructor(
                 }
                 is AiOrchestrationResult.Error -> {
                     errorMessageFlow.value = result.userFacingMessage
-                    transitionRequestState(ChatRequestState.FAILED_RETRYABLE, retainedMessage = text, retainedMessageId = userMsgId, reason = result.userFacingMessage)
+                    transitionRequestState(ChatRequestState.FAILED_RETRYABLE, retainedMessage = visibleText, retainedMessageId = userMsgId, reason = result.userFacingMessage, retainedRequestText = text)
                 }
             }
         }
@@ -295,17 +361,18 @@ class ChatViewModel @Inject constructor(
     private fun retryLastFailedMessage() {
         val currentHolder = requestStateHolderFlow.value
         if (currentHolder.requestState == ChatRequestState.IN_FLIGHT) return
-        val text = currentHolder.retainedUserMessage ?: return
+        val text = currentHolder.retainedRequestText ?: currentHolder.retainedUserMessage ?: return
+        val visibleText = currentHolder.retainedUserMessage ?: text
         val messageId = currentHolder.retainedUserMessageId
 
         safeLog("[CHAT_RETRY] messageId=\"$messageId\"")
 
         errorMessageFlow.value = null
         startProgressTicker()
-        transitionRequestState(ChatRequestState.IN_FLIGHT, retainedMessage = text, retainedMessageId = messageId)
+        transitionRequestState(ChatRequestState.IN_FLIGHT, retainedMessage = visibleText, retainedMessageId = messageId, retainedRequestText = text)
 
         viewModelScope.launch {
-            val result = orchestrator.processUserMessage("default_conversation", text, userMessageId = messageId)
+            val result = orchestrator.processUserMessage("default_conversation", text, userMessageId = messageId, displayUserMessageText = visibleText)
 
             when (result) {
                 is AiOrchestrationResult.Final -> {
@@ -322,7 +389,7 @@ class ChatViewModel @Inject constructor(
                 }
                 is AiOrchestrationResult.Error -> {
                     errorMessageFlow.value = result.userFacingMessage
-                    transitionRequestState(ChatRequestState.FAILED_RETRYABLE, retainedMessage = text, retainedMessageId = messageId, reason = result.userFacingMessage)
+                    transitionRequestState(ChatRequestState.FAILED_RETRYABLE, retainedMessage = visibleText, retainedMessageId = messageId, reason = result.userFacingMessage, retainedRequestText = text)
                 }
             }
         }
@@ -415,6 +482,7 @@ class ChatViewModel @Inject constructor(
                 when (createResult) {
                     is DomainResult.Success -> {
                         latestProposalFlow.value = null
+                        runCatching { orchestrator.clearPendingMealProposal("default_conversation") }
                         if (linkedRequest != null) {
                             try {
                                 mealChangeRequestRepository.updateRequestStatus(

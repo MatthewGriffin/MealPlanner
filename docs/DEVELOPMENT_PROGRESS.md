@@ -319,3 +319,13 @@ The user confirmed meal-plan synchronization now works on both phones.
 - Fix: while a valid structured offer awaits confirmation, the orchestrator now builds the card's validated proposal from the saved structured offer, not the title-only final-text parse. It falls back to the pending structured snapshot if the active proposal is unavailable. The Save guard remains in place.
 - Regression: the existing end-to-end structured-offer drift test now simulates a title-only/empty proposal and asserts the returned meal card contains the authoritative structured ingredient and quantity.
 - Verification required: user-run `build-and-test.sh`; no local build, device install, database reset, or device data changes were performed for this commit.
+
+
+## Durable Meal Proposal Cards and Editable AI Change Requests (2026-10-21)
+
+- Meal proposals now remain pending across app/process restarts instead of expiring after ten minutes. On chat startup, the app reconstructs the recipe card from the durable structured offer when available; this does not save the meal. Pending destructive/other confirmation actions keep their existing short expiry.
+- Saving a meal card clears its pending proposal and active-proposal record, preventing a saved recipe from reappearing as an unaccepted card. A conversational “yes” to a recipe offer now points the user to the explicit **Save meal** card action instead of writing the meal immediately.
+- Updated Gemini instructions and app-owned proposal wording so recipe offers no longer ask whether the assistant should add the meal to the plan.
+- Continue with AI now opens an editable request dialog prefilled with the Follower's request. The request only enters IN_PROGRESS when Main sends the edited text. Gemini receives a full internal instruction paragraph while chat history shows only “Request change to {meal name} / Request: {request}”. Retry keeps the internal prompt for Gemini and the concise summary for display.
+- A restored proposal linked to the only IN_PROGRESS request reattaches to that request so saving replaces the original meal instead of creating a duplicate.
+- Added a regression proving a meal proposal older than ten minutes remains recoverable. Source changes are committed remotely; run build-and-test.sh to verify compilation and the full test suite. No local files, devices, pairing, or persistent meal/inventory data were modified.

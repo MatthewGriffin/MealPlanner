@@ -27,7 +27,10 @@ data class ChatUiState(
     val retainedUserMessage: String? = null,
     val showCookConfirmationDialog: Boolean = false,
     val cookConfirmationMealId: String? = null,
-    val cookConfirmationMealTitle: String? = null
+    val cookConfirmationMealTitle: String? = null,
+    val showMealChangeRequestDialog: Boolean = false,
+    val mealChangeRequestDraft: String = "",
+    val mealChangeRequestTitle: String = "this meal"
 ) {
     val failedUserMessage: String?
         get() = if (requestState == ChatRequestState.FAILED_RETRYABLE) retainedUserMessage else null
@@ -39,6 +42,9 @@ data class ChatUiState(
 sealed interface ChatUiEvent {
     data class UpdateMessageText(val text: String) : ChatUiEvent
     object SendMessage : ChatUiEvent
+    object SubmitMealChangeRequest : ChatUiEvent
+    data class UpdateMealChangeRequestDraft(val text: String) : ChatUiEvent
+    object CancelMealChangeRequestDraft : ChatUiEvent
     object RetryLastFailedMessage : ChatUiEvent
     data class SaveMealProposalToPlan(val proposal: MealProposal) : ChatUiEvent
     data class ConfirmCookedMeal(val mealId: String) : ChatUiEvent

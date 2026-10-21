@@ -60,7 +60,11 @@ class PendingMutationStore @Inject constructor(
     suspend fun getPendingMutation(conversationId: String): PendingAiMutation? {
         if (conversationId.isBlank()) return null
         val entity = chatDao.getPendingAiMutation(conversationId) ?: return null
-        if (System.currentTimeMillis() - entity.createdAt > 10 * 60 * 1000L) {
+        // Meal offers are durable user-reviewed drafts; other confirmations expire to
+        // avoid leaving stale destructive actions available after process death.
+        if (entity.mutationType != "ADD_PLANNED_MEAL" &&
+            System.currentTimeMillis() - entity.createdAt > 10 * 60 * 1000L
+        ) {
             chatDao.deletePendingAiMutation(conversationId)
             return null
         }

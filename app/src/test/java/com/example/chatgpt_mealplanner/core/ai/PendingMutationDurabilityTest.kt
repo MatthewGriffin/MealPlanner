@@ -57,6 +57,31 @@ class PendingMutationDurabilityTest {
     }
 
     @Test
+    fun mealProposal_remainsPendingAfterTenMinutesForCardRecovery() = runTest {
+        val conversationId = "conv_old_proposal"
+        val oldTimestamp = System.currentTimeMillis() - 60 * 60 * 1000L
+        chatDao.insertOrUpdatePendingAiMutation(
+            PendingAiMutationEntity(
+                conversationId = conversationId,
+                mutationType = "ADD_PLANNED_MEAL",
+                state = "AWAITING_CONFIRMATION",
+                title = "Slow Cooker Stew",
+                date = "2026-10-21",
+                mealType = "DINNER",
+                servings = 2,
+                ingredientsJson = """[{"id":"ing_1","mealId":"","canonicalIngredientId":null,"displayName":"Potatoes","plannedQuantity":2.0,"plannedUnit":"ITEM","optional":false,"substitutionAllowed":true}]""",
+                instructions = "Simmer until tender.",
+                sourceUserMessageId = "msg_old",
+                createdAt = oldTimestamp
+            )
+        )
+
+        val restored = pendingMutationStore.getPendingMutation(conversationId) as? PendingAiMutation.AddPlannedMeal
+        assertNotNull("An unaccepted meal card must survive process closure", restored)
+        assertEquals("Slow Cooker Stew", restored?.title)
+    }
+
+    @Test
     fun legacyNullInstructionPendingMutation_remainsValid() = runTest {
         val conversationId = "conv_legacy_1"
         // Insert legacy entity directly with null instructions
