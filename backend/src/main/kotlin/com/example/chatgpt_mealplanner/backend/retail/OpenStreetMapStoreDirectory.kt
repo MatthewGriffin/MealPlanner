@@ -85,7 +85,16 @@ class OpenStreetMapStoreDirectory(
         var usedNominatimFallback = false
         val stores = try {
             val raw = fetchOverpassResponse(query, onProgress)
-            parseOverpassResponse(raw, request.retailerId, lat, lon)
+            val overpassStores = parseOverpassResponse(raw, request.retailerId, lat, lon)
+            // Some ASDA Express petrol-site shops are not mapped with shop=convenience.
+            // Supplement successful Overpass results with nearby OSM place search results.
+            if (request.retailerId == RetailerId.ASDA) {
+                onProgress("Checking OpenStreetMap listings for nearby ASDA Express branches…")
+                val osmListings = searchNominatimFallback(request.retailerId, lat, lon, request.radiusMeters, "ASDA Express")
+                (overpassStores + osmListings).distinctBy { it.directorySourceId }
+            } else {
+                overpassStores
+            }
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
             usedNominatimFallback = true
@@ -220,7 +229,8 @@ class OpenStreetMapStoreDirectory(
         retailerId: RetailerId,
         originLat: Double,
         originLon: Double,
-        radiusMeters: Int
+        radiusMeters: Int,
+        searchTerm: String = displayName(retailerId)
     ): List<StoreDirectoryEntry> {
         // Nominatim is a fallback search, not an Overpass interpreter. Only use actual
         // OSM results and their address tags; never copy the user's search postcode into
@@ -233,7 +243,7 @@ class OpenStreetMapStoreDirectory(
         val latDelta = radiusMeters / 111_000.0
         val lonDelta = radiusMeters / (111_000.0 * cos(Math.toRadians(originLat)).coerceAtLeast(0.1))
         val raw = client.get("https://nominatim.openstreetmap.org/search") {
-            parameter("q", displayName(retailerId))
+            parameter("q", searchTerm)
             parameter("format", "jsonv2")
             parameter("addressdetails", "1")
             parameter("extratags", "1")
@@ -246,10 +256,6 @@ class OpenStreetMapStoreDirectory(
             val item = result.jsonObject
             val listingClass = item.text("category") ?: item.text("class")
             val listingType = item.text("type")?.lowercase()
-            val taggedShopType = item["extratags"]?.jsonObject?.text("shop")?.lowercase()
-            // Nominatim can also return retailer-branded opticians and other services.
-            val effectiveShopType = taggedShopType ?: listingType
-            if (listingClass != "shop" || effectiveShopType !in GROCERY_SHOP_TYPES) return@mapNotNull null
             val osmType = item.text("osm_type")?.lowercase() ?: return@mapNotNull null
             val osmId = item.text("osm_id") ?: return@mapNotNull null
             val lat = item.text("lat")?.toDoubleOrNull() ?: return@mapNotNull null
@@ -258,11 +264,16 @@ class OpenStreetMapStoreDirectory(
             val name = item.text("name")
                 ?: item.text("display_name")?.substringBefore(",")?.trim()?.takeIf(String::isNotBlank)
                 ?: return@mapNotNull null
-            val identity = listOfNotNull(
-                name,
-                extratags?.text("brand"),
-                extratags?.text("operator")
-            ).joinToString(" ")
+            val identity = listOfNotNull(name, extratags?.text("brand"), extratags?.text("operator")).joinToString(" ")
+            val isExplicitAsdaExpress = retailerId == RetailerId.ASDA &&
+                Regex("\\basda.*express\\b", RegexOption.IGNORE_CASE).containsMatchIn(identity)
+            val effectiveShopType = extratags?.text("shop")?.lowercase() ?: listingType
+            val isGroceryShop = listingClass == "shop" && effectiveShopType in GROCERY_SHOP_TYPES
+            // Some petrol-site Express stores are mapped only as fuel amenities. Accept only
+            // explicitly named ASDA Express fuel listings, never generic petrol stations.
+            val isExplicitExpressFuelSite = isExplicitAsdaExpress &&
+                (listingClass == "amenity" || listingClass == "fuel") && listingType == "fuel"
+            if (!isGroceryShop && !isExplicitExpressFuelSite) return@mapNotNull null
             if (!matchesRetailer(identity, retailerId)) return@mapNotNull null
             val addressTags = item["address"]?.jsonObject
             val postcode = addressTags?.text("postcode")?.uppercase()
