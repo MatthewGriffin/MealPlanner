@@ -157,7 +157,7 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun searchStoreDirectory(retailerId: RetailerId, postcode: String) {
+    fun searchStoreDirectory(postcode: String) {
         val cleanPostcode = postcode.trim().uppercase()
         if (cleanPostcode.isBlank()) {
             _uiState.update { it.copy(storeSearchMessage = "Enter a UK postcode to find nearby branches.") }
@@ -175,7 +175,7 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val response = withContext(Dispatchers.IO) {
-                    val request = StoreDirectorySearchRequest(retailerId = retailerId, postcode = cleanPostcode)
+                    val request = StoreDirectorySearchRequest(retailerId = RetailerId.ASDA, postcode = cleanPostcode, searchAllRetailers = true)
                     val progressProvider = storeDirectoryProvider as? StoreDirectoryProgressProvider
                     if (progressProvider != null) {
                         progressProvider.search(request) { status ->
