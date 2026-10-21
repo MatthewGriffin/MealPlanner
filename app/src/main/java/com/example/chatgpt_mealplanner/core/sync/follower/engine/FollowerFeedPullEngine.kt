@@ -9,10 +9,12 @@ import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.Follow
 import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerSyncMetadataEntity
 import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerMealEntity
 import com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerBasketComparisonCachePayload
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import com.example.chatgpt_mealplanner.sync.contract.SyncOperationStatus
 import com.example.chatgpt_mealplanner.sync.contract.SyncOperationType
+import com.example.chatgpt_mealplanner.sync.contract.UpdateMealChangeRequestStatusPayloadDto
 import com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerMealRequestDao
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -52,6 +54,7 @@ open class FollowerFeedPullEngine @Inject constructor(
         var totalApplied = 0
         var totalOwnSkipped = 0
         var totalMealRequestUpdates = 0
+        val requestStatusNotifications = mutableListOf<Triple<String, String, String>>()
 
         var hasMore = true
         var currentCursor = dao.getSyncMetadata()?.lastReconciledCanonicalSequence ?: 0L
@@ -153,8 +156,18 @@ open class FollowerFeedPullEngine @Inject constructor(
                     if (isMealEvent) {
                         if (feedItem.status == SyncOperationStatus.APPLIED) {
                             val requests = checkNotNull(mealRequestDao) { "Meal projection unavailable; retaining feed cursor" }
-                            FollowerMealRequestProjector.apply(requests, feedItem)
-                            totalMealRequestUpdates++
+                            if (feedItem.operationType == SyncOperationType.UPDATE_MEAL_CHANGE_REQUEST_STATUS) {
+                                val update = cacheJson.decodeFromString<UpdateMealChangeRequestStatusPayloadDto>(feedItem.payloadJson)
+                                val previous = requests.getById(update.requestId)
+                                FollowerMealRequestProjector.apply(requests, feedItem)
+                                totalMealRequestUpdates++
+                                if (previous != null && previous.authorDeviceId == followerDeviceId && previous.status != update.status) {
+                                    requestStatusNotifications += Triple(update.requestId, previous.mealId, update.status)
+                                }
+                            } else {
+                                FollowerMealRequestProjector.apply(requests, feedItem)
+                                totalMealRequestUpdates++
+                            }
                         }
                     } else if (feedItem.sourceDeviceId == followerDeviceId) {
                         // Own-device operation: Already reconciled during upload, BUT still advance cursor!
@@ -250,15 +263,14 @@ open class FollowerFeedPullEngine @Inject constructor(
         )
         println("[SYNC_FEED] complete pages=$pageCount duration_ms=$totalFeedMs")
 
-        if (totalApplied > 0 || totalMealRequestUpdates > 0) {
-            val message = when {
-                totalMealRequestUpdates > 0 && totalApplied > 0 -> "Your household has new pantry updates and meal request changes."
-                totalMealRequestUpdates > 0 -> "Your household has new meal request updates."
-                else -> "Your household pantry has new updates."
-            }
+        requestStatusNotifications.forEach { (requestId, mealId, status) ->
+            val date = followerDatabase?.mealDao()?.getById(mealId)?.mealDate
+            notificationManager?.notifyMealRequestStatus(date, requestId, status)
+        }
+        if (totalApplied > 0) {
             notificationManager?.notifyHouseholdUpdate(
-                title = "Household updated",
-                message = message
+                title = "Household pantry updated",
+                message = if (totalApplied == 1) "A household member updated shared pantry data." else "$totalApplied household pantry updates were received."
             )
         }
 
