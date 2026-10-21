@@ -57,7 +57,7 @@ class AppNotificationManager @Inject constructor(
     fun notifyMealPlanChanged(date: String, changedMealCount: Int) {
         if (changedMealCount <= 0) return
         val message = "Your household meal plan has changed."
-        notifyHouseholdUpdate("Meal plan updated", message, HOUSEHOLD_UPDATE_ID, date, TARGET_SCREEN_MEAL_PLANNER)
+        notifyHouseholdUpdate("Meal plan updated", message, MEAL_PLAN_NOTIFICATION_ID, date, TARGET_SCREEN_MEAL_PLANNER)
     }
 
     fun notifyMealChangeRequest(date: String?, requestId: String) {
@@ -80,6 +80,7 @@ class AppNotificationManager @Inject constructor(
         private const val CHANNEL_ID = "household_updates"
         private const val HOUSEHOLD_UPDATE_ID = 7401
         const val MEAL_REQUEST_NOTIFICATION_ID = 7402
+        private const val MEAL_PLAN_NOTIFICATION_ID = 7404
         private const val REQUEST_STATUS_NOTIFICATION_ID_BASE = 7500
         const val EXTRA_TARGET_DATE = "com.example.chatgpt_mealplanner.notification.TARGET_DATE"
         const val EXTRA_TARGET_SCREEN = "com.example.chatgpt_mealplanner.notification.TARGET_SCREEN"
