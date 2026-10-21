@@ -86,20 +86,16 @@ class OpenStreetMapStoreDirectory(
         val stores = try {
             val raw = fetchOverpassResponse(query, onProgress)
             val overpassStores = parseOverpassResponse(raw, request.retailerId, lat, lon)
-            // Some ASDA Express petrol-site shops are not mapped with shop=convenience.
-            // Supplement successful Overpass results with nearby OSM place search results.
-            if (request.retailerId == RetailerId.ASDA) {
-                onProgress("Checking OpenStreetMap listings for nearby ASDA Express branches…")
-                val osmListings = try {
-                    searchNominatimFallback(request.retailerId, lat, lon, request.radiusMeters, "ASDA Express")
-                } catch (e: Exception) {
-                    if (e is kotlinx.coroutines.CancellationException) throw e
-                    emptyList()
-                }
-                (overpassStores + osmListings).distinctBy { it.directorySourceId }
-            } else {
-                overpassStores
+            // Supplement mapped features with the selected retailer's place listings.
+            // This is generic across retailers and can recover branches with incomplete tags.
+            onProgress("Checking OpenStreetMap listings for nearby ${displayName(request.retailerId)} branches…")
+            val osmListings = try {
+                searchNominatimFallback(request.retailerId, lat, lon, request.radiusMeters)
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                emptyList()
             }
+            (overpassStores + osmListings).distinctBy { it.directorySourceId }
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
             usedNominatimFallback = true
@@ -170,25 +166,18 @@ class OpenStreetMapStoreDirectory(
     }
 
     internal fun buildQuery(request: StoreDirectorySearchRequest, lat: Double, lon: Double): String {
-        // Keep the remote query small: fetch nearby shop features once, then match the
-        // selected retailer locally. Three separate name/brand/operator scans can time out
-        // on public Overpass instances even for otherwise modest postcode searches.
+        // Search all mapped shop types plus named/brand/operator candidates for this retailer.
+        // This does not assume any particular branch format such as supermarket or convenience.
         val radius = request.radiusMeters
-        return if (request.retailerId == RetailerId.ASDA) {
-            // Some ASDA Express listings have the name but lack a usable shop tag.
-            // The parser still rejects results explicitly tagged as non-grocery services.
-            """[out:json][timeout:20];
-              (
-                nwr["shop"~"^(supermarket|convenience)$"](around:$radius,$lat,$lon);
-                nwr["name"~"ASDA.*Express",i](around:$radius,$lat,$lon);
-                nwr["brand"~"ASDA.*Express",i](around:$radius,$lat,$lon);
-              );
-              out center tags;"""
-        } else {
-            """[out:json][timeout:20];
-              nwr["shop"~"^(supermarket|convenience)$"](around:$radius,$lat,$lon);
-              out center tags;"""
-        }
+        val retailerPattern = overpassRetailerPattern(request.retailerId)
+        return """[out:json][timeout:20];
+          (
+            nwr["shop"](around:$radius,$lat,$lon);
+            nwr["name"~"$retailerPattern",i](around:$radius,$lat,$lon);
+            nwr["brand"~"$retailerPattern",i](around:$radius,$lat,$lon);
+            nwr["operator"~"$retailerPattern",i](around:$radius,$lat,$lon);
+          );
+          out center tags;"""
     }
 
     private suspend fun resolveCenter(
@@ -270,15 +259,11 @@ class OpenStreetMapStoreDirectory(
                 ?: item.text("display_name")?.substringBefore(",")?.trim()?.takeIf(String::isNotBlank)
                 ?: return@mapNotNull null
             val identity = listOfNotNull(name, extratags?.text("brand"), extratags?.text("operator")).joinToString(" ")
-            val isExplicitAsdaExpress = retailerId == RetailerId.ASDA &&
-                Regex("\\basda.*express\\b", RegexOption.IGNORE_CASE).containsMatchIn(identity)
             val effectiveShopType = extratags?.text("shop")?.lowercase() ?: listingType
-            val isGroceryShop = listingClass == "shop" && effectiveShopType in GROCERY_SHOP_TYPES
-            // Some petrol-site Express stores are mapped only as fuel amenities. Accept only
-            // explicitly named ASDA Express fuel listings, never generic petrol stations.
-            val isExplicitExpressFuelSite = isExplicitAsdaExpress &&
-                (listingClass == "amenity" || listingClass == "fuel") && listingType == "fuel"
-            if (!isGroceryShop && !isExplicitExpressFuelSite) return@mapNotNull null
+            val isMappedShop = listingClass == "shop" && effectiveShopType !in NON_RETAIL_SHOP_TYPES
+            val isNamedRetailFuelFeature = matchesRetailer(identity, retailerId) &&
+                effectiveShopType == null && listingClass == "amenity" && listingType == "fuel"
+            if (!isMappedShop && !isNamedRetailFuelFeature) return@mapNotNull null
             if (!matchesRetailer(identity, retailerId)) return@mapNotNull null
             val addressTags = item["address"]?.jsonObject
             val postcode = addressTags?.text("postcode")?.uppercase()
@@ -309,7 +294,6 @@ class OpenStreetMapStoreDirectory(
         return elements.mapNotNull { element ->
             val item = element.jsonObject
             val tags = item["tags"]?.jsonObject ?: return@mapNotNull null
-            // Only actual grocery-retail premises qualify; brand matches alone are insufficient.
             val shopType = tags.text("shop")?.lowercase()
             val identity = listOfNotNull(
                 tags.text("brand"), tags.text("brand:en"),
@@ -317,9 +301,11 @@ class OpenStreetMapStoreDirectory(
                 tags.text("name"), tags.text("name:en"),
                 tags.text("official_name"), tags.text("alt_name")
             ).joinToString(" ")
-            val isExplicitAsdaExpress = retailerId == RetailerId.ASDA &&
-                Regex("\\basda\\s+express\\b", RegexOption.IGNORE_CASE).containsMatchIn(identity)
-            if (shopType !in GROCERY_SHOP_TYPES && !(shopType == null && isExplicitAsdaExpress)) return@mapNotNull null
+            val amenity = tags.text("amenity")?.lowercase()
+            val isMappedShop = shopType != null && shopType !in NON_RETAIL_SHOP_TYPES
+            val isNamedRetailFuelFeature = shopType == null && amenity == "fuel" &&
+                matchesRetailer(identity, retailerId)
+            if (!isMappedShop && !isNamedRetailFuelFeature) return@mapNotNull null
             if (!matchesRetailer(identity, retailerId)) return@mapNotNull null
             val lat = item.number("lat") ?: item["center"]?.jsonObject?.number("lat") ?: return@mapNotNull null
             val lon = item.number("lon") ?: item["center"]?.jsonObject?.number("lon") ?: return@mapNotNull null
@@ -401,7 +387,20 @@ class OpenStreetMapStoreDirectory(
     }
 
     companion object {
-        private val GROCERY_SHOP_TYPES = setOf("supermarket", "convenience")
+        // Exclude known non-retail services even when they carry a retailer brand.
+        // Other OSM shop types remain eligible so the search supports new store formats.
+        private val NON_RETAIL_SHOP_TYPES = setOf(
+            "optician", "medical_supply", "hearing_aids", "doctor", "clinic", "dentist"
+        )
+
+        private fun overpassRetailerPattern(id: RetailerId): String = when (id) {
+            RetailerId.ASDA -> "ASDA"
+            RetailerId.ICELAND -> "Iceland"
+            RetailerId.FOOD_WAREHOUSE -> "Food.*Warehouse"
+            RetailerId.TESCO -> "Tesco"
+            RetailerId.MORRISONS -> "Morrisons"
+            RetailerId.SAINSBURYS -> "Sainsbury"
+        }
 
     private val OVERPASS_ENDPOINTS = listOf(
             "https://overpass-api.de/api/interpreter",
