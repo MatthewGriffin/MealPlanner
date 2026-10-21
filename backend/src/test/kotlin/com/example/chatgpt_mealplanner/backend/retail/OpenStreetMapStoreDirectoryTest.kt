@@ -224,6 +224,39 @@ class OpenStreetMapStoreDirectoryTest {
     }
 
     @Test
+    fun allRetailerSearchReturnsMixedRetailersWithoutFiltering() = runBlocking {
+        val client = HttpClient(MockEngine {
+            respond(
+                content = """{"elements":[
+                  {"type":"node","id":2001,"lat":51.5,"lon":-0.1,"tags":{"name":"ASDA Superstore","brand":"ASDA","shop":"supermarket","addr:postcode":"SW1A 1AA"}},
+                  {"type":"node","id":2002,"lat":51.501,"lon":-0.101,"tags":{"name":"Tesco Express","brand":"Tesco","shop":"convenience","addr:postcode":"SW1A 1AB"}},
+                  {"type":"node","id":2003,"lat":51.502,"lon":-0.102,"tags":{"name":"Iceland","brand":"Iceland","shop":"supermarket","addr:postcode":"SW1A 1AC"}}
+                ]}""",
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, "application/json")
+            )
+        })
+        try {
+            val allStores = OpenStreetMapStoreDirectory(client).search(
+                com.example.chatgpt_mealplanner.retail.contract.StoreDirectorySearchRequest(
+                    retailerId = RetailerId.ASDA,
+                    latitude = 51.5,
+                    longitude = -0.1,
+                    radiusMeters = 3000,
+                    searchAllRetailers = true
+                )
+            )
+            assertEquals(3, allStores.stores.size)
+            assertEquals(
+                setOf(RetailerId.ASDA, RetailerId.TESCO, RetailerId.ICELAND),
+                allStores.stores.map { it.retailerId }.toSet()
+            )
+        } finally {
+            client.close()
+        }
+    }
+
+    @Test
     fun nearbyRetailerResultsAreSharedFromOneOverpassRequest() = runBlocking {
         var overpassRequests = 0
         val client = HttpClient(MockEngine { request ->
