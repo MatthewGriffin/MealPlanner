@@ -9,7 +9,9 @@ enum class RetailerId {
     FOOD_WAREHOUSE,
     TESCO,
     MORRISONS,
-    SAINSBURYS
+    SAINSBURYS,
+    ALDI,
+    LIDL
 }
 
 @Serializable
