@@ -11,7 +11,7 @@ class OpenStreetMapStoreDirectoryTest {
     private val directory = OpenStreetMapStoreDirectory(HttpClient())
 
     @Test
-    fun queryFiltersByRetailerInsteadOfDownloadingEverySupermarket() {
+    fun queryUsesOneBoundedNearbyShopScan() {
         val query = directory.buildQuery(
             com.example.chatgpt_mealplanner.retail.contract.StoreDirectorySearchRequest(
                 retailerId = RetailerId.TESCO,
@@ -20,11 +20,12 @@ class OpenStreetMapStoreDirectoryTest {
             51.5,
             -0.1
         )
-        assertTrue(query.contains("""["name"~"tesco",i]"""))
-        assertTrue(query.contains("""["brand"~"tesco",i]"""))
-        assertTrue(query.contains("""["operator"~"tesco",i]"""))
-        assertTrue(query.contains("[out:json][timeout:25]"))
-        assertTrue(!query.contains("""["shop"~"^(supermarket|convenience)$"](around:"""))
+        assertTrue(query.contains("[out:json][timeout:15]"))
+        assertTrue(query.contains("""nwr["shop"~"^(supermarket|convenience)$"](around:5000,51.5,-0.1)"""))
+        assertTrue(query.contains("out center tags"))
+        assertTrue(!query.contains("""["name"~"""))
+        assertTrue(!query.contains("""["brand"~"""))
+        assertTrue(!query.contains("""["operator"~"""))
     }
 
     @Test
