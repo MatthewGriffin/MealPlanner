@@ -56,7 +56,7 @@ class AppNotificationManager @Inject constructor(
 
     fun notifyMealPlanChanged(date: String, changedMealCount: Int) {
         if (changedMealCount <= 0) return
-        val message = if (changedMealCount == 1) "A planned meal was added or changed." else "$changedMealCount planned meals were added or changed."
+        val message = "One or more planned meals were added or changed."
         notifyHouseholdUpdate("Meal plan updated", message, HOUSEHOLD_UPDATE_ID, date, TARGET_SCREEN_MEAL_PLANNER)
     }
 

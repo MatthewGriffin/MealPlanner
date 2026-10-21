@@ -16,6 +16,8 @@ interface FollowerMealDao {
     suspend fun getById(id: String): FollowerMealEntity?
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(meal: FollowerMealEntity)
+    @Query("DELETE FROM follower_meals WHERE id = :id")
+    suspend fun deleteById(id: String)
     @Query("DELETE FROM follower_meals")
     suspend fun clear()
     @Insert(onConflict = OnConflictStrategy.REPLACE)

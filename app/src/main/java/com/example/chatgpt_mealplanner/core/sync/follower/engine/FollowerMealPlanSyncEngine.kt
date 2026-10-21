@@ -82,7 +82,7 @@ class FollowerMealPlanSyncEngine @Inject constructor(
         val previousById = previousRows.associateBy { it.id }
         val incomingById = rows.associateBy { it.id }
         val changedIds = (previousById.keys + incomingById.keys).filter { id ->
-            previousById[id]?.payloadJson != incomingById[id]?.payloadJson
+            previousById[id]?.payloadJson != incomingById[id]?.payloadJson || previousById[id]?.mealDate != incomingById[id]?.mealDate
         }
         val changedDate = changedIds.mapNotNull { id ->
             incomingById[id]?.mealDate ?: previousById[id]?.mealDate
@@ -128,8 +128,12 @@ class FollowerMealPlanSyncEngine @Inject constructor(
             )
         }
         database.withTransaction {
-            database.mealDao().clear()
-            database.mealDao().insertAll(rows)
+            val incomingIds = incomingById.keys
+            previousRows.filter { it.id !in incomingIds }.forEach { database.mealDao().deleteById(it.id) }
+            rows.filter { row ->
+                val previous = previousById[row.id]
+                previous?.payloadJson != row.payloadJson || previous.mealDate != row.mealDate
+            }.forEach { database.mealDao().upsert(it) }
         }
         if (changedIds.isNotEmpty() && changedDate != null) {
             notificationManager?.notifyMealPlanChanged(changedDate, changedIds.size)
