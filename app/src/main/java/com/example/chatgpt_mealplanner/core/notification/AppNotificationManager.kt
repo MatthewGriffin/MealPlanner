@@ -30,14 +30,16 @@ class AppNotificationManager @Inject constructor(
         )
     }
 
-    fun notifyHouseholdUpdate(title: String, message: String, notificationId: Int = HOUSEHOLD_UPDATE_ID) {
+    fun notifyHouseholdUpdate(title: String, message: String, notificationId: Int = HOUSEHOLD_UPDATE_ID, targetDate: String? = null, targetScreen: String? = null) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) return
 
         val openAppIntent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
+        targetDate?.let { openAppIntent.putExtra(EXTRA_TARGET_DATE, it) }
+        targetScreen?.let { openAppIntent.putExtra(EXTRA_TARGET_SCREEN, it) }
         val pendingIntent = PendingIntent.getActivity(context, notificationId, openAppIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_notify_sync)
@@ -52,9 +54,35 @@ class AppNotificationManager @Inject constructor(
         runCatching { NotificationManagerCompat.from(context).notify(notificationId, notification) }
     }
 
+    fun notifyMealPlanChanged(date: String, changedMealCount: Int) {
+        if (changedMealCount <= 0) return
+        val message = if (changedMealCount == 1) "A planned meal was added or changed." else "$changedMealCount planned meals were added or changed."
+        notifyHouseholdUpdate("Meal plan updated", message, HOUSEHOLD_UPDATE_ID, date, TARGET_SCREEN_MEAL_PLANNER)
+    }
+
+    fun notifyMealChangeRequest(date: String?, requestId: String) {
+        notifyHouseholdUpdate("New meal change request", "A household member has requested a change to a planned meal.", MEAL_REQUEST_NOTIFICATION_ID, date, TARGET_SCREEN_MEAL_PLANNER)
+    }
+
+    fun notifyMealRequestStatus(date: String?, requestId: String, status: String) {
+        val message = when (status) {
+            "ACCEPTED" -> "Main accepted your meal change request."
+            "DECLINED" -> "Main declined your meal change request."
+            "DISCUSSED" -> "Main responded to your meal change request."
+            "IN_PROGRESS" -> "Main is working on your meal change request."
+            "COMPLETED" -> "Your meal change request has been completed."
+            else -> "Main updated your meal change request."
+        }
+        notifyHouseholdUpdate("Meal request update", message, REQUEST_STATUS_NOTIFICATION_ID_BASE + (requestId.hashCode() and 0x7FFF), date, TARGET_SCREEN_MEAL_PLANNER)
+    }
+
     companion object {
         private const val CHANNEL_ID = "household_updates"
         private const val HOUSEHOLD_UPDATE_ID = 7401
         const val MEAL_REQUEST_NOTIFICATION_ID = 7402
+        private const val REQUEST_STATUS_NOTIFICATION_ID_BASE = 7500
+        const val EXTRA_TARGET_DATE = "com.example.chatgpt_mealplanner.notification.TARGET_DATE"
+        const val EXTRA_TARGET_SCREEN = "com.example.chatgpt_mealplanner.notification.TARGET_SCREEN"
+        const val TARGET_SCREEN_MEAL_PLANNER = "meal_planner"
     }
 }
