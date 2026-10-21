@@ -31,7 +31,7 @@ object PreferredBranchOfferSelector {
 
         val validSelectedBranchOffers = candidates.filter { candidate ->
             val selectedIds = preferredIdsByRetailer[candidate.product.retailerId] ?: return@filter false
-            candidate.offer.storeLocationId in selectedIds &&
+            candidate.offer.storeLocationId?.let { it in selectedIds } == true &&
                 isBranchScoped(candidate) &&
                 candidate.offer.availability != RetailAvailability.OUT_OF_STOCK
         }
