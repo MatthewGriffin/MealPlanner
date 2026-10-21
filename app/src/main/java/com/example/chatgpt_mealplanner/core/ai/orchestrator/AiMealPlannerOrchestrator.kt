@@ -348,9 +348,10 @@ class AiMealPlannerOrchestrator @Inject constructor(
                     // The text parser may have extracted only the bold title from the final prose,
                     // producing a card with zero ingredients. The structured offer captured by the
                     // tool dispatcher is authoritative for both the rendered card and Save action.
-                    val structuredProposal = activeProposalStore.getActiveProposal(conversationId)
-                        ?.takeIf { it.ingredients.isNotEmpty() }
-                        ?: proposalFromPendingSnapshot(pendingOffer)
+                    // The displayed recipe is formatted from this pending snapshot. Build the
+                    // card and Save action from that same source so wording cannot drift between
+                    // what the user reviewed and what is persisted.
+                    val structuredProposal = proposalFromPendingSnapshot(pendingOffer)
                     if (structuredProposal.ingredients.isNotEmpty()) {
                         validatedProposal = recipeValidator.validateProposal(structuredProposal)
                         activeProposalStore.setActiveProposal(conversationId, structuredProposal)
@@ -468,7 +469,13 @@ class AiMealPlannerOrchestrator @Inject constructor(
                 AiOrchestrationResult.Final(
                     assistantText = textToReturn,
                     validatedProposal = validatedProposal,
-                    proposedAction = finalRes.proposedAction,
+                    proposedAction = if (hasValidOfferAwaiting) {
+                        com.example.chatgpt_mealplanner.contract.AiProposedAction.SaveMeal(
+                            proposalFromPendingSnapshot(currentPending!!)
+                        )
+                    } else {
+                        finalRes.proposedAction
+                    },
                     modelId = finalRes.modelId
                 )
             }
@@ -746,9 +753,9 @@ class AiMealPlannerOrchestrator @Inject constructor(
             pending.ingredients.isEmpty() || pending.instructions.isNullOrBlank()
         ) return null
 
-        val proposal = activeProposalStore.getActiveProposal(conversationId)
-            ?.takeIf { it.ingredients.isNotEmpty() }
-            ?: proposalFromPendingSnapshot(pending)
+        // The pending offer also supplies the exact instructions shown in chat. Prefer it
+        // during restoration so process death cannot reintroduce a different cached proposal.
+        val proposal = proposalFromPendingSnapshot(pending)
         return recipeValidator.validateProposal(proposal)
     }
 
