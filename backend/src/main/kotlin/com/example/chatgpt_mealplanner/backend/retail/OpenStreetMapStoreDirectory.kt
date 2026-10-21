@@ -83,7 +83,7 @@ class OpenStreetMapStoreDirectory(
         logTiming(if (request.postcode.isNullOrBlank()) "coordinate_resolution" else "postcode_lookup", locationStarted)
         // Shared cache is keyed only by location/radius because each Overpass request
         // now retrieves all supported retailers in the area.
-        val key = "shops-v14:${"%.4f".format(Locale.US, lat)}:${"%.4f".format(Locale.US, lon)}:${request.radiusMeters}"
+        val key = "shops-v15:${"%.4f".format(Locale.US, lat)}:${"%.4f".format(Locale.US, lon)}:${request.radiusMeters}"
         onProgress("Checking cached nearby-store results…")
         val cached = cache[key]
         if (cached != null) {
@@ -148,15 +148,21 @@ class OpenStreetMapStoreDirectory(
             val fallbackStores = when {
                 request.searchAllRetailers -> {
                     val foundRetailers = mappedStores.map { it.retailerId }.toSet()
-                    val missingRetailers = supportedBranchRetailers().filterNot { it in foundRetailers }
-                    if (missingRetailers.isEmpty()) {
+                    // Tesco Express / Morrisons Daily branches are sometimes represented by
+                    // a branded ATM point or incomplete shop tags. Supplement these two
+                    // retailer searches even when larger branches were found by Overpass.
+                    val retailersToSupplement = (
+                        supportedBranchRetailers().filterNot { it in foundRetailers } +
+                            listOf(RetailerId.TESCO, RetailerId.MORRISONS)
+                        ).distinct()
+                    if (retailersToSupplement.isEmpty()) {
                         emptyList()
                     } else {
-                        onProgress("Checking nearby listings for retailers missing from the map results…")
+                        onProgress("Checking nearby listings for smaller and missing store formats…")
                         try {
                             kotlinx.coroutines.withTimeout(30_000L) {
                                 searchNominatimMissingRetailersFallback(
-                                    lat, lon, request.radiusMeters, missingRetailers
+                                    lat, lon, request.radiusMeters, retailersToSupplement
                                 )
                             }
                         } catch (e: Exception) {
@@ -524,7 +530,14 @@ class OpenStreetMapStoreDirectory(
             val isNamedRetailFeature = effectiveShopType == null &&
                 listingType !in NON_RETAIL_FEATURE_TYPES &&
                 matchesRetailer(identity, retailerId)
-            if (!isMappedShop && !isNamedRetailFeature) return@mapNotNull null
+            // If the only mapped feature is an ATM but its name explicitly identifies a
+            // convenience/supermarket branch, retain it as a branch candidate. Do not turn
+            // generic retailer-branded ATMs into stores.
+            val isBrandedStoreAtm = listingClass == "amenity" && listingType == "atm" &&
+                Regex("\\b(express|daily|local|superstore|supermarket|extra|metro)\\b", RegexOption.IGNORE_CASE)
+                    .containsMatchIn(name) &&
+                matchesRetailer(identity, retailerId)
+            if (!isMappedShop && !isNamedRetailFeature && !isBrandedStoreAtm) return@mapNotNull null
             if (!matchesRetailer(identity, retailerId)) return@mapNotNull null
             val addressTags = item["address"]?.jsonObject
             val postcode = addressTags?.text("postcode")?.uppercase()
