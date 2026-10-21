@@ -563,6 +563,7 @@ class PantrySyncPhase4gHostLifecycleTest {
         @Deprecated("Deprecated in Room")
         override fun endTransaction() { inTx = false }
         override fun inTransaction(): Boolean = inTx
+        @Deprecated("Deprecated in Room")
         override fun createOpenHelper(config: androidx.room.DatabaseConfiguration): androidx.sqlite.db.SupportSQLiteOpenHelper = error("stub")
         override fun createInvalidationTracker(): androidx.room.InvalidationTracker = error("stub")
         override fun clearAllTables() {}
