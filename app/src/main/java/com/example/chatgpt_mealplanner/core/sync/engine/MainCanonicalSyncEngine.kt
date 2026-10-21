@@ -683,11 +683,11 @@ open class MainCanonicalSyncEngine @Inject constructor(
         }
         if (result.status == SyncOperationStatus.APPLIED) {
             if (dto.operationType == SyncOperationType.CREATE_MEAL_CHANGE_REQUEST) {
-                notificationManager?.notifyHouseholdUpdate(
-                    title = "New meal change request",
-                    message = "A household member has requested a change to a planned meal.",
-                    notificationId = AppNotificationManager.MEAL_REQUEST_NOTIFICATION_ID
-                )
+                val mealDate = runCatching {
+                    val request = json.decodeFromString<CreateMealChangeRequestPayloadDto>(dto.payloadJson)
+                    mealDao?.getMealWithIngredients(request.mealId)?.meal?.date
+                }.getOrNull()
+                notificationManager?.notifyMealChangeRequest(mealDate, dto.operationId)
             } else {
                 notificationManager?.notifyHouseholdUpdate(
                     title = "Household pantry updated",

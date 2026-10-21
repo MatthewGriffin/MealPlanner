@@ -239,7 +239,7 @@ class ChatViewModel @Inject constructor(
                     mealChangeRequestRepository.updateRequestStatus(requestId, "IN_PROGRESS", request.mainResponse)
                 }
                 val fullPrompt = buildMealChangeRequestPrompt(request, mealTitle, editedRequest)
-                val displaySummary = "Request change to $mealTitle\nRequest: $editedRequest"
+                val displaySummary = "Change $mealTitle: $editedRequest"
                 showMealChangeRequestDialogFlow.value = false
                 userMessageTextFlow.value = fullPrompt
                 sendMessage(displayMessageText = displaySummary)
