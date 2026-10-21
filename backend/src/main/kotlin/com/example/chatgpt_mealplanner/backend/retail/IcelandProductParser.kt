@@ -13,6 +13,8 @@ import com.example.chatgpt_mealplanner.retail.contract.RetailerId
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -66,6 +68,74 @@ class IcelandProductParser {
 
         return records
     }
+
+    /**
+     * Parse Algolia's standard { hits: [...] } response shape. Product fields vary with
+     * index configuration, so accept a small set of common names but require a stable ID,
+     * a product name, and a valid price before emitting an offer.
+     */
+    fun parseAlgoliaResponse(responseJson: String): List<ParsedProductRecord> {
+        val root = runCatching { json.parseToJsonElement(responseJson).jsonObject }.getOrNull()
+            ?: return emptyList()
+        val hits = root["hits"]?.let { runCatching { it.jsonArray }.getOrNull() } ?: return emptyList()
+        return hits.mapNotNull { element ->
+            runCatching {
+                val hit = element.jsonObject
+                fun value(vararg keys: String): String? {
+                    for (key in keys) {
+                        val direct = hit[key]?.let(::primitiveContent)
+                        if (!direct.isNullOrBlank()) return direct
+                    }
+                    return null
+                }
+
+                val name = value("name", "title", "productName", "displayName") ?: return@runCatching null
+                val id = value("sku", "productId", "product_id", "objectID", "id", "code")
+                    ?.takeIf { it.isNotBlank() } ?: return@runCatching null
+                val priceElement = listOf("price", "currentPrice", "sellingPrice", "unitPrice", "PRICE")
+                    .firstNotNullOfOrNull { hit[it] }
+                val priceText = priceElement?.let { price ->
+                    primitiveContent(price) ?: (price as? JsonObject)?.let { nested ->
+                        listOf("value", "amount", "current", "price").firstNotNullOfOrNull { nested[it]?.let(::primitiveContent) }
+                    }
+                } ?: return@runCatching null
+                val money = parsePriceString(priceText) ?: return@runCatching null
+                val availabilityText = value("availability", "stockStatus", "stock_status").orEmpty()
+                val availability = when {
+                    availabilityText.contains("outofstock", true) || availabilityText.equals("false", true) -> RetailAvailability.OUT_OF_STOCK
+                    availabilityText.contains("instock", true) || availabilityText.equals("true", true) -> RetailAvailability.IN_STOCK
+                    else -> RetailAvailability.UNKNOWN
+                }
+                val brand = value("brand", "manufacturer")
+                val pack = parsePackString(name)
+                val product = RetailProduct(
+                    retailerId = RetailerId.ICELAND,
+                    retailerProductId = id,
+                    name = name,
+                    brand = brand ?: "Iceland",
+                    packCount = pack.packCount,
+                    packSize = pack.packSize,
+                    packSizeUnit = pack.packSizeUnit,
+                    netQuantity = pack.netQuantity,
+                    netQuantityUnit = pack.netQuantityUnit,
+                    storageClass = parseStorageClassFromName(name)
+                )
+                val offer = RetailOffer(
+                    retailerId = RetailerId.ICELAND,
+                    retailerProductId = id,
+                    price = money,
+                    promotion = null,
+                    availability = availability,
+                    priceScope = RetailPriceScope.ONLINE,
+                    observedAt = System.currentTimeMillis()
+                )
+                ParsedProductRecord(RetailProductWithOffer(product, offer))
+            }.getOrNull()
+        }
+    }
+
+    private fun primitiveContent(element: JsonElement): String? =
+        runCatching { element.jsonPrimitive.contentOrNull }.getOrNull()
 
     private fun parseJsonLdProductObject(jsonObj: JsonObject, fullHtml: String): ParsedProductRecord? {
         val name = jsonObj["name"]?.jsonPrimitive?.content ?: return null
