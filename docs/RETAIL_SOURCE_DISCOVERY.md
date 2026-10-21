@@ -25,14 +25,15 @@ The Algolia endpoint is website-backed and undocumented. Its continued availabil
 
 ## Iceland: website search and structured product data
 
-The client now attempts a direct Algolia product-search request before falling back to the retailer's search HTML/JSON-LD. It discovers public browser-side application ID, search-only key, and index name from Iceland's homepage and same-site JavaScript assets; it deliberately does not reuse ASDA credentials or guess missing settings. It sends a standard Algolia query and parses hits only when a stable product ID, name, and price can be identified.
+The client experimentally attempts a direct Algolia product-search request before falling back to the retailer's search HTML/JSON-LD. The search page itself is confirmed to exist, but the current available inspection has not exposed Iceland's live browser network traffic or a real Algolia response. Therefore, Iceland's current use of Algolia, the discovered configuration patterns, and the hit schema are not yet verified against production. The client looks for public browser-side application ID, search-only key, and index name on Iceland's homepage and up to 12 same-site JavaScript assets; it does not reuse ASDA credentials or guess missing settings. A discovered configuration is cached for the lifetime of the client, and GET/POST requests share the minimum-interval throttle.
 
-- Offers remain ONLINE; the discovered search hit alone does not establish physical-branch stock.
+- Offers remain ONLINE; a search hit alone does not establish physical-branch stock.
 - Availability is populated only when a product hit has explicit product-level availability; otherwise it remains UNKNOWN.
 - If configuration cannot be discovered, the API request fails, or no hits parse, the existing HTML/JSON-LD path remains the fallback.
 - A page-wide or generic basket button is not evidence that each listed product is in stock.
 - Missing, malformed, or conflicting source data should remain unknown or produce a parse warning rather than being guessed.
-- This is a best-effort integration against public website configuration, not a documented or guaranteed Iceland API. Live success and exact current hit-field mappings still require an end-to-end run against the current site.
+- Mocked tests prove the client request construction against a synthetic page fixture only; they do not prove the live site currently publishes those settings or accepts the request.
+- This is a best-effort integration against public website configuration, not a documented or guaranteed Iceland API. A representative production response fixture and an end-to-end run are still required before calling the direct API path verified.
 
 ## Preferred branch matching
 
