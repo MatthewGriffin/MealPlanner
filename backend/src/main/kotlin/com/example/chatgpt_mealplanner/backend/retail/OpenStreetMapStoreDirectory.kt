@@ -56,7 +56,9 @@ class OpenStreetMapStoreDirectory(
     })
 
     private data class CacheEntry(val expiresAt: Long, val response: StoreDirectorySearchResponse)
+    private data class GeocodeCacheEntry(val expiresAt: Long, val latitude: Double, val longitude: Double)
     private val cache = ConcurrentHashMap<String, CacheEntry>()
+    private val geocodeCache = ConcurrentHashMap<String, GeocodeCacheEntry>()
     private val overpassMutex = Mutex()
     private val geocodeMutex = Mutex()
     @Volatile private var lastOverpassAt = 0L
@@ -68,10 +70,12 @@ class OpenStreetMapStoreDirectory(
         onProgress: (String) -> Unit
     ): StoreDirectorySearchResponse {
         require(request.radiusMeters in 500..15_000) { "Radius must be between 500 and 15000 metres." }
+        val locationStarted = System.nanoTime()
         val (lat, lon) = resolveCenter(request, onProgress)
+        logTiming(if (request.postcode.isNullOrBlank()) "coordinate_resolution" else "postcode_lookup", locationStarted)
         // Shared cache is keyed only by location/radius because each Overpass request
         // now retrieves all supported retailers in the area.
-        val key = "shops-v13:${"%.4f".format(Locale.US, lat)}:${"%.4f".format(Locale.US, lon)}:${request.radiusMeters}"
+        val key = "shops-v14:${"%.4f".format(Locale.US, lat)}:${"%.4f".format(Locale.US, lon)}:${request.radiusMeters}"
         onProgress("Checking cached nearby-store results…")
         val cached = cache[key]
         if (cached != null) {
@@ -122,12 +126,17 @@ class OpenStreetMapStoreDirectory(
         var usedNominatimFallback = false
         var overpassSucceeded = false
         val allStores = try {
+            val overpassStarted = System.nanoTime()
             val raw = fetchOverpassResponse(buildMultiRetailerQuery(lat, lon, request.radiusMeters), onProgress)
             overpassSucceeded = true
+            logTiming("overpass_request", overpassStarted)
+            val parseStarted = System.nanoTime()
             val mappedStores = parseAllRetailersOverpassResponse(raw, lat, lon)
+            logTiming("overpass_parse", parseStarted)
             // Recover each missing retailer independently. A shared query can find ASDA or
             // Aldi while missing Tesco Express / Morrisons Daily, so falling back only when
             // the entire combined result is empty silently hides valid nearby branches.
+            val fallbackStarted = System.nanoTime()
             val fallbackStores = when {
                 request.searchAllRetailers -> {
                     val foundRetailers = mappedStores.map { it.retailerId }.toSet()
@@ -161,9 +170,11 @@ class OpenStreetMapStoreDirectory(
                 }
                 else -> emptyList()
             }
+            logTiming("nominatim_fallbacks", fallbackStarted)
             if (fallbackStores.isNotEmpty()) usedNominatimFallback = true
             (mappedStores + fallbackStores).distinctBy { it.directorySourceId }
         } catch (e: Exception) {
+            logTiming("overpass_failed_or_fallback_failed", locationStarted)
             if (e is kotlinx.coroutines.CancellationException) throw e
             if (configuredApiKey != null) throw e
             usedNominatimFallback = true
@@ -349,6 +360,15 @@ class OpenStreetMapStoreDirectory(
         request: StoreDirectorySearchRequest,
         onProgress: (String) -> Unit
     ): Pair<Double, Double> {
+        val postcodeCacheKey = request.postcode?.trim()?.uppercase(Locale.UK)?.filterNot(Char::isWhitespace)
+        if (postcodeCacheKey != null) {
+            val cachedLocation = geocodeCache[postcodeCacheKey]
+            if (cachedLocation != null && cachedLocation.expiresAt > clock()) {
+                logTiming("postcode_lookup_cache_hit", System.nanoTime())
+                return cachedLocation.latitude to cachedLocation.longitude
+            }
+            if (cachedLocation != null) geocodeCache.remove(postcodeCacheKey, cachedLocation)
+        }
         val hasLat = request.latitude != null
         val hasLon = request.longitude != null
         require(hasLat == hasLon) { "Provide both coordinates, or a UK postcode." }
@@ -390,6 +410,17 @@ class OpenStreetMapStoreDirectory(
             ?: throw IllegalStateException("Postcode lookup returned no latitude.")
         val lon = first["lon"]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull()
             ?: throw IllegalStateException("Postcode lookup returned no longitude.")
+        if (postcodeCacheKey != null) {
+            geocodeCache[postcodeCacheKey] = GeocodeCacheEntry(
+                expiresAt = clock() + 30L * 24 * 60 * 60 * 1000,
+                latitude = lat,
+                longitude = lon
+            )
+            if (geocodeCache.size > 500) {
+                geocodeCache.entries.sortedBy { it.value.expiresAt }
+                    .take(geocodeCache.size - 500).forEach { geocodeCache.remove(it.key, it.value) }
+            }
+        }
         return lat to lon
     }
 
@@ -563,6 +594,11 @@ class OpenStreetMapStoreDirectory(
     }
 
     /** Some proxies/services prepend a UTF-8 BOM; trim it before JSON decoding. */
+    private fun logTiming(stage: String, startedAtNanos: Long) {
+        val elapsedMs = ((System.nanoTime() - startedAtNanos).coerceAtLeast(0L)) / 1_000_000L
+        println("[StoreDirectoryTiming] stage=$stage elapsedMs=$elapsedMs")
+    }
+
     private fun parseJsonResponse(raw: String, source: String): JsonElement {
         val normalized = raw.removePrefix("\uFEFF").trim()
         return try {
