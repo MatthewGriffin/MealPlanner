@@ -188,6 +188,38 @@ class OpenStreetMapStoreDirectoryTest {
     }
 
     @Test
+    fun querySearchesRetailerIdentityEvenWhenShopTagIsMissing() {
+        val query = directory.buildQuery(
+            com.example.chatgpt_mealplanner.retail.contract.StoreDirectorySearchRequest(
+                retailerId = RetailerId.TESCO,
+                postcode = "SW1A 1AA"
+            ),
+            51.5,
+            -0.1
+        )
+        assertTrue(query.contains("""nwr["name"~"Tesco",i]"""))
+        assertTrue(query.contains("""nwr["brand"~"Tesco",i]"""))
+        assertTrue(query.contains("""nwr["operator"~"Tesco",i]"""))
+    }
+
+    @Test
+    fun parserAcceptsCommonBranchesWithoutShopTags() {
+        val raw = """{"elements":[
+          {"type":"node","id":901,"lat":51.5,"lon":-0.1,"tags":{"name":"Tesco Express","brand":"Tesco"}},
+          {"type":"node","id":902,"lat":51.501,"lon":-0.101,"tags":{"name":"Morrisons Daily","brand":"Morrisons"}},
+          {"type":"node","id":903,"lat":51.502,"lon":-0.102,"tags":{"name":"Morrisons","brand":"Morrisons"}},
+          {"type":"node","id":904,"lat":51.503,"lon":-0.103,"tags":{"name":"Sainsbury's Local","brand":"Sainsbury's"}}
+        ]}"""
+        val tesco = directory.parseOverpassResponse(raw, RetailerId.TESCO, 51.5, -0.1)
+        val morrisons = directory.parseOverpassResponse(raw, RetailerId.MORRISONS, 51.5, -0.1)
+        val sainsburys = directory.parseOverpassResponse(raw, RetailerId.SAINSBURYS, 51.5, -0.1)
+        assertEquals("Tesco Express", tesco.single().name)
+        assertEquals("Morrisons Daily", morrisons.first().name)
+        assertEquals(2, morrisons.size)
+        assertEquals("Sainsbury's Local", sainsburys.single().name)
+    }
+
+    @Test
     fun parserFiltersToRequestedRetailerAndRetainsDirectoryId() {
         val raw = """{"elements":[
           {"type":"node","id":100,"lat":51.5,"lon":-0.1,"tags":{"name":"Tesco Express","brand":"Tesco","shop":"convenience","addr:postcode":"SW1A 1AA","addr:street":"Example Road"}},
