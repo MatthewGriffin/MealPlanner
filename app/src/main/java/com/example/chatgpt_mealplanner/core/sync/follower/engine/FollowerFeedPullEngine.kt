@@ -53,7 +53,6 @@ open class FollowerFeedPullEngine @Inject constructor(
         var totalProcessed = 0
         var totalApplied = 0
         var totalOwnSkipped = 0
-        var totalMealRequestUpdates = 0
         val requestStatusNotifications = mutableListOf<Triple<String, String, String>>()
 
         var hasMore = true
@@ -160,13 +159,11 @@ open class FollowerFeedPullEngine @Inject constructor(
                                 val update = cacheJson.decodeFromString<UpdateMealChangeRequestStatusPayloadDto>(feedItem.payloadJson)
                                 val previous = requests.getById(update.requestId)
                                 FollowerMealRequestProjector.apply(requests, feedItem)
-                                totalMealRequestUpdates++
                                 if (previous != null && previous.authorDeviceId == followerDeviceId && previous.status != update.status) {
                                     requestStatusNotifications += Triple(update.requestId, previous.mealId, update.status)
                                 }
                             } else {
                                 FollowerMealRequestProjector.apply(requests, feedItem)
-                                totalMealRequestUpdates++
                             }
                         }
                     } else if (feedItem.sourceDeviceId == followerDeviceId) {
