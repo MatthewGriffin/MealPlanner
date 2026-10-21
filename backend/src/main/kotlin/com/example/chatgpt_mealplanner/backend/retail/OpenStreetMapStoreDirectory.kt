@@ -69,8 +69,8 @@ class OpenStreetMapStoreDirectory(
     ): StoreDirectorySearchResponse {
         require(request.radiusMeters in 500..15_000) { "Radius must be between 500 and 15000 metres." }
         val (lat, lon) = resolveCenter(request, onProgress)
-        // Version the cache so earlier incomplete results cannot hide newly discovered Express shops.
-        val key = "shops-v3:${request.retailerId}:${"%.4f".format(Locale.US, lat)}:${"%.4f".format(Locale.US, lon)}:${request.radiusMeters}"
+        // Version the cache to invalidate results from the previous petrol-station-inclusive search.
+        val key = "shops-v4:${request.retailerId}:${"%.4f".format(Locale.US, lat)}:${"%.4f".format(Locale.US, lon)}:${request.radiusMeters}"
         onProgress("Checking cached branch results…")
         cache[key]?.let {
             if (it.expiresAt > clock()) return it.response.copy(fromCache = true)
@@ -204,9 +204,8 @@ class OpenStreetMapStoreDirectory(
 
     internal fun buildQuery(request: StoreDirectorySearchRequest, lat: Double, lon: Double): String {
         // Match retailer identity against every shop type, without restricting the branch format.
-        // Include named fuel amenities too, because petrol-site convenience branches can be mapped
-        // as amenity=fuel without any shop tag. Keep identity filters paired with feature tags
-        // so the query doesn't scan every nearby OSM object.
+        // Search retail shop features only. Petrol-station amenities and fuel forecourts are
+        // intentionally excluded because they are not useful branch matches for this finder.
         val radius = request.radiusMeters
         val retailerPattern = overpassRetailerPattern(request.retailerId)
         return """[out:json][timeout:60];
@@ -214,9 +213,6 @@ class OpenStreetMapStoreDirectory(
             nwr["shop"]["name"~"$retailerPattern",i](around:$radius,$lat,$lon);
             nwr["shop"]["brand"~"$retailerPattern",i](around:$radius,$lat,$lon);
             nwr["shop"]["operator"~"$retailerPattern",i](around:$radius,$lat,$lon);
-            nwr["amenity"="fuel"]["name"~"$retailerPattern",i](around:$radius,$lat,$lon);
-            nwr["amenity"="fuel"]["brand"~"$retailerPattern",i](around:$radius,$lat,$lon);
-            nwr["amenity"="fuel"]["operator"~"$retailerPattern",i](around:$radius,$lat,$lon);
           );
           out center tags;"""
     }
@@ -310,6 +306,8 @@ class OpenStreetMapStoreDirectory(
                 ?: return@mapNotNull null
             val identity = listOfNotNull(name, extratags?.text("brand"), extratags?.text("operator")).joinToString(" ")
             val effectiveShopType = extratags?.text("shop")?.lowercase() ?: listingType
+            val amenity = extratags?.text("amenity")?.lowercase()
+            if (isExcludedPetrolVariant(identity, retailerId, amenity, listingClass, listingType)) return@mapNotNull null
             val isMappedShop = listingClass == "shop" && effectiveShopType !in NON_RETAIL_SHOP_TYPES
             val isNamedRetailFeature = effectiveShopType == null &&
                 listingType !in NON_RETAIL_FEATURE_TYPES &&
@@ -354,6 +352,7 @@ class OpenStreetMapStoreDirectory(
             ).joinToString(" ")
             val amenity = tags.text("amenity")?.lowercase()
             val healthcare = tags.text("healthcare")?.lowercase()
+            if (isExcludedPetrolVariant(identity, retailerId, amenity, null, null)) return@mapNotNull null
             val isMappedShop = shopType != null && shopType !in NON_RETAIL_SHOP_TYPES
             val isNamedRetailFeature = shopType == null &&
                 amenity !in NON_RETAIL_FEATURE_TYPES &&
@@ -390,6 +389,22 @@ class OpenStreetMapStoreDirectory(
         } catch (e: Exception) {
             throw IllegalStateException("$source returned an invalid JSON response. Please retry later.", e)
         }
+    }
+
+    private fun isExcludedPetrolVariant(
+        identity: String,
+        retailerId: RetailerId,
+        amenity: String?,
+        listingClass: String?,
+        listingType: String?
+    ): Boolean {
+        val normalized = identity.lowercase().replace(Regex("[^a-z0-9]+"), " ").trim()
+        // Drop every ASDA Express result, plus petrol/fuel station variants for any retailer.
+        if (retailerId == RetailerId.ASDA && Regex("\\basda\\b.*\\bexpress\\b").containsMatchIn(normalized)) {
+            return true
+        }
+        if (amenity == "fuel" || (listingClass == "amenity" && listingType == "fuel")) return true
+        return Regex("\\b(petrol|fuel|forecourt|service station)\\b").containsMatchIn(normalized)
     }
 
     private fun matchesRetailer(value: String, retailerId: RetailerId): Boolean {
