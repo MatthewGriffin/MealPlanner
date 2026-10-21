@@ -109,7 +109,7 @@ class ChatViewModel @Inject constructor(
 
         ChatUiState(
             activeConversationId = flows[0] as String,
-            messages = flows[1] as List<ChatMessageEntity>,
+            messages = (flows[1] as List<*>).map { it as ChatMessageEntity },
             latestProposal = flows[2] as ValidatedMealProposal?,
             latestProposedAction = flows[3] as AiProposedAction?,
             isSavingProposal = flows[12] as Boolean,
