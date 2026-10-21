@@ -89,18 +89,29 @@ class OpenStreetMapStoreDirectory(
             // Supplement mapped features with the selected retailer's place listings.
             // This is generic across retailers and can recover branches with incomplete tags.
             onProgress("Checking OpenStreetMap listings for nearby ${displayName(request.retailerId)} branches…")
-            val osmListings = try {
-                searchNominatimFallback(request.retailerId, lat, lon, request.radiusMeters)
-            } catch (e: Exception) {
-                if (e is kotlinx.coroutines.CancellationException) throw e
+            val osmListings = if (configuredApiKey == null) {
+                try {
+                    kotlinx.coroutines.withTimeout(5_000L) {
+                        searchNominatimFallback(request.retailerId, lat, lon, request.radiusMeters)
+                    }
+                } catch (e: Exception) {
+                    if (e is kotlinx.coroutines.CancellationException && e !is kotlinx.coroutines.TimeoutCancellationException) throw e
+                    emptyList()
+                }
+            } else {
+                // With a keyed provider configured, return its results promptly instead of
+                // blocking the search on an additional public Nominatim request.
                 emptyList()
             }
             (overpassStores + osmListings).distinctBy { it.directorySourceId }
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
+            if (configuredApiKey != null) throw e
             usedNominatimFallback = true
             onProgress("The main branch directory is unavailable; checking OpenStreetMap place listings…")
-            val fallbackStores = searchNominatimFallback(request.retailerId, lat, lon, request.radiusMeters)
+            val fallbackStores = kotlinx.coroutines.withTimeout(5_000L) {
+                searchNominatimFallback(request.retailerId, lat, lon, request.radiusMeters)
+            }
             if (fallbackStores.isEmpty()) {
                 throw IllegalStateException(
                     "Branch search failed and OpenStreetMap did not return matching branch details. You can retry or enter a branch manually.",
@@ -132,7 +143,9 @@ class OpenStreetMapStoreDirectory(
             require(key.matches(Regex("^[A-Za-z0-9._~-]+$"))) {
                 "The Overpass.ch API key contains unsupported characters. Check the key in Settings."
             }
-            listOf("https://api.overpass.ch/v1/$key/interpreter") + OVERPASS_ENDPOINTS
+            // A configured key is an explicit choice: don't silently send a slow query to
+            // unrelated public instances if the keyed service rejects or times out.
+            listOf("https://api.overpass.ch/v1/$key/interpreter")
         } else {
             OVERPASS_ENDPOINTS
         }
@@ -172,7 +185,6 @@ class OpenStreetMapStoreDirectory(
         val retailerPattern = overpassRetailerPattern(request.retailerId)
         return """[out:json][timeout:20];
           (
-            nwr["shop"](around:$radius,$lat,$lon);
             nwr["name"~"$retailerPattern",i](around:$radius,$lat,$lon);
             nwr["brand"~"$retailerPattern",i](around:$radius,$lat,$lon);
             nwr["operator"~"$retailerPattern",i](around:$radius,$lat,$lon);
