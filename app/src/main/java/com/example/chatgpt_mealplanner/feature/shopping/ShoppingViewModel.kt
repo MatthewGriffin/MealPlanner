@@ -29,6 +29,7 @@ import com.example.chatgpt_mealplanner.retail.contract.Money
 import com.example.chatgpt_mealplanner.retail.contract.RetailerId
 import com.example.chatgpt_mealplanner.retail.contract.UserShoppingPreferences
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
@@ -174,7 +175,19 @@ class ShoppingViewModel @Inject constructor(
 
     init {
         println("[AI_MEALPLANNER] [SHOPPING_VM_INIT] buildAudit=SHOPPING_AUDIT_20261001_02")
-        if (!appRoleResolver.isFollower()) regenerateShoppingList()
+        if (!appRoleResolver.isFollower()) {
+            regenerateShoppingList()
+        } else {
+            viewModelScope.launch {
+                followerBasketComparisonCacheStore.observeCachedComparison().collect { cached ->
+                    val expectedIds = uiState.value.activeListWithItems?.items?.map { it.item.id }?.toSet().orEmpty()
+                    val cachedIds = cached?.let { result ->
+                        (result.selectedPlan.lines.map { it.shoppingRequirementId } + result.unmatchedRequirements).toSet()
+                    }.orEmpty()
+                    basketOptimizationFlow.value = cached?.takeIf { expectedIds.isNotEmpty() && expectedIds == cachedIds }
+                }
+            }
+        }
     }
 
     fun onEvent(event: ShoppingUiEvent) {
