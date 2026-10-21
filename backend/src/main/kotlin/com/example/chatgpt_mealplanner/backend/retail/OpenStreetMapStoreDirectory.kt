@@ -8,6 +8,8 @@ import io.ktor.client.request.*
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
+import io.ktor.http.Parameters
+import io.ktor.http.content.FormDataContent
 import io.ktor.http.contentType
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
@@ -95,9 +97,9 @@ class OpenStreetMapStoreDirectory(
                     onProgress("The first branch-search service did not respond; trying backup service ${index} of ${OVERPASS_ENDPOINTS.lastIndex}…")
                 }
                 val response = client.post(endpoint) {
-                    contentType(ContentType.Text.Plain)
                     header(HttpHeaders.UserAgent, USER_AGENT)
-                    setBody(query)
+                    // Overpass expects its query in the URL-encoded `data` form field.
+                    setBody(FormDataContent(Parameters.build { append("data", query) }))
                 }
                 if (response.status.value !in 200..299) {
                     failures += "$serviceName: HTTP ${response.status.value}"
