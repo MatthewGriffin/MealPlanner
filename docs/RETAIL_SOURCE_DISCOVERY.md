@@ -25,14 +25,14 @@ The Algolia endpoint is website-backed and undocumented. Its continued availabil
 
 ## Iceland: website search and structured product data
 
-The current client fetches Iceland search/category HTML. The parser extracts product prices and product-level availability from JSON-LD when present. It does not currently call a separately identified JSON product/search endpoint.
+The client now attempts a direct Algolia product-search request before falling back to the retailer's search HTML/JSON-LD. It discovers public browser-side application ID, search-only key, and index name from Iceland's homepage and same-site JavaScript assets; it deliberately does not reuse ASDA credentials or guess missing settings. It sends a standard Algolia query and parses hits only when a stable product ID, name, and price can be identified.
 
-- Offers remain ONLINE.
-- InStock / OutOfStock only describes the scope represented by the structured offer; it is not branch stock.
+- Offers remain ONLINE; the discovered search hit alone does not establish physical-branch stock.
+- Availability is populated only when a product hit has explicit product-level availability; otherwise it remains UNKNOWN.
+- If configuration cannot be discovered, the API request fails, or no hits parse, the existing HTML/JSON-LD path remains the fallback.
 - A page-wide or generic basket button is not evidence that each listed product is in stock.
 - Missing, malformed, or conflicting source data should remain unknown or produce a parse warning rather than being guessed.
-
-A future improvement is to inspect the live page's network requests and prefer its actual product/search JSON response where stable, while retaining HTML/JSON-LD as a fallback.
+- This is a best-effort integration against public website configuration, not a documented or guaranteed Iceland API. Live success and exact current hit-field mappings still require an end-to-end run against the current site.
 
 ## Preferred branch matching
 
@@ -48,4 +48,4 @@ Never manufacture a branch ID from a name, postcode, store format, or local UUID
 
 ## Next technical step
 
-Trace Iceland's current website requests to identify its actual product/search API response and store-selection mechanism. Then add a source client and parser for that response with fixture-based tests. Only populate branch-specific offer fields when the request/response demonstrably includes the selected store and product-level price/availability. Keep the current HTML parser and cached/manual fallback if the endpoint is unavailable or changes.
+Run the new Iceland Algolia path against the live site and capture a representative response fixture to confirm current config patterns and hit-field names. Then trace store-selection requests separately. Only populate branch-specific offer fields when the request/response demonstrably includes the selected store and product-level price/availability. Keep the current HTML parser and cached/manual fallback if the endpoint is unavailable or changes.
