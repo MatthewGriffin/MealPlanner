@@ -66,6 +66,7 @@ fun SettingsScreen(
     var storeNameInput by remember { mutableStateOf("") }
     var storePostcodeInput by remember { mutableStateOf("") }
     var storeSearchPostcodeInput by remember { mutableStateOf("") }
+    var storeDirectoryApiKeyInput by remember { mutableStateOf("") }
     var selectedStoreRetailer by remember { mutableStateOf(RetailerId.ASDA) }
     var selectedStoreFormat by remember { mutableStateOf(RetailStoreFormat.ASDA_SUPERMARKET) }
     var retailerMenuExpanded by remember { mutableStateOf(false) }
@@ -268,6 +269,46 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+
+                Text("Overpass.ch API key (optional)", fontWeight = FontWeight.SemiBold)
+                Text(
+                    "If you have an Overpass.ch key, save it here to try that service first. The key is stored encrypted on this device. Public directory services may still be tried if it fails.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedTextField(
+                    value = storeDirectoryApiKeyInput,
+                    onValueChange = { storeDirectoryApiKeyInput = it },
+                    label = { Text(if (uiState.isStoreDirectoryApiKeyConfigured) "Replace saved API key" else "Overpass.ch API key") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Button(
+                        onClick = {
+                            viewModel.saveStoreDirectoryApiKey(storeDirectoryApiKeyInput)
+                            storeDirectoryApiKeyInput = ""
+                        },
+                        enabled = storeDirectoryApiKeyInput.isNotBlank()
+                    ) { Text("Save key") }
+                    if (uiState.isStoreDirectoryApiKeyConfigured) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        TextButton(onClick = { viewModel.deleteStoreDirectoryApiKey() }) {
+                            Text("Remove key")
+                        }
+                    }
+                }
+                if (uiState.storeDirectoryApiKeyMessage != null) {
+                    Text(
+                        uiState.storeDirectoryApiKeyMessage!!,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
                 OutlinedTextField(
                     value = storeSearchPostcodeInput,
                     onValueChange = { storeSearchPostcodeInput = it },
