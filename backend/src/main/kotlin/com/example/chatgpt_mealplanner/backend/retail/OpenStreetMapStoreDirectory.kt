@@ -70,7 +70,7 @@ class OpenStreetMapStoreDirectory(
         require(request.radiusMeters in 500..15_000) { "Radius must be between 500 and 15000 metres." }
         val (lat, lon) = resolveCenter(request, onProgress)
         // Version the cache to invalidate results from the previous petrol-station-inclusive search.
-        val key = "shops-v7:${request.retailerId}:${"%.4f".format(Locale.US, lat)}:${"%.4f".format(Locale.US, lon)}:${request.radiusMeters}"
+        val key = "shops-v8:${request.retailerId}:${"%.4f".format(Locale.US, lat)}:${"%.4f".format(Locale.US, lon)}:${request.radiusMeters}"
         onProgress("Checking cached branch results…")
         cache[key]?.let {
             if (it.expiresAt > clock()) return it.response.copy(fromCache = true)
@@ -287,8 +287,26 @@ class OpenStreetMapStoreDirectory(
         retailerId: RetailerId,
         originLat: Double,
         originLon: Double,
+        radiusMeters: Int
+    ): List<StoreDirectoryEntry> {
+        // Iceland searches must also query the related Food Warehouse brand: Nominatim
+        // does not guarantee that an "Iceland" text search returns Food Warehouse branches.
+        val searchTerms = if (retailerId == RetailerId.ICELAND) {
+            listOf("Iceland", "Food Warehouse")
+        } else {
+            listOf(displayName(retailerId))
+        }
+        return searchTerms.flatMap { term ->
+            searchNominatimTerm(retailerId, originLat, originLon, radiusMeters, term)
+        }.distinctBy { it.directorySourceId }
+    }
+
+    private suspend fun searchNominatimTerm(
+        retailerId: RetailerId,
+        originLat: Double,
+        originLon: Double,
         radiusMeters: Int,
-        searchTerm: String = displayName(retailerId)
+        searchTerm: String
     ): List<StoreDirectoryEntry> {
         // Nominatim is a fallback search, not an Overpass interpreter. Only use actual
         // OSM results and their address tags; never copy the user's search postcode into
