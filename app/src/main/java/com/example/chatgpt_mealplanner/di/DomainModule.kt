@@ -21,6 +21,8 @@ import com.example.chatgpt_mealplanner.core.service.RetailShoppingDomainService
 import com.example.chatgpt_mealplanner.core.service.RetailShoppingDomainServiceImpl
 import com.example.chatgpt_mealplanner.core.service.ShoppingDomainService
 import com.example.chatgpt_mealplanner.core.service.ShoppingDomainServiceImpl
+import com.example.chatgpt_mealplanner.backend.retail.OpenStreetMapStoreDirectory
+import com.example.chatgpt_mealplanner.backend.retail.StoreDirectoryProvider
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
@@ -107,6 +109,10 @@ abstract class DomainModule {
     ): com.example.chatgpt_mealplanner.core.backup.SafDocumentStreamProvider
 
     companion object {
+        @Provides
+        @Singleton
+        fun provideStoreDirectoryProvider(): StoreDirectoryProvider = OpenStreetMapStoreDirectory()
+
         @Provides
         @Singleton
         fun provideBackendConfig(): BackendConfig {

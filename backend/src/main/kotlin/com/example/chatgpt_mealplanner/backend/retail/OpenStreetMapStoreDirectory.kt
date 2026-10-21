@@ -2,6 +2,7 @@ package com.example.chatgpt_mealplanner.backend.retail
 
 import com.example.chatgpt_mealplanner.retail.contract.*
 import io.ktor.client.HttpClient
+import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.request.*
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
@@ -24,6 +25,8 @@ class OpenStreetMapStoreDirectory(
     private val client: HttpClient,
     private val clock: () -> Long = System::currentTimeMillis
 ) : StoreDirectoryProvider {
+    constructor() : this(HttpClient(OkHttp))
+
     private data class CacheEntry(val expiresAt: Long, val response: StoreDirectorySearchResponse)
     private val cache = ConcurrentHashMap<String, CacheEntry>()
     private val overpassMutex = Mutex()

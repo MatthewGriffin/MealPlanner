@@ -18,7 +18,8 @@ data class RetailStoreLocation(
     val retailerStoreId: String? = null,
     /** Source record for branch discovery; never treated as a retailer-issued branch ID. */
     val directorySource: StoreDirectorySource? = null,
-    val directorySourceId: String? = null
+    val directorySourceId: String? = null,
+    val address: String? = null
 )
 
 @Serializable

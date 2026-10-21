@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.chatgpt_mealplanner.contract.AiProviderResponse
+import com.example.chatgpt_mealplanner.backend.retail.OpenStreetMapStoreDirectory
+import com.example.chatgpt_mealplanner.backend.retail.StoreDirectoryProvider
 import com.example.chatgpt_mealplanner.core.ai.provider.GEMINI_MODEL_ID
 import com.example.chatgpt_mealplanner.core.ai.provider.MealPlannerAiProvider
 import com.example.chatgpt_mealplanner.core.backup.BackupManager
@@ -18,6 +20,8 @@ import com.example.chatgpt_mealplanner.core.service.RetailStorePreferenceStore
 import com.example.chatgpt_mealplanner.retail.contract.RetailerId
 import com.example.chatgpt_mealplanner.retail.contract.RetailStoreFormat
 import com.example.chatgpt_mealplanner.retail.contract.RetailStoreLocation
+import com.example.chatgpt_mealplanner.retail.contract.StoreDirectoryEntry
+import com.example.chatgpt_mealplanner.retail.contract.StoreDirectorySearchRequest
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
@@ -31,6 +35,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.util.Arrays
+import java.util.UUID
 import javax.inject.Inject
 
 data class SettingsUiState(
@@ -45,7 +50,10 @@ data class SettingsUiState(
     val isPassphraseDialogVisible: Boolean = false,
     val pendingBackupUri: android.net.Uri? = null,
     val enabledRetailers: Set<RetailerId> = RetailerPreferenceStore.DEFAULT_ENABLED_RETAILERS,
-    val preferredStores: List<RetailStoreLocation> = emptyList()
+    val preferredStores: List<RetailStoreLocation> = emptyList(),
+    val isStoreSearchInProgress: Boolean = false,
+    val storeSearchMessage: String? = null,
+    val discoveredStores: List<StoreDirectoryEntry> = emptyList()
 )
 
 @HiltViewModel
@@ -59,7 +67,8 @@ class SettingsViewModel @Inject constructor(
     private val appRoleResolver: AppRoleResolver,
     private val mainBackupSaveCoordinator: MainEncryptedBackupSaveCoordinator,
     private val retailerPreferenceStore: RetailerPreferenceStore = RetailerPreferenceStore(null),
-    private val retailStorePreferenceStore: RetailStorePreferenceStore = RetailStorePreferenceStore(null)
+    private val retailStorePreferenceStore: RetailStorePreferenceStore = RetailStorePreferenceStore(null),
+    private val storeDirectoryProvider: StoreDirectoryProvider = OpenStreetMapStoreDirectory()
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -95,6 +104,86 @@ class SettingsViewModel @Inject constructor(
             _uiState.value.preferredStores, retailerId, cleanName, cleanPostcode, format
         )
         persistPreferredStores(updated)
+    }
+
+    fun searchStoreDirectory(retailerId: RetailerId, postcode: String) {
+        val cleanPostcode = postcode.trim().uppercase()
+        if (cleanPostcode.isBlank()) {
+            _uiState.update { it.copy(storeSearchMessage = "Enter a UK postcode to find nearby branches.") }
+            return
+        }
+        _uiState.update {
+            it.copy(
+                isStoreSearchInProgress = true,
+                storeSearchMessage = "Searching OpenStreetMap…",
+                discoveredStores = emptyList()
+            )
+        }
+        viewModelScope.launch {
+            try {
+                val response = withContext(Dispatchers.IO) {
+                    storeDirectoryProvider.search(
+                        StoreDirectorySearchRequest(retailerId = retailerId, postcode = cleanPostcode)
+                    )
+                }
+                _uiState.update {
+                    it.copy(
+                        isStoreSearchInProgress = false,
+                        discoveredStores = response.stores,
+                        storeSearchMessage = if (response.stores.isEmpty()) {
+                            response.warnings.firstOrNull() ?: "No matching branches found."
+                        } else {
+                            "Found ${response.stores.size} possible branches. Check the details before adding."
+                        }
+                    )
+                }
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                _uiState.update {
+                    it.copy(
+                        isStoreSearchInProgress = false,
+                        discoveredStores = emptyList(),
+                        storeSearchMessage = "Store search failed: ${e.message ?: "service unavailable"}. You can still add a branch manually."
+                    )
+                }
+            }
+        }
+    }
+
+    fun addDiscoveredStore(store: StoreDirectoryEntry) {
+        val current = _uiState.value.preferredStores
+        val normalizedPostcode = store.postcode.orEmpty().replace(" ", "").uppercase()
+        val existingIndex = current.indexOfFirst {
+            it.retailerId == store.retailerId && (
+                (it.directorySource == store.directorySource && it.directorySourceId == store.directorySourceId) ||
+                (it.name.trim().equals(store.name.trim(), ignoreCase = true) &&
+                    it.postcode.replace(" ", "").uppercase() == normalizedPostcode)
+            )
+        }
+        val updated = current.toMutableList()
+        if (existingIndex >= 0) {
+            val existing = updated[existingIndex]
+            updated[existingIndex] = existing.copy(
+                directorySource = store.directorySource,
+                directorySourceId = store.directorySourceId,
+                address = store.address.ifBlank { existing.address }
+            )
+        } else {
+            updated += RetailStoreLocation(
+                id = UUID.randomUUID().toString(),
+                retailerId = store.retailerId,
+                name = store.name,
+                postcode = store.postcode.orEmpty().uppercase(),
+                format = store.format,
+                isPreferred = true,
+                retailerStoreId = null,
+                directorySource = store.directorySource,
+                directorySourceId = store.directorySourceId,
+                address = store.address
+            )
+        }
+        persistPreferredStores(updated)
+        _uiState.update { it.copy(storeSearchMessage = "Branch saved to preferred locations. Branch-specific prices and stock are not confirmed.") }
     }
 
     fun setPreferredStore(storeId: String, preferred: Boolean) {

@@ -63,6 +63,7 @@ fun SettingsScreen(
     var apiKeyInput by remember { mutableStateOf("") }
     var storeNameInput by remember { mutableStateOf("") }
     var storePostcodeInput by remember { mutableStateOf("") }
+    var storeSearchPostcodeInput by remember { mutableStateOf("") }
     var selectedStoreRetailer by remember { mutableStateOf(RetailerId.ASDA) }
     var selectedStoreFormat by remember { mutableStateOf(RetailStoreFormat.ASDA_SUPERMARKET) }
     var retailerMenuExpanded by remember { mutableStateOf(false) }
@@ -213,11 +214,68 @@ fun SettingsScreen(
                 Text("Preferred Store Locations", fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    "Save the branches you use and their exact format, such as Tesco Express or Sainsbury's Local. These preferences stay on this device. Current feeds do not provide a verified retailer branch ID, so prices remain online/retailer-wide estimates and branch stock is not confirmed.",
+                    "Save branches you use. Directory discovery helps identify a location, but retailer feeds still do not provide verified branch-specific prices or stock.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(modifier = Modifier.height(10.dp))
+
+                Text("Find a branch", fontWeight = FontWeight.SemiBold)
+                Text(
+                    "Search public OpenStreetMap listings by UK postcode. Results can be incomplete, so verify the branch before saving it.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedTextField(
+                    value = storeSearchPostcodeInput,
+                    onValueChange = { storeSearchPostcodeInput = it },
+                    label = { Text("Search postcode") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                Button(
+                    onClick = { viewModel.searchStoreDirectory(selectedStoreRetailer, storeSearchPostcodeInput) },
+                    enabled = storeSearchPostcodeInput.isNotBlank() && !uiState.isStoreSearchInProgress,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(if (uiState.isStoreSearchInProgress) "Searching…" else "Find branches")
+                }
+                if (uiState.storeSearchMessage != null) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(uiState.storeSearchMessage!!, style = MaterialTheme.typography.bodySmall)
+                }
+                uiState.discoveredStores.forEach { store ->
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(10.dp)) {
+                            Text(store.name, fontWeight = FontWeight.SemiBold)
+                            if (store.address.isNotBlank()) {
+                                Text(store.address, style = MaterialTheme.typography.bodySmall)
+                            }
+                            Text(
+                                "${store.postcode ?: "Postcode unavailable"} · ${storeDistanceLabel(store.distanceMeters)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text("Directory listing only; local prices and stock are not verified.", style = MaterialTheme.typography.bodySmall)
+                            Button(onClick = { viewModel.addDiscoveredStore(store) }) { Text("Add branch") }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                }
+                TextButton(onClick = {
+                    runCatching {
+                        context.startActivity(
+                            android.content.Intent(
+                                android.content.Intent.ACTION_VIEW,
+                                android.net.Uri.parse("https://www.openstreetmap.org/copyright")
+                            )
+                        )
+                    }
+                }) {
+                    Text("© OpenStreetMap contributors · Attribution and licence")
+                }
+                HorizontalDivider()
+                Spacer(modifier = Modifier.height(8.dp))
 
                 androidx.compose.foundation.layout.Box {
                     TextButton(onClick = { retailerMenuExpanded = true }) {
@@ -281,7 +339,10 @@ fun SettingsScreen(
                         )
                         Column(modifier = Modifier.weight(1f)) {
                             Text("${retailerLabel(store.retailerId)} · ${store.name}", style = MaterialTheme.typography.bodyMedium)
-                            Text("${store.postcode} · ${formatLabel(store.format)}", style = MaterialTheme.typography.bodySmall)
+                            Text(
+                                listOfNotNull(store.postcode.takeIf { it.isNotBlank() }, store.address?.takeIf { it.isNotBlank() }, formatLabel(store.format)).joinToString(" · "),
+                                style = MaterialTheme.typography.bodySmall
+                            )
                         }
                         TextButton(onClick = { viewModel.removePreferredStore(store.id) }) { Text("Remove") }
                     }
@@ -373,6 +434,12 @@ private fun retailerLabel(retailerId: RetailerId): String = when (retailerId) {
     RetailerId.TESCO -> "Tesco"
     RetailerId.MORRISONS -> "Morrisons"
     RetailerId.SAINSBURYS -> "Sainsbury's"
+}
+
+private fun storeDistanceLabel(meters: Int?): String = when {
+    meters == null -> "Distance unavailable"
+    meters < 1000 -> "$meters m away"
+    else -> String.format(java.util.Locale.US, "%.1f km away", meters / 1000.0)
 }
 
 private fun formatLabel(format: RetailStoreFormat): String = when (format) {
