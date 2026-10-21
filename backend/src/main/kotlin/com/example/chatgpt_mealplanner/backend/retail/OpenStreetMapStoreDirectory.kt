@@ -109,8 +109,15 @@ class OpenStreetMapStoreDirectory(
             if (configuredApiKey != null) throw e
             usedNominatimFallback = true
             onProgress("The main branch directory is unavailable; checking OpenStreetMap place listings…")
-            val fallbackStores = kotlinx.coroutines.withTimeout(5_000L) {
-                searchNominatimFallback(request.retailerId, lat, lon, request.radiusMeters)
+            val fallbackStores = try {
+                kotlinx.coroutines.withTimeout(5_000L) {
+                    searchNominatimFallback(request.retailerId, lat, lon, request.radiusMeters)
+                }
+            } catch (timeout: kotlinx.coroutines.TimeoutCancellationException) {
+                throw IllegalStateException(
+                    "The public OpenStreetMap fallback timed out. Please retry later or add the branch manually.",
+                    timeout
+                )
             }
             if (fallbackStores.isEmpty()) {
                 throw IllegalStateException(
@@ -179,8 +186,9 @@ class OpenStreetMapStoreDirectory(
     }
 
     internal fun buildQuery(request: StoreDirectorySearchRequest, lat: Double, lon: Double): String {
-        // Search all mapped shop types plus named/brand/operator candidates for this retailer.
-        // This does not assume any particular branch format such as supermarket or convenience.
+        // Search only this retailer's identity tags to keep the query selective and fast.
+        // No shop-type/format filter is applied: Express, fuel-site, and supermarket branches
+        // are all candidates when their name, brand, or operator identifies the retailer.
         val radius = request.radiusMeters
         val retailerPattern = overpassRetailerPattern(request.retailerId)
         return """[out:json][timeout:20];
