@@ -169,7 +169,7 @@ class OpenStreetMapStoreDirectoryTest {
     }
 
     @Test
-    fun queryUsesBoundedRetailerFilteredShopAndFuelScans() {
+    fun queryUsesBoundedRetailerFilteredShopScans() {
         val query = directory.buildQuery(
             com.example.chatgpt_mealplanner.retail.contract.StoreDirectorySearchRequest(
                 retailerId = RetailerId.TESCO,
@@ -212,6 +212,18 @@ class OpenStreetMapStoreDirectoryTest {
         assertEquals(1, stores.size)
         assertTrue(stores.none { it.name.contains("Express", ignoreCase = true) })
         assertTrue(stores.any { it.name == "ASDA" })
+    }
+
+    @Test
+    fun parserExcludesPetrolVariantsForOtherRetailersButKeepsRegularExpressShops() {
+        val raw = """{"elements":[
+          {"type":"node","id":701,"lat":51.5,"lon":-0.1,"tags":{"name":"Tesco Express Petrol","brand":"Tesco","shop":"convenience"}},
+          {"type":"node","id":702,"lat":51.501,"lon":-0.101,"tags":{"name":"Tesco Express","brand":"Tesco","shop":"convenience"}},
+          {"type":"node","id":703,"lat":51.502,"lon":-0.102,"tags":{"name":"Tesco","brand":"Tesco","shop":"convenience","amenity":"fuel"}}
+        ]}"""
+        val stores = directory.parseOverpassResponse(raw, RetailerId.TESCO, 51.5, -0.1)
+        assertEquals(1, stores.size)
+        assertEquals("Tesco Express", stores.single().name)
     }
 
     @Test
