@@ -353,7 +353,7 @@ class GeminiMealPlannerAiProvider @Inject constructor(
                 parseGeminiResponse(statusCode, responseText, conversationId, historyContents, startTime, currentModel)
             } catch (e: SocketTimeoutException) {
                 safeLog("[GEMINI_HTTP] phase=timeout, exception=${e.javaClass.simpleName}, elapsedMs=${System.currentTimeMillis() - startTime}")
-                AiProviderResponse.Error("CONNECT_TIMEOUT", "Could not establish a connection to the Gemini server within ${System.currentTimeMillis() - startTime}ms. This is a connection setup timeout, not proof that Wi-Fi is disconnected.")
+                AiProviderResponse.Error("CONNECT_TIMEOUT", "The connection to the Gemini server timed out during connection setup after ${System.currentTimeMillis() - startTime}ms. Wi-Fi may still be connected; the server or network route did not respond in time.")
             }
         }
 

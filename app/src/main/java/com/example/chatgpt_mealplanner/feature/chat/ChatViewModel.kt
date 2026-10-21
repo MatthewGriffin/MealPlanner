@@ -363,6 +363,7 @@ class ChatViewModel @Inject constructor(
                     }
                 }
                 is AiOrchestrationResult.Error -> {
+                    errorMessageFlow.value = result.userFacingMessage
                     transitionRequestState(ChatRequestState.FAILED_RETRYABLE, retainedMessage = visibleText, retainedMessageId = userMsgId, reason = result.userFacingMessage, retainedRequestText = text)
                 }
             }
@@ -418,6 +419,7 @@ class ChatViewModel @Inject constructor(
                     }
                 }
                 is AiOrchestrationResult.Error -> {
+                    errorMessageFlow.value = result.userFacingMessage
                     transitionRequestState(ChatRequestState.FAILED_RETRYABLE, retainedMessage = visibleText, retainedMessageId = messageId, reason = result.userFacingMessage, retainedRequestText = text)
                 }
             }
