@@ -71,7 +71,7 @@ class OpenStreetMapStoreDirectory(
         val (lat, lon) = resolveCenter(request, onProgress)
         // Shared cache is keyed only by location/radius because each Overpass request
         // now retrieves all supported retailers in the area.
-        val key = "shops-v9:${"%.4f".format(Locale.US, lat)}:${"%.4f".format(Locale.US, lon)}:${request.radiusMeters}"
+        val key = "shops-v10:${"%.4f".format(Locale.US, lat)}:${"%.4f".format(Locale.US, lon)}:${request.radiusMeters}"
         onProgress("Checking cached nearby-store results…")
         val cached = cache[key]
         if (cached != null) {
@@ -205,7 +205,9 @@ class OpenStreetMapStoreDirectory(
             RetailerId.TESCO,
             RetailerId.MORRISONS,
             RetailerId.SAINSBURYS,
-            RetailerId.ICELAND
+            RetailerId.ICELAND,
+            RetailerId.ALDI,
+            RetailerId.LIDL
         )
         return supportedRetailers.flatMap { retailerId ->
             parseOverpassResponse(raw, retailerId, originLat, originLon)
@@ -213,7 +215,7 @@ class OpenStreetMapStoreDirectory(
     }
 
     internal fun buildMultiRetailerQuery(lat: Double, lon: Double, radiusMeters: Int): String {
-        val allRetailersPattern = "ASDA|Iceland|Food.*Warehouse|Tesco|Morrisons|Sainsbury"
+        val allRetailersPattern = "ASDA|Iceland|Food.*Warehouse|Tesco|Morrisons|Sainsbury|Aldi|Lidl"
         return """[out:json][timeout:60];
           (
             nwr["shop"]["name"~"$allRetailersPattern",i](around:$radiusMeters,$lat,$lon);
@@ -548,6 +550,8 @@ class OpenStreetMapStoreDirectory(
             RetailerId.TESCO -> Regex("\\btesco\\b").containsMatchIn(name)
             RetailerId.MORRISONS -> Regex("\\bmorrisons\\b").containsMatchIn(name)
             RetailerId.SAINSBURYS -> name.contains("sainsbury")
+            RetailerId.ALDI -> name.contains("aldi")
+            RetailerId.LIDL -> name.contains("lidl")
         }
     }
 
@@ -565,6 +569,7 @@ class OpenStreetMapStoreDirectory(
             }
             RetailerId.MORRISONS -> if (name.contains("daily")) RetailStoreFormat.MORRISONS_DAILY else RetailStoreFormat.MORRISONS_SUPERMARKET
             RetailerId.SAINSBURYS -> if (name.contains("local")) RetailStoreFormat.SAINSBURYS_LOCAL else RetailStoreFormat.SAINSBURYS_SUPERMARKET
+            RetailerId.ALDI, RetailerId.LIDL -> RetailStoreFormat.UNKNOWN
         }
     }
 
@@ -575,6 +580,8 @@ class OpenStreetMapStoreDirectory(
         RetailerId.TESCO -> "Tesco"
         RetailerId.MORRISONS -> "Morrisons"
         RetailerId.SAINSBURYS -> "Sainsbury's"
+        RetailerId.ALDI -> "Aldi"
+        RetailerId.LIDL -> "Lidl"
     }
 
     private fun JsonObject.text(key: String): String? = this[key]?.jsonPrimitive?.contentOrNull?.trim()?.takeIf(String::isNotBlank)
@@ -606,6 +613,8 @@ class OpenStreetMapStoreDirectory(
             RetailerId.TESCO -> "Tesco"
             RetailerId.MORRISONS -> "Morrisons"
             RetailerId.SAINSBURYS -> "Sainsbury"
+            RetailerId.ALDI -> "Aldi"
+            RetailerId.LIDL -> "Lidl"
         }
 
     private val OVERPASS_ENDPOINTS = listOf(
