@@ -215,7 +215,7 @@ class OpenStreetMapStoreDirectoryTest {
     @Test
     fun sharedQuerySearchesAllSupportedRetailers() {
         val query = directory.buildMultiRetailerQuery(51.5, -0.1, 3000)
-        assertTrue(query.contains("ASDA|Iceland|Food.*Warehouse|Tesco|Morrisons|Sainsbury"))
+        assertTrue(query.contains("ASDA|Iceland|Food.*Warehouse|Tesco|Morrisons|Sainsbury|Aldi|Lidl"))
         assertTrue(query.contains("""nwr["shop"]["name"~"""))
         assertTrue(query.contains("""nwr["brand"~"""))
         assertTrue(query.contains("""nwr["operator"~"""))
@@ -230,7 +230,9 @@ class OpenStreetMapStoreDirectoryTest {
                 content = """{"elements":[
                   {"type":"node","id":2001,"lat":51.5,"lon":-0.1,"tags":{"name":"ASDA Superstore","brand":"ASDA","shop":"supermarket","addr:postcode":"SW1A 1AA"}},
                   {"type":"node","id":2002,"lat":51.501,"lon":-0.101,"tags":{"name":"Tesco Express","brand":"Tesco","shop":"convenience","addr:postcode":"SW1A 1AB"}},
-                  {"type":"node","id":2003,"lat":51.502,"lon":-0.102,"tags":{"name":"Iceland","brand":"Iceland","shop":"supermarket","addr:postcode":"SW1A 1AC"}}
+                  {"type":"node","id":2003,"lat":51.502,"lon":-0.102,"tags":{"name":"Iceland","brand":"Iceland","shop":"supermarket","addr:postcode":"SW1A 1AC"}},
+                  {"type":"node","id":2004,"lat":51.503,"lon":-0.103,"tags":{"name":"ALDI","brand":"ALDI","shop":"supermarket","addr:postcode":"SW1A 1AD"}},
+                  {"type":"node","id":2005,"lat":51.504,"lon":-0.104,"tags":{"name":"Lidl","brand":"Lidl","shop":"supermarket","addr:postcode":"SW1A 1AE"}}
                 ]}""",
                 status = HttpStatusCode.OK,
                 headers = headersOf(HttpHeaders.ContentType, "application/json")
@@ -246,9 +248,9 @@ class OpenStreetMapStoreDirectoryTest {
                     searchAllRetailers = true
                 )
             )
-            assertEquals(3, allStores.stores.size)
+            assertEquals(5, allStores.stores.size)
             assertEquals(
-                setOf(RetailerId.ASDA, RetailerId.TESCO, RetailerId.ICELAND),
+                setOf(RetailerId.ASDA, RetailerId.TESCO, RetailerId.ICELAND, RetailerId.ALDI, RetailerId.LIDL),
                 allStores.stores.map { it.retailerId }.toSet()
             )
         } finally {
