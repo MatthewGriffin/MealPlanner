@@ -371,7 +371,7 @@ class OpenStreetMapStoreDirectory(
             val amenity = tags.text("amenity")?.lowercase()
             val healthcare = tags.text("healthcare")?.lowercase()
             if (isExcludedPetrolVariant(identity, retailerId, amenity, null, null)) return@mapNotNull null
-            if (shopType in NON_RETAIL_SHOP_TYPES || amenity in NON_RETAIL_FEATURE_TYPES ||
+            if ((shopType != null && shopType in NON_RETAIL_SHOP_TYPES) || amenity in NON_RETAIL_FEATURE_TYPES ||
                 healthcare in NON_RETAIL_FEATURE_TYPES) return@mapNotNull null
             val isMappedShop = shopType != null
             val isNamedRetailFeature = shopType == null &&
