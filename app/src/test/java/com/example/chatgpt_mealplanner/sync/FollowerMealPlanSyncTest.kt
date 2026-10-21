@@ -14,7 +14,12 @@ import com.example.chatgpt_mealplanner.core.database.AppDatabase
 import com.example.chatgpt_mealplanner.core.model.QuantityConfidence
 import com.example.chatgpt_mealplanner.sync.contract.*
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.yield
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.collect
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -146,8 +151,19 @@ class FollowerMealPlanSyncTest {
             assertEquals(200.0, projected.ingredients.single().plannedQuantity, 0.0)
             assertEquals(projected, repo.getMealWithIngredients("meal_1"))
             assertTrue(main.mealDao().getAllMealsWithIngredientsSync().isEmpty())
-            engine.install(snapshot(listOf(meal("New title"))))
-            assertEquals("New title", repo.getMealWithIngredients("meal_1")?.meal?.title)
+            val observedTitles = mutableListOf<List<String>>()
+            val observer = launch {
+                repo.observeMealsForDate("2026-10-19").collect { meals -> observedTitles += meals.map { it.meal.title } }
+            }
+            try {
+                yield()
+                engine.install(snapshot(listOf(meal("New title"))))
+                withTimeout(2_000) { while (observedTitles.none { "New title" in it }) yield() }
+                assertTrue("Meal sync should update the active date without an empty-plan flash", observedTitles.none { it.isEmpty() })
+                assertEquals("New title", repo.getMealWithIngredients("meal_1")?.meal?.title)
+            } finally {
+                observer.cancelAndJoin()
+            }
             engine.install(snapshot(null)) // Older Main must not erase cached meals.
             assertNotNull(repo.getMealWithIngredients("meal_1"))
             engine.install(snapshot(emptyList())) // Authoritative removal.
