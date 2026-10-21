@@ -21,3 +21,12 @@ This document specifies the Ktor backend retailer stack, JSON-LD vs. HTML parser
 - `ICELAND_MAX_REQUESTS_PER_MINUTE` = `60`.
 - User-Agent header: `PantryPlannerRetailAdapter/1.0`.
 - Documented as Pantry Planner internal request policy (not retailer permission).
+
+
+## 3. Source permission and branch-scope boundary
+
+- ASDA automated retrieval is gated in `AsdaRetailerAdapter` until explicit permission or an approved API/feed is available. The existing undocumented Algolia client/parser are not invoked by the adapter.
+- Iceland's current parser returns online-scope offers only. It does not provide a retailer-issued branch ID, and page-wide basket controls are not used as product-level stock evidence.
+- `RetailStoreLocation.id` is an app-local preference ID. Branch offers may match only `RetailStoreLocation.retailerStoreId`, populated from an authorised retailer directory/feed; if it is absent, branch-scoped offers are excluded for that preferred retailer.
+- Do not promote `ONLINE` offers to `STORE_SPECIFIC` or `IN_STORE` based on postcode, store name, format, or a selected preference. Branch-level integration requires a documented/authorised source with stable branch IDs and product-level scoped prices/availability.
+- See [RETAIL_SOURCE_DISCOVERY.md](RETAIL_SOURCE_DISCOVERY.md) for the source audit and retailer-specific limitations.
