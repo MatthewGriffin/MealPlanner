@@ -182,7 +182,7 @@ class OpenStreetMapStoreDirectoryTest {
             51.5,
             -0.1
         )
-        assertTrue(query.contains("[out:json][timeout:20]"))
+        assertTrue(query.contains("[out:json][timeout:45]"))
         assertTrue(query.contains("""nwr["shop"]["name"~"Tesco",i]"""))
         assertTrue(query.contains("""nwr["shop"]["brand"~"Tesco",i]"""))
         assertTrue(query.contains("""nwr["shop"]["operator"~"Tesco",i]"""))
