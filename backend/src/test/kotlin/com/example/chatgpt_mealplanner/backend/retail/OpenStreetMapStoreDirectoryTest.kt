@@ -333,14 +333,30 @@ class OpenStreetMapStoreDirectoryTest {
     }
 
     @Test
-    fun parserDoesNotTreatFoodWarehouseAsIceland() {
+    fun icelandQueryIncludesFoodWarehouseBrandForIncompletelyTaggedBranch() {
+        val query = directory.buildQuery(
+            com.example.chatgpt_mealplanner.retail.contract.StoreDirectorySearchRequest(
+                retailerId = RetailerId.ICELAND,
+                postcode = "CH65 0AP"
+            ),
+            53.2776,
+            -2.9001
+        )
+        assertTrue(query.contains("""nwr["name"~"Food.*Warehouse",i]"""))
+        assertTrue(query.contains("""nwr["shop"]["name"~"Iceland",i]"""))
+    }
+
+    @Test
+    fun parserRecognizesFoodWarehouseAsIcelandBranch() {
         val raw = """{"elements":[
-          {"type":"node","id":1,"lat":51.5,"lon":-0.1,"tags":{"name":"The Food Warehouse","brand":"The Food Warehouse","shop":"supermarket"}},
+          {"type":"node","id":1,"lat":53.2776,"lon":-2.9001,"tags":{"name":"The Food Warehouse","brand":"The Food Warehouse","shop":"supermarket","addr:street":"Wellington Road","addr:postcode":"CH65 0AP"}},
           {"type":"node","id":2,"lat":51.5,"lon":-0.1,"tags":{"name":"Iceland","brand":"Iceland","shop":"supermarket"}}
         ]}"""
-        val stores = directory.parseOverpassResponse(raw, RetailerId.ICELAND, 51.5, -0.1)
-        assertEquals(1, stores.size)
-        assertEquals("node/2", stores.single().directorySourceId)
+        val stores = directory.parseOverpassResponse(raw, RetailerId.ICELAND, 53.2776, -2.9001)
+        assertEquals(2, stores.size)
+        assertEquals("Iceland Food Warehouse", stores.first().name)
+        assertEquals(RetailStoreFormat.ICELAND, stores.first().format)
+        assertEquals("CH65 0AP", stores.first().postcode)
     }
 
     @Test
