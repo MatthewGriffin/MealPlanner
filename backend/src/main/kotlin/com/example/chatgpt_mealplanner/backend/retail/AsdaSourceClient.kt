@@ -9,6 +9,11 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 class AsdaSourceClient(
     private val httpClient: HttpClient = HttpClient(OkHttp),
@@ -24,61 +29,38 @@ class AsdaSourceClient(
 ) {
     private val appId = "8I6WSKCCNV"
     private val url = "https://8i6wskccnv-dsn.algolia.net/1/indexes/*/queries"
+    private val json = Json
 
     suspend fun search(query: String): String {
         val apiKey = apiKeyProvider()
-        val credentialPresent = apiKey.isNotBlank()
-        safeLog("[ASDA_HTTP_CALL] query=$query credentialPresent=$credentialPresent")
-
-        if (!credentialPresent) {
-            val ex = IllegalStateException("ASDA Algolia API key not configured")
-            safeLog("[ASDA_HTTP_EXCEPTION] query=$query exceptionType=${ex.javaClass.simpleName} message=${ex.message}")
-            throw ex
+        if (apiKey.isBlank()) {
+            throw IllegalStateException("ASDA Algolia API key not configured")
         }
 
-        val requestBody = """
-            {
-              "requests": [
-                {
-                  "query": "$query",
-                  "indexName": "ASDA_PRODUCTS",
-                  "hitsPerPage": 20
-                }
-              ]
+        // Serialize user input as JSON rather than interpolating it into request JSON.
+        // Quotes, backslashes and control characters in a query must not corrupt the payload.
+        val requestBody = json.encodeToString(
+            buildJsonObject {
+                put("requests", buildJsonArray {
+                    add(buildJsonObject {
+                        put("query", query)
+                        put("indexName", "ASDA_PRODUCTS")
+                        put("hitsPerPage", 20)
+                    })
+                })
             }
-        """.trimIndent()
+        )
 
-        val startTime = System.currentTimeMillis()
-        val response = try {
-            httpClient.post(url) {
-                header("x-algolia-application-id", appId)
-                header("x-algolia-api-key", apiKey)
-                contentType(ContentType.Application.Json)
-                setBody(requestBody)
-            }
-        } catch (e: Exception) {
-            safeLog("[ASDA_HTTP_EXCEPTION] query=$query exceptionType=${e.javaClass.simpleName} message=${e.message}")
-            throw e
+        val response = httpClient.post(url) {
+            header("x-algolia-application-id", appId)
+            header("x-algolia-api-key", apiKey)
+            contentType(ContentType.Application.Json)
+            setBody(requestBody)
         }
-
-        val duration = System.currentTimeMillis() - startTime
-        safeLog("[ASDA_LIVE_SEARCH_HTTP] status=${response.status.value} durationMs=$duration")
-
         val responseText = response.bodyAsText()
-        safeLog("[ASDA_HTTP_RESULT] query=$query httpStatus=${response.status.value} hitCount=...")
-
         if (!response.status.isSuccess()) {
-            val ex = RuntimeException("Algolia returned HTTP ${response.status.value}")
-            safeLog("[ASDA_HTTP_EXCEPTION] query=$query exceptionType=${ex.javaClass.simpleName} message=${ex.message}")
-            throw ex
+            throw RuntimeException("Algolia returned HTTP " + response.status.value)
         }
-
         return responseText
-    }
-
-    private fun safeLog(msg: String) {
-        try {
-            println("[AI_MEALPLANNER] $msg")
-        } catch (_: Throwable) {}
     }
 }
