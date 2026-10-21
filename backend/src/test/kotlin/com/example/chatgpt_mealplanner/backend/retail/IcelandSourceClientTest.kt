@@ -50,14 +50,15 @@ class IcelandSourceClientTest {
         val requests = mutableListOf<HttpRequestData>()
         val homepage = """
             <html>
-              <script>
-                window.searchConfig = {
-                  applicationId: "ABCDEF1234",
-                  searchApiKey: "0123456789abcdef0123456789abcdef",
-                  indexName: "iceland_products"
-                };
-              </script>
+              <script src="/assets/search-config.js"></script>
             </html>
+        """.trimIndent()
+        val script = """
+            window.searchConfig = {
+              applicationId: "ABCDEF1234",
+              searchApiKey: "0123456789abcdef0123456789abcdef",
+              indexName: "iceland_products"
+            };
         """.trimIndent()
         val searchResponse = """{"hits":[{"objectID":"milk-1","name":"Semi Skimmed Milk","price":"1.45"}]}"""
         val httpClient = HttpClient(MockEngine { request ->
@@ -65,6 +66,8 @@ class IcelandSourceClientTest {
             when {
                 request.url.host == "www.iceland.co.uk" && request.url.encodedPath == "/" ->
                     respond(homepage, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "text/html"))
+                request.url.host == "www.iceland.co.uk" && request.url.encodedPath == "/assets/search-config.js" ->
+                    respond(script, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/javascript"))
                 request.url.host == "ABCDEF1234-dsn.algolia.net" &&
                     request.url.encodedPath == "/1/indexes/iceland_products/query" -> {
                     assertEquals(HttpMethod.Post, request.method)
@@ -82,7 +85,7 @@ class IcelandSourceClientTest {
             )
 
             assertEquals(searchResponse, client.fetchAlgoliaSearchJson("semi skimmed milk"))
-            assertEquals(2, requests.size)
+            assertEquals(3, requests.size)
         } finally {
             httpClient.close()
         }
