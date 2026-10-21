@@ -71,11 +71,7 @@ class OpenStreetMapStoreDirectory(
             lastOverpassAt = clock()
         }
         val query = buildQuery(request, lat, lon)
-        val raw = client.post("https://overpass-api.de/api/interpreter") {
-            contentType(ContentType.Text.Plain)
-            header(HttpHeaders.UserAgent, USER_AGENT)
-            setBody(query)
-        }.bodyAsText()
+        val raw = fetchOverpassResponse(query, onProgress)
         val stores = parseOverpassResponse(raw, request.retailerId, lat, lon)
             .sortedBy { it.distanceMeters ?: Int.MAX_VALUE }.take(50)
         val response = StoreDirectorySearchResponse(
@@ -87,6 +83,31 @@ class OpenStreetMapStoreDirectory(
         if (cache.size > 200) cache.entries.sortedBy { it.value.expiresAt }
             .take(cache.size - 200).forEach { cache.remove(it.key, it.value) }
         return response
+    }
+
+
+    private suspend fun fetchOverpassResponse(query: String, onProgress: (String) -> Unit): String {
+        var lastFailure: Exception? = null
+        OVERPASS_ENDPOINTS.forEachIndexed { index, endpoint ->
+            try {
+                if (index > 0) {
+                    onProgress("The first branch-search service did not respond; trying backup service ${index} of ${OVERPASS_ENDPOINTS.lastIndex}…")
+                }
+                return client.post(endpoint) {
+                    expectSuccess = true
+                    contentType(ContentType.Text.Plain)
+                    header(HttpHeaders.UserAgent, USER_AGENT)
+                    setBody(query)
+                }.bodyAsText()
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                lastFailure = e
+            }
+        }
+        throw IllegalStateException(
+            "The branch search services timed out or were unavailable. Please retry in a little while, or add the branch manually.",
+            lastFailure
+        )
     }
 
     internal fun buildQuery(request: StoreDirectorySearchRequest, lat: Double, lon: Double): String {
@@ -234,6 +255,11 @@ class OpenStreetMapStoreDirectory(
     }
 
     companion object {
+        private val OVERPASS_ENDPOINTS = listOf(
+            "https://overpass-api.de/api/interpreter",
+            "https://overpass.kumi.systems/api/interpreter",
+            "https://overpass.private.coffee/api/interpreter"
+        )
         private const val USER_AGENT = "PantryAssistantStoreFinder/1.0 (https://github.com/MatthewGriffin/MealPlanner)"
     }
 }
