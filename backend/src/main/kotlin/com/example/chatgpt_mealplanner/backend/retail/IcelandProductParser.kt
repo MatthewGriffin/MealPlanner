@@ -95,7 +95,6 @@ class IcelandProductParser {
         val availability = when {
             ldAvailabilityStr.contains("InStock", ignoreCase = true) -> RetailAvailability.IN_STOCK
             ldAvailabilityStr.contains("OutOfStock", ignoreCase = true) -> RetailAvailability.OUT_OF_STOCK
-            fullHtml.contains("add-to-basket", ignoreCase = true) || fullHtml.contains("Add to Basket", ignoreCase = true) -> RetailAvailability.IN_STOCK
             else -> RetailAvailability.UNKNOWN
         }
 
