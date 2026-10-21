@@ -311,3 +311,11 @@ The user confirmed meal-plan synchronization now works on both phones.
 - Increased the global cap to 120 seconds and the response read timeout to 55 seconds. The connection-establishment timeout remains 15 seconds. The timeout is still bounded; this does not retry indefinitely.
 - Updated the provider timeout-configuration regression test to assert the 120-second cap. The typed timeout error and retry UI behavior remain unchanged.
 - Verification required: user-run `build-and-test.sh`; no local build, device install, or data changes were performed for this commit.
+
+
+## Structured Meal Card Empty-Ingredients Regression (2026-10-21)
+
+- Root cause: when Gemini's final prose was parsed as a title-only proposal, the provider returned a card proposal with an empty ingredient list. The orchestrator already had a valid structured offer and displayed its snapshot in the chat text, but returned the incomplete prose-derived proposal to the card. Saving that card then hit the empty-ingredients guard.
+- Fix: while a valid structured offer awaits confirmation, the orchestrator now builds the card's validated proposal from the saved structured offer, not the title-only final-text parse. It falls back to the pending structured snapshot if the active proposal is unavailable. The Save guard remains in place.
+- Regression: the existing end-to-end structured-offer drift test now simulates a title-only/empty proposal and asserts the returned meal card contains the authoritative structured ingredient and quantity.
+- Verification required: user-run `build-and-test.sh`; no local build, device install, database reset, or device data changes were performed for this commit.

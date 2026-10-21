@@ -1051,7 +1051,11 @@ class EndToEndAiRecipeReliabilityTest {
             override suspend fun continueWithToolResults(request: AiContinueWithToolsRequest): AiProviderResponse {
                 return AiProviderResponse.FinalResponse(
                     text = "Recipe:\n- 2 onions\nMethod: Sauté onions gently...",
-                    proposal = null,
+                    proposal = com.example.chatgpt_mealplanner.contract.MealProposal(
+                        title = "Test Curry",
+                        ingredients = emptyList(),
+                        reasoningSummary = "Extracted from recipe suggestion"
+                    ),
                     proposedAction = null
                 )
             }
@@ -1070,7 +1074,17 @@ class EndToEndAiRecipeReliabilityTest {
 
         val result = orchestrator.processUserMessage("default_conversation", "give me a recipe for dinner")
         assertTrue(result is AiOrchestrationResult.Final)
-        val assistantText = (result as AiOrchestrationResult.Final).assistantText
+        val finalResult = result as AiOrchestrationResult.Final
+        val assistantText = finalResult.assistantText
+
+        // The markdown/title-only parser can yield an empty proposal, but the card and Save action
+        // must be rebuilt from the authoritative structured offer captured by the tool dispatcher.
+        val cardProposal = finalResult.validatedProposal?.proposal
+        assertNotNull("Valid structured offer must still produce a complete meal card", cardProposal)
+        assertEquals("Test Curry", cardProposal?.title)
+        assertEquals(1, cardProposal?.ingredients?.size)
+        assertEquals("onion", cardProposal?.ingredients?.firstOrNull()?.displayName)
+        assertEquals(1.0, cardProposal?.ingredients?.firstOrNull()?.quantity ?: 0.0, 0.001)
 
         // Requirement 10 & 12: Displayed proposal derived from pending snapshot (says "onion — 1", not provider prose "2 onions")
         assertTrue("Chat display MUST say 1 from snapshot, ignoring provider prose '2 onions'", assistantText.contains("onion — 1"))

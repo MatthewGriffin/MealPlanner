@@ -322,7 +322,7 @@ class AiMealPlannerOrchestrator @Inject constructor(
         return when (providerResponse) {
             is AiProviderResponse.FinalResponse -> {
                 val finalRes = providerResponse as AiProviderResponse.FinalResponse
-                val validatedProposal = finalRes.proposal?.let { recipeValidator.validateProposal(it) }
+                var validatedProposal = finalRes.proposal?.let { recipeValidator.validateProposal(it) }
 
                 var textToReturn = finalRes.text
 
@@ -338,6 +338,16 @@ class AiMealPlannerOrchestrator @Inject constructor(
 
                 if (hasValidOfferAwaiting) {
                     textToReturn = formatAppOwnedRecipeProposal(currentPending!!)
+                    // The text parser may have extracted only the bold title from the final prose,
+                    // producing a card with zero ingredients. The structured offer captured by the
+                    // tool dispatcher is authoritative for both the rendered card and Save action.
+                    val structuredProposal = activeProposalStore.getActiveProposal(conversationId)
+                        ?.takeIf { it.ingredients.isNotEmpty() }
+                        ?: proposalFromPendingSnapshot(currentPending)
+                    if (structuredProposal.ingredients.isNotEmpty()) {
+                        validatedProposal = recipeValidator.validateProposal(structuredProposal)
+                        activeProposalStore.setActiveProposal(conversationId, structuredProposal)
+                    }
                     safeLog("[PROPOSAL_STATE_PRECEDENCE] existingSource=\"STRUCTURED_TOOL\" incomingSource=\"FINAL_TEXT\" existingIngredientCount=${currentPending.ingredients.size} action=KEEP_EXISTING_DETERMINISTIC_DISPLAY")
                     safeLog("[OFFER_CAPTURE] Retained authoritative structured offer title=\"${currentPending.title}\" date=\"${currentPending.date}\" mealType=\"${currentPending.mealType?.name}\" ingredientCount=${currentPending.ingredients.size} state=AWAITING_CONFIRMATION reason=\"STRUCTURED_STATE_PRECEDENCE\"")
                 } else {
@@ -705,6 +715,39 @@ class AiMealPlannerOrchestrator @Inject constructor(
                 userFacingMessage = userFacingText
             )
         }
+    }
+
+    private fun proposalFromPendingSnapshot(
+        pending: com.example.chatgpt_mealplanner.core.ai.pending.PendingAiMutation.AddPlannedMeal
+    ): com.example.chatgpt_mealplanner.contract.MealProposal {
+        val steps = pending.instructions
+            ?.lineSequence()
+            ?.map { it.trim().replace(Regex("^(?:[-*•]\\s*|\\d+[.)]\\s*)"), "") }
+            ?.filter { it.isNotBlank() }
+            ?.mapIndexed { index, instruction ->
+                com.example.chatgpt_mealplanner.contract.RecipeStep(order = index + 1, instruction = instruction)
+            }
+            ?.toList()
+            .orEmpty()
+        return com.example.chatgpt_mealplanner.contract.MealProposal(
+            title = pending.title,
+            mealType = pending.mealType?.name,
+            suggestedDate = pending.date,
+            servings = pending.servings,
+            batchPortions = pending.servings,
+            immediatePortions = pending.servings,
+            leftoverPortions = 0,
+            ingredients = pending.ingredients.map { ingredient ->
+                com.example.chatgpt_mealplanner.contract.ProposedIngredient(
+                    canonicalIngredientId = ingredient.canonicalIngredientId,
+                    displayName = ingredient.displayName,
+                    quantity = ingredient.plannedQuantity,
+                    unit = ingredient.plannedUnit.name
+                )
+            },
+            steps = steps,
+            reasoningSummary = "Structured recipe offer"
+        )
     }
 
     private fun formatAppOwnedRecipeProposal(
