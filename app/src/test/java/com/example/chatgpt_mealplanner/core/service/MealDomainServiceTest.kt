@@ -72,6 +72,62 @@ class MealDomainServiceTest {
     }
 
     @Test
+    fun replaceMeal_preservesExistingIdAndScheduledSlotWhenReplacingRecipe() = runTest {
+        val original = Meal(
+            id = "meal_replace",
+            date = "2026-10-23",
+            mealType = com.example.chatgpt_mealplanner.core.model.MealType.DINNER,
+            title = "Original dinner",
+            createdAt = 100L,
+            updatedAt = 200L,
+            notes = "Keep existing meal metadata"
+        )
+        val originalIngredient = MealIngredient(
+            id = "ingredient_original",
+            mealId = original.id,
+            canonicalIngredientId = "RICE",
+            displayName = "Rice",
+            plannedQuantity = 200.0,
+            plannedUnit = QuantityUnit.GRAM
+        )
+        service.createPlannedMeal(original, listOf(originalIngredient))
+
+        val proposed = original.copy(
+            date = "2026-10-25",
+            mealType = com.example.chatgpt_mealplanner.core.model.MealType.LUNCH,
+            title = "Replacement recipe",
+            createdAt = 999L
+        )
+        val replacementIngredient = MealIngredient(
+            id = "ingredient_replacement",
+            mealId = original.id,
+            canonicalIngredientId = "PASTA",
+            displayName = "Pasta",
+            plannedQuantity = 250.0,
+            plannedUnit = QuantityUnit.GRAM
+        )
+
+        val result = service.replaceMeal(
+            oldMealId = original.id,
+            newMeal = proposed,
+            newIngredients = listOf(replacementIngredient),
+            preserveSchedule = true
+        )
+
+        assertTrue(result is DomainResult.Success)
+        assertEquals(1, mealDao.mealsMap.size)
+        val stored = mealDao.getMealWithIngredients(original.id)!!
+        assertEquals(original.id, stored.meal.id)
+        assertEquals(original.date, stored.meal.date)
+        assertEquals(original.mealType, stored.meal.mealType)
+        assertEquals(original.createdAt, stored.meal.createdAt)
+        assertEquals(original.notes, stored.meal.notes)
+        assertEquals("Replacement recipe", stored.meal.title)
+        assertEquals(listOf("Pasta"), stored.ingredients.map { it.displayName })
+        assertEquals(original.id, stored.ingredients.single().mealId)
+    }
+
+    @Test
     fun markMealCooked_deductsExactPlannedQuantities() = runTest {
         val pastaLot = InventoryItemEntity(
             id = "lot_pasta",

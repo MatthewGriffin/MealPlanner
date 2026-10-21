@@ -407,7 +407,7 @@ class ChatViewModel @Inject constructor(
                 }
 
                 val createResult = if (existingMeal != null) {
-                    mealDomainService.replaceMeal(existingMeal.id, meal, ingredients)
+                    mealDomainService.replaceMeal(existingMeal.id, meal, ingredients, preserveSchedule = true)
                 } else {
                     mealDomainService.createPlannedMeal(meal, ingredients)
                 }

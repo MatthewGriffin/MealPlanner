@@ -21,7 +21,8 @@ interface MealDomainService {
     suspend fun replaceMeal(
         oldMealId: String,
         newMeal: Meal,
-        newIngredients: List<MealIngredient>
+        newIngredients: List<MealIngredient>,
+        preserveSchedule: Boolean = false
     ): DomainResult<Meal>
 
     suspend fun deletePlannedMeal(mealId: String): DomainResult<Unit>

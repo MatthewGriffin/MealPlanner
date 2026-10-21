@@ -104,7 +104,8 @@ class MealDomainServiceImpl @Inject constructor(
     override suspend fun replaceMeal(
         oldMealId: String,
         newMeal: Meal,
-        newIngredients: List<MealIngredient>
+        newIngredients: List<MealIngredient>,
+        preserveSchedule: Boolean
     ): DomainResult<Meal> = transactionRunner.runInDomainTransaction {
         val existing = mealDao.getMealWithIngredients(oldMealId)
             ?: return@runInDomainTransaction DomainResult.Failure(DomainError.ItemNotFound(oldMealId))
@@ -117,6 +118,8 @@ class MealDomainServiceImpl @Inject constructor(
 
         val updatedMeal = newMeal.copy(
             id = oldMealId,
+            date = if (preserveSchedule) existing.meal.date else newMeal.date,
+            mealType = if (preserveSchedule) existing.meal.mealType else newMeal.mealType,
             status = existing.meal.status,
             createdAt = existing.meal.createdAt,
             updatedAt = System.currentTimeMillis()
