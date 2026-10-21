@@ -244,12 +244,21 @@ class OpenStreetMapStoreDirectory(
             if (wait > 0) delay(wait)
             lastGeocodeAt = clock()
         }
-        val raw = client.get("https://nominatim.openstreetmap.org/search") {
-            parameter("q", "$postcode, United Kingdom")
-            parameter("format", "jsonv2")
-            parameter("limit", "1")
-            header(HttpHeaders.UserAgent, USER_AGENT)
-        }.bodyAsText()
+        val raw = try {
+            kotlinx.coroutines.withTimeout(10_000L) {
+                client.get("https://nominatim.openstreetmap.org/search") {
+                    parameter("q", "$postcode, United Kingdom")
+                    parameter("format", "jsonv2")
+                    parameter("limit", "1")
+                    header(HttpHeaders.UserAgent, USER_AGENT)
+                }.bodyAsText()
+            }
+        } catch (timeout: kotlinx.coroutines.TimeoutCancellationException) {
+            throw IllegalStateException(
+                "Postcode lookup timed out while contacting OpenStreetMap. Please retry or use coordinates.",
+                timeout
+            )
+        }
         val first = parseJsonResponse(raw, "Postcode lookup").jsonArray.firstOrNull()?.jsonObject
             ?: throw IllegalArgumentException("Postcode could not be located. Try coordinates instead.")
         val lat = first["lat"]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull()
