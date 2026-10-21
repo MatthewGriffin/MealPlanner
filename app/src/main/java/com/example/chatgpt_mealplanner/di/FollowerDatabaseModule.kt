@@ -2,6 +2,7 @@ package com.example.chatgpt_mealplanner.di
 
 import android.content.Context
 import androidx.room.Room
+import com.example.chatgpt_mealplanner.core.sync.follower.FollowerBasketComparisonCacheStore
 import com.example.chatgpt_mealplanner.core.sync.follower.database.FollowerDatabase
 import com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerDao
 import dagger.Module
@@ -32,6 +33,12 @@ object FollowerDatabaseModule {
             com.example.chatgpt_mealplanner.core.sync.follower.database.FOLLOWER_MIGRATION_5_6
         ).build()
     }
+
+    @Provides
+    @Singleton
+    fun provideFollowerBasketComparisonCacheStore(
+        database: FollowerDatabase
+    ): FollowerBasketComparisonCacheStore = FollowerBasketComparisonCacheStore(database)
 
     @Provides
     fun provideFollowerDao(database: FollowerDatabase): FollowerDao {
