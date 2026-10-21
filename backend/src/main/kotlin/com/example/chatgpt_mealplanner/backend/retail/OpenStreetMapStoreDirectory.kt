@@ -70,7 +70,7 @@ class OpenStreetMapStoreDirectory(
         require(request.radiusMeters in 500..15_000) { "Radius must be between 500 and 15000 metres." }
         val (lat, lon) = resolveCenter(request, onProgress)
         // Version the cache to invalidate results from the previous petrol-station-inclusive search.
-        val key = "shops-v6:${request.retailerId}:${"%.4f".format(Locale.US, lat)}:${"%.4f".format(Locale.US, lon)}:${request.radiusMeters}"
+        val key = "shops-v7:${request.retailerId}:${"%.4f".format(Locale.US, lat)}:${"%.4f".format(Locale.US, lon)}:${request.radiusMeters}"
         onProgress("Checking cached branch results…")
         cache[key]?.let {
             if (it.expiresAt > clock()) return it.response.copy(fromCache = true)
@@ -208,9 +208,20 @@ class OpenStreetMapStoreDirectory(
         // intentionally excluded because they are not useful branch matches for this finder.
         val radius = request.radiusMeters
         val retailerPattern = overpassRetailerPattern(request.retailerId)
-        // Keep the normal shop-tagged scans, but also search retailer identity tags
-        // without requiring shop=*. Tesco Express, Morrisons Daily and Sainsbury's Local
-        // branches are inconsistently tagged in OSM; the parser filters non-retail matches.
+        // Food Warehouse is Iceland's larger-format grocery brand. Some branches are
+        // mapped only as "The Food Warehouse", with no Iceland brand/operator tag.
+        val relatedIcelandBrand = if (request.retailerId == RetailerId.ICELAND) {
+            """
+            nwr["shop"]["name"~"Food.*Warehouse",i](around:$radius,$lat,$lon);
+            nwr["shop"]["brand"~"Food.*Warehouse",i](around:$radius,$lat,$lon);
+            nwr["shop"]["operator"~"Food.*Warehouse",i](around:$radius,$lat,$lon);
+            nwr["name"~"Food.*Warehouse",i](around:$radius,$lat,$lon);
+            nwr["brand"~"Food.*Warehouse",i](around:$radius,$lat,$lon);
+            nwr["operator"~"Food.*Warehouse",i](around:$radius,$lat,$lon);
+            """
+        } else ""
+        // Search retailer identity tags even when shop=* is missing. The parser filters
+        // non-retail matches and the known petrol-station variants.
         return """[out:json][timeout:60];
           (
             nwr["shop"]["name"~"$retailerPattern",i](around:$radius,$lat,$lon);
@@ -219,6 +230,7 @@ class OpenStreetMapStoreDirectory(
             nwr["name"~"$retailerPattern",i](around:$radius,$lat,$lon);
             nwr["brand"~"$retailerPattern",i](around:$radius,$lat,$lon);
             nwr["operator"~"$retailerPattern",i](around:$radius,$lat,$lon);
+            $relatedIcelandBrand
           );
           out center tags;"""
     }
@@ -379,7 +391,11 @@ class OpenStreetMapStoreDirectory(
                 directorySource = StoreDirectorySource.OPENSTREETMAP,
                 directorySourceId = "$type/$id",
                 retailerId = retailerId,
-                name = tags.text("name") ?: tags.text("brand") ?: displayName(retailerId),
+                name = if (
+                    retailerId == RetailerId.ICELAND &&
+                    identity.lowercase().contains("food warehouse") &&
+                    !Regex("\\biceland\\b").containsMatchIn(identity.lowercase())
+                ) "Iceland Food Warehouse" else tags.text("name") ?: tags.text("brand") ?: displayName(retailerId),
                 address = address, postcode = postcode, latitude = lat, longitude = lon,
                 format = inferFormat(retailerId, identity),
                 distanceMeters = distanceMeters(originLat, originLon, lat, lon)
@@ -417,7 +433,7 @@ class OpenStreetMapStoreDirectory(
         val name = value.lowercase().replace(Regex("[^a-z0-9]+"), " ").trim()
         return when (retailerId) {
             RetailerId.ASDA -> Regex("\\basda\\b").containsMatchIn(name)
-            RetailerId.ICELAND -> Regex("\\biceland\\b").containsMatchIn(name) && !name.contains("food warehouse")
+            RetailerId.ICELAND -> Regex("\\biceland\\b").containsMatchIn(name) || name.contains("food warehouse")
             RetailerId.FOOD_WAREHOUSE -> name.contains("food warehouse")
             RetailerId.TESCO -> Regex("\\btesco\\b").containsMatchIn(name)
             RetailerId.MORRISONS -> Regex("\\bmorrisons\\b").containsMatchIn(name)
