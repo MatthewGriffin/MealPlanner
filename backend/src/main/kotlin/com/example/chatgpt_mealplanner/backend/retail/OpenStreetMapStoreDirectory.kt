@@ -160,7 +160,7 @@ class OpenStreetMapStoreDirectory(
         // on public Overpass instances even for otherwise modest postcode searches.
         val radius = request.radiusMeters
         return """[out:json][timeout:20];
-          nwr["shop"](around:$radius,$lat,$lon);
+          nwr["shop"~"^(supermarket|convenience)$"](around:$radius,$lat,$lon);
           out center tags;"""
     }
 
@@ -231,6 +231,12 @@ class OpenStreetMapStoreDirectory(
         }.bodyAsText()
         return parseJsonResponse(raw, "OpenStreetMap fallback search").jsonArray.mapNotNull { result ->
             val item = result.jsonObject
+            val listingClass = item.text("category") ?: item.text("class")
+            val listingType = item.text("type")?.lowercase()
+            val taggedShopType = item["extratags"]?.jsonObject?.text("shop")?.lowercase()
+            // Nominatim can also return retailer-branded opticians and other services.
+            val effectiveShopType = taggedShopType ?: listingType
+            if (listingClass != "shop" || effectiveShopType !in GROCERY_SHOP_TYPES) return@mapNotNull null
             val osmType = item.text("osm_type")?.lowercase() ?: return@mapNotNull null
             val osmId = item.text("osm_id") ?: return@mapNotNull null
             val lat = item.text("lat")?.toDoubleOrNull() ?: return@mapNotNull null
@@ -274,6 +280,9 @@ class OpenStreetMapStoreDirectory(
         return elements.mapNotNull { element ->
             val item = element.jsonObject
             val tags = item["tags"]?.jsonObject ?: return@mapNotNull null
+            // Only actual grocery-retail premises qualify; brand matches alone are insufficient.
+            val shopType = tags.text("shop")?.lowercase()
+            if (shopType !in GROCERY_SHOP_TYPES) return@mapNotNull null
             val identity = listOfNotNull(
                 tags.text("brand"), tags.text("brand:en"),
                 tags.text("operator"), tags.text("operator:en"),
@@ -361,7 +370,9 @@ class OpenStreetMapStoreDirectory(
     }
 
     companion object {
-        private val OVERPASS_ENDPOINTS = listOf(
+        private val GROCERY_SHOP_TYPES = setOf("supermarket", "convenience")
+
+    private val OVERPASS_ENDPOINTS = listOf(
             "https://overpass-api.de/api/interpreter",
             "https://overpass.kumi.systems/api/interpreter",
             "https://overpass.private.coffee/api/interpreter"
