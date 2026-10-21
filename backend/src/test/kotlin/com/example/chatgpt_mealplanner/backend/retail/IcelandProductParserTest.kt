@@ -95,6 +95,43 @@ class IcelandProductParserTest {
     }
 
     @Test
+    fun parseAlgoliaResponseRequiresProductIdNameAndPrice() {
+        val response = """
+            {
+              "hits": [
+                {
+                  "objectID": "iceland-123",
+                  "name": "Iceland Frozen Peas 900g",
+                  "brand": "Iceland",
+                  "price": "1.50",
+                  "availability": "InStock"
+                },
+                {
+                  "objectID": "missing-price",
+                  "name": "Product without a price"
+                },
+                {
+                  "name": "Product without a stable ID",
+                  "price": "2.00"
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val records = parser.parseAlgoliaResponse(response)
+
+        assertEquals(1, records.size)
+        val product = records.single().productWithOffer.product
+        val offer = records.single().productWithOffer.offer
+        assertEquals("iceland-123", product.retailerProductId)
+        assertEquals("Iceland Frozen Peas 900g", product.name)
+        assertEquals(Money(150L), offer.price)
+        assertEquals(RetailAvailability.IN_STOCK, offer.availability)
+        assertEquals(com.example.chatgpt_mealplanner.retail.contract.RetailPriceScope.ONLINE, offer.priceScope)
+        assertEquals(null, offer.storeLocationId)
+    }
+
+    @Test
     fun parsePriceString_handlesPoundsAndPenceCorrectly() {
         assertEquals(Money(100L), parser.parsePriceString("£1.00"))
         assertEquals(Money(125L), parser.parsePriceString("£1.25"))
