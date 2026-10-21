@@ -81,13 +81,31 @@ class OpenStreetMapStoreDirectory(
             lastOverpassAt = clock()
         }
         val query = buildQuery(request, lat, lon)
-        val raw = fetchOverpassResponse(query, onProgress)
-        val stores = parseOverpassResponse(raw, request.retailerId, lat, lon)
-            .sortedBy { it.distanceMeters ?: Int.MAX_VALUE }.take(50)
+        var usedNominatimFallback = false
+        val stores = try {
+            val raw = fetchOverpassResponse(query, onProgress)
+            parseOverpassResponse(raw, request.retailerId, lat, lon)
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            usedNominatimFallback = true
+            onProgress("The main branch directory is unavailable; checking OpenStreetMap place listings…")
+            val fallbackStores = searchNominatimFallback(request.retailerId, lat, lon, request.radiusMeters)
+            if (fallbackStores.isEmpty()) {
+                throw IllegalStateException(
+                    "Branch search failed and OpenStreetMap did not return matching branch details. You can retry or enter a branch manually.",
+                    e
+                )
+            }
+            fallbackStores
+        }.sortedBy { it.distanceMeters ?: Int.MAX_VALUE }.take(50)
         val response = StoreDirectorySearchResponse(
             stores = stores,
             observedAt = clock(),
-            warnings = if (stores.isEmpty()) listOf("No matching branch was found nearby. Coverage may be incomplete; verify with the retailer.") else emptyList()
+            warnings = when {
+                usedNominatimFallback -> listOf("Overpass was unavailable. These branch details came from OpenStreetMap search listings; verify them before saving.")
+                stores.isEmpty() -> listOf("No matching branch was found nearby. Coverage may be incomplete; verify with the retailer.")
+                else -> emptyList()
+            }
         )
         cache[key] = CacheEntry(clock() + 6 * 60 * 60 * 1000L, response)
         if (cache.size > 200) cache.entries.sortedBy { it.value.expiresAt }
@@ -183,6 +201,72 @@ class OpenStreetMapStoreDirectory(
         val lon = first["lon"]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull()
             ?: throw IllegalStateException("Postcode lookup returned no longitude.")
         return lat to lon
+    }
+
+    private suspend fun searchNominatimFallback(
+        retailerId: RetailerId,
+        originLat: Double,
+        originLon: Double,
+        radiusMeters: Int
+    ): List<StoreDirectoryEntry> {
+        // Nominatim is a fallback search, not an Overpass interpreter. Only use actual
+        // OSM results and their address tags; never copy the user's search postcode into
+        // a returned branch record.
+        geocodeMutex.withLock {
+            val wait = 1_100L - (clock() - lastGeocodeAt)
+            if (wait > 0) delay(wait)
+            lastGeocodeAt = clock()
+        }
+        val latDelta = radiusMeters / 111_000.0
+        val lonDelta = radiusMeters / (111_000.0 * cos(Math.toRadians(originLat)).coerceAtLeast(0.1))
+        val raw = client.get("https://nominatim.openstreetmap.org/search") {
+            parameter("q", displayName(retailerId))
+            parameter("format", "jsonv2")
+            parameter("addressdetails", "1")
+            parameter("extratags", "1")
+            parameter("limit", "20")
+            parameter("viewbox", "${originLon - lonDelta},${originLat + latDelta},${originLon + lonDelta},${originLat - latDelta}")
+            parameter("bounded", "1")
+            header(HttpHeaders.UserAgent, USER_AGENT)
+        }.bodyAsText()
+        return parseJsonResponse(raw, "OpenStreetMap fallback search").jsonArray.mapNotNull { result ->
+            val item = result.jsonObject
+            val osmType = item.text("osm_type")?.lowercase() ?: return@mapNotNull null
+            val osmId = item.text("osm_id") ?: return@mapNotNull null
+            val lat = item.text("lat")?.toDoubleOrNull() ?: return@mapNotNull null
+            val lon = item.text("lon")?.toDoubleOrNull() ?: return@mapNotNull null
+            val extratags = item["extratags"]?.jsonObject
+            val name = item.text("name")
+                ?: item.text("display_name")?.substringBefore(",")?.trim()?.takeIf(String::isNotBlank)
+                ?: return@mapNotNull null
+            val identity = listOfNotNull(
+                name,
+                extratags?.text("brand"),
+                extratags?.text("operator")
+            ).joinToString(" ")
+            if (!matchesRetailer(identity, retailerId)) return@mapNotNull null
+            val addressTags = item["address"]?.jsonObject
+            val postcode = addressTags?.text("postcode")?.uppercase()
+            val address = listOfNotNull(
+                listOfNotNull(addressTags?.text("house_number"), addressTags?.text("road")).joinToString(" ").takeIf(String::isNotBlank),
+                addressTags?.text("suburb") ?: addressTags?.text("neighbourhood"),
+                addressTags?.text("city") ?: addressTags?.text("town") ?: addressTags?.text("village"),
+                postcode
+            ).joinToString(", ")
+            StoreDirectoryEntry(
+                directorySource = StoreDirectorySource.OPENSTREETMAP,
+                directorySourceId = "$osmType/$osmId",
+                retailerId = retailerId,
+                name = name,
+                address = address,
+                postcode = postcode,
+                latitude = lat,
+                longitude = lon,
+                format = inferFormat(retailerId, identity),
+                distanceMeters = distanceMeters(originLat, originLon, lat, lon)
+            )
+        }.filter { (it.distanceMeters ?: Int.MAX_VALUE) <= radiusMeters }
+            .distinctBy { it.directorySourceId }
     }
 
     internal fun parseOverpassResponse(raw: String, retailerId: RetailerId, originLat: Double, originLon: Double): List<StoreDirectoryEntry> {
