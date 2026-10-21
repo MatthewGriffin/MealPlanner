@@ -42,7 +42,7 @@ interface ReceiptOcrService {
 
 @Singleton
 class MlKitReceiptOcrService @Inject constructor(
-    @ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context
 ) : ReceiptOcrService {
 
     private val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
