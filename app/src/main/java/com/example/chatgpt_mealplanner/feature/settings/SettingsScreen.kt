@@ -258,6 +258,12 @@ fun SettingsScreen(
 
         // RETAIL SECTION
         Text("Retail & Shopping", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            "Basket comparisons use retailers for which you have saved preferred branches. Add or remove branches below to control which retailers participate.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
         Spacer(modifier = Modifier.height(8.dp))
 
 
