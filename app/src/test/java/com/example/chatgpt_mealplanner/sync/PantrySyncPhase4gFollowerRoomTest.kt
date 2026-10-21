@@ -151,9 +151,13 @@ class PantrySyncPhase4gFollowerRoomTest {
         override fun followerDao(): FollowerDao = dao
         override fun mealDao(): com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerMealDao = error("Meal DAO not used by this fake")
         override fun mealRequestDao(): com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerMealRequestDao = error("Meal projection not used in this inventory fixture")
+        @Deprecated("Deprecated in Room")
         override fun beginTransaction() { conn.setAutoCommit(false) }
+        @Deprecated("Deprecated in Room")
         override fun setTransactionSuccessful() {}
+        @Deprecated("Deprecated in Room")
         override fun endTransaction() { if (!conn.autoCommit) { conn.commit(); conn.setAutoCommit(true) } }
+        @Deprecated("Deprecated in Room")
         override fun clearAllTables() {}
         override fun createInvalidationTracker(): androidx.room.InvalidationTracker = org.mockito.kotlin.mock()
         override fun createOpenHelper(config: androidx.room.DatabaseConfiguration): androidx.sqlite.db.SupportSQLiteOpenHelper = error("")
