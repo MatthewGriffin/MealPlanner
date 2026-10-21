@@ -269,6 +269,7 @@ class PantrySyncPhase4gRestockSyncTest {
                 override fun followerDao(): FollowerDao = followerDao
                 override fun mealDao(): com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerMealDao = error("Meal DAO not used by this fake")
                 override fun mealRequestDao(): com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerMealRequestDao = error("Meal projection not used in this inventory fixture")
+                @Deprecated("Deprecated in Room")
                 override fun clearAllTables() {}
                 override fun createInvalidationTracker(): androidx.room.InvalidationTracker = mock()
                 @Deprecated("Deprecated in Room")
@@ -373,6 +374,7 @@ class PantrySyncPhase4gRestockSyncTest {
                 override fun followerDao(): FollowerDao = followerDao
                 override fun mealDao(): com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerMealDao = error("Meal DAO not used by this fake")
                 override fun mealRequestDao(): com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerMealRequestDao = error("Meal projection not used in this inventory fixture")
+                @Deprecated("Deprecated in Room")
                 override fun clearAllTables() {}
                 override fun createInvalidationTracker(): androidx.room.InvalidationTracker = mock()
                 @Deprecated("Deprecated in Room")
@@ -629,6 +631,7 @@ class PantrySyncPhase4gRestockSyncTest {
                 override fun followerDao(): FollowerDao = followerDao
                 override fun mealDao(): com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerMealDao = error("Meal DAO not used by this fake")
                 override fun mealRequestDao(): com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerMealRequestDao = error("Meal projection not used in this inventory fixture")
+                @Deprecated("Deprecated in Room")
                 override fun clearAllTables() {}
                 override fun createInvalidationTracker(): androidx.room.InvalidationTracker = mock()
                 @Deprecated("Deprecated in Room")
