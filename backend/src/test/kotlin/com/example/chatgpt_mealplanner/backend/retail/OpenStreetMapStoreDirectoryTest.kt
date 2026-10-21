@@ -172,7 +172,7 @@ class OpenStreetMapStoreDirectoryTest {
     }
 
     @Test
-    fun queryUsesOneBoundedNearbyShopScan() {
+    fun queryUsesBoundedRetailerFilteredShopAndFuelScans() {
         val query = directory.buildQuery(
             com.example.chatgpt_mealplanner.retail.contract.StoreDirectorySearchRequest(
                 retailerId = RetailerId.TESCO,
@@ -182,10 +182,12 @@ class OpenStreetMapStoreDirectoryTest {
             -0.1
         )
         assertTrue(query.contains("[out:json][timeout:20]"))
-        assertTrue(query.contains("""nwr["name"~"Tesco",i]"""))
-        assertTrue(!query.contains("""nwr["shop"](around:"""))
-        assertTrue(query.contains("""nwr["brand"~"Tesco",i]"""))
-        assertTrue(query.contains("""nwr["operator"~"Tesco",i]"""))
+        assertTrue(query.contains("""nwr["shop"]["name"~"Tesco",i]"""))
+        assertTrue(query.contains("""nwr["shop"]["brand"~"Tesco",i]"""))
+        assertTrue(query.contains("""nwr["shop"]["operator"~"Tesco",i]"""))
+        assertTrue(query.contains("""nwr["amenity"="fuel"]["name"~"Tesco",i]"""))
+        assertTrue(query.contains("""nwr["amenity"="fuel"]["brand"~"Tesco",i]"""))
+        assertTrue(query.contains("""nwr["amenity"="fuel"]["operator"~"Tesco",i]"""))
         assertTrue(query.contains("out center tags"))
     }
 
@@ -226,10 +228,10 @@ class OpenStreetMapStoreDirectoryTest {
             51.5,
             -0.1
         )
-        assertTrue(query.contains("""nwr["name"~"Tesco",i]"""))
-        assertTrue(!query.contains("""nwr["shop"](around:"""))
-        assertTrue(query.contains("""nwr["brand"~"Tesco",i]"""))
-        assertTrue(query.contains("""nwr["operator"~"Tesco",i]"""))
+        assertTrue(query.contains("""nwr["shop"]["name"~"Tesco",i]"""))
+        assertTrue(query.contains("""nwr["shop"]["brand"~"Tesco",i]"""))
+        assertTrue(query.contains("""nwr["shop"]["operator"~"Tesco",i]"""))
+        assertTrue(query.contains("""nwr["amenity"="fuel"]["name"~"Tesco",i]"""))
         assertTrue(!query.contains("Express"))
     }
 
