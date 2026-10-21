@@ -3,7 +3,9 @@ package com.example.chatgpt_mealplanner.backend.retail
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
+import io.ktor.client.request.HttpRequestData
 import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.Url
 import io.ktor.http.headersOf
@@ -38,6 +40,49 @@ class IcelandSourceClientTest {
             assertEquals("www.iceland.co.uk", requestedUrl?.host)
             assertEquals("/search", requestedUrl?.encodedPath)
             assertEquals("ice cream & eggs", requestedUrl?.parameters?.get("q"))
+        } finally {
+            httpClient.close()
+        }
+    }
+
+    @Test
+    fun discoveredAlgoliaConfigurationDrivesDirectProductSearchRequest() = runBlocking {
+        val requests = mutableListOf<HttpRequestData>()
+        val homepage = """
+            <html>
+              <script>
+                window.searchConfig = {
+                  applicationId: "ABCDEF1234",
+                  searchApiKey: "0123456789abcdef0123456789abcdef",
+                  indexName: "iceland_products"
+                };
+              </script>
+            </html>
+        """.trimIndent()
+        val searchResponse = """{"hits":[{"objectID":"milk-1","name":"Semi Skimmed Milk","price":"1.45"}]}"""
+        val httpClient = HttpClient(MockEngine { request ->
+            requests += request
+            when {
+                request.url.host == "www.iceland.co.uk" && request.url.encodedPath == "/" ->
+                    respond(homepage, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "text/html"))
+                request.url.host == "ABCDEF1234-dsn.algolia.net" &&
+                    request.url.encodedPath == "/1/indexes/iceland_products/query" -> {
+                    assertEquals(HttpMethod.Post, request.method)
+                    assertEquals("ABCDEF1234", request.headers["x-algolia-application-id"])
+                    assertEquals("0123456789abcdef0123456789abcdef", request.headers["x-algolia-api-key"])
+                    respond(searchResponse, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+                }
+                else -> error("Unexpected request: ${request.method} ${request.url}")
+            }
+        })
+        try {
+            val client = IcelandSourceClient(
+                httpClient = httpClient,
+                config = IcelandClientConfig(minRequestIntervalMs = 0)
+            )
+
+            assertEquals(searchResponse, client.fetchAlgoliaSearchJson("semi skimmed milk"))
+            assertEquals(2, requests.size)
         } finally {
             httpClient.close()
         }
