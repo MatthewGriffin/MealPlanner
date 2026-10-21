@@ -1,59 +1,51 @@
-# Retail Source Discovery Audit & Capability Matrix
+# Retail Source Discovery and Integration Status
 
-This audit separates retailer-wide/online catalogue evidence from physical-branch prices and stock. A preferred branch is a user preference, not proof that a retailer's product feed is scoped to that branch.
+This document records what the current website-backed integrations actually establish. Catalogue prices and online availability are not physical-branch prices or stock.
 
-## 1. Current capability matrix
+## Current integration matrix
 
-| Retailer | Current mode | Online/catalogue price | Branch-specific price | Branch stock | Safe implementation |
-|---|---|---|---|---|---|
-| **Iceland** | Existing public product-page parser | Online-scope only when the page provides a price | Not available from the current search-page parser | Unknown unless the product's structured data explicitly reports availability; this is not branch stock | Keep offers at `ONLINE`, leave `storeLocationId` null, and never infer in-store stock from a generic page button |
-| **ASDA** | `MANUAL_AND_CACHED_ONLY` | Automated retrieval disabled pending permission or an approved feed/API | Not available | Unknown | Cached or manually entered offers only; do not call the undocumented Algolia endpoint |
-| **The Food Warehouse** | `SHARED_CATALOGUE_WITH_ICELAND` | Shared catalogue only where available | Not available | Unknown | Do not treat Iceland catalogue data as The Food Warehouse branch data |
-| **Tesco, Morrisons, Sainsbury's** | No branch feed integrated | Depends on available cached/manual evidence | Not available | Unknown | Branch matching only when an authorised source supplies a stable branch ID and scoped offer |
+| Retailer | Live retrieval | Price evidence | Availability | Physical branch support |
+|---|---|---|---|---|
+| **ASDA** | Website-backed Algolia product search | Parsed catalogue prices are labelled online | Unknown; parser does not claim stock | Not implemented; no verified retailer branch ID in parsed hits |
+| **Iceland** | Website search HTML plus product JSON-LD | Structured product offer price, labelled online | Only explicit product-level JSON-LD status; this is online scope, not branch stock | Not implemented; current search-page parser has no branch-scoped offer ID |
+| **The Food Warehouse** | Shared catalogue integration where available | Only evidence from the underlying catalogue | Unknown unless the underlying source explicitly states it | Iceland catalogue results must not be relabelled as Food Warehouse branch offers |
+| **Tesco, Morrisons, Sainsbury's** | No live source currently integrated | Cached/manual evidence only | Unknown unless explicit source evidence exists | Not implemented |
 
-## 2. Public-source findings
+## ASDA: website-backed Algolia search
 
-### ASDA
+The backend posts a search request to the Algolia endpoint used by the current integration and parses returned product hits. The API key is supplied through ASDA_ALGOLIA_API_KEY (or the existing system-property fallback); if it is missing, search returns a configuration error and callers can retain cached/manual fallback.
 
-The [ASDA Groceries terms](https://www.asda.com/terms/grocery) state that use of the site is for browsing/buying and account management (clause 2.1.3), restrict commercial organisations' access (2.1.4), and say site data may not be used without ASDA's express permission (2.2.4). The app's previous Algolia endpoint was undocumented, and no approved public branch-level price/stock feed was identified during this audit.
+- Search results are treated as online catalogue offers.
+- Product prices and promotions are parsed from returned hit fields.
+- Availability remains UNKNOWN; search hits do not prove store stock.
+- Query strings are JSON-serialized instead of interpolated into request JSON.
+- If the API response changes or contains no parseable products, the adapter returns a structured unavailable result so cached/manual fallback remains possible.
 
-Accordingly, the live adapter now reports `MANUAL_AND_CACHED_ONLY` and returns `SOURCE_PERMISSION_REQUIRED` without making a network request. Re-enable automated access only after explicit permission or an approved feed/API and its terms are recorded. This is a conservative engineering gate, not a legal determination.
+The Algolia endpoint is website-backed and undocumented. Its continued availability, required credentials, and permitted use are not guaranteed. The integration should be resilient to HTTP errors and schema changes; it must not bypass authentication or access controls.
 
-### Iceland
+## Iceland: website search and structured product data
 
-The [Iceland terms](https://www.iceland.co.uk/terms.html) say offers can vary by store and between in-store and online (clause 10.3); the terms also limit copying/reuse of site content (clause 3.2). The current public HTML/JSON-LD parser supplies catalogue/online evidence, not a physical branch identifier. No documented public API/feed supplying stable branch IDs together with branch-level prices and stock was identified.
+The current client fetches Iceland search/category HTML. The parser extracts product prices and product-level availability from JSON-LD when present. It does not currently call a separately identified JSON product/search endpoint.
 
-The current parser therefore keeps `priceScope = ONLINE` and `storeLocationId = null`. Availability is `UNKNOWN` unless that product's structured offer explicitly provides an availability value. A generic "add to basket" element elsewhere on a search page is not evidence that every listed product is available, and online availability is never evidence of in-store availability.
+- Offers remain ONLINE.
+- InStock / OutOfStock only describes the scope represented by the structured offer; it is not branch stock.
+- A page-wide or generic basket button is not evidence that each listed product is in stock.
+- Missing, malformed, or conflicting source data should remain unknown or produce a parse warning rather than being guessed.
 
-### The Food Warehouse
+A future improvement is to inspect the live page's network requests and prefer its actual product/search JSON response where stable, while retaining HTML/JSON-LD as a fallback.
 
-The [official Food Warehouse site](https://www.thefoodwarehouse.com/corporate/) describes its store finder, but a store locator by itself supplies location details—not a product-level branch price/stock feed. Shared Iceland catalogue records must not be relabelled as The Food Warehouse offers without source evidence.
+## Preferred branch matching
 
-## 3. Branch identity contract
+A branch preference is a user preference, not proof that a source response is scoped to that branch. The contract separates an app-local preference ID from optional retailer-issued branch identity. The current ASDA and Iceland parsers do not populate branch-specific offer IDs, so neither can currently produce verified branch-level prices or stock.
 
-A branch preference now has two separate identifiers:
+A branch-specific offer should only be considered branch evidence when the source response establishes:
+1. A stable retailer branch ID matching the selected branch.
+2. A product-level price and/or availability record scoped to that branch.
+3. A STORE_SPECIFIC or IN_STORE price scope.
+4. A source reference and observation timestamp adequate for freshness checks.
 
-- `id`: app-local ID for storing/editing the user's preference.
-- `retailerStoreId`: optional stable ID supplied by an authorised retailer directory/feed.
+Never manufacture a branch ID from a name, postcode, store format, or local UUID. Online price evidence may still be useful for comparison but must not be shown as confirmed in-store price or stock.
 
-Offers use `storeLocationId`, which must match `retailerStoreId`; it must never be matched against the app-local UUID. When a preferred branch has no retailer-issued ID, branch-scoped offers cannot be verified and are excluded for that retailer; online/general offers remain usable. When a branch ID exists, only offers scoped to that selected branch can be treated as branch evidence.
+## Next technical step
 
-A branch offer is eligible only when the source provides all of the following:
-
-1. A stable retailer branch ID that can be matched to the user's selected branch.
-2. An explicit product-level price and/or availability record for that branch.
-3. A scope identifying the data as `STORE_SPECIFIC` or `IN_STORE`.
-4. A source reference and observation time sufficient to apply freshness rules.
-
-Never manufacture a branch ID from a name, postcode, local UUID, or store format. A store locator alone cannot satisfy these requirements. A branch-specific price does not automatically establish stock, and a stock status does not automatically establish a price.
-
-## 4. Evidence-based availability mapping
-
-- Explicit product-level structured `InStock` evidence: may map to `IN_STOCK` for the scope represented by that source.
-- Explicit product-level structured `OutOfStock` evidence: may map to `OUT_OF_STOCK` for the scope represented by that source.
-- Missing, generic, conflicting, or page-wide evidence: `UNKNOWN`.
-- Online-scope evidence must never be presented as physical-branch stock.
-
-## 5. Next integration gate
-
-The next useful step is to obtain retailer approval or an official partner/API feed that includes store IDs, scoped prices, and stock. Once available, add a source-specific branch directory lookup, persist the retailer-issued ID on the selected branch, and parse only documented branch-scoped responses. Until then, the app can compare online/general estimates and cached/manual data, but must continue to disclose that branch stock and branch-specific prices are unconfirmed.
+Trace Iceland's current website requests to identify its actual product/search API response and store-selection mechanism. Then add a source client and parser for that response with fixture-based tests. Only populate branch-specific offer fields when the request/response demonstrably includes the selected store and product-level price/availability. Keep the current HTML parser and cached/manual fallback if the endpoint is unavailable or changes.
