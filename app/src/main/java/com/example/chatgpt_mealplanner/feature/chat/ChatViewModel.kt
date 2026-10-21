@@ -328,7 +328,7 @@ class ChatViewModel @Inject constructor(
         }
     }
 
-    private fun saveMealProposalToPlan(proposal: MealProposal) {
+    private fun saveMealProposalToPlan(uiProposal: MealProposal) {
         if (isSavingProposalFlow.value) return
         isSavingProposalFlow.value = true
         viewModelScope.launch {
@@ -336,7 +336,7 @@ class ChatViewModel @Inject constructor(
                 // The structured SaveMeal action is the AI's authoritative proposal. The card's
                 // proposal can be stale or incomplete when a meal-change request was edited.
                 val proposalToSave = MealProposalSaveResolver.resolve(
-                    uiProposal = proposal,
+                    uiProposal = uiProposal,
                     latestValidatedProposal = latestProposalFlow.value,
                     latestProposedAction = latestProposedActionFlow.value
                 )
