@@ -98,7 +98,7 @@ class OpenStreetMapStoreDirectory(
                     header(HttpHeaders.UserAgent, USER_AGENT)
                     setBody(query)
                 }
-                if (!response.status.isSuccess()) {
+                if (response.status.value !in 200..299) {
                     throw IllegalStateException("Overpass returned HTTP ${response.status.value}.")
                 }
                 return response.bodyAsText()
