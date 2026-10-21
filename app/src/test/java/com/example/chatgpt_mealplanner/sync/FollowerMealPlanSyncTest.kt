@@ -198,7 +198,7 @@ class FollowerMealPlanSyncTest {
 
     @Test fun migration5To6PreservesExistingFollowerData() = runBlocking {
         val name = "meal_migration_${java.util.UUID.randomUUID()}.db"
-        fun open() = Room.databaseBuilder(context, FollowerDatabase::class.java, name).addMigrations(FOLLOWER_MIGRATION_5_6).build()
+        fun open() = Room.databaseBuilder(context, FollowerDatabase::class.java, name).addMigrations(FOLLOWER_MIGRATION_5_6, com.example.chatgpt_mealplanner.core.sync.follower.database.FOLLOWER_MIGRATION_6_7).build()
         var db = open()
         try {
             val local = FollowerLocalSyncEngine(db, null, null, db.mealRequestDao())

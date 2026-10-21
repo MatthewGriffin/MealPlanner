@@ -152,9 +152,9 @@ class PantryPhase5FollowerDatabaseMigrationTest {
 
         v3Db.close()
 
-        // 3. Open migrated database using Room FollowerDatabase version 6
+        // 3. Open migrated database using Room FollowerDatabase version 7
         val migratedDb = Room.databaseBuilder(context, FollowerDatabase::class.java, dbName)
-            .addMigrations(FOLLOWER_MIGRATION_1_2, FOLLOWER_MIGRATION_2_3, FOLLOWER_MIGRATION_3_4, FOLLOWER_MIGRATION_4_5, FOLLOWER_MIGRATION_5_6)
+            .addMigrations(FOLLOWER_MIGRATION_1_2, FOLLOWER_MIGRATION_2_3, FOLLOWER_MIGRATION_3_4, FOLLOWER_MIGRATION_4_5, FOLLOWER_MIGRATION_5_6, com.example.chatgpt_mealplanner.core.sync.follower.database.FOLLOWER_MIGRATION_6_7)
             .allowMainThreadQueries()
             .build()
 
