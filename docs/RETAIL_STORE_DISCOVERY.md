@@ -10,6 +10,7 @@ This is a **store directory**, not a price or stock API. Each result carries an 
 
 - Results are cached in memory for six hours; the cache is bounded.
 - Nominatim and Overpass requests are throttled per service instance. This is best-effort courtesy throttling, not a substitute for a production proxy/cache policy at scale.
+- Overpass searches try the primary public endpoint, then two alternate public instances if a request fails. These are community-operated services, so all can still be slow or unavailable; users can retry or add a branch manually.
 - Only public OSM tags matching the selected retailer are returned. Coverage and brand tags can be missing or stale; users should verify a result before saving it.
 - Postcode search is UK-only. The backend does not request device GPS permission; coordinates from a future UI should be sent only after the user chooses nearby search.
 - The app must show attribution to OpenStreetMap contributors and link to the OSM copyright page.
