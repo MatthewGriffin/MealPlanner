@@ -16,7 +16,7 @@ interface CredentialStore {
 
 @Singleton
 open class GeminiCredentialStore @Inject constructor(
-    @ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context
 ) : CredentialStore {
 
     private val masterKey by lazy {
