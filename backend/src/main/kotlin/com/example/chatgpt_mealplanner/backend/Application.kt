@@ -6,16 +6,20 @@ import com.example.chatgpt_mealplanner.backend.retail.FoodWarehouseRetailerAdapt
 import com.example.chatgpt_mealplanner.backend.retail.IcelandProductParser
 import com.example.chatgpt_mealplanner.backend.retail.IcelandRetailerAdapter
 import com.example.chatgpt_mealplanner.backend.retail.IcelandSourceClient
+import com.example.chatgpt_mealplanner.backend.retail.OpenStreetMapStoreDirectory
+import com.example.chatgpt_mealplanner.backend.retail.StoreDirectoryProvider
 import com.example.chatgpt_mealplanner.retail.contract.RetailerCapabilityDto
 import com.example.chatgpt_mealplanner.retail.contract.RetailerCapabilityMode
 import com.example.chatgpt_mealplanner.retail.contract.RetailerCapabilitiesResponse
 import com.example.chatgpt_mealplanner.retail.contract.RetailerId
+import com.example.chatgpt_mealplanner.retail.contract.StoreDirectorySearchRequest
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
 import io.ktor.server.application.call
 import io.ktor.server.application.install
+import io.ktor.http.HttpStatusCode
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
@@ -38,7 +42,10 @@ fun main() {
     embeddedServer(Netty, port = config.port, host = "0.0.0.0", module = { module(config) }).start(wait = true)
 }
 
-fun Application.module(config: BackendConfig = BackendConfig()) {
+fun Application.module(
+    config: BackendConfig = BackendConfig(),
+    storeDirectoryProvider: StoreDirectoryProvider? = null
+) {
     install(ContentNegotiation) {
         json(Json { ignoreUnknownKeys = true })
     }
@@ -49,6 +56,7 @@ fun Application.module(config: BackendConfig = BackendConfig()) {
     val icelandAdapter = IcelandRetailerAdapter(icelandClient, icelandParser)
     val asdaAdapter = AsdaRetailerAdapter()
     val foodWarehouseAdapter = FoodWarehouseRetailerAdapter()
+    val storeDirectory = storeDirectoryProvider ?: OpenStreetMapStoreDirectory(httpClient)
 
     routing {
         get("/health") {
@@ -73,6 +81,24 @@ fun Application.module(config: BackendConfig = BackendConfig()) {
                 )
             )
             call.respond(response)
+        }
+
+        post("/v1/retail/stores/search") {
+            val request = runCatching { call.receive<StoreDirectorySearchRequest>() }.getOrNull()
+            if (request == null) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid store directory search request"))
+                return@post
+            }
+            try {
+                call.respond(storeDirectory.search(request))
+            } catch (e: IllegalArgumentException) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to (e.message ?: "Invalid store search request")))
+            } catch (_: Exception) {
+                call.respond(
+                    HttpStatusCode.ServiceUnavailable,
+                    mapOf("error" to "Store directory temporarily unavailable. Try again later.")
+                )
+            }
         }
 
         post("/v1/retail/search") {

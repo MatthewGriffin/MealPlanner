@@ -15,7 +15,10 @@ data class RetailStoreLocation(
      * Stable identifier supplied by the retailer's authorised store directory/feed.
      * This is distinct from [id], which is the app's local preference-record ID.
      */
-    val retailerStoreId: String? = null
+    val retailerStoreId: String? = null,
+    /** Source record for branch discovery; never treated as a retailer-issued branch ID. */
+    val directorySource: StoreDirectorySource? = null,
+    val directorySourceId: String? = null
 )
 
 @Serializable
