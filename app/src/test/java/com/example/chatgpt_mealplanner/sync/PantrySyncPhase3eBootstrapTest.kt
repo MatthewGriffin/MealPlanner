@@ -306,8 +306,11 @@ open class RealRoomFollowerDatabase(private val conn: java.sql.Connection) : Fol
     override fun mealDao(): com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerMealDao = error("Meal DAO not used by this fake")
     override fun mealRequestDao(): com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerMealRequestDao = error("Meal projection not used in this inventory fixture")
 
+    @Deprecated("Deprecated in Room")
     override fun beginTransaction() { conn.setAutoCommit(false) }
+    @Deprecated("Deprecated in Room")
     override fun setTransactionSuccessful() {}
+    @Deprecated("Deprecated in Room")
     override fun endTransaction() {
         if (!conn.autoCommit) {
             conn.rollback()
@@ -316,6 +319,7 @@ open class RealRoomFollowerDatabase(private val conn: java.sql.Connection) : Fol
     }
     override fun createOpenHelper(config: androidx.room.DatabaseConfiguration): androidx.sqlite.db.SupportSQLiteOpenHelper = error("")
     override fun createInvalidationTracker(): androidx.room.InvalidationTracker = error("")
+    @Deprecated("Deprecated in Room")
     override fun clearAllTables() {}
 }
 
