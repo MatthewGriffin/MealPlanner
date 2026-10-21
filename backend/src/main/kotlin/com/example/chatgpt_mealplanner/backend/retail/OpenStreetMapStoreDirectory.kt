@@ -71,7 +71,7 @@ class OpenStreetMapStoreDirectory(
         val (lat, lon) = resolveCenter(request, onProgress)
         // Shared cache is keyed only by location/radius because each Overpass request
         // now retrieves all supported retailers in the area.
-        val key = "shops-v11:${"%.4f".format(Locale.US, lat)}:${"%.4f".format(Locale.US, lon)}:${request.radiusMeters}"
+        val key = "shops-v12:${"%.4f".format(Locale.US, lat)}:${"%.4f".format(Locale.US, lon)}:${request.radiusMeters}"
         onProgress("Checking cached nearby-store results…")
         val cached = cache[key]
         if (cached != null) {
@@ -440,8 +440,8 @@ class OpenStreetMapStoreDirectory(
         val lonDelta = radiusMeters / (111_000.0 * cos(Math.toRadians(originLat)).coerceAtLeast(0.1))
         val raw = client.get("https://nominatim.openstreetmap.org/search") {
             parameter("q", searchTerm)
-            parameter("countrycodes", "gb"),
-                    parameter("format", "jsonv2")
+            parameter("countrycodes", "gb")
+            parameter("format", "jsonv2")
             parameter("addressdetails", "1")
             parameter("extratags", "1")
             parameter("limit", "20")
