@@ -297,6 +297,31 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+                androidx.compose.foundation.layout.Box {
+                    TextButton(onClick = { retailerMenuExpanded = true }) {
+                        Text("Search retailer: ${retailerLabel(selectedStoreRetailer)}")
+                    }
+                    DropdownMenu(expanded = retailerMenuExpanded, onDismissRequest = { retailerMenuExpanded = false }) {
+                        RetailerId.entries.forEach { retailer ->
+                            DropdownMenuItem(
+                                text = { Text(retailerLabel(retailer)) },
+                                onClick = {
+                                    if (selectedStoreRetailer != retailer) {
+                                        selectedStoreRetailer = retailer
+                                        selectedStoreFormat = storeFormatsFor(retailer).first()
+                                        viewModel.clearStoreSearchResults()
+                                    }
+                                    retailerMenuExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+                Text(
+                    "Choose the retailer here before searching. Results below are for this retailer only.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 OutlinedTextField(
                     value = storeSearchPostcodeInput,
                     onValueChange = { storeSearchPostcodeInput = it },
@@ -316,6 +341,25 @@ fun SettingsScreen(
                     Text(uiState.storeSearchMessage!!, style = MaterialTheme.typography.bodySmall)
                 }
                 uiState.discoveredStores.forEach { store ->
+                    val alreadyAdded = uiState.preferredStores.any { saved ->
+                        if (saved.retailerId != store.retailerId) {
+                            false
+                        } else {
+                            val savedPostcode = saved.postcode.filterNot(Char::isWhitespace).uppercase()
+                            val resultPostcode = store.postcode.orEmpty().filterNot(Char::isWhitespace).uppercase()
+                            val sameSourceRecord = saved.directorySource == store.directorySource &&
+                                !saved.directorySourceId.isNullOrBlank() &&
+                                saved.directorySourceId == store.directorySourceId
+                            val sameNameAndPostcode = saved.name.trim().equals(store.name.trim(), ignoreCase = true) &&
+                                savedPostcode.isNotBlank() && savedPostcode == resultPostcode
+                            val savedAddress = saved.address.orEmpty().lowercase().replace(Regex("[^a-z0-9]+"), " ").trim()
+                            val resultAddress = store.address.lowercase().replace(Regex("[^a-z0-9]+"), " ").trim()
+                            val sameAddressAndPostcode = savedAddress.isNotBlank() && resultAddress.isNotBlank() &&
+                                savedAddress == resultAddress &&
+                                (savedPostcode.isBlank() || resultPostcode.isBlank() || savedPostcode == resultPostcode)
+                            sameSourceRecord || sameNameAndPostcode || sameAddressAndPostcode
+                        }
+                    }
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Column(modifier = Modifier.padding(10.dp)) {
                             Text(store.name, fontWeight = FontWeight.SemiBold)
@@ -328,7 +372,17 @@ fun SettingsScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Text("Directory listing only; local prices and stock are not verified.", style = MaterialTheme.typography.bodySmall)
-                            Button(onClick = { viewModel.addDiscoveredStore(store) }) { Text("Add branch") }
+                            if (alreadyAdded) {
+                                Text(
+                                    "Already added to preferred locations",
+                                    color = MaterialTheme.colorScheme.primary,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                            Button(
+                                onClick = { viewModel.addDiscoveredStore(store) },
+                                enabled = !alreadyAdded
+                            ) { Text(if (alreadyAdded) "Already added" else "Add branch") }
                         }
                     }
                     Spacer(modifier = Modifier.height(6.dp))
@@ -342,23 +396,6 @@ fun SettingsScreen(
                 HorizontalDivider()
                 Spacer(modifier = Modifier.height(8.dp))
 
-                androidx.compose.foundation.layout.Box {
-                    TextButton(onClick = { retailerMenuExpanded = true }) {
-                        Text("Retailer: ${retailerLabel(selectedStoreRetailer)}")
-                    }
-                    DropdownMenu(expanded = retailerMenuExpanded, onDismissRequest = { retailerMenuExpanded = false }) {
-                        RetailerId.entries.forEach { retailer ->
-                            DropdownMenuItem(
-                                text = { Text(retailerLabel(retailer)) },
-                                onClick = {
-                                    selectedStoreRetailer = retailer
-                                    selectedStoreFormat = storeFormatsFor(retailer).first()
-                                    retailerMenuExpanded = false
-                                }
-                            )
-                        }
-                    }
-                }
                 OutlinedTextField(
                     value = storeNameInput,
                     onValueChange = { storeNameInput = it },
