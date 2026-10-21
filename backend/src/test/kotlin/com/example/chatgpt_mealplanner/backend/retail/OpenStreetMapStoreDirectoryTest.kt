@@ -83,7 +83,7 @@ class OpenStreetMapStoreDirectoryTest {
     fun successfulOverpassSearchIsSupplementedWithExplicitAsdaExpressFuelSiteListing() = runBlocking {
         val client = HttpClient(MockEngine { request ->
             if (request.url.host == "nominatim.openstreetmap.org") {
-                assertEquals("ASDA Express", request.url.parameters["q"])
+                assertEquals("ASDA", request.url.parameters["q"])
                 respond(
                     content = """[{"osm_type":"way","osm_id":771,"lat":"53.27776","lon":"-2.90437","category":"amenity","type":"fuel","name":"ASDA Ellesmere Port Express Petrol","display_name":"ASDA Ellesmere Port Express Petrol, 118 Whitby Road, Ellesmere Port, CH65 6TF","address":{"house_number":"118","road":"Whitby Road","city":"Ellesmere Port","postcode":"CH65 6TF"}}]""",
                     status = HttpStatusCode.OK,
@@ -127,11 +127,11 @@ class OpenStreetMapStoreDirectoryTest {
             -0.1
         )
         assertTrue(query.contains("[out:json][timeout:20]"))
-        assertTrue(query.contains("""nwr["shop"~"^(supermarket|convenience)$"](around:5000,51.5,-0.1)"""))
+        assertTrue(query.contains("""nwr["shop"](around:5000,51.5,-0.1)"""))
+        assertTrue(query.contains("""nwr["name"~"Tesco",i]"""))
+        assertTrue(query.contains("""nwr["brand"~"Tesco",i]"""))
+        assertTrue(query.contains("""nwr["operator"~"Tesco",i]"""))
         assertTrue(query.contains("out center tags"))
-        assertTrue(!query.contains("""["name"~"""))
-        assertTrue(!query.contains("""["brand"~"""))
-        assertTrue(!query.contains("""["operator"~"""))
     }
 
     @Test
@@ -171,14 +171,17 @@ class OpenStreetMapStoreDirectoryTest {
             51.5,
             -0.1
         )
-        assertTrue(query.contains("""nwr["name"~"ASDA.*Express",i]"""))
-        assertTrue(query.contains("""nwr["brand"~"ASDA.*Express",i]"""))
+        assertTrue(query.contains("""nwr["shop"](around:5000,51.5,-0.1)"""))
+        assertTrue(query.contains("""nwr["name"~"ASDA",i]"""))
+        assertTrue(query.contains("""nwr["brand"~"ASDA",i]"""))
+        assertTrue(query.contains("""nwr["operator"~"ASDA",i]"""))
+        assertTrue(!query.contains("Express"))
     }
 
     @Test
     fun parserAcceptsExplicitAsdaExpressWithoutShopTagButRejectsTaggedOptician() {
         val raw = """{"elements":[
-          {"type":"node","id":611,"lat":51.5,"lon":-0.1,"tags":{"name":"ASDA Express","brand":"ASDA Express"}},
+          {"type":"node","id":611,"lat":51.5,"lon":-0.1,"tags":{"name":"ASDA Express","brand":"ASDA Express","amenity":"fuel"}},
           {"type":"node","id":612,"lat":51.501,"lon":-0.101,"tags":{"name":"ASDA Express Opticians","brand":"ASDA Express","shop":"optician"}}
         ]}"""
         val stores = directory.parseOverpassResponse(raw, RetailerId.ASDA, 51.5, -0.1)
