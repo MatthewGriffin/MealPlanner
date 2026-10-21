@@ -73,12 +73,29 @@ fun Application.module(
                 promotionsSupported = true,
                 description = "Iceland live HTML / JSON-LD catalog search available."
             )
+            val branchOnlyCapabilities = listOf(
+                RetailerId.TESCO,
+                RetailerId.MORRISONS,
+                RetailerId.SAINSBURYS,
+                RetailerId.ALDI,
+                RetailerId.LIDL
+            ).map { retailerId ->
+                RetailerCapabilityDto(
+                    retailerId = retailerId,
+                    mode = RetailerCapabilityMode.MANUAL_AND_CACHED_ONLY,
+                    searchSupported = false,
+                    livePriceSupported = false,
+                    availabilitySupported = false,
+                    promotionsSupported = false,
+                    description = "${retailerId.name.lowercase().replaceFirstChar { it.uppercase() }} branch discovery is available, but live product and price lookup is not configured. Saved/manual data may be available."
+                )
+            }
             val response = RetailerCapabilitiesResponse(
                 capabilities = listOf(
                     icelandCap,
                     asdaAdapter.getCapability(),
                     foodWarehouseAdapter.getCapability()
-                )
+                ) + branchOnlyCapabilities
             )
             call.respond(response)
         }
