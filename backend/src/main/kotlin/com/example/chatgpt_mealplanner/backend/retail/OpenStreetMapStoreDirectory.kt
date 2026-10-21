@@ -87,8 +87,9 @@ class OpenStreetMapStoreDirectory(
 
 
     private suspend fun fetchOverpassResponse(query: String, onProgress: (String) -> Unit): String {
-        var lastFailure: Exception? = null
+        val failures = mutableListOf<String>()
         OVERPASS_ENDPOINTS.forEachIndexed { index, endpoint ->
+            val serviceName = endpoint.removePrefix("https://").substringBefore('/')
             try {
                 if (index > 0) {
                     onProgress("The first branch-search service did not respond; trying backup service ${index} of ${OVERPASS_ENDPOINTS.lastIndex}…")
@@ -99,17 +100,20 @@ class OpenStreetMapStoreDirectory(
                     setBody(query)
                 }
                 if (response.status.value !in 200..299) {
-                    throw IllegalStateException("Overpass returned HTTP ${response.status.value}.")
+                    failures += "$serviceName: HTTP ${response.status.value}"
+                    return@forEachIndexed
                 }
                 return response.bodyAsText()
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
-                lastFailure = e
+                val reason = e.message?.lineSequence()?.firstOrNull()?.take(120)
+                    ?.takeIf { it.isNotBlank() } ?: e::class.simpleName ?: "request failed"
+                failures += "$serviceName: $reason"
             }
         }
         throw IllegalStateException(
-            "The branch search services timed out or were unavailable. Please retry in a little while, or add the branch manually.",
-            lastFailure
+            "All branch directory services failed (${failures.joinToString("; ")}). " +
+                "Please retry later, or add the branch manually."
         )
     }
 
