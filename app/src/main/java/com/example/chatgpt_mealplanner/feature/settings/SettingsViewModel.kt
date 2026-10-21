@@ -25,6 +25,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -164,9 +165,8 @@ class SettingsViewModel @Inject constructor(
 
     fun clearChatHistory() {
         viewModelScope.launch {
-            chatDao.observeAllConversations().collect { convs ->
-                convs.forEach { chatDao.deleteConversation(it.id) }
-            }
+            val conversations = chatDao.observeAllConversations().first()
+            conversations.forEach { chatDao.deleteConversation(it.id) }
         }
     }
 
