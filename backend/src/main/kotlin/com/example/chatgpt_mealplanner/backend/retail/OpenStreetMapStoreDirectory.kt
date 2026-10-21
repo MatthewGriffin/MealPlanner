@@ -71,7 +71,7 @@ class OpenStreetMapStoreDirectory(
         val (lat, lon) = resolveCenter(request, onProgress)
         // Shared cache is keyed only by location/radius because each Overpass request
         // now retrieves all supported retailers in the area.
-        val key = "shops-v10:${"%.4f".format(Locale.US, lat)}:${"%.4f".format(Locale.US, lon)}:${request.radiusMeters}"
+        val key = "shops-v11:${"%.4f".format(Locale.US, lat)}:${"%.4f".format(Locale.US, lon)}:${request.radiusMeters}"
         onProgress("Checking cached nearby-store results…")
         val cached = cache[key]
         if (cached != null) {
@@ -125,20 +125,34 @@ class OpenStreetMapStoreDirectory(
             val raw = fetchOverpassResponse(buildMultiRetailerQuery(lat, lon, request.radiusMeters), onProgress)
             overpassSucceeded = true
             val mappedStores = parseAllRetailersOverpassResponse(raw, lat, lon)
-            // Only perform the slower text search when the shared map query did not find
-            // the retailer the user actually asked for. Other retailers reuse the shared result.
-            val requestedStores = mappedStores.filter { it.retailerId == request.retailerId }
-            val fallbackStores = if (!request.searchAllRetailers && requestedStores.isEmpty() && configuredApiKey == null) {
-                onProgress("Looking for missing ${displayName(request.retailerId)} listings…")
-                try {
-                    kotlinx.coroutines.withTimeout(12_000L) {
-                        searchNominatimFallback(request.retailerId, lat, lon, request.radiusMeters)
+            // If the shared map query yields no usable branches at all, recover with targeted
+            // Nominatim searches bounded to the same nearby area.
+            val fallbackStores = when {
+                request.searchAllRetailers && mappedStores.isEmpty() -> {
+                    onProgress("The map search found no usable branches; checking targeted nearby store listings…")
+                    try {
+                        kotlinx.coroutines.withTimeout(30_000L) {
+                            searchNominatimAllRetailersFallback(lat, lon, request.radiusMeters)
+                        }
+                    } catch (e: Exception) {
+                        if (e is kotlinx.coroutines.CancellationException && e !is kotlinx.coroutines.TimeoutCancellationException) throw e
+                        emptyList()
                     }
-                } catch (e: Exception) {
-                    if (e is kotlinx.coroutines.CancellationException && e !is kotlinx.coroutines.TimeoutCancellationException) throw e
-                    emptyList()
                 }
-            } else emptyList()
+                !request.searchAllRetailers &&
+                    mappedStores.none { it.retailerId == request.retailerId } -> {
+                    onProgress("Looking for missing ${displayName(request.retailerId)} listings…")
+                    try {
+                        kotlinx.coroutines.withTimeout(12_000L) {
+                            searchNominatimFallback(request.retailerId, lat, lon, request.radiusMeters)
+                        }
+                    } catch (e: Exception) {
+                        if (e is kotlinx.coroutines.CancellationException && e !is kotlinx.coroutines.TimeoutCancellationException) throw e
+                        emptyList()
+                    }
+                }
+                else -> emptyList()
+            }
             (mappedStores + fallbackStores).distinctBy { it.directorySourceId }
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
@@ -183,7 +197,7 @@ class OpenStreetMapStoreDirectory(
         )
         // Only cache a complete multi-retailer map result. If Overpass failed, the fallback
         // contains only one retailer and must not be mistaken for the whole area's inventory.
-        if (overpassSucceeded) {
+        if (overpassSucceeded && allStores.isNotEmpty()) {
             val combined = (cached?.response?.stores.orEmpty() + allStores).distinctBy { it.directorySourceId }
             cache[key] = CacheEntry(
                 clock() + 6 * 60 * 60 * 1000L,
@@ -365,6 +379,25 @@ class OpenStreetMapStoreDirectory(
         val lon = first["lon"]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull()
             ?: throw IllegalStateException("Postcode lookup returned no longitude.")
         return lat to lon
+    }
+
+    private suspend fun searchNominatimAllRetailersFallback(
+        originLat: Double,
+        originLon: Double,
+        radiusMeters: Int
+    ): List<StoreDirectoryEntry> {
+        val retailers = listOf(
+            RetailerId.ASDA,
+            RetailerId.TESCO,
+            RetailerId.MORRISONS,
+            RetailerId.SAINSBURYS,
+            RetailerId.ICELAND,
+            RetailerId.ALDI,
+            RetailerId.LIDL
+        )
+        return retailers.flatMap { retailerId ->
+            searchNominatimFallback(retailerId, originLat, originLon, radiusMeters)
+        }.distinctBy { it.directorySourceId }
     }
 
     private suspend fun searchNominatimFallback(
