@@ -12,7 +12,6 @@ import com.example.chatgpt_mealplanner.retail.contract.PackAlternative
 import com.example.chatgpt_mealplanner.retail.contract.PriceFreshness
 import com.example.chatgpt_mealplanner.retail.contract.RetailFreshnessPolicy
 import com.example.chatgpt_mealplanner.retail.contract.RetailProductSearchResult
-import com.example.chatgpt_mealplanner.retail.contract.RetailPriceScope
 import com.example.chatgpt_mealplanner.retail.contract.RetailProductWithOffer
 import com.example.chatgpt_mealplanner.retail.contract.RetailerId
 import com.example.chatgpt_mealplanner.retail.contract.UserShoppingPreferences
