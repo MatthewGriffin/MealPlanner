@@ -232,13 +232,14 @@ class OpenStreetMapStoreDirectory(
     internal fun buildMultiRetailerQuery(lat: Double, lon: Double, radiusMeters: Int): String {
         val allRetailersPattern = "ASDA|Iceland|Food.*Warehouse|Tesco|Morrisons|Sainsbury|Aldi|Lidl"
         return """[out:json][timeout:60];
+          area["ISO3166-1"="GB"][admin_level=2]->.uk;
           (
-            nwr["shop"]["name"~"$allRetailersPattern",i](around:$radiusMeters,$lat,$lon);
-            nwr["shop"]["brand"~"$allRetailersPattern",i](around:$radiusMeters,$lat,$lon);
-            nwr["shop"]["operator"~"$allRetailersPattern",i](around:$radiusMeters,$lat,$lon);
-            nwr["name"~"$allRetailersPattern",i](around:$radiusMeters,$lat,$lon);
-            nwr["brand"~"$allRetailersPattern",i](around:$radiusMeters,$lat,$lon);
-            nwr["operator"~"$allRetailersPattern",i](around:$radiusMeters,$lat,$lon);
+            nwr["shop"]["name"~"$allRetailersPattern",i](around:$radiusMeters,$lat,$lon)(area.uk);
+            nwr["shop"]["brand"~"$allRetailersPattern",i](around:$radiusMeters,$lat,$lon)(area.uk);
+            nwr["shop"]["operator"~"$allRetailersPattern",i](around:$radiusMeters,$lat,$lon)(area.uk);
+            nwr["name"~"$allRetailersPattern",i](around:$radiusMeters,$lat,$lon)(area.uk);
+            nwr["brand"~"$allRetailersPattern",i](around:$radiusMeters,$lat,$lon)(area.uk);
+            nwr["operator"~"$allRetailersPattern",i](around:$radiusMeters,$lat,$lon)(area.uk);
           );
           out center tags;"""
     }
@@ -311,24 +312,25 @@ class OpenStreetMapStoreDirectory(
         // mapped only as "The Food Warehouse", with no Iceland brand/operator tag.
         val relatedIcelandBrand = if (request.retailerId == RetailerId.ICELAND) {
             """
-            nwr["shop"]["name"~"Food.*Warehouse",i](around:$radius,$lat,$lon);
-            nwr["shop"]["brand"~"Food.*Warehouse",i](around:$radius,$lat,$lon);
-            nwr["shop"]["operator"~"Food.*Warehouse",i](around:$radius,$lat,$lon);
-            nwr["name"~"Food.*Warehouse",i](around:$radius,$lat,$lon);
-            nwr["brand"~"Food.*Warehouse",i](around:$radius,$lat,$lon);
-            nwr["operator"~"Food.*Warehouse",i](around:$radius,$lat,$lon);
+            nwr["shop"]["name"~"Food.*Warehouse",i](around:$radius,$lat,$lon)(area.uk);
+            nwr["shop"]["brand"~"Food.*Warehouse",i](around:$radius,$lat,$lon)(area.uk);
+            nwr["shop"]["operator"~"Food.*Warehouse",i](around:$radius,$lat,$lon)(area.uk);
+            nwr["name"~"Food.*Warehouse",i](around:$radius,$lat,$lon)(area.uk);
+            nwr["brand"~"Food.*Warehouse",i](around:$radius,$lat,$lon)(area.uk);
+            nwr["operator"~"Food.*Warehouse",i](around:$radius,$lat,$lon)(area.uk);
             """
         } else ""
         // Search retailer identity tags even when shop=* is missing. The parser filters
         // non-retail matches and the known petrol-station variants.
         return """[out:json][timeout:60];
+          area["ISO3166-1"="GB"][admin_level=2]->.uk;
           (
-            nwr["shop"]["name"~"$retailerPattern",i](around:$radius,$lat,$lon);
-            nwr["shop"]["brand"~"$retailerPattern",i](around:$radius,$lat,$lon);
-            nwr["shop"]["operator"~"$retailerPattern",i](around:$radius,$lat,$lon);
-            nwr["name"~"$retailerPattern",i](around:$radius,$lat,$lon);
-            nwr["brand"~"$retailerPattern",i](around:$radius,$lat,$lon);
-            nwr["operator"~"$retailerPattern",i](around:$radius,$lat,$lon);
+            nwr["shop"]["name"~"$retailerPattern",i](around:$radius,$lat,$lon)(area.uk);
+            nwr["shop"]["brand"~"$retailerPattern",i](around:$radius,$lat,$lon)(area.uk);
+            nwr["shop"]["operator"~"$retailerPattern",i](around:$radius,$lat,$lon)(area.uk);
+            nwr["name"~"$retailerPattern",i](around:$radius,$lat,$lon)(area.uk);
+            nwr["brand"~"$retailerPattern",i](around:$radius,$lat,$lon)(area.uk);
+            nwr["operator"~"$retailerPattern",i](around:$radius,$lat,$lon)(area.uk);
             $relatedIcelandBrand
           );
           out center tags;"""
@@ -438,7 +440,8 @@ class OpenStreetMapStoreDirectory(
         val lonDelta = radiusMeters / (111_000.0 * cos(Math.toRadians(originLat)).coerceAtLeast(0.1))
         val raw = client.get("https://nominatim.openstreetmap.org/search") {
             parameter("q", searchTerm)
-            parameter("format", "jsonv2")
+            parameter("countrycodes", "gb"),
+                    parameter("format", "jsonv2")
             parameter("addressdetails", "1")
             parameter("extratags", "1")
             parameter("limit", "20")
