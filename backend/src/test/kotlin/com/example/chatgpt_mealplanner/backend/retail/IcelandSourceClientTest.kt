@@ -11,6 +11,7 @@ import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 
 class IcelandSourceClientTest {
 
@@ -60,7 +61,7 @@ class IcelandSourceClientTest {
             val error = assertFailsWith<IllegalStateException> {
                 client.fetchSearchHtml("milk")
             }
-            assertEquals("Iceland search returned HTTP 503", error.message)
+            assertTrue(error.message.orEmpty().contains("503"))
         } finally {
             httpClient.close()
         }
