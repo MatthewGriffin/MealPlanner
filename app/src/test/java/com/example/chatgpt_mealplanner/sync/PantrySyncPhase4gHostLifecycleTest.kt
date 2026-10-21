@@ -30,6 +30,7 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import kotlinx.serialization.json.Json
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -45,6 +46,8 @@ import java.util.UUID
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(JUnit4::class)
 class PantrySyncPhase4gHostLifecycleTest {
+
+    private val json = Json { ignoreUnknownKeys = true }
 
     private val testDispatcher = UnconfinedTestDispatcher()
     private lateinit var pairingStore: FakePairingStore
