@@ -201,10 +201,12 @@ fun SettingsScreen(
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
-                Text("Iceland Live Price Refresh", fontWeight = FontWeight.Bold)
-                Button(onClick = { viewModel.refreshIcelandPrices() }) {
-                    Text("Refresh Now")
-                }
+                Text("Iceland price refresh", fontWeight = FontWeight.Bold)
+                Text(
+                    "Manual Iceland refresh is not connected yet. The button has been removed rather than implying that prices were refreshed. Retailer catalogue refresh and freshness reporting remain to be completed.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
 
@@ -300,15 +302,11 @@ fun SettingsScreen(
 
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text("Household Pantry Sync", fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(8.dp))
-                Button(onClick = { viewModel.triggerManualSync() }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Sync Now")
-                }
-                if (uiState.syncStatusMessage != null) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(uiState.syncStatusMessage!!, color = MaterialTheme.colorScheme.primary)
-                }
+                Text(
+                    "Household sync and device coordination are managed from the Household menu.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 Spacer(modifier = Modifier.height(16.dp))
                 Button(onClick = { viewModel.clearChatHistory() }, modifier = Modifier.fillMaxWidth()) {
                     Text("Clear Chat History")
