@@ -55,8 +55,14 @@ class MealPlannerForegroundPollingTest {
         assertTrue("DISCUSSED must be eligible for polling", awaiting.contains("DISCUSSED"))
         assertTrue("SYNC_FAILED must be eligible for polling", awaiting.contains("SYNC_FAILED"))
 
-        assertFalse("ACCEPTED is terminal and must not trigger polling", awaiting.contains("ACCEPTED"))
-        assertFalse("DECLINED is terminal and must not trigger polling", awaiting.contains("DECLINED"))
+        assertFalse("ACCEPTED is not awaiting a decision", awaiting.contains("ACCEPTED"))
+        assertFalse("DECLINED is not awaiting a decision", awaiting.contains("DECLINED"))
+
+        val pollable = MealPlannerViewModel.POLLABLE_REQUEST_STATUSES
+        assertTrue("ACCEPTED must keep polling for Main's eventual response", pollable.contains("ACCEPTED"))
+        assertTrue("IN_PROGRESS must keep polling while Main adjusts the meal", pollable.contains("IN_PROGRESS"))
+        assertFalse("COMPLETED is terminal and must not trigger polling", pollable.contains("COMPLETED"))
+        assertFalse("DECLINED is terminal and must not trigger polling", pollable.contains("DECLINED"))
     }
 
     @Test
@@ -82,7 +88,15 @@ class MealPlannerForegroundPollingTest {
         assertTrue("Polling job should be active for pending request", viewModel.isPollingActive)
 
         viewModel.updatePollingState(listOf(acceptedRequest), isFollower = true)
-        assertFalse("Polling job must stop promptly when request transitions to ACCEPTED", viewModel.isPollingActive)
+        assertTrue("Polling must continue after ACCEPTED while Main prepares the response", viewModel.isPollingActive)
+
+        val inProgressRequest = createTestRequest(id = "req_3", status = "IN_PROGRESS")
+        viewModel.updatePollingState(listOf(inProgressRequest), isFollower = true)
+        assertTrue("Polling must continue while Main is adjusting the meal", viewModel.isPollingActive)
+
+        val completedRequest = createTestRequest(id = "req_4", status = "COMPLETED")
+        viewModel.updatePollingState(listOf(completedRequest), isFollower = true)
+        assertFalse("Polling must stop after request is completed", viewModel.isPollingActive)
 
         viewModel.updatePollingState(emptyList(), isFollower = true)
         assertFalse("Polling job must remain inactive when requests list is empty", viewModel.isPollingActive)

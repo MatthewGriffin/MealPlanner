@@ -374,10 +374,13 @@ class MealPlannerViewModel @Inject constructor(
     ) {
         latestPollingRequests = requests
         latestIsFollower = isFollower
-        val hasAwaitingRequest = isPlannerForeground &&
+        // Keep polling through ACCEPTED and IN_PROGRESS: Main may still be composing
+        // or saving the response, and those canonical status/response updates must reach
+        // the Follower without requiring a manual sync.
+        val hasPollableRequest = isPlannerForeground &&
             isFollower &&
-            requests.any { it.status in AWAITING_MAIN_STATUSES }
-        if (hasAwaitingRequest) {
+            requests.any { it.status in POLLABLE_REQUEST_STATUSES }
+        if (hasPollableRequest) {
             if (pollingJob == null || pollingJob?.isActive == false) {
                 startPolling(pollIntervalMs)
             }
