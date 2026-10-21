@@ -25,6 +25,8 @@ class IcelandProductParserTest {
         assertEquals("Iceland Frozen Broccoli Florets 1kg", prod.name)
         assertEquals(Money(180L), offer.price) // £1.80
         assertEquals(RetailAvailability.IN_STOCK, offer.availability)
+        assertEquals(com.example.chatgpt_mealplanner.retail.contract.RetailPriceScope.ONLINE, offer.priceScope)
+        assertEquals(null, offer.storeLocationId)
     }
 
     @Test
