@@ -28,6 +28,23 @@ class RetailStorePreferenceStore @Inject constructor(
 ) {
     private val json = Json { ignoreUnknownKeys = true }
 
+    fun getBranchSearchRadiusMeters(): Int {
+        val stored = context?.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+            ?.getInt(KEY_BRANCH_SEARCH_RADIUS_METERS, DEFAULT_BRANCH_SEARCH_RADIUS_METERS)
+            ?: DEFAULT_BRANCH_SEARCH_RADIUS_METERS
+        return stored.takeIf { it in SUPPORTED_BRANCH_SEARCH_RADII_METERS } ?: DEFAULT_BRANCH_SEARCH_RADIUS_METERS
+    }
+
+    fun setBranchSearchRadiusMeters(radiusMeters: Int): Boolean {
+        if (radiusMeters !in SUPPORTED_BRANCH_SEARCH_RADII_METERS) return false
+        return runCatching {
+            context?.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+                ?.edit()
+                ?.putInt(KEY_BRANCH_SEARCH_RADIUS_METERS, radiusMeters)
+                ?.commit() == true
+        }.getOrDefault(false)
+    }
+
     fun getPreferredStores(): List<RetailStoreLocation> = runCatching {
         val raw = context?.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
             ?.getString(KEY_PREFERRED_STORES, null) ?: return emptyList()
@@ -90,5 +107,8 @@ class RetailStorePreferenceStore @Inject constructor(
     companion object {
         const val PREFERENCES_NAME = "retail_store_preferences_v1"
         const val KEY_PREFERRED_STORES = "preferred_stores"
+        const val KEY_BRANCH_SEARCH_RADIUS_METERS = "branch_search_radius_meters"
+        const val DEFAULT_BRANCH_SEARCH_RADIUS_METERS = 5_000
+        val SUPPORTED_BRANCH_SEARCH_RADII_METERS = setOf(1_000, 3_000, 5_000, 10_000, 15_000)
     }
 }
