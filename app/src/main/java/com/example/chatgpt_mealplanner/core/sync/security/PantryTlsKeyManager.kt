@@ -25,7 +25,6 @@ open class PantryTlsKeyManager @Inject constructor(
 ) {
     private val keyAlias = "pantry_tls_key"
     private val fileName = "pantry_tls_keystore.p12"
-    private val defaultFallbackPassword = "pantry_tls_password_12345".toCharArray()
 
     private fun getOrCreateEncryptedPassword(allowCreate: Boolean): CharArray {
         val ctx = context ?: throw SecurityException("Application context unavailable; refusing to use an unprotected TLS password")

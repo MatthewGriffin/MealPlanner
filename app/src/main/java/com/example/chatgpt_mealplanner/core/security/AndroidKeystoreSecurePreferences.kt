@@ -74,7 +74,8 @@ internal class AndroidKeystoreSecurePreferences(
     context: Context,
     private val prefsName: String,
     private val legacyTypes: Map<String, Char>,
-    private val cipher: SecureValueCipher = AndroidKeystoreValueCipher(keyAliasFor(prefsName))
+    private val cipher: SecureValueCipher = AndroidKeystoreValueCipher(keyAliasFor(prefsName)),
+    private val legacyEncryptedReader: (() -> Map<String, String>)? = null
 ) {
     private val appContext = context.applicationContext
     private val backing = appContext.getSharedPreferences("${prefsName}_keystore_v2", Context.MODE_PRIVATE)
@@ -156,6 +157,7 @@ internal class AndroidKeystoreSecurePreferences(
 
         val legacyValues = when {
             plainValues.isNotEmpty() -> plainValues
+            legacyEncryptedReader != null -> legacyEncryptedReader.invoke()
             legacyFileExists() -> readLegacyEncryptedPreferences()
             else -> emptyMap()
         }

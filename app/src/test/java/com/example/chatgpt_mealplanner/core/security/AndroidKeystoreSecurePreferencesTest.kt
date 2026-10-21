@@ -31,6 +31,28 @@ class AndroidKeystoreSecurePreferencesTest {
     }
 
     @Test
+    fun migratesLegacyEncryptedValuesAndPreservesLegacyFile() {
+        val name = "legacy_encrypted_test"
+        context.getSharedPreferences(name, Context.MODE_PRIVATE).edit()
+            .putString("legacy_file_sentinel", "keep-me")
+            .commit()
+        val prefs = AndroidKeystoreSecurePreferences(
+            context,
+            name,
+            mapOf("secret" to 'S', "port" to 'I'),
+            FakeCipher(),
+            legacyEncryptedReader = { mapOf("secret" to "S:old-secret", "port" to "I:8443") }
+        )
+
+        assertEquals("old-secret", prefs.getString("secret"))
+        assertEquals(8443, prefs.getInt("port", 0))
+        assertEquals(
+            "keep-me",
+            context.getSharedPreferences(name, Context.MODE_PRIVATE).getString("legacy_file_sentinel", null)
+        )
+    }
+
+    @Test
     fun rejectsCiphertextWhenKeyIsMissingInsteadOfCreatingReplacement() {
         val name = "lost_key_test"
         context.getSharedPreferences("${name}_keystore_v2", Context.MODE_PRIVATE).edit()
