@@ -113,8 +113,8 @@ val FOLLOWER_MIGRATION_6_7 = object : Migration(6, 7) {
         db.execSQL("ALTER TABLE follower_meals ADD COLUMN mealDate TEXT")
         // Avoid SQLite JSON1 functions here: they are not available in every Android/Robolectric SQLite build.
         // Read legacy payloads and backfill dates using Android's built-in JSON parser instead.
+        val legacyDates = mutableListOf<Pair<String, String>>()
         db.query("SELECT id, payloadJson FROM follower_meals WHERE mealDate IS NULL").use { cursor ->
-            val update = db.compileStatement("UPDATE follower_meals SET mealDate = ? WHERE id = ?")
             val idIndex = cursor.getColumnIndexOrThrow("id")
             val payloadIndex = cursor.getColumnIndexOrThrow("payloadJson")
             while (cursor.moveToNext()) {
@@ -124,13 +124,15 @@ val FOLLOWER_MIGRATION_6_7 = object : Migration(6, 7) {
                     org.json.JSONObject(payload).optJSONObject("meal")?.optString("date")
                         ?.takeIf { it.isNotBlank() && it != "null" }
                 }.getOrNull()
-                if (date != null) {
-                    update.clearBindings()
-                    update.bindString(1, date)
-                    update.bindString(2, id)
-                    update.executeUpdateDelete()
-                }
+                if (date != null) legacyDates += id to date
             }
+        }
+        val update = db.compileStatement("UPDATE follower_meals SET mealDate = ? WHERE id = ?")
+        legacyDates.forEach { (id, date) ->
+            update.clearBindings()
+            update.bindString(1, date)
+            update.bindString(2, id)
+            update.executeUpdateDelete()
         }
         db.execSQL("CREATE INDEX IF NOT EXISTS index_follower_meals_mealDate ON follower_meals (mealDate)")
     }
