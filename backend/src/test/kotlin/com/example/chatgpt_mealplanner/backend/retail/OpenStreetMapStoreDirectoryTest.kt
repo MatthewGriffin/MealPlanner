@@ -162,19 +162,19 @@ class OpenStreetMapStoreDirectoryTest {
     }
 
     @Test
-    fun asdaQueryAlsoIncludesExplicitlyNamedExpressListings() {
+    fun queryUsesSelectedRetailerIdentityWithoutHardcodingBranchFormats() {
         val query = directory.buildQuery(
             com.example.chatgpt_mealplanner.retail.contract.StoreDirectorySearchRequest(
-                retailerId = RetailerId.ASDA,
+                retailerId = RetailerId.TESCO,
                 postcode = "SW1A 1AA"
             ),
             51.5,
             -0.1
         )
         assertTrue(query.contains("""nwr["shop"](around:5000,51.5,-0.1)"""))
-        assertTrue(query.contains("""nwr["name"~"ASDA",i]"""))
-        assertTrue(query.contains("""nwr["brand"~"ASDA",i]"""))
-        assertTrue(query.contains("""nwr["operator"~"ASDA",i]"""))
+        assertTrue(query.contains("""nwr["name"~"Tesco",i]"""))
+        assertTrue(query.contains("""nwr["brand"~"Tesco",i]"""))
+        assertTrue(query.contains("""nwr["operator"~"Tesco",i]"""))
         assertTrue(!query.contains("Express"))
     }
 
