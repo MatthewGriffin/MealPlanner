@@ -236,6 +236,18 @@ class OpenStreetMapStoreDirectoryTest {
     }
 
     @Test
+    fun parserRejectsAsdaCafeAndUnnamedAddresslessBrandPoint() {
+        val raw = """{"elements":[
+          {"type":"node","id":701,"lat":51.5,"lon":-0.1,"tags":{"name":"ASDA Cafe","brand":"ASDA","amenity":"cafe"}},
+          {"type":"node","id":702,"lat":51.501,"lon":-0.101,"tags":{"brand":"ASDA","shop":"supermarket"}},
+          {"type":"node","id":703,"lat":51.502,"lon":-0.102,"tags":{"name":"ASDA Superstore","brand":"ASDA","shop":"supermarket","addr:street":"Example Road","addr:postcode":"SW1A 1AA"}}
+        ]}"""
+        val stores = directory.parseOverpassResponse(raw, RetailerId.ASDA, 51.5, -0.1)
+        assertEquals(1, stores.size)
+        assertEquals("ASDA Superstore", stores.single().name)
+    }
+
+    @Test
     fun parserExcludesAsdaExpressButKeepsRegularAsdaStore() {
         val raw = """{"elements":[
           {"type":"node","id":501,"lat":51.5,"lon":-0.1,"tags":{"name":"Asda Express","brand":"Asda Express","shop":"convenience","addr:postcode":"SW1A 1AA"}},
