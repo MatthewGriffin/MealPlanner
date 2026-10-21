@@ -68,7 +68,8 @@ class OpenStreetMapStoreDirectory(
     ): StoreDirectorySearchResponse {
         require(request.radiusMeters in 500..15_000) { "Radius must be between 500 and 15000 metres." }
         val (lat, lon) = resolveCenter(request, onProgress)
-        val key = "${request.retailerId}:${"%.4f".format(Locale.US, lat)}:${"%.4f".format(Locale.US, lon)}:${request.radiusMeters}"
+        // Version the cache so earlier incomplete results cannot hide newly discovered Express shops.
+        val key = "shops-v2:${request.retailerId}:${"%.4f".format(Locale.US, lat)}:${"%.4f".format(Locale.US, lon)}:${request.radiusMeters}"
         onProgress("Checking cached branch results…")
         cache[key]?.let {
             if (it.expiresAt > clock()) return it.response.copy(fromCache = true)
@@ -159,9 +160,21 @@ class OpenStreetMapStoreDirectory(
         // selected retailer locally. Three separate name/brand/operator scans can time out
         // on public Overpass instances even for otherwise modest postcode searches.
         val radius = request.radiusMeters
-        return """[out:json][timeout:20];
-          nwr["shop"~"^(supermarket|convenience)$"](around:$radius,$lat,$lon);
-          out center tags;"""
+        return if (request.retailerId == RetailerId.ASDA) {
+            // Some ASDA Express listings have the name but lack a usable shop tag.
+            // The parser still rejects results explicitly tagged as non-grocery services.
+            """[out:json][timeout:20];
+              (
+                nwr["shop"~"^(supermarket|convenience)$"](around:$radius,$lat,$lon);
+                nwr["name"~"ASDA\\s*Express",i](around:$radius,$lat,$lon);
+                nwr["brand"~"ASDA\\s*Express",i](around:$radius,$lat,$lon);
+              );
+              out center tags;"""
+        } else {
+            """[out:json][timeout:20];
+              nwr["shop"~"^(supermarket|convenience)$"](around:$radius,$lat,$lon);
+              out center tags;"""
+        }
     }
 
     private suspend fun resolveCenter(
@@ -282,13 +295,15 @@ class OpenStreetMapStoreDirectory(
             val tags = item["tags"]?.jsonObject ?: return@mapNotNull null
             // Only actual grocery-retail premises qualify; brand matches alone are insufficient.
             val shopType = tags.text("shop")?.lowercase()
-            if (shopType !in GROCERY_SHOP_TYPES) return@mapNotNull null
             val identity = listOfNotNull(
                 tags.text("brand"), tags.text("brand:en"),
                 tags.text("operator"), tags.text("operator:en"),
                 tags.text("name"), tags.text("name:en"),
                 tags.text("official_name"), tags.text("alt_name")
             ).joinToString(" ")
+            val isExplicitAsdaExpress = retailerId == RetailerId.ASDA &&
+                Regex("\\basda\\s+express\\b", RegexOption.IGNORE_CASE).containsMatchIn(identity)
+            if (shopType !in GROCERY_SHOP_TYPES && !(shopType == null && isExplicitAsdaExpress)) return@mapNotNull null
             if (!matchesRetailer(identity, retailerId)) return@mapNotNull null
             val lat = item.number("lat") ?: item["center"]?.jsonObject?.number("lat") ?: return@mapNotNull null
             val lon = item.number("lon") ?: item["center"]?.jsonObject?.number("lon") ?: return@mapNotNull null
