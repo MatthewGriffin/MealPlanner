@@ -21,11 +21,21 @@ fun interface StoreDirectoryProvider {
     suspend fun search(request: StoreDirectorySearchRequest): StoreDirectorySearchResponse
 }
 
+interface StoreDirectoryProgressProvider : StoreDirectoryProvider {
+    suspend fun search(
+        request: StoreDirectorySearchRequest,
+        onProgress: (String) -> Unit
+    ): StoreDirectorySearchResponse
+
+    override suspend fun search(request: StoreDirectorySearchRequest): StoreDirectorySearchResponse =
+        search(request) { }
+}
+
 /** OSM IDs are directory IDs only; retailerStoreId is never inferred from them. */
 class OpenStreetMapStoreDirectory(
     private val client: HttpClient,
     private val clock: () -> Long = System::currentTimeMillis
-) : StoreDirectoryProvider {
+) : StoreDirectoryProgressProvider {
     constructor() : this(HttpClient(OkHttp) {
         install(HttpTimeout) {
             connectTimeoutMillis = 15_000
@@ -42,14 +52,18 @@ class OpenStreetMapStoreDirectory(
     @Volatile private var lastGeocodeAt = 0L
     private val json = Json { ignoreUnknownKeys = true }
 
-    override suspend fun search(request: StoreDirectorySearchRequest): StoreDirectorySearchResponse {
+    override suspend fun search(
+        request: StoreDirectorySearchRequest,
+        onProgress: (String) -> Unit
+    ): StoreDirectorySearchResponse {
         require(request.radiusMeters in 500..15_000) { "Radius must be between 500 and 15000 metres." }
-        val (lat, lon) = resolveCenter(request)
+        val (lat, lon) = resolveCenter(request, onProgress)
         val key = "${request.retailerId}:${"%.4f".format(Locale.US, lat)}:${"%.4f".format(Locale.US, lon)}:${request.radiusMeters}"
         cache[key]?.let {
             if (it.expiresAt > clock()) return it.response.copy(fromCache = true)
             cache.remove(key, it)
         }
+        onProgress("Searching OpenStreetMap data for ${request.retailerId} branches near the postcode…")
         overpassMutex.withLock {
             val wait = 1_100L - (clock() - lastOverpassAt)
             if (wait > 0) delay(wait)
@@ -93,7 +107,10 @@ class OpenStreetMapStoreDirectory(
         );out center tags;"""
     }
 
-    private suspend fun resolveCenter(request: StoreDirectorySearchRequest): Pair<Double, Double> {
+    private suspend fun resolveCenter(
+        request: StoreDirectorySearchRequest,
+        onProgress: (String) -> Unit
+    ): Pair<Double, Double> {
         val hasLat = request.latitude != null
         val hasLon = request.longitude != null
         require(hasLat == hasLon) { "Provide both coordinates, or a UK postcode." }
@@ -108,6 +125,7 @@ class OpenStreetMapStoreDirectory(
         require(!postcode.isNullOrBlank() && postcode.length <= 12 && postcode.matches(Regex("^[A-Z0-9 ]+$"))) {
             "A valid UK postcode or coordinates are required."
         }
+        onProgress("Looking up the UK postcode location with Nominatim…")
         geocodeMutex.withLock {
             val wait = 1_100L - (clock() - lastGeocodeAt)
             if (wait > 0) delay(wait)
