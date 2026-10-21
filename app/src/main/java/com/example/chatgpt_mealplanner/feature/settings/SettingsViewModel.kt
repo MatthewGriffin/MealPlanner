@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.chatgpt_mealplanner.contract.AiProviderResponse
 import com.example.chatgpt_mealplanner.backend.retail.OpenStreetMapStoreDirectory
 import com.example.chatgpt_mealplanner.backend.retail.StoreDirectoryProvider
+import com.example.chatgpt_mealplanner.backend.retail.StoreDirectoryProgressProvider
 import com.example.chatgpt_mealplanner.core.ai.provider.GEMINI_MODEL_ID
 import com.example.chatgpt_mealplanner.core.ai.provider.MealPlannerAiProvider
 import com.example.chatgpt_mealplanner.core.backup.BackupManager
@@ -115,16 +116,22 @@ class SettingsViewModel @Inject constructor(
         _uiState.update {
             it.copy(
                 isStoreSearchInProgress = true,
-                storeSearchMessage = "Searching OpenStreetMap…",
+                storeSearchMessage = "Step 1 of 2: Preparing postcode lookup…",
                 discoveredStores = emptyList()
             )
         }
         viewModelScope.launch {
             try {
                 val response = withContext(Dispatchers.IO) {
-                    storeDirectoryProvider.search(
-                        StoreDirectorySearchRequest(retailerId = retailerId, postcode = cleanPostcode)
-                    )
+                    val request = StoreDirectorySearchRequest(retailerId = retailerId, postcode = cleanPostcode)
+                    val progressProvider = storeDirectoryProvider as? StoreDirectoryProgressProvider
+                    if (progressProvider != null) {
+                        progressProvider.search(request) { status ->
+                            _uiState.update { it.copy(storeSearchMessage = status) }
+                        }
+                    } else {
+                        storeDirectoryProvider.search(request)
+                    }
                 }
                 _uiState.update {
                     it.copy(
@@ -143,7 +150,17 @@ class SettingsViewModel @Inject constructor(
                     it.copy(
                         isStoreSearchInProgress = false,
                         discoveredStores = emptyList(),
-                        storeSearchMessage = "Store search failed: ${e.message ?: "service unavailable"}. You can still add a branch manually."
+                        storeSearchMessage = buildString {
+                            val currentStage = _uiState.value.storeSearchMessage.orEmpty()
+                            append(
+                                if (currentStage.contains("postcode", ignoreCase = true)) {
+                                    "Postcode lookup failed"
+                                } else {
+                                    "Branch directory search failed"
+                                }
+                            )
+                            append(": ${e.message ?: "service unavailable"}. You can still add a branch manually.")
+                        }
                     )
                 }
             }
