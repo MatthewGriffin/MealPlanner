@@ -80,6 +80,43 @@ class OpenStreetMapStoreDirectoryTest {
     }
 
     @Test
+    fun successfulOverpassSearchIsSupplementedWithExplicitAsdaExpressFuelSiteListing() = runBlocking {
+        val client = HttpClient(MockEngine { request ->
+            if (request.url.host == "nominatim.openstreetmap.org") {
+                assertEquals("ASDA Express", request.url.parameters["q"])
+                respond(
+                    content = """[{"osm_type":"way","osm_id":771,"lat":"53.27776","lon":"-2.90437","category":"amenity","type":"fuel","name":"ASDA Ellesmere Port Express Petrol","display_name":"ASDA Ellesmere Port Express Petrol, 118 Whitby Road, Ellesmere Port, CH65 6TF","address":{"house_number":"118","road":"Whitby Road","city":"Ellesmere Port","postcode":"CH65 6TF"}}]""",
+                    status = HttpStatusCode.OK,
+                    headers = headersOf(HttpHeaders.ContentType, "application/json")
+                )
+            } else {
+                respond(
+                    content = """{"elements":[]}""",
+                    status = HttpStatusCode.OK,
+                    headers = headersOf(HttpHeaders.ContentType, "application/json")
+                )
+            }
+        })
+        try {
+            val asdaDirectory = OpenStreetMapStoreDirectory(client)
+            val response = asdaDirectory.search(
+                com.example.chatgpt_mealplanner.retail.contract.StoreDirectorySearchRequest(
+                    retailerId = RetailerId.ASDA,
+                    latitude = 53.27776,
+                    longitude = -2.90437
+                )
+            )
+            assertTrue(response.stores.any {
+                it.name == "ASDA Ellesmere Port Express Petrol" &&
+                    it.postcode == "CH65 6TF" &&
+                    it.format.name == "ASDA_EXPRESS"
+            })
+        } finally {
+            client.close()
+        }
+    }
+
+    @Test
     fun queryUsesOneBoundedNearbyShopScan() {
         val query = directory.buildQuery(
             com.example.chatgpt_mealplanner.retail.contract.StoreDirectorySearchRequest(
