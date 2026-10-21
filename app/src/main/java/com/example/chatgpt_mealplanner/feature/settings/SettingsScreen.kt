@@ -291,7 +291,7 @@ fun SettingsScreen(
                         Text("Search retailer: ${retailerLabel(selectedStoreRetailer)}")
                     }
                     DropdownMenu(expanded = retailerMenuExpanded, onDismissRequest = { retailerMenuExpanded = false }) {
-                        RetailerId.entries.forEach { retailer ->
+                        RetailerId.entries.filter { it != RetailerId.FOOD_WAREHOUSE }.forEach { retailer ->
                             DropdownMenuItem(
                                 text = { Text(retailerLabel(retailer)) },
                                 onClick = {
@@ -503,7 +503,7 @@ fun SettingsScreen(
 private fun retailerLabel(retailerId: RetailerId): String = when (retailerId) {
     RetailerId.ASDA -> "ASDA"
     RetailerId.ICELAND -> "Iceland"
-    RetailerId.FOOD_WAREHOUSE -> "The Food Warehouse"
+    RetailerId.FOOD_WAREHOUSE -> "Iceland"
     RetailerId.TESCO -> "Tesco"
     RetailerId.MORRISONS -> "Morrisons"
     RetailerId.SAINSBURYS -> "Sainsbury's"
