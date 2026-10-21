@@ -35,7 +35,6 @@ import javax.inject.Inject
 data class SettingsUiState(
     val isApiKeyConfigured: Boolean = false,
     val connectionTestResult: String? = null,
-    val minimumSavingsInput: String = "3.00",
     val exportMessage: String? = null,
     val syncStatusMessage: String? = null,
     val isMainRole: Boolean = false,
@@ -160,14 +159,6 @@ class SettingsViewModel @Inject constructor(
             }
             _uiState.update { it.copy(connectionTestResult = resultText) }
         }
-    }
-
-    fun updateMinimumSavingsInput(value: String) {
-        _uiState.update { it.copy(minimumSavingsInput = value) }
-    }
-
-    fun saveMinimumSavings() {
-        // DataStore persistence logic
     }
 
     fun refreshIcelandPrices() {
