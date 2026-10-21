@@ -67,6 +67,28 @@ fun SettingsScreen(
     var selectedStoreFormat by remember { mutableStateOf(RetailStoreFormat.ASDA_SUPERMARKET) }
     var retailerMenuExpanded by remember { mutableStateOf(false) }
     var formatMenuExpanded by remember { mutableStateOf(false) }
+    var showClearChatHistoryDialog by remember { mutableStateOf(false) }
+
+    if (showClearChatHistoryDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearChatHistoryDialog = false },
+            title = { Text("Clear chat history?") },
+            text = { Text("This permanently deletes chat conversations on this device. Inventory and meal plans are not cleared.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showClearChatHistoryDialog = false
+                    viewModel.clearChatHistory()
+                }) {
+                    Text("Clear history")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearChatHistoryDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 
     if (uiState.isPassphraseDialogVisible) {
         EncryptedBackupPassphraseDialog(
@@ -283,7 +305,7 @@ fun SettingsScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(modifier = Modifier.height(16.dp))
-                Button(onClick = { viewModel.clearChatHistory() }, modifier = Modifier.fillMaxWidth()) {
+                Button(onClick = { showClearChatHistoryDialog = true }, modifier = Modifier.fillMaxWidth()) {
                     Text("Clear Chat History")
                 }
                 Spacer(modifier = Modifier.height(8.dp))
