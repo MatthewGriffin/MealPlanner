@@ -342,8 +342,13 @@ fun SettingsScreen(
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Column(modifier = Modifier.padding(10.dp)) {
                             Text("${retailerLabel(store.retailerId)} · ${store.name}", fontWeight = FontWeight.SemiBold)
-                            // Full addresses from community map data can be incomplete or misleading.
-                            // Keep the branch picker focused on the store name, postcode, and distance.
+                            if (store.address.isNotBlank()) {
+                                Text(
+                                    store.address,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                             Text(
                                 listOfNotNull(
                                     store.postcode?.takeIf { it.isNotBlank() },
