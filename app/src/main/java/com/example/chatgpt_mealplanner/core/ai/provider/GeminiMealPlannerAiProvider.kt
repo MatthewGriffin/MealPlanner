@@ -44,7 +44,7 @@ const val GEMINI_PRIMARY_MODEL = "gemini-3.7-flash"
 const val GEMINI_SECONDARY_MODEL = "gemini-3.6-flash"
 const val GEMINI_TERTIARY_MODEL = "gemini-3.5-flash-lite"
 const val GEMINI_MODEL_ID = GEMINI_PRIMARY_MODEL
-const val GLOBAL_TIMEOUT_CAP_MS = 45_000L
+const val GLOBAL_TIMEOUT_CAP_MS = 120_000L
 
 val GEMINI_MODEL_CHAIN = listOf(
     GEMINI_PRIMARY_MODEL,
@@ -365,7 +365,7 @@ class GeminiMealPlannerAiProvider @Inject constructor(
             connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
             connection.setRequestProperty("Accept", "application/json")
             connection.connectTimeout = 15000
-            connection.readTimeout = 30000
+            connection.readTimeout = 55_000
             connection.doOutput = true
             connection.doInput = true
 

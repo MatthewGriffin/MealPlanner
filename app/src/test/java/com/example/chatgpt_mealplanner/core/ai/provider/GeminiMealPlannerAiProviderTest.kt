@@ -660,8 +660,8 @@ class GeminiMealPlannerAiProviderTest {
     }
 
     @Test
-    fun globalTimeoutCap_constants_definedAt45Seconds() {
-        assertEquals(45_000L, com.example.chatgpt_mealplanner.core.ai.provider.GLOBAL_TIMEOUT_CAP_MS)
+    fun globalTimeoutCap_constants_allowSlowGeminiResponsesUpTo120Seconds() {
+        assertEquals(120_000L, com.example.chatgpt_mealplanner.core.ai.provider.GLOBAL_TIMEOUT_CAP_MS)
     }
 
     @Test

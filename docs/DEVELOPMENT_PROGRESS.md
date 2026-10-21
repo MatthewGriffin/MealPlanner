@@ -12,7 +12,7 @@
 4. **Phase 9 Step 1**: AI Request Reliability Diagnostic & Architecture Analysis.
 5. **Phase 9 Step 2**: AI Error Classification and Retry UI Fixes (`AiMealPlannerOrchestrator` & `ChatViewModel` error reclassification fix).
 6. **Phase 9 Step 3**: AI Request Lifecycle, Background Continuity, and Visible Progress (`ChatViewModel` progress ticker & stage status).
-7. **Phase 9 Step 4-4B**: AI Latency, Bounded Waiting, and Timeout Safety Checkpoint (`GLOBAL_TIMEOUT_CAP_MS = 45_000L` global timeout cap with behavioral tests).
+7. **Phase 9 Step 4-4B**: AI Latency, Bounded Waiting, and Timeout Safety Checkpoint (`GLOBAL_TIMEOUT_CAP_MS = 120_000L` global timeout cap with behavioral tests).
 8. **Phase 9 Step 4C**: Repair JVM Test Hang in `AiOrchestratorIdempotencyTest` (mocked HTTP calls in `networkCalls_remainOffMainAcrossRetries` & `persistedCredential_isUsedAcrossRetries`).
 9. **Phase 9 Step 4G**: Test Architecture Correction & Full HTTP Mock Coverage in `GeminiMealPlannerAiProviderTest.kt`.
 10. **Phase 9 Step 4I**: Isolated JVM Test Execution & Production Guard Verification (Executed `secondary429_immediatelyFallsBackTo35FlashLite`, timed out at 61s [EXIT_CODE=124] due to Gradle build/daemon overhead within 60s timeout window).
@@ -26,7 +26,7 @@ Isolated root cause: `kotlinx.coroutines.test.runTest` holds 45s `withTimeoutOrN
 
 ## Key Architectural Principles & Safety Constraints
 - **Full HTTP Mock Coverage in Provider Tests**: Audited all test methods in `GeminiMealPlannerAiProviderTest.kt` (`geminiProvider_blockingNetworkCall_doesNotExecuteOnMainDispatcher`, `geminiProvider_existingCredential_reachesNetworkRequest`, `geminiProvider_networkFailure_returnsErrorNotSuccess`, `geminiProvider_networkFailure_neverReturnsActionCompletedSuccessfully`, `secondary429_immediatelyFallsBackTo35FlashLite`, `secondary503RetryThenFallsBackTo35FlashLite`, `modelSpecific404_immediatelySkipsModel`, `flashLite_canCompleteRequest`). Added explicit `httpCallHandler` mocks to all previously un-mocked test methods, eliminating real internet socket connections during test execution.
-- **Global 45s Request Timeout Cap**: Enforced `GLOBAL_TIMEOUT_CAP_MS = 45_000L` in `GeminiMealPlannerAiProvider.kt` using `withTimeoutOrNull` across the model fallback chain. Note: `withTimeoutOrNull` bounds coroutine suspension points; blocking `HttpURLConnection` socket reads are bounded by `connection.connectTimeout = 15000` and `connection.readTimeout = 30000`.
+- **Global 120s Request Timeout Cap**: Enforced `GLOBAL_TIMEOUT_CAP_MS = 120_000L` in `GeminiMealPlannerAiProvider.kt` using `withTimeoutOrNull` across the model fallback chain. The Gemini response read timeout is 55s, allowing a slow first attempt and one bounded retry/fallback before the overall cap. The connection timeout remains 15s. Note: `withTimeoutOrNull` bounds coroutine suspension points; blocking `HttpURLConnection` socket reads are bounded by the connection/read timeout settings.
 - **Request Lifecycle Progress Ticker**: `ChatViewModel` executes a 1-second coroutine ticker during in-flight requests, updating `elapsedSeconds` and stage status text ("Reading pantry context...", "Calling AI assistant...", "Processing meal actions...", "Still waiting for AI response...").
 - **Background Continuity**: AI requests are owned by `ChatViewModel`'s `viewModelScope` on `Dispatchers.IO`. Returning to `ChatScreen` shows current progress status, elapsed time, completed response, or Retry card without losing state.
 - **Physical Device Protection**: OnePlus Main (CPH2707) and Samsung Follower (SM-G965F) remain 100% isolated and untouched.
@@ -303,3 +303,11 @@ The user confirmed meal-plan synchronization now works on both phones.
 - Data integrity prerequisite fixed in commits `a305b2d` and `268ccb7`: meal replacement now updates the existing row and ingredients in one Room transaction, preserving meal identity and linked requests instead of triggering the `ON DELETE CASCADE` relationship.
 - Mockup inspiration applied selectively: pantry inventory sorts by earliest use-by date, then best-before date, with undated items last. Main can open a prefilled shopping item from a Low Stock pantry card and choose the purchase quantity before adding it; the flow reuses or creates the active list and avoids exact-name duplicates. Shopping now shows checked-item progress overall and within each retailer group. The compact pantry summary remains a candidate for later review. The attached ZIP is a small React/Vite demo with hardcoded sample meal/shopping data and browser local storage; its data and persistence approach were not reused. Archive code was inspected without execution.
 - Source review completed; build and tests were not run during this continuation.
+
+
+## Gemini Slow-Response Timeout Adjustment (2026-10-21)
+
+- The app was reporting a timeout at exactly 45 seconds because the provider had a hard-coded global 45-second cap across all Gemini model attempts. The socket read timeout was also 30 seconds, so a slow but otherwise valid generation could time out before retry/fallback had a fair chance to complete.
+- Increased the global cap to 120 seconds and the response read timeout to 55 seconds. The connection-establishment timeout remains 15 seconds. The timeout is still bounded; this does not retry indefinitely.
+- Updated the provider timeout-configuration regression test to assert the 120-second cap. The typed timeout error and retry UI behavior remain unchanged.
+- Verification required: user-run `build-and-test.sh`; no local build, device install, or data changes were performed for this commit.
