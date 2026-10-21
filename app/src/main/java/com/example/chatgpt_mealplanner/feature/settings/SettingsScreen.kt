@@ -1,5 +1,6 @@
 package com.example.chatgpt_mealplanner.feature.settings
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -222,7 +223,7 @@ fun SettingsScreen(
 
                 Text("Find a branch", fontWeight = FontWeight.SemiBold)
                 Text(
-                    "Search public OpenStreetMap listings by UK postcode. Results can be incomplete, so verify the branch before saving it.",
+                    "Branch search uses two services: the postcode is first converted to a location, then public map listings are searched for the selected retailer. Results can be incomplete, so verify the branch before saving it.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -262,18 +263,24 @@ fun SettingsScreen(
                     }
                     Spacer(modifier = Modifier.height(6.dp))
                 }
-                TextButton(onClick = {
-                    runCatching {
-                        context.startActivity(
-                            android.content.Intent(
-                                android.content.Intent.ACTION_VIEW,
-                                android.net.Uri.parse("https://www.openstreetmap.org/copyright")
-                            )
-                        )
-                    }
-                }) {
-                    Text("© OpenStreetMap contributors · Attribution and licence")
-                }
+                Text(
+                    "Postcode lookup: Nominatim · Branch listings: © OpenStreetMap contributors",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            runCatching {
+                                context.startActivity(
+                                    android.content.Intent(
+                                        android.content.Intent.ACTION_VIEW,
+                                        android.net.Uri.parse("https://www.openstreetmap.org/copyright")
+                                    )
+                                )
+                            }
+                        }
+                        .padding(vertical = 4.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 HorizontalDivider()
                 Spacer(modifier = Modifier.height(8.dp))
 
