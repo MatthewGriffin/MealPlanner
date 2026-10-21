@@ -105,6 +105,7 @@ class OpenStreetMapStoreDirectoryTest {
             if (request.url.host == "nominatim.openstreetmap.org") {
                 assertEquals("/search", request.url.encodedPath)
                 assertEquals("ASDA", request.url.parameters["q"])
+                assertEquals("gb", request.url.parameters["countrycodes"])
                 respond(
                     content = """[{"osm_type":"way","osm_id":123,"lat":"51.5","lon":"-0.1","category":"shop","type":"supermarket","name":"ASDA Superstore","display_name":"ASDA Superstore, Example Road, London, SW1A 1AA, United Kingdom","address":{"road":"Example Road","city":"London","postcode":"SW1A 1AA"},"extratags":{"brand":"ASDA"}}]""",
                     status = HttpStatusCode.OK,
@@ -263,6 +264,8 @@ class OpenStreetMapStoreDirectoryTest {
         assertTrue(query.contains("""nwr["brand"~"""))
         assertTrue(query.contains("""nwr["operator"~"""))
         assertTrue(query.contains("around:3000,51.5,-0.1"))
+        assertTrue(query.contains("""area["ISO3166-1"="GB"][admin_level=2]->.uk;"""))
+        assertTrue(query.contains("(area.uk)"))
         assertTrue(!query.contains("""["amenity"="fuel"]"""))
     }
 
@@ -354,6 +357,8 @@ class OpenStreetMapStoreDirectoryTest {
             -0.1
         )
         assertTrue(query.contains("[out:json][timeout:60]"))
+        assertTrue(query.contains("""area["ISO3166-1"="GB"][admin_level=2]->.uk;"""))
+        assertTrue(query.contains("(area.uk)"))
         assertTrue(query.contains("""nwr["shop"]["name"~"Tesco",i]"""))
         assertTrue(query.contains("""nwr["shop"]["brand"~"Tesco",i]"""))
         assertTrue(query.contains("""nwr["shop"]["operator"~"Tesco",i]"""))
