@@ -60,10 +60,10 @@ data class RetailOffer(
     val promotion: RetailPromotion? = null,
     val availability: RetailAvailability = RetailAvailability.UNKNOWN,
     val priceScope: RetailPriceScope = RetailPriceScope.ONLINE,
-    /** Stable ID of the physical branch when the source truly reports branch-specific data. */
-    val storeLocationId: String? = null,
     val sourceType: RetailOfferSourceType = RetailOfferSourceType.LIVE,
-    val observedAt: Long = System.currentTimeMillis()
+    val observedAt: Long = System.currentTimeMillis(),
+    /** Stable ID of the physical branch when the source truly reports branch-specific data. */
+    val storeLocationId: String? = null
 ) {
     fun calculateFreshness(policy: RetailFreshnessPolicy): PriceFreshness {
         val ageMs = System.currentTimeMillis() - observedAt
@@ -172,14 +172,14 @@ data class RemainderPenaltyConfig(
 @Serializable
 data class UserShoppingPreferences(
     val enabledRetailers: Set<RetailerId> = RetailerId.entries.toSet(),
-    val preferredStores: List<RetailStoreLocation> = emptyList(),
     val avoidExtraStoreTrips: Boolean = true,
     val minimumSavingsForExtraStore: Money = Money(300L), // £3.00
     val preferFrozenVegetables: Boolean = true,
     val allowLargeFrozenValuePacks: Boolean = true,
     val enableAsdaRewards: Boolean = false,
     val enableIcelandBonusCard: Boolean = false,
-    val additionalStorePenalty: Money = Money(200L) // £2.00 convenience penalty
+    val additionalStorePenalty: Money = Money(200L), // £2.00 convenience penalty
+    val preferredStores: List<RetailStoreLocation> = emptyList()
 )
 
 @Serializable
