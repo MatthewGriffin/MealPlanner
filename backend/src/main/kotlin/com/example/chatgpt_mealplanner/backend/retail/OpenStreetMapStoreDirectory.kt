@@ -261,7 +261,7 @@ class OpenStreetMapStoreDirectory(
     }
 
     internal fun buildMultiRetailerQuery(lat: Double, lon: Double, radiusMeters: Int): String {
-        val allRetailersPattern = "ASDA|Iceland|Food.*Warehouse|Tesco|Morrisons|Sainsbury|Aldi|Lidl"
+        val allRetailersPattern = "ASDA|Iceland|Food.*Warehouse|Tesco|Morrisons|McColl.?s|Sainsbury|Aldi|Lidl"
         return """[out:json][timeout:60];
           area["ISO3166-1"="GB"][admin_level=2]->.uk;
           (
@@ -474,7 +474,7 @@ class OpenStreetMapStoreDirectory(
             // A broad "Tesco" text search can be dominated by larger supermarkets and
             // may omit the local convenience branch from Nominatim's limited result set.
             RetailerId.TESCO -> listOf("Tesco Express", "Tesco")
-            RetailerId.MORRISONS -> listOf("Morrisons Daily", "Morrisons")
+            RetailerId.MORRISONS -> listOf("Morrisons Daily", "Morrisons", "McColls")
             else -> listOf(displayName(retailerId))
         }
         return searchTerms.flatMap { term ->
@@ -551,11 +551,15 @@ class OpenStreetMapStoreDirectory(
                 directorySource = StoreDirectorySource.OPENSTREETMAP,
                 directorySourceId = "$osmType/$osmId",
                 retailerId = retailerId,
-                name = if (
+                name = when {
                     retailerId == RetailerId.ICELAND &&
-                    name.contains("food warehouse", ignoreCase = true) &&
-                    !name.contains("iceland", ignoreCase = true)
-                ) "Iceland Food Warehouse" else name,
+                        name.contains("food warehouse", ignoreCase = true) &&
+                        !name.contains("iceland", ignoreCase = true) -> "Iceland Food Warehouse"
+                    retailerId == RetailerId.MORRISONS &&
+                        Regex("\\bmccoll\\b", RegexOption.IGNORE_CASE).containsMatchIn(identity) &&
+                        !identity.contains("morrisons", ignoreCase = true) -> "Morrisons Daily"
+                    else -> name
+                },
                 address = address,
                 postcode = postcode,
                 latitude = lat,
@@ -658,7 +662,7 @@ class OpenStreetMapStoreDirectory(
             RetailerId.ICELAND -> Regex("\\biceland\\b").containsMatchIn(name) || name.contains("food warehouse")
             RetailerId.FOOD_WAREHOUSE -> name.contains("food warehouse")
             RetailerId.TESCO -> Regex("\\btesco\\b").containsMatchIn(name)
-            RetailerId.MORRISONS -> Regex("\\bmorrisons\\b").containsMatchIn(name)
+            RetailerId.MORRISONS -> Regex("\\bmorrisons\\b").containsMatchIn(name) || Regex("\\bmccoll\\b").containsMatchIn(name)
             RetailerId.SAINSBURYS -> name.contains("sainsbury")
             RetailerId.ALDI -> name.contains("aldi")
             RetailerId.LIDL -> name.contains("lidl")
@@ -677,7 +681,7 @@ class OpenStreetMapStoreDirectory(
                 name.contains("extra") -> RetailStoreFormat.TESCO_EXTRA
                 else -> RetailStoreFormat.TESCO_SUPERMARKET
             }
-            RetailerId.MORRISONS -> if (name.contains("daily")) RetailStoreFormat.MORRISONS_DAILY else RetailStoreFormat.MORRISONS_SUPERMARKET
+            RetailerId.MORRISONS -> if (name.contains("daily") || name.contains("mccoll")) RetailStoreFormat.MORRISONS_DAILY else RetailStoreFormat.MORRISONS_SUPERMARKET
             RetailerId.SAINSBURYS -> if (name.contains("local")) RetailStoreFormat.SAINSBURYS_LOCAL else RetailStoreFormat.SAINSBURYS_SUPERMARKET
             RetailerId.ALDI, RetailerId.LIDL -> RetailStoreFormat.UNKNOWN
         }
@@ -688,7 +692,7 @@ class OpenStreetMapStoreDirectory(
         RetailerId.ICELAND -> "Iceland"
         RetailerId.FOOD_WAREHOUSE -> "The Food Warehouse"
         RetailerId.TESCO -> "Tesco"
-        RetailerId.MORRISONS -> "Morrisons"
+        RetailerId.MORRISONS -> "Morrisons|McColl.?s"
         RetailerId.SAINSBURYS -> "Sainsbury's"
         RetailerId.ALDI -> "Aldi"
         RetailerId.LIDL -> "Lidl"
