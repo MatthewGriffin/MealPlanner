@@ -63,6 +63,38 @@ class IcelandProductParserTest {
     }
 
     @Test
+    fun genericBasketButtonDoesNotProveEveryProductIsInStock() {
+        val html = """
+            <html>
+              <script type="application/ld+json">
+                {
+                  "@context": "https://schema.org/",
+                  "@type": "Product",
+                  "name": "Iceland Product With Unknown Stock",
+                  "sku": "unknown-stock-1",
+                  "offers": {
+                    "@type": "Offer",
+                    "priceCurrency": "GBP",
+                    "price": "1.25"
+                  }
+                }
+              </script>
+              <body><button>Add to Basket</button></body>
+            </html>
+        """.trimIndent()
+
+        val records = parser.parseHtmlPage(html)
+
+        assertEquals(1, records.size)
+        assertEquals(RetailAvailability.UNKNOWN, records.single().productWithOffer.offer.availability)
+        assertEquals(
+            com.example.chatgpt_mealplanner.retail.contract.RetailPriceScope.ONLINE,
+            records.single().productWithOffer.offer.priceScope
+        )
+        assertEquals(null, records.single().productWithOffer.offer.storeLocationId)
+    }
+
+    @Test
     fun parsePriceString_handlesPoundsAndPenceCorrectly() {
         assertEquals(Money(100L), parser.parsePriceString("£1.00"))
         assertEquals(Money(125L), parser.parsePriceString("£1.25"))
