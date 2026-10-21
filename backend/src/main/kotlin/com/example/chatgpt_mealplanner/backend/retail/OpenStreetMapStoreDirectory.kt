@@ -159,8 +159,8 @@ class OpenStreetMapStoreDirectory(
         // selected retailer locally. Three separate name/brand/operator scans can time out
         // on public Overpass instances even for otherwise modest postcode searches.
         val radius = request.radiusMeters
-        return """[out:json][timeout:15];
-          nwr["shop"~"^(supermarket|convenience)$"](around:$radius,$lat,$lon);
+        return """[out:json][timeout:20];
+          nwr["shop"](around:$radius,$lat,$lon);
           out center tags;"""
     }
 
@@ -274,7 +274,12 @@ class OpenStreetMapStoreDirectory(
         return elements.mapNotNull { element ->
             val item = element.jsonObject
             val tags = item["tags"]?.jsonObject ?: return@mapNotNull null
-            val identity = listOfNotNull(tags.text("brand"), tags.text("operator"), tags.text("name")).joinToString(" ")
+            val identity = listOfNotNull(
+                tags.text("brand"), tags.text("brand:en"),
+                tags.text("operator"), tags.text("operator:en"),
+                tags.text("name"), tags.text("name:en"),
+                tags.text("official_name"), tags.text("alt_name")
+            ).joinToString(" ")
             if (!matchesRetailer(identity, retailerId)) return@mapNotNull null
             val lat = item.number("lat") ?: item["center"]?.jsonObject?.number("lat") ?: return@mapNotNull null
             val lon = item.number("lon") ?: item["center"]?.jsonObject?.number("lon") ?: return@mapNotNull null
