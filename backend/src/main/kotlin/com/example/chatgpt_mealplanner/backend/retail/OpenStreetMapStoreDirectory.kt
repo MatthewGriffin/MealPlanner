@@ -168,7 +168,14 @@ class OpenStreetMapStoreDirectory(
                     setBody(FormDataContent(Parameters.build { append("data", query) }))
                 }
                 if (response.status.value !in 200..299) {
-                    failures += "$serviceName: HTTP ${response.status.value}"
+                    val detail = response.bodyAsText().lineSequence().firstOrNull()
+                        ?.replace(Regex("\\s+"), " ")
+                        ?.take(160)
+                        ?.takeIf { it.isNotBlank() }
+                    failures += buildString {
+                        append("$serviceName: HTTP ${response.status.value}")
+                        if (detail != null) append(" ($detail)")
+                    }
                     return@forEachIndexed
                 }
                 return response.bodyAsText()
