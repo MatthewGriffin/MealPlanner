@@ -119,7 +119,7 @@ class OpenStreetMapStoreDirectory(
             parameter("limit", "1")
             header(HttpHeaders.UserAgent, USER_AGENT)
         }.bodyAsText()
-        val first = json.parseToJsonElement(raw).jsonArray.firstOrNull()?.jsonObject
+        val first = parseJsonResponse(raw, "Postcode lookup").jsonArray.firstOrNull()?.jsonObject
             ?: throw IllegalArgumentException("Postcode could not be located. Try coordinates instead.")
         val lat = first["lat"]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull()
             ?: throw IllegalStateException("Postcode lookup returned no latitude.")
@@ -129,7 +129,7 @@ class OpenStreetMapStoreDirectory(
     }
 
     internal fun parseOverpassResponse(raw: String, retailerId: RetailerId, originLat: Double, originLon: Double): List<StoreDirectoryEntry> {
-        val elements = json.parseToJsonElement(raw).jsonObject["elements"]?.jsonArray ?: JsonArray(emptyList())
+        val elements = parseJsonResponse(raw, "Branch search").jsonObject["elements"]?.jsonArray ?: JsonArray(emptyList())
         return elements.mapNotNull { element ->
             val item = element.jsonObject
             val tags = item["tags"]?.jsonObject ?: return@mapNotNull null
@@ -154,6 +154,16 @@ class OpenStreetMapStoreDirectory(
                 distanceMeters = distanceMeters(originLat, originLon, lat, lon)
             )
         }.distinctBy { it.directorySourceId }
+    }
+
+    /** Some proxies/services prepend a UTF-8 BOM; trim it before JSON decoding. */
+    private fun parseJsonResponse(raw: String, source: String): JsonElement {
+        val normalized = raw.removePrefix("\uFEFF").trim()
+        return try {
+            json.parseToJsonElement(normalized)
+        } catch (e: Exception) {
+            throw IllegalStateException("$source returned an invalid JSON response. Please retry later.", e)
+        }
     }
 
     private fun matchesRetailer(value: String, retailerId: RetailerId): Boolean {
