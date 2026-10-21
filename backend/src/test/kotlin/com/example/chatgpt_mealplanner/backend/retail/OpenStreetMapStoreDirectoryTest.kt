@@ -43,6 +43,61 @@ class OpenStreetMapStoreDirectoryTest {
     }
 
     @Test
+    fun configuredKeyFailureDoesNotFallBackToPublicOverpassOrNominatim() = runBlocking {
+        val client = HttpClient(MockEngine { request ->
+            assertEquals("api.overpass.ch", request.url.host)
+            assertEquals("/v1/test-key/interpreter", request.url.encodedPath)
+            respond(
+                content = "Keyed endpoint unavailable",
+                status = HttpStatusCode.ServiceUnavailable,
+                headers = headersOf(HttpHeaders.ContentType, "text/plain")
+            )
+        })
+        try {
+            val keyedDirectory = OpenStreetMapStoreDirectory(client)
+            keyedDirectory.configureApiKey("test-key")
+            val error = runCatching {
+                keyedDirectory.search(
+                    com.example.chatgpt_mealplanner.retail.contract.StoreDirectorySearchRequest(
+                        retailerId = RetailerId.ASDA,
+                        latitude = 53.27776,
+                        longitude = -2.90437
+                    )
+                )
+            }.exceptionOrNull()
+            assertTrue(error?.message.orEmpty().contains("api.overpass.ch"))
+        } finally {
+            client.close()
+        }
+    }
+
+    @Test
+    fun keyedAsdaSearchReturnsExpressRegardlessOfManualStoreFormat() = runBlocking {
+        val client = HttpClient(MockEngine { request ->
+            assertEquals("api.overpass.ch", request.url.host)
+            respond(
+                content = """{"elements":[{"type":"node","id":771,"lat":53.27776,"lon":-2.90437,"tags":{"name":"ASDA Ellesmere Port Express Petrol","brand":"ASDA","amenity":"fuel"}}]}""",
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, "application/json")
+            )
+        })
+        try {
+            val keyedDirectory = OpenStreetMapStoreDirectory(client)
+            keyedDirectory.configureApiKey("test-key")
+            val response = keyedDirectory.search(
+                com.example.chatgpt_mealplanner.retail.contract.StoreDirectorySearchRequest(
+                    retailerId = RetailerId.ASDA,
+                    latitude = 53.27776,
+                    longitude = -2.90437
+                )
+            )
+            assertTrue(response.stores.any { it.name == "ASDA Ellesmere Port Express Petrol" })
+        } finally {
+            client.close()
+        }
+    }
+
+    @Test
     fun fallsBackToActualOpenStreetMapNameAndPostcodeWhenOverpassFails() = runBlocking {
         val client = HttpClient(MockEngine { request ->
             if (request.url.host == "nominatim.openstreetmap.org") {
@@ -127,8 +182,8 @@ class OpenStreetMapStoreDirectoryTest {
             -0.1
         )
         assertTrue(query.contains("[out:json][timeout:20]"))
-        assertTrue(query.contains("""nwr["shop"](around:5000,51.5,-0.1)"""))
         assertTrue(query.contains("""nwr["name"~"Tesco",i]"""))
+        assertTrue(!query.contains("""nwr["shop"](around:"""))
         assertTrue(query.contains("""nwr["brand"~"Tesco",i]"""))
         assertTrue(query.contains("""nwr["operator"~"Tesco",i]"""))
         assertTrue(query.contains("out center tags"))
@@ -171,8 +226,8 @@ class OpenStreetMapStoreDirectoryTest {
             51.5,
             -0.1
         )
-        assertTrue(query.contains("""nwr["shop"](around:5000,51.5,-0.1)"""))
         assertTrue(query.contains("""nwr["name"~"Tesco",i]"""))
+        assertTrue(!query.contains("""nwr["shop"](around:"""))
         assertTrue(query.contains("""nwr["brand"~"Tesco",i]"""))
         assertTrue(query.contains("""nwr["operator"~"Tesco",i]"""))
         assertTrue(!query.contains("Express"))
