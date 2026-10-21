@@ -341,25 +341,7 @@ fun SettingsScreen(
                     Text(uiState.storeSearchMessage!!, style = MaterialTheme.typography.bodySmall)
                 }
                 uiState.discoveredStores.forEach { store ->
-                    val alreadyAdded = uiState.preferredStores.any { saved ->
-                        if (saved.retailerId != store.retailerId) {
-                            false
-                        } else {
-                            val savedPostcode = saved.postcode.filterNot(Char::isWhitespace).uppercase()
-                            val resultPostcode = store.postcode.orEmpty().filterNot(Char::isWhitespace).uppercase()
-                            val sameSourceRecord = saved.directorySource == store.directorySource &&
-                                !saved.directorySourceId.isNullOrBlank() &&
-                                saved.directorySourceId == store.directorySourceId
-                            val sameNameAndPostcode = saved.name.trim().equals(store.name.trim(), ignoreCase = true) &&
-                                savedPostcode.isNotBlank() && savedPostcode == resultPostcode
-                            val savedAddress = saved.address.orEmpty().lowercase().replace(Regex("[^a-z0-9]+"), " ").trim()
-                            val resultAddress = store.address.lowercase().replace(Regex("[^a-z0-9]+"), " ").trim()
-                            val sameAddressAndPostcode = savedAddress.isNotBlank() && resultAddress.isNotBlank() &&
-                                savedAddress == resultAddress &&
-                                (savedPostcode.isBlank() || resultPostcode.isBlank() || savedPostcode == resultPostcode)
-                            sameSourceRecord || sameNameAndPostcode || sameAddressAndPostcode
-                        }
-                    }
+                    val alreadyAdded = isDirectoryStoreAlreadySaved(store, uiState.preferredStores)
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Column(modifier = Modifier.padding(10.dp)) {
                             Text(store.name, fontWeight = FontWeight.SemiBold)
