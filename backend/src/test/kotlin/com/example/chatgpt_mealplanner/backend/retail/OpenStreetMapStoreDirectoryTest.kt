@@ -11,6 +11,23 @@ class OpenStreetMapStoreDirectoryTest {
     private val directory = OpenStreetMapStoreDirectory(HttpClient())
 
     @Test
+    fun queryFiltersByRetailerInsteadOfDownloadingEverySupermarket() {
+        val query = directory.buildQuery(
+            com.example.chatgpt_mealplanner.retail.contract.StoreDirectorySearchRequest(
+                retailerId = RetailerId.TESCO,
+                postcode = "SW1A 1AA"
+            ),
+            51.5,
+            -0.1
+        )
+        assertTrue(query.contains("""["name"~"tesco",i]"""))
+        assertTrue(query.contains("""["brand"~"tesco",i]"""))
+        assertTrue(query.contains("""["operator"~"tesco",i]"""))
+        assertTrue(query.contains("[out:json][timeout:25]"))
+        assertTrue(!query.contains("""["shop"~"^(supermarket|convenience)$"](around:"""))
+    }
+
+    @Test
     fun parserFiltersToRequestedRetailerAndRetainsDirectoryId() {
         val raw = """{"elements":[
           {"type":"node","id":100,"lat":51.5,"lon":-0.1,"tags":{"name":"Tesco Express","brand":"Tesco","shop":"convenience","addr:postcode":"SW1A 1AA","addr:street":"Example Road"}},
