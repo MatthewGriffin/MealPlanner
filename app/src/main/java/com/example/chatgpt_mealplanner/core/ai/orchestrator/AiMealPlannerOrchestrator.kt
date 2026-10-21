@@ -337,13 +337,14 @@ class AiMealPlannerOrchestrator @Inject constructor(
                 val hasValidOfferAwaiting = currentPending != null && currentPending.state == com.example.chatgpt_mealplanner.core.ai.pending.PendingMutationState.AWAITING_CONFIRMATION && currentPending.ingredients.isNotEmpty()
 
                 if (hasValidOfferAwaiting) {
-                    textToReturn = formatAppOwnedRecipeProposal(currentPending!!)
+                    val pendingOffer = currentPending!!
+                    textToReturn = formatAppOwnedRecipeProposal(pendingOffer)
                     // The text parser may have extracted only the bold title from the final prose,
                     // producing a card with zero ingredients. The structured offer captured by the
                     // tool dispatcher is authoritative for both the rendered card and Save action.
                     val structuredProposal = activeProposalStore.getActiveProposal(conversationId)
                         ?.takeIf { it.ingredients.isNotEmpty() }
-                        ?: proposalFromPendingSnapshot(currentPending)
+                        ?: proposalFromPendingSnapshot(pendingOffer)
                     if (structuredProposal.ingredients.isNotEmpty()) {
                         validatedProposal = recipeValidator.validateProposal(structuredProposal)
                         activeProposalStore.setActiveProposal(conversationId, structuredProposal)
