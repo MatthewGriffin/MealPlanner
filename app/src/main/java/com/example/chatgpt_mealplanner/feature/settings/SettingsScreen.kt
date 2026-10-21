@@ -70,6 +70,35 @@ fun SettingsScreen(
     var retailerMenuExpanded by remember { mutableStateOf(false) }
     var formatMenuExpanded by remember { mutableStateOf(false) }
     var showClearChatHistoryDialog by remember { mutableStateOf(false) }
+    var showStoreDataSourcesDialog by remember { mutableStateOf(false) }
+
+    if (showStoreDataSourcesDialog) {
+        AlertDialog(
+            onDismissRequest = { showStoreDataSourcesDialog = false },
+            title = { Text("Store search data sources") },
+            text = {
+                Text("Postcodes are resolved with Nominatim. Branch listings come from OpenStreetMap. OpenStreetMap data is © OpenStreetMap contributors and is available under the Open Database License.")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showStoreDataSourcesDialog = false
+                        runCatching {
+                            context.startActivity(
+                                android.content.Intent(
+                                    android.content.Intent.ACTION_VIEW,
+                                    android.net.Uri.parse("https://www.openstreetmap.org/copyright")
+                                )
+                            )
+                        }
+                    }
+                ) { Text("View attribution and licence") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showStoreDataSourcesDialog = false }) { Text("Close") }
+            }
+        )
+    }
 
     if (showClearChatHistoryDialog) {
         AlertDialog(
@@ -263,24 +292,12 @@ fun SettingsScreen(
                     }
                     Spacer(modifier = Modifier.height(6.dp))
                 }
-                Text(
-                    "Postcode lookup: Nominatim · Branch listings: © OpenStreetMap contributors",
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            runCatching {
-                                context.startActivity(
-                                    android.content.Intent(
-                                        android.content.Intent.ACTION_VIEW,
-                                        android.net.Uri.parse("https://www.openstreetmap.org/copyright")
-                                    )
-                                )
-                            }
-                        }
-                        .padding(vertical = 4.dp),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                TextButton(
+                    onClick = { showStoreDataSourcesDialog = true },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Data source details")
+                }
                 HorizontalDivider()
                 Spacer(modifier = Modifier.height(8.dp))
 
