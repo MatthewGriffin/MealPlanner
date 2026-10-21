@@ -4,6 +4,7 @@ import com.example.chatgpt_mealplanner.retail.contract.*
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.plugins.timeout.timeout
 import io.ktor.client.request.*
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
@@ -94,6 +95,10 @@ class OpenStreetMapStoreDirectory(
                     onProgress("The first branch-search service did not respond; trying backup service ${index} of ${OVERPASS_ENDPOINTS.lastIndex}…")
                 }
                 return client.post(endpoint) {
+                    timeout {
+                        requestTimeoutMillis = 30_000
+                        socketTimeoutMillis = 30_000
+                    }
                     expectSuccess = true
                     contentType(ContentType.Text.Plain)
                     header(HttpHeaders.UserAgent, USER_AGENT)
