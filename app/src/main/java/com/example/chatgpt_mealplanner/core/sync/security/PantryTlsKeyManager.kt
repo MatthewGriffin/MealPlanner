@@ -23,6 +23,8 @@ open class PantryTlsKeyManager @Inject constructor(
 ) {
     private val keyAlias = "pantry_tls_key"
     private val fileName = "pantry_tls_keystore.p12"
+    // Read-only compatibility for existing installations created while the old encrypted store failed.
+    private val defaultFallbackPassword = "pantry_tls_password_12345".toCharArray()
 
     private fun getOrCreateEncryptedPassword(allowCreate: Boolean): CharArray {
         val ctx = context ?: throw SecurityException("Application context unavailable; refusing to use an unprotected TLS password")
@@ -34,7 +36,9 @@ open class PantryTlsKeyManager @Inject constructor(
         var password = prefs.getString("KEY_TLS_P12_PASSWORD")
         if (password.isNullOrBlank()) {
             if (!allowCreate) {
-                throw SecurityException("Existing TLS keystore has no recoverable stored password; refusing to rotate its identity")
+                // Old releases could create a TLS file with this password when encrypted preferences
+                // failed. Try it only to open an existing file; never use it for a new identity.
+                return defaultFallbackPassword.copyOf()
             }
             val bytes = ByteArray(32)
             SecureRandom().nextBytes(bytes)
@@ -263,5 +267,5 @@ open class PantryTlsKeyManager @Inject constructor(
         return clean1 == clean2
     }
 
-    fun getTlsPassword(): CharArray = getOrCreateEncryptedPassword(allowCreate = true)
+    fun getTlsPassword(): CharArray = getOrCreateEncryptedPassword(allowCreate = !(context?.filesDir?.let { File(it, fileName).exists() } ?: false))
 }
