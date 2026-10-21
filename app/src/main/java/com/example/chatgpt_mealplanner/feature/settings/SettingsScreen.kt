@@ -192,6 +192,54 @@ fun SettingsScreen(
             }
         }
 
+        Spacer(modifier = Modifier.height(12.dp))
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("Overpass.ch API Key", fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    "Used for nearby store branch searches. The key is stored encrypted on this device. Postcode lookup still uses OpenStreetMap search.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                if (uiState.isStoreDirectoryApiKeyConfigured) {
+                    Text("Status: Configured securely.", color = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(onClick = { viewModel.deleteStoreDirectoryApiKey() }) {
+                        Text("Delete API Key")
+                    }
+                } else {
+                    OutlinedTextField(
+                        value = storeDirectoryApiKeyInput,
+                        onValueChange = { storeDirectoryApiKeyInput = it },
+                        label = { Text("Overpass.ch API key") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(
+                        onClick = {
+                            viewModel.saveStoreDirectoryApiKey(storeDirectoryApiKeyInput)
+                            storeDirectoryApiKeyInput = ""
+                        },
+                        enabled = storeDirectoryApiKeyInput.isNotBlank()
+                    ) {
+                        Text("Save Key")
+                    }
+                }
+                if (uiState.storeDirectoryApiKeyMessage != null) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        uiState.storeDirectoryApiKeyMessage!!,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+
         Spacer(modifier = Modifier.height(16.dp))
         Button(
             onClick = { viewModel.testAiConnection() },
@@ -212,32 +260,6 @@ fun SettingsScreen(
         Text("Retail & Shopping", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(8.dp))
 
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text("Compare these stores", fontWeight = FontWeight.Bold)
-                Text(
-                    "Matching uses available live, cached, and receipt prices. Food Warehouse prices need store-specific evidence.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                RetailerId.entries.forEach { retailer ->
-                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(
-                            checked = retailer in uiState.enabledRetailers,
-                            onCheckedChange = { viewModel.setRetailerEnabled(retailer, it) }
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            when (retailer) {
-                                RetailerId.FOOD_WAREHOUSE -> "The Food Warehouse"
-                                else -> retailer.name.lowercase().replaceFirstChar(Char::uppercase)
-                            }
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.height(12.dp))
-            }
-        }
 
         Spacer(modifier = Modifier.height(12.dp))
         Card(modifier = Modifier.fillMaxWidth()) {
@@ -258,45 +280,6 @@ fun SettingsScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
-                Text("Overpass.ch API key (optional)", fontWeight = FontWeight.SemiBold)
-                Text(
-                    "If you have an Overpass.ch key, save it here to send branch queries to that service directly. The key is stored encrypted on this device. If it fails, the app reports the error instead of waiting on other public Overpass servers. Postcode lookup still uses OpenStreetMap search.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                OutlinedTextField(
-                    value = storeDirectoryApiKeyInput,
-                    onValueChange = { storeDirectoryApiKeyInput = it },
-                    label = { Text(if (uiState.isStoreDirectoryApiKeyConfigured) "Replace saved API key" else "Overpass.ch API key") },
-                    visualTransformation = PasswordVisualTransformation(),
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Button(
-                        onClick = {
-                            viewModel.saveStoreDirectoryApiKey(storeDirectoryApiKeyInput)
-                            storeDirectoryApiKeyInput = ""
-                        },
-                        enabled = storeDirectoryApiKeyInput.isNotBlank()
-                    ) { Text("Save key") }
-                    if (uiState.isStoreDirectoryApiKeyConfigured) {
-                        Spacer(modifier = Modifier.width(8.dp))
-                        TextButton(onClick = { viewModel.deleteStoreDirectoryApiKey() }) {
-                            Text("Remove key")
-                        }
-                    }
-                }
-                if (uiState.storeDirectoryApiKeyMessage != null) {
-                    Text(
-                        uiState.storeDirectoryApiKeyMessage!!,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
                 androidx.compose.foundation.layout.Box {
                     TextButton(onClick = { retailerMenuExpanded = true }) {
                         Text("Search retailer: ${retailerLabel(selectedStoreRetailer)}")
