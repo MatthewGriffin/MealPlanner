@@ -350,7 +350,7 @@ fun ChatScreen(
                     onClick = submitMessage,
                     enabled = canSubmit
                 ) {
-                    Icon(Icons.Default.Send, contentDescription = "Send Message")
+                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send Message")
                 }
             }
         }
