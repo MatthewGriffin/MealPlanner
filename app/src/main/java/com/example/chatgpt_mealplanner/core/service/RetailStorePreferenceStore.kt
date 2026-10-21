@@ -18,9 +18,9 @@ import javax.inject.Singleton
 /**
  * Shared local storage for preferred physical branches.
  *
- * Branch selections are device preferences, separate from the enabled-retailer list and
- * from retailer-wide online prices. This store intentionally does not imply that a branch
- * has confirmed stock or branch-specific pricing.
+ * Preferred branches determine which retailers participate in basket comparisons.
+ * This store intentionally does not imply that a branch has confirmed stock or
+ * branch-specific pricing.
  */
 @Singleton
 class RetailStorePreferenceStore @Inject constructor(
