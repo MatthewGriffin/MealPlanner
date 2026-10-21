@@ -83,7 +83,7 @@ class IcelandSourceClient(
     private suspend fun discoverAlgoliaConfig(): IcelandAlgoliaConfigDiscovery.Config? {
         val homepage = getText("https://www.iceland.co.uk/")
         val sources = mutableListOf(homepage)
-        val scriptUrls = Regex("""(?i)<script[^>]+src=["']([^"']+\\.js(?:\\?[^"']*)?)["']""")
+        val scriptUrls = Regex("""(?i)<script[^>]+src=["']([^"']+\.js(?:\?[^"']*)?)["']""")
             .findAll(homepage)
             .mapNotNull { match ->
                 runCatching { URI("https://www.iceland.co.uk/").resolve(match.groupValues[1]).toString() }
