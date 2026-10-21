@@ -60,7 +60,7 @@ class AppNotificationManager @Inject constructor(
         notifyHouseholdUpdate("Meal plan updated", message, MEAL_PLAN_NOTIFICATION_ID, date, TARGET_SCREEN_MEAL_PLANNER)
     }
 
-    fun notifyMealChangeRequest(date: String?, requestId: String) {
+    fun notifyMealChangeRequest(date: String?) {
         notifyHouseholdUpdate("New meal change request", "A household member has requested a change to a planned meal.", MEAL_REQUEST_NOTIFICATION_ID, date, TARGET_SCREEN_MEAL_PLANNER)
     }
 

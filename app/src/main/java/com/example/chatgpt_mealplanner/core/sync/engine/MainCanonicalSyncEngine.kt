@@ -687,7 +687,7 @@ open class MainCanonicalSyncEngine @Inject constructor(
                     val request = json.decodeFromString<CreateMealChangeRequestPayloadDto>(dto.payloadJson)
                     mealDao?.getMealWithIngredients(request.mealId)?.meal?.date
                 }.getOrNull()
-                notificationManager?.notifyMealChangeRequest(mealDate, dto.operationId)
+                notificationManager?.notifyMealChangeRequest(mealDate)
             } else {
                 notificationManager?.notifyHouseholdUpdate(
                     title = "Household pantry updated",
