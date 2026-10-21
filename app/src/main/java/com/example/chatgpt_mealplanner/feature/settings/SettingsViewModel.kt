@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.chatgpt_mealplanner.contract.AiProviderResponse
+import com.example.chatgpt_mealplanner.backend.retail.ApiKeyConfigurableStoreDirectoryProvider
 import com.example.chatgpt_mealplanner.backend.retail.OpenStreetMapStoreDirectory
 import com.example.chatgpt_mealplanner.backend.retail.StoreDirectoryProvider
 import com.example.chatgpt_mealplanner.backend.retail.StoreDirectoryProgressProvider
@@ -14,6 +15,7 @@ import com.example.chatgpt_mealplanner.core.backup.MainEncryptedBackupSaveCoordi
 import com.example.chatgpt_mealplanner.core.backup.SafBackupOutcome
 import com.example.chatgpt_mealplanner.core.database.dao.ChatDao
 import com.example.chatgpt_mealplanner.core.security.CredentialStore
+import com.example.chatgpt_mealplanner.core.security.StoreDirectoryCredentialStore
 import com.example.chatgpt_mealplanner.core.sync.AppRoleResolver
 import com.example.chatgpt_mealplanner.core.sync.follower.worker.FollowerSyncScheduler
 import com.example.chatgpt_mealplanner.core.service.RetailerPreferenceStore
@@ -56,7 +58,9 @@ data class SettingsUiState(
     val storeSearchMessage: String? = null,
     val discoveredStores: List<StoreDirectoryEntry> = emptyList(),
     val manualFallbackRetailer: RetailerId? = null,
-    val manualFallbackPostcode: String? = null
+    val manualFallbackPostcode: String? = null,
+    val isStoreDirectoryApiKeyConfigured: Boolean = false,
+    val storeDirectoryApiKeyMessage: String? = null
 )
 
 @HiltViewModel
@@ -74,11 +78,19 @@ class SettingsViewModel @Inject constructor(
     private val storeDirectoryProvider: StoreDirectoryProvider = OpenStreetMapStoreDirectory()
 ) : ViewModel() {
 
+    private val storeDirectoryCredentialStore = context?.let { StoreDirectoryCredentialStore(it) }
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
     init {
-        _uiState.update { it.copy(enabledRetailers = retailerPreferenceStore.getEnabledRetailers()) }
+        val savedDirectoryKey = storeDirectoryCredentialStore?.loadKey()
+        (storeDirectoryProvider as? ApiKeyConfigurableStoreDirectoryProvider)?.configureApiKey(savedDirectoryKey)
+        _uiState.update {
+            it.copy(
+                enabledRetailers = retailerPreferenceStore.getEnabledRetailers(),
+                isStoreDirectoryApiKeyConfigured = !savedDirectoryKey.isNullOrBlank()
+            )
+        }
         checkCredentialStatus()
         resolveAppRole()
         _uiState.update { it.copy(preferredStores = retailStorePreferenceStore.getPreferredStores()) }
@@ -109,12 +121,52 @@ class SettingsViewModel @Inject constructor(
         persistPreferredStores(updated)
     }
 
+    fun saveStoreDirectoryApiKey(key: String) {
+        try {
+            val store = storeDirectoryCredentialStore
+                ?: throw IllegalStateException("Secure key storage is unavailable on this device.")
+            store.saveKey(key)
+            (storeDirectoryProvider as? ApiKeyConfigurableStoreDirectoryProvider)?.configureApiKey(store.loadKey())
+            _uiState.update {
+                it.copy(
+                    isStoreDirectoryApiKeyConfigured = true,
+                    storeDirectoryApiKeyMessage = "Overpass.ch API key saved securely on this device."
+                )
+            }
+        } catch (e: Exception) {
+            _uiState.update {
+                it.copy(storeDirectoryApiKeyMessage = "Could not save API key: ${e.message ?: "unknown error"}")
+            }
+        }
+    }
+
+    fun deleteStoreDirectoryApiKey() {
+        try {
+            val store = storeDirectoryCredentialStore
+                ?: throw IllegalStateException("Secure key storage is unavailable on this device.")
+            store.deleteKey()
+            (storeDirectoryProvider as? ApiKeyConfigurableStoreDirectoryProvider)?.configureApiKey(null)
+            _uiState.update {
+                it.copy(
+                    isStoreDirectoryApiKeyConfigured = false,
+                    storeDirectoryApiKeyMessage = "Overpass.ch API key removed. Public directory services may still be tried."
+                )
+            }
+        } catch (e: Exception) {
+            _uiState.update {
+                it.copy(storeDirectoryApiKeyMessage = "Could not remove API key: ${e.message ?: "unknown error"}")
+            }
+        }
+    }
+
     fun searchStoreDirectory(retailerId: RetailerId, postcode: String) {
         val cleanPostcode = postcode.trim().uppercase()
         if (cleanPostcode.isBlank()) {
             _uiState.update { it.copy(storeSearchMessage = "Enter a UK postcode to find nearby branches.") }
             return
         }
+        (storeDirectoryProvider as? ApiKeyConfigurableStoreDirectoryProvider)
+            ?.configureApiKey(storeDirectoryCredentialStore?.loadKey())
         _uiState.update {
             it.copy(
                 isStoreSearchInProgress = true,
