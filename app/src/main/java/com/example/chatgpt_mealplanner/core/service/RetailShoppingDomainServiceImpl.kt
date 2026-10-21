@@ -4,6 +4,7 @@ import com.example.chatgpt_mealplanner.backend.retail.AsdaRetailerAdapter
 import com.example.chatgpt_mealplanner.backend.retail.IcelandRetailerAdapter
 import com.example.chatgpt_mealplanner.core.database.dao.RetailDao
 import com.example.chatgpt_mealplanner.core.database.dao.ShoppingDao
+import com.example.chatgpt_mealplanner.core.database.entity.BasketComparisonCacheEntity
 import com.example.chatgpt_mealplanner.core.model.DomainResult
 import com.example.chatgpt_mealplanner.core.model.QuantityUnit
 import com.example.chatgpt_mealplanner.core.repository.RetailRepository
@@ -22,6 +23,10 @@ import com.example.chatgpt_mealplanner.retail.engine.RetailProductMatcher
 import com.example.chatgpt_mealplanner.retail.engine.ShoppingRequirementSpec
 import javax.inject.Inject
 import javax.inject.Singleton
+import java.security.MessageDigest
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.Json
 
 @Singleton
 class RetailShoppingDomainServiceImpl @Inject constructor(
@@ -34,6 +39,7 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
 ) : RetailShoppingDomainService {
 
     private val freshnessPolicy: RetailFreshnessPolicy = RetailFreshnessPolicy()
+    private val cacheJson = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
     override suspend fun optimizeShoppingBasket(
         preferences: UserShoppingPreferences
@@ -87,6 +93,22 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
         }
 
         safeLog("[RETAIL_OPTIMIZER_INPUT] buildAudit=TOMATO_CACHE_FLOW_20261001_01 requirementCount=${requirementSpecs.size} names=\"${requirementSpecs.joinToString { it.displayName }}\"")
+        // Reuse the durable basket result until list requirements, selected stores/retailers,
+        // or user-confirmed product mappings change. Invalid payloads safely fall through.
+        val cacheFingerprint = buildBasketCacheFingerprint(requirementSpecs, preferences)
+        if (retailDao != null) {
+            val cached = try { retailDao.getBasketComparisonCache() } catch (_: Exception) { null }
+            if (cached != null && cached.fingerprint == cacheFingerprint) {
+                try {
+                    val cachedResult = cacheJson.decodeFromString<BasketComparisonResult>(cached.payloadJson)
+                    safeLog("[RETAIL_BASKET_CACHE] hit fingerprint=${cacheFingerprint.take(12)} generatedAt=${cached.generatedAt}")
+                    return DomainResult.Success(cachedResult)
+                } catch (_: Exception) {
+                    safeLog("[RETAIL_BASKET_CACHE] invalid_payload action=recompute")
+                }
+            }
+        }
+
 
         val userMappings = retailRepository.getProductMappings()
         val matcher = RetailProductMatcher(userMappings)
@@ -207,7 +229,54 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
             preferences = preferences
         )
 
+        if (retailDao != null) {
+            try {
+                retailDao.saveBasketComparisonCache(
+                    BasketComparisonCacheEntity(
+                        cacheId = 1,
+                        fingerprint = cacheFingerprint,
+                        payloadJson = cacheJson.encodeToString(comparison),
+                        generatedAt = comparison.generatedAt
+                    )
+                )
+                safeLog("[RETAIL_BASKET_CACHE] saved fingerprint=${cacheFingerprint.take(12)} generatedAt=${comparison.generatedAt}")
+            } catch (e: Exception) {
+                safeLog("[RETAIL_BASKET_CACHE] save_failed type=${e.javaClass.simpleName}")
+            }
+        }
         return DomainResult.Success(comparison)
+    }
+
+    private suspend fun buildBasketCacheFingerprint(
+        requirements: List<ShoppingRequirementSpec>,
+        preferences: UserShoppingPreferences
+    ): String {
+        val parts = mutableListOf<String>()
+        requirements.sortedBy { it.id }.forEach { req ->
+            parts += listOf(req.id, req.canonicalIngredientId.orEmpty(), req.displayName,
+                req.requiredQuantity.toString(), req.requiredUnit, req.priority).joinToString("") {
+                "${it.length}:$it;"
+            }
+        }
+        parts += preferences.enabledRetailers.map { it.name }.sorted().joinToString(",")
+        parts += preferences.preferredStores
+            .sortedWith(compareBy({ it.retailerId.name }, { it.id }, { it.retailerStoreId.orEmpty() }))
+            .joinToString("|") { store ->
+                listOf(store.id, store.retailerId.name, store.name, store.postcode, store.format.name,
+                    store.isPreferred.toString(), store.retailerStoreId.orEmpty()).joinToString("") {
+                    "${it.length}:$it;"
+                }
+            }
+        val mappings = try { retailDao?.getAllProductMappings().orEmpty() } catch (_: Exception) { emptyList() }
+        parts += mappings.sortedBy { it.id }.joinToString("|") { mapping ->
+            listOf(mapping.id, mapping.canonicalIngredientId, mapping.decision.name,
+                mapping.userConfirmed.toString(), mapping.updatedAt.toString()).joinToString("") {
+                "${it.length}:$it;"
+            }
+        }
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(parts.joinToString("\n").toByteArray(Charsets.UTF_8))
+        return digest.joinToString("") { "%02x".format(it) }
     }
 
     override suspend fun getItemOptions(

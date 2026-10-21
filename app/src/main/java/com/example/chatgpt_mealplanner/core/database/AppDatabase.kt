@@ -22,6 +22,7 @@ import com.example.chatgpt_mealplanner.core.database.entity.AiToolExecutionLogEn
 import com.example.chatgpt_mealplanner.core.database.entity.PendingAiMutationEntity
 import com.example.chatgpt_mealplanner.core.database.entity.BasketLineEntity
 import com.example.chatgpt_mealplanner.core.database.entity.BasketPlanEntity
+import com.example.chatgpt_mealplanner.core.database.entity.BasketComparisonCacheEntity
 import com.example.chatgpt_mealplanner.core.database.entity.ChatConversationEntity
 import com.example.chatgpt_mealplanner.core.database.entity.ChatMessageEntity
 import com.example.chatgpt_mealplanner.core.database.entity.InventoryItemBarcodeEntity
@@ -752,6 +753,19 @@ val MIGRATION_16_17 = object : Migration(16, 17) {
     }
 }
 
+val MIGRATION_17_18 = object : Migration(17, 18) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("""
+            CREATE TABLE IF NOT EXISTS `basket_comparison_cache` (
+                `cacheId` INTEGER NOT NULL,
+                `fingerprint` TEXT NOT NULL,
+                `payloadJson` TEXT NOT NULL,
+                `generatedAt` INTEGER NOT NULL,
+                PRIMARY KEY(`cacheId`)
+            )
+        """.trimIndent())
+    }
+}
 val ALL_MIGRATIONS = arrayOf(
     MIGRATION_1_2,
     MIGRATION_2_3,
@@ -768,7 +782,8 @@ val ALL_MIGRATIONS = arrayOf(
     MIGRATION_13_14,
     MIGRATION_14_15,
     MIGRATION_15_16,
-    MIGRATION_16_17
+    MIGRATION_16_17,
+    MIGRATION_17_18
 )
 
 @Database(
@@ -794,6 +809,7 @@ val ALL_MIGRATIONS = arrayOf(
         RetailPriceSnapshotEntity::class,
         RetailProductMappingEntity::class,
         BasketPlanEntity::class,
+        BasketComparisonCacheEntity::class,
         BasketLineEntity::class,
         ReceiptImportEntity::class,
         ReceiptImportLineEntity::class,
@@ -809,7 +825,7 @@ val ALL_MIGRATIONS = arrayOf(
         com.example.chatgpt_mealplanner.core.database.entity.SyncPendingApprovalEntity::class,
         com.example.chatgpt_mealplanner.core.database.entity.MealChangeRequestEntity::class
     ],
-    version = 17,
+    version = 18,
     exportSchema = true
 )
 @TypeConverters(Converters::class)

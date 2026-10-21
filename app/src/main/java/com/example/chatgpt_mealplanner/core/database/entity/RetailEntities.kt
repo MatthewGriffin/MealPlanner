@@ -125,3 +125,12 @@ data class BasketLineEntity(
     val expectedRemainder: Double,
     val matchConfidence: MatchConfidence
 )
+
+@Entity(tableName = "basket_comparison_cache")
+data class BasketComparisonCacheEntity(
+    @PrimaryKey
+    val cacheId: Int = 1,
+    val fingerprint: String,
+    val payloadJson: String,
+    val generatedAt: Long
+)

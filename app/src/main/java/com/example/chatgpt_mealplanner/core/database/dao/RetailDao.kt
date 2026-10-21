@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import com.example.chatgpt_mealplanner.core.database.entity.BasketLineEntity
+import com.example.chatgpt_mealplanner.core.database.entity.BasketComparisonCacheEntity
 import com.example.chatgpt_mealplanner.core.database.entity.BasketPlanEntity
 import com.example.chatgpt_mealplanner.core.database.entity.RetailPriceSnapshotEntity
 import com.example.chatgpt_mealplanner.core.database.entity.RetailProductEntity
@@ -59,4 +60,10 @@ interface RetailDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertBasketLines(lines: List<BasketLineEntity>)
+
+    @Query("SELECT * FROM basket_comparison_cache WHERE cacheId = 1 LIMIT 1")
+    suspend fun getBasketComparisonCache(): BasketComparisonCacheEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun saveBasketComparisonCache(cache: BasketComparisonCacheEntity)
 }
