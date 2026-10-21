@@ -182,8 +182,22 @@ class SettingsViewModel @Inject constructor(
                 address = store.address
             )
         }
-        persistPreferredStores(updated)
-        _uiState.update { it.copy(storeSearchMessage = "Branch saved to preferred locations. Branch-specific prices and stock are not confirmed.") }
+        if (retailStorePreferenceStore.savePreferredStores(updated)) {
+            _uiState.update {
+                it.copy(
+                    preferredStores = updated,
+                    syncStatusMessage = null,
+                    storeSearchMessage = "Branch saved to preferred locations. Branch-specific prices and stock are not confirmed."
+                )
+            }
+        } else {
+            _uiState.update {
+                it.copy(
+                    syncStatusMessage = "Could not save preferred branches.",
+                    storeSearchMessage = "Could not save this branch. Your existing preferences have been left unchanged."
+                )
+            }
+        }
     }
 
     fun setPreferredStore(storeId: String, preferred: Boolean) {
