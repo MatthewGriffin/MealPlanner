@@ -66,6 +66,7 @@ class RetailProductMatcher(
         }
 
         val nameLower = candidateProduct.name.lowercase()
+        val normalizedProductName = nameLower.replace(Regex("[^a-z0-9]+"), " ").trim()
         // Recipe-generated shopping labels sometimes append a vague optional-choice
         // phrase to a real ingredient (for example, "Heavy cream, toppings of choice").
         // Match the actual ingredient identity without treating the choice phrase as food.
@@ -157,12 +158,15 @@ class RetailProductMatcher(
         }
 
         // UK double cream is the closest standard retail equivalent to US-style heavy cream.
-        val wantsHeavyCream = reqLower.contains("heavy cream") || reqLower in setOf("double cream", "whipping cream")
+        // Normalize punctuation/order variations in retailer catalogue names (e.g. "Cream, Double").
+        val wantsHeavyCream = reqLower.contains("heavy cream") ||
+            reqLower.contains("heavy whipping cream") ||
+            reqLower in setOf("double cream", "whipping cream", "heavy whipping cream")
         if (wantsHeavyCream) {
-            val isCream = nameLower.contains("cream")
-            val isEquivalentCream = nameLower.contains("double cream") ||
-                nameLower.contains("whipping cream") || nameLower.contains("heavy cream")
-            val isPreparedOrFlavoured = listOf("ice cream", "sour cream", "clotted cream", "cream cheese", "custard", "spray cream").any { nameLower.contains(it) }
+            val isCream = normalizedProductName.split(" ").contains("cream")
+            val isEquivalentCream = Regex("\b(double|whipping|heavy)\b.*\bcream\b|\bcream\b.*\b(double|whipping|heavy)\b")
+                .containsMatchIn(normalizedProductName)
+            val isPreparedOrFlavoured = listOf("ice cream", "sour cream", "clotted cream", "cream cheese", "custard", "spray cream").any { normalizedProductName.contains(it) }
             if (isCream && isEquivalentCream && !isPreparedOrFlavoured) {
                 return returnMatch(requirementDisplayName, candidateProduct, RetailMatchCandidate(
                     candidateProduct, MatchType.CATEGORY_MATCH, MatchConfidence.HIGH, true,
