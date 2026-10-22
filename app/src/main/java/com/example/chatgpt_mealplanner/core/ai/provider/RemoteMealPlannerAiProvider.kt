@@ -10,6 +10,9 @@ import com.example.chatgpt_mealplanner.contract.AiProviderResponse
 import com.example.chatgpt_mealplanner.core.ai.config.BackendConfig
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -63,6 +66,44 @@ class RemoteMealPlannerAiProvider @Inject constructor(
 
         val requestJson = json.encodeToString(continueRequest)
         return postToBackend("/v1/ai/continue", requestJson)
+    }
+
+    private fun extractMealPlanFromText(text: String): List<com.example.chatgpt_mealplanner.contract.MealProposal>? {
+        if (!text.contains("MEAL_PLAN_JSON:")) return null
+        return try {
+            val array = json.parseToJsonElement(text.substringAfter("MEAL_PLAN_JSON:").trim()).jsonArray
+            val meals = array.map { element ->
+                val obj = element.jsonObject
+                com.example.chatgpt_mealplanner.contract.MealProposal(
+                    title = obj["title"]?.jsonPrimitive?.content ?: return null,
+                    mealType = obj["mealType"]?.jsonPrimitive?.content,
+                    suggestedDate = obj["suggestedDate"]?.jsonPrimitive?.content ?: obj["date"]?.jsonPrimitive?.content,
+                    servings = obj["servings"]?.jsonPrimitive?.content?.toIntOrNull() ?: 2,
+                    ingredients = obj["ingredients"]?.jsonArray?.map { item ->
+                        val ingredient = item.jsonObject
+                        com.example.chatgpt_mealplanner.contract.ProposedIngredient(
+                            displayName = ingredient["displayName"]?.jsonPrimitive?.content ?: return null,
+                            quantity = ingredient["quantity"]?.jsonPrimitive?.content?.toDoubleOrNull()
+                                ?: ingredient["plannedQuantity"]?.jsonPrimitive?.content?.toDoubleOrNull() ?: return null,
+                            unit = ingredient["unit"]?.jsonPrimitive?.content ?: ingredient["plannedUnit"]?.jsonPrimitive?.content ?: "ITEM",
+                            optional = ingredient["optional"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false,
+                            substitutionAllowed = ingredient["substitutionAllowed"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: true
+                        )
+                    } ?: emptyList(),
+                    steps = obj["steps"]?.jsonArray?.mapIndexed { index, item ->
+                        val step = item.jsonObject
+                        com.example.chatgpt_mealplanner.contract.RecipeStep(
+                            order = step["order"]?.jsonPrimitive?.content?.toIntOrNull() ?: index + 1,
+                            instruction = step["instruction"]?.jsonPrimitive?.content ?: ""
+                        )
+                    } ?: emptyList(),
+                    reasoningSummary = obj["reasoningSummary"]?.jsonPrimitive?.content ?: "Part of the proposed meal plan"
+                )
+            }
+            meals.takeIf { it.size > 1 && it.all { meal -> meal.suggestedDate != null && meal.ingredients.isNotEmpty() && meal.steps.isNotEmpty() } }
+        } catch (_: Throwable) {
+            null
+        }
     }
 
     private fun postToBackend(endpoint: String, requestJson: String): AiProviderResponse {
@@ -121,13 +162,16 @@ class RemoteMealPlannerAiProvider @Inject constructor(
             )
 
         return when (backendResponse) {
-            is AiBackendResponse.Final -> AiProviderResponse.FinalResponse(
-                text = backendResponse.text,
-                proposal = backendResponse.proposal,
-                mealPlan = backendResponse.mealPlan,
-                proposedAction = backendResponse.proposedAction,
-                modelId = backendResponse.modelId
-            )
+            is AiBackendResponse.Final -> {
+                val parsedPlan = backendResponse.mealPlan ?: extractMealPlanFromText(backendResponse.text)
+                AiProviderResponse.FinalResponse(
+                    text = if (parsedPlan != null) backendResponse.text.substringBefore("MEAL_PLAN_JSON:").trim() else backendResponse.text,
+                    proposal = if (parsedPlan != null) null else backendResponse.proposal,
+                    mealPlan = parsedPlan,
+                    proposedAction = backendResponse.proposedAction,
+                    modelId = backendResponse.modelId
+                )
+            }
             is AiBackendResponse.ToolCalls -> AiProviderResponse.ToolCalls(
                 providerContinuationToken = backendResponse.providerContinuationToken,
                 calls = backendResponse.calls
