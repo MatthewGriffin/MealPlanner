@@ -176,9 +176,19 @@ class ShoppingViewModel @Inject constructor(
                     enabledRetailers = preferredStores.map { it.retailerId }.toSet(),
                     preferredStores = preferredStores
                 )
-                val res = retailShoppingDomainService.optimizeShoppingBasket(preferences) { message ->
-                    retailLookupMessageFlow.value = message
-                }
+                val res = retailShoppingDomainService.optimizeShoppingBasket(
+                    preferences,
+                    { message ->
+                        if (version == basketOptimizationVersion) {
+                            retailLookupMessageFlow.value = message
+                        }
+                    },
+                    { partialResult ->
+                        if (version == basketOptimizationVersion) {
+                            basketOptimizationFlow.value = partialResult
+                        }
+                    }
+                )
                 if (res is DomainResult.Success) {
                     res.value.selectedPlan.lines.forEach { line ->
                         println("[AI_MEALPLANNER] [SHOPPING_ASSIGNMENT_RESULT] requirementId=${line.shoppingRequirementId} assigned=true retailer=${line.retailerId.name}")
