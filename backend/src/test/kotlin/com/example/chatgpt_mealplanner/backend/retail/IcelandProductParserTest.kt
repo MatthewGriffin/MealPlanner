@@ -135,8 +135,18 @@ class IcelandProductParserTest {
     fun parsePriceString_handlesPoundsAndPenceCorrectly() {
         assertEquals(Money(100L), parser.parsePriceString("£1.00"))
         assertEquals(Money(125L), parser.parsePriceString("£1.25"))
+        assertEquals(Money(199L), parser.parsePriceString("£1.99"))
+        assertEquals(Money(10L), parser.parsePriceString("£0.10"))
         assertEquals(Money(69L), parser.parsePriceString("69p"))
         assertEquals(Money(25L), parser.parsePriceString("25p"))
+    }
+
+    @Test
+    fun parsePriceString_rejectsInvalidNegativeAndOverflowValues() {
+        assertEquals(null, parser.parsePriceString(""))
+        assertEquals(null, parser.parsePriceString("not a price"))
+        assertEquals(null, parser.parsePriceString("£-1.00"))
+        assertEquals(null, parser.parsePriceString("999999999999999999999999999999999.99"))
     }
 
     private fun loadFixture(filename: String): String {
