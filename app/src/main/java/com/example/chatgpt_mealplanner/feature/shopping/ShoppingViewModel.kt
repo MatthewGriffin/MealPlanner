@@ -56,6 +56,7 @@ class ShoppingViewModel @Inject constructor(
     private val manualItemNameFlow = MutableStateFlow("")
     private val manualItemNotesFlow = MutableStateFlow("")
     private val basketOptimizationFlow = MutableStateFlow<BasketComparisonResult?>(null)
+    private val retailLookupMessageFlow = MutableStateFlow<String?>(null)
     private var basketOptimizationJob: kotlinx.coroutines.Job? = null
     private var basketOptimizationVersion = 0L
 
@@ -78,7 +79,8 @@ class ShoppingViewModel @Inject constructor(
         showAddManualDialogFlow,
         basketOptimizationFlow,
         manualItemNameFlow,
-        manualItemNotesFlow
+        manualItemNotesFlow,
+        retailLookupMessageFlow
     ) { flows ->
         val listWithItems = flows[0] as ShoppingListWithItems?
         val stapleRules = flows[1] as List<StapleRule>
@@ -90,6 +92,7 @@ class ShoppingViewModel @Inject constructor(
         val basketResult = flows[7] as BasketComparisonResult?
         val manualItemName = flows[8] as String
         val manualItemNotes = flows[9] as String
+        val retailLookupMessage = flows[10] as String?
 
         val items = listWithItems?.items ?: emptyList()
         val groups = computeRetailerGroups(items, basketResult)
@@ -113,6 +116,7 @@ class ShoppingViewModel @Inject constructor(
             selectedItemForDetail = itemDetail,
             showAddManualDialog = showAddDialog,
             basketComparisonResult = basketResult,
+            retailLookupMessage = retailLookupMessage,
             retailerGroups = groups,
             manualItemName = manualItemName,
             manualItemNotes = manualItemNotes
@@ -144,8 +148,10 @@ class ShoppingViewModel @Inject constructor(
         val version = ++basketOptimizationVersion
         basketOptimizationJob?.cancel()
         basketOptimizationFlow.value = null
+        retailLookupMessageFlow.value = null
         if (listWithItems?.items.isNullOrEmpty()) return
 
+        retailLookupMessageFlow.value = "Preparing retailer lookups…"
         basketOptimizationJob = viewModelScope.launch {
             val count = listWithItems?.items?.size ?: 0
             println("[AI_MEALPLANNER] [SHOPPING_ASSIGNMENT_CALL] shoppingItemCount=$count")
@@ -170,7 +176,9 @@ class ShoppingViewModel @Inject constructor(
                     enabledRetailers = preferredStores.map { it.retailerId }.toSet(),
                     preferredStores = preferredStores
                 )
-                val res = retailShoppingDomainService.optimizeShoppingBasket(preferences)
+                val res = retailShoppingDomainService.optimizeShoppingBasket(preferences) { message ->
+                    retailLookupMessageFlow.value = message
+                }
                 if (res is DomainResult.Success) {
                     res.value.selectedPlan.lines.forEach { line ->
                         println("[AI_MEALPLANNER] [SHOPPING_ASSIGNMENT_RESULT] requirementId=${line.shoppingRequirementId} assigned=true retailer=${line.retailerId.name}")
@@ -188,6 +196,7 @@ class ShoppingViewModel @Inject constructor(
             }
             if (version == basketOptimizationVersion) {
                 basketOptimizationFlow.value = if (result is DomainResult.Success) result.value else null
+                retailLookupMessageFlow.value = null
             }
         }
     }
