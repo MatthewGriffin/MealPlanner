@@ -176,7 +176,8 @@ class AiMealPlannerOrchestrator @Inject constructor(
             // Keep recipe-offer tools out so the first meal cannot become an accidental Save meal card.
             availableTools = AiToolId.entries.filter { tool ->
                 if (!isMealPlanRequest(userMessageText)) {
-                    tool != AiToolId.OFFER_ADD_PLANNED_MEAL
+                    tool != AiToolId.OFFER_ADD_PLANNED_MEAL &&
+                        tool != AiToolId.REGENERATE_SHOPPING_LIST
                 } else {
                     // Meal-plan generation should not wait on retailer catalogue/network lookups.
                     // Retailer matching happens later when the user expands a selected meal.
@@ -961,7 +962,7 @@ class AiMealPlannerOrchestrator @Inject constructor(
 
         APPLICATION STATE & WRITE TOOL MANDATE:
         1. You CANNOT change the user's Planner, Inventory, Shopping List, Staples, or other application state merely by stating in text that you did so.
-        2. When the user explicitly asks for an application-state change (e.g. 'add option 2 to my planner', 'regenerate shopping list', 'mark milk as out'), you MUST invoke the appropriate write tool (e.g., add_planned_meal, regenerate_shopping_list, mark_all_inventory_for_canonical_ingredient_out).
+        2. When the user explicitly asks for an application-state change (e.g., 'add option 2 to my planner', 'mark milk as out'), invoke the appropriate available write tool (e.g., add_planned_meal, mark_all_inventory_for_canonical_ingredient_out). Planned-meal changes automatically update shopping requirements; never ask to regenerate the shopping list.
         3. Do NOT tell the user an action was completed unless the corresponding tool result reports success.
         4. If no available tool can perform the requested action, clearly state that the action could not be performed rather than pretending it happened.
 
