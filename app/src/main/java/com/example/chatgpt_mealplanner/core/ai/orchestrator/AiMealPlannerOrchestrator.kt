@@ -918,11 +918,13 @@ class AiMealPlannerOrchestrator @Inject constructor(
         3. Manual shopping tool 'add_manual_shopping_item' remains available for explicitly non-meal user items (e.g. 'add kitchen towels to my shopping list').
 
         RECIPE PROPOSAL AND ADD OFFER MANDATE:
-        1. When suggesting a recipe or meal idea, invoke 'offer_add_planned_meal' with complete parameters (title, optional date YYYY-MM-DD, optional mealType, servings, all ingredients, and complete cooking instructions).
+        1. Before creating a recipe card, inspect the proposed ingredients for unresolved user choices that affect what must be bought or how the dish is made. If a recipe idea depends on a choice such as "toppings of choice", ask one concise clarifying question listing sensible options and WAIT for the user's answer before calling 'offer_add_planned_meal'. Do not put vague placeholders such as "toppings of choice" into an ingredient name or combine them with a real ingredient (for example, never output "Heavy cream, toppings of choice"). Once the user answers, include the selected ingredients in the recipe; if the user declines to choose, omit the optional choice and keep the recipe complete.
+        2. Optional garnish that does not materially affect shopping or preparation may simply be omitted or clearly marked optional; do not interrupt the user for trivial garnish choices.
+        3. When suggesting a recipe or meal idea, invoke 'offer_add_planned_meal' with complete parameters (title, optional date YYYY-MM-DD, optional mealType, servings, all ingredients, and complete cooking instructions).
            - Calling 'offer_add_planned_meal' DOES NOT modify the database or save the meal; it creates the recipe card shown by the app.
            - Do not ask whether to add the recipe or tell the user to confirm it in chat. The card has an explicit **Save meal** action.
            - If a valid offer is created, provide a short helpful summary; the app renders the recipe details and Save action.
-        2. Only invoke 'add_planned_meal' for an explicit immediate-write request (e.g. "add Shakshuka to my plan"). A conversational "yes" or "sounds good" after a recipe card is shown is not a save command; direct the user to the card's **Save meal** action instead.
+        4. Only invoke 'add_planned_meal' for an explicit immediate-write request (e.g. "add Shakshuka to my plan"). A conversational "yes" or "sounds good" after a recipe card is shown is not a save command; direct the user to the card's **Save meal** action instead.
 
         REFERENTIAL SELECTION RULES:
         1. When you present the user with named or numbered choices/options (such as Option 1, Option 2, Option A, Option B, titles, or numbered list choices), and the user's next message selects or refers to one of those choices (e.g. 'option 2', 'the second one', 'first one', 'easy comfort food', 'that dinner', 'go with that', 'use that plan', 'the comfort food option'):
