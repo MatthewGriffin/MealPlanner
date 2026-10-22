@@ -210,14 +210,24 @@ class IcelandProductParser(
 
     fun parsePriceString(text: String): Money? {
         val trimmed = text.trim()
-        val clean = trimmed.replace("£", "").replace("p", "").trim()
-        val numeric = clean.toDoubleOrNull() ?: return null
+        if (trimmed.isEmpty()) return null
 
-        return if (trimmed.endsWith("p") && !trimmed.contains("£")) {
-            Money(numeric.toLong())
+        val isPence = trimmed.endsWith("p", ignoreCase = true) && !trimmed.contains("£")
+        val numericText = trimmed
+            .removePrefix("£")
+            .removeSuffix("p")
+            .removeSuffix("P")
+            .trim()
+        val numeric = numericText.toBigDecimalOrNull() ?: return null
+        if (numeric.signum() < 0) return null
+
+        val minorUnits = if (isPence) {
+            numeric.setScale(0, java.math.RoundingMode.HALF_UP)
         } else {
-            Money((numeric * 100).toLong())
+            numeric.movePointRight(2).setScale(0, java.math.RoundingMode.HALF_UP)
         }
+        val amount = runCatching { minorUnits.longValueExact() }.getOrNull() ?: return null
+        return Money(amount)
     }
 
     data class ParsedPackMeta(
