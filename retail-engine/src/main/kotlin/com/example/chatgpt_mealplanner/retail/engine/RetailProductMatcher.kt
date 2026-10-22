@@ -191,7 +191,7 @@ class RetailProductMatcher(
 
         // Do not treat a mixed-ingredient product as a substitute for one ingredient.
         // For example, "Carrots, Sugar Snaps and Baby Corn" is not plain carrots.
-        if (nameLower.contains(" and ") && !reqLower.contains(" and ")) {
+        if (nameLower.contains(",") && nameLower.contains(" and ") && !reqLower.contains(" and ")) {
             val match = RetailMatchCandidate(
                 product = candidateProduct,
                 matchType = MatchType.INCOMPATIBLE,
