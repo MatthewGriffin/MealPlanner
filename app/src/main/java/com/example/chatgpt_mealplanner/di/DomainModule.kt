@@ -136,5 +136,11 @@ abstract class DomainModule {
         fun provideAsdaRetailerAdapter(): com.example.chatgpt_mealplanner.backend.retail.AsdaRetailerAdapter {
             return com.example.chatgpt_mealplanner.backend.retail.AsdaRetailerAdapter()
         }
+
+        @Provides
+        @Singleton
+        fun provideAldiRetailerAdapter(): com.example.chatgpt_mealplanner.backend.retail.AldiRetailerAdapter {
+            return com.example.chatgpt_mealplanner.backend.retail.AldiRetailerAdapter()
+        }
     }
 }
