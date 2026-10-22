@@ -51,6 +51,7 @@ sealed interface AiBackendResponse {
     data class Final(
         val text: String,
         val proposal: MealProposal? = null,
+        val mealPlan: List<MealProposal>? = null,
         val proposedAction: AiProposedAction? = null,
         val providerContinuationToken: String? = null,
         val tokenUsage: TokenUsageDto? = null,
@@ -98,6 +99,7 @@ sealed interface AiProviderResponse {
     data class FinalResponse(
         val text: String,
         val proposal: MealProposal? = null,
+        val mealPlan: List<MealProposal>? = null,
         val proposedAction: AiProposedAction? = null,
         val modelId: String? = null
     ) : AiProviderResponse
@@ -117,6 +119,7 @@ sealed interface AiOrchestrationResult {
     data class Final(
         val assistantText: String,
         val validatedProposal: ValidatedMealProposal? = null,
+        val mealPlan: List<MealProposal>? = null,
         val proposedAction: AiProposedAction? = null,
         val modelId: String? = null
     ) : AiOrchestrationResult
