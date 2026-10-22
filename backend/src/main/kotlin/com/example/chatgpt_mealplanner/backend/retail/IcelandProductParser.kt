@@ -36,41 +36,39 @@ class IcelandProductParser(
     fun parseHtmlPage(htmlContent: String): List<ParsedProductRecord> {
         val records = mutableListOf<ParsedProductRecord>()
 
-        // 1. Extract JSON-LD script blocks
-        val jsonLdBlocks = extractJsonLdBlocks(htmlContent)
-        for (ldString in jsonLdBlocks) {
-            try {
-                val element = json.parseToJsonElement(ldString)
-                if (element is JsonObject) {
-                    val type = element["@type"]?.jsonPrimitive?.content
-                    if (type.equals("Product", ignoreCase = true)) {
-                        val parsedRecord = parseJsonLdProductObject(element, htmlContent)
-                        if (parsedRecord != null) {
-                            records.add(parsedRecord)
+        // JSON-LD may be a single object, an array of objects, or an @graph wrapper.
+        // Retailer search pages commonly use more than one of these layouts.
+        fun visit(element: JsonElement) {
+            when (element) {
+                is JsonArray -> element.forEach(::visit)
+                is JsonObject -> {
+                    val typeElement = element["@type"]
+                    val types = when (typeElement) {
+                        is JsonArray -> typeElement.mapNotNull { primitiveContent(it) }
+                        null -> emptyList()
+                        else -> listOfNotNull(primitiveContent(typeElement))
+                    }
+                    when {
+                        types.any { it.equals("Product", ignoreCase = true) } -> {
+                            parseJsonLdProductObject(element, htmlContent)?.let(records::add)
                         }
-                    } else if (type.equals("ItemList", ignoreCase = true)) {
-                        val items = element["itemListElement"]?.jsonArray
-                        items?.forEach { itemElem ->
-                            val prodObj = if (itemElem is JsonObject && itemElem.containsKey("item")) {
-                                itemElem["item"] as? JsonObject
-                            } else if (itemElem is JsonObject) {
-                                itemElem
-                            } else null
-
-                            if (prodObj != null) {
-                                val parsedRecord = parseJsonLdProductObject(prodObj, htmlContent)
-                                if (parsedRecord != null) {
-                                    records.add(parsedRecord)
-                                }
-                            }
+                        types.any { it.equals("ItemList", ignoreCase = true) } -> {
+                            element["itemListElement"]?.let(::visit)
                         }
                     }
+                    element["@graph"]?.let(::visit)
+                    // ItemList entries often wrap the actual product in an "item" property.
+                    if (element.containsKey("item")) element["item"]?.let(::visit)
                 }
-            } catch (_: Exception) {
-                // Ignore malformed JSON-LD block
+                else -> Unit
             }
         }
 
+        extractJsonLdBlocks(htmlContent).forEach { ldString ->
+            runCatching { json.parseToJsonElement(ldString) }
+                .getOrNull()
+                ?.let(::visit)
+        }
         return records
     }
 
