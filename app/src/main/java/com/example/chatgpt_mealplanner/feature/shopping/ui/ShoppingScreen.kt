@@ -25,7 +25,6 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -154,28 +153,6 @@ fun ShoppingScreen(
                     }
 
                     val shoppingItems = uiState.activeListWithItems?.items.orEmpty()
-                    if (shoppingItems.isNotEmpty()) {
-                        val lookupProgress = uiState.retailLookupMessage
-                            ?.let { Regex("^(\\d+)/(\\d+)").find(it) }
-                        val lookupDone = lookupProgress?.groupValues?.get(1)?.toIntOrNull() ?: 0
-                        val lookupTotal = lookupProgress?.groupValues?.get(2)?.toIntOrNull() ?: 0
-                        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
-                            if (uiState.retailLookupMessage != null && lookupTotal > 0) {
-                                Text("$lookupDone/$lookupTotal", style = MaterialTheme.typography.bodySmall)
-                                Text(
-                                    text = uiState.retailLookupMessage.substringAfter(" · "),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                if (lookupDone < lookupTotal) {
-                                    LinearProgressIndicator(
-                                        progress = { lookupDone.toFloat() / lookupTotal },
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-                                }
-                            }
-                        }
-                    }
                     val plan = uiState.basketComparisonResult?.selectedPlan
                     if (plan != null) {
                         val matchedCount = plan.lines.size
