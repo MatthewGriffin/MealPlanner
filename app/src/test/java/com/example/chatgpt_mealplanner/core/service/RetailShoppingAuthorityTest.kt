@@ -11,8 +11,12 @@ import com.example.chatgpt_mealplanner.core.model.ShoppingSourceType
 import com.example.chatgpt_mealplanner.core.model.RequirementConfidence
 import com.example.chatgpt_mealplanner.core.model.WasteRisk
 import com.example.chatgpt_mealplanner.core.repository.RetailRepositoryImpl
+import com.example.chatgpt_mealplanner.backend.retail.IcelandRetailerAdapter
 import com.example.chatgpt_mealplanner.retail.contract.Money
 import com.example.chatgpt_mealplanner.retail.contract.RetailOffer
+import com.example.chatgpt_mealplanner.retail.contract.RetailOfferSourceType
+import com.example.chatgpt_mealplanner.retail.contract.RetailProductSearchResult
+import com.example.chatgpt_mealplanner.retail.contract.RetailSourceMetadata
 import com.example.chatgpt_mealplanner.retail.contract.RetailProduct
 import com.example.chatgpt_mealplanner.retail.contract.RetailProductWithOffer
 import com.example.chatgpt_mealplanner.retail.contract.RetailStorageClass
@@ -252,13 +256,43 @@ class RetailShoppingAuthorityTest {
             )
         )
 
-        val result = retailShoppingDomainService.optimizeShoppingBasket(UserShoppingPreferences())
+        val genuineSauce = RetailProduct(
+            RetailerId.ICELAND, "iceland_tomato_sauce", "Tomato Sauce", "tomato_sauce",
+            storageClass = RetailStorageClass.AMBIENT
+        )
+        val fakeIcelandAdapter = object : IcelandRetailerAdapter() {
+            override suspend fun searchProducts(query: String): RetailProductSearchResult =
+                RetailProductSearchResult.Success(
+                    productsWithOffers = listOf(
+                        RetailProductWithOffer(genuineSauce, RetailOffer(RetailerId.ICELAND, "iceland_tomato_sauce", Money(150L)))
+                    ),
+                    metadata = RetailSourceMetadata(
+                        retailerId = RetailerId.ICELAND,
+                        sourceType = RetailOfferSourceType.LIVE,
+                        sourceReference = "test://iceland/search?q=tomato+sauce",
+                        observedAt = 1000L,
+                        isLive = true
+                    )
+                )
+        }
+        retailShoppingDomainService = RetailShoppingDomainServiceImpl(
+            shoppingDomainService = shoppingDomainService,
+            shoppingDao = shoppingDao,
+            retailRepository = retailRepository,
+            retailDao = retailDao,
+            icelandAdapter = fakeIcelandAdapter,
+            allowLiveLookupsInTests = true
+        )
+
+        val result = retailShoppingDomainService.optimizeShoppingBasket(
+            UserShoppingPreferences(enabledRetailers = setOf(RetailerId.ICELAND))
+        )
         assertTrue(result is DomainResult.Success)
         val plan = (result as DomainResult.Success).value.selectedPlan
-        // Unit tests do not call live retailer websites. The unrelated composite cache
-        // must not be selected as tomato sauce, and the requirement must remain visible.
-        assertTrue(plan.lines.none { it.productWithOffer.product.name.contains("Stuffed Cabbage", ignoreCase = true) })
-        assertTrue(plan.unmatchedRequirements.contains("ts_1"))
+        // A composite cache entry must not suppress a real search for the requested ingredient.
+        assertEquals(1, plan.lines.size)
+        assertEquals("Tomato Sauce", plan.lines.single().productWithOffer.product.name)
+        assertTrue(plan.unmatchedRequirements.isEmpty())
     }
 
     @Test
