@@ -332,7 +332,11 @@ class AiMealPlannerOrchestrator @Inject constructor(
         return when (providerResponse) {
             is AiProviderResponse.FinalResponse -> {
                 val finalRes = providerResponse as AiProviderResponse.FinalResponse
-                var validatedProposal = finalRes.proposal?.let { recipeValidator.validateProposal(it) }
+                var validatedProposal = if (isMealPlanRequest(userMessageText)) {
+                    null
+                } else {
+                    finalRes.proposal?.let { recipeValidator.validateProposal(it) }
+                }
 
                 var textToReturn = finalRes.text
 
@@ -473,7 +477,9 @@ class AiMealPlannerOrchestrator @Inject constructor(
                 AiOrchestrationResult.Final(
                     assistantText = textToReturn,
                     validatedProposal = validatedProposal,
-                    proposedAction = if (hasValidOfferAwaiting) {
+                    proposedAction = if (isMealPlanRequest(userMessageText)) {
+                        null
+                    } else if (hasValidOfferAwaiting) {
                         com.example.chatgpt_mealplanner.contract.AiProposedAction.SaveMeal(
                             proposalFromPendingSnapshot(currentPending!!)
                         )
