@@ -666,7 +666,7 @@ class OpenStreetMapStoreDirectoryTest {
         val client = HttpClient(MockEngine { request ->
             if (request.url.host.contains("overpass")) {
                 respond(
-                    content = """{"elements":[]}""",
+                    content = """{"elements":[{"type":"node","id":6503,"lat":53.279,"lon":-2.901,"tags":{"name":"Morrisons Supermarket","brand":"Morrisons","shop":"supermarket","addr:postcode":"CH65 4AA"}}]}""",
                     status = HttpStatusCode.OK,
                     headers = headersOf(HttpHeaders.ContentType, "application/json")
                 )
@@ -697,10 +697,11 @@ class OpenStreetMapStoreDirectoryTest {
                 )
             )
             assertTrue(searchedTerms.contains("McColl's"), "Expected a legacy McColl's lookup; got $searchedTerms")
-            assertEquals(1, response.stores.size)
-            assertEquals("Morrisons Daily", response.stores.single().name)
-            assertEquals("CH65 4AA", response.stores.single().postcode)
-            assertEquals(RetailStoreFormat.MORRISONS_DAILY, response.stores.single().format)
+            assertEquals(2, response.stores.size, "A found Morrisons branch must not suppress the missing-branch fallback")
+            val cromwell = response.stores.single { it.name == "Morrisons Daily" }
+            assertEquals("CH65 4AA", cromwell.postcode)
+            assertEquals(RetailStoreFormat.MORRISONS_DAILY, cromwell.format)
+            assertTrue(response.stores.any { it.name == "Morrisons Supermarket" })
         } finally {
             client.close()
         }
