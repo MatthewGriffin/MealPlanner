@@ -156,7 +156,8 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
                     val pName = c.product.name.lowercase()
                     val cId = c.product.canonicalIngredientId?.lowercase()
                     pName.contains(queryLower) || queryLower.contains(pName) ||
-                        (canonicalLower != null && cId == canonicalLower)
+                        (canonicalLower != null && cId == canonicalLower) ||
+                        matcher.evaluateMatch(req.canonicalIngredientId, req.displayName, c.product).isAutoBasketEligible
                 }
 
                 val freshCandidates = relevantCandidates.filter { c ->
