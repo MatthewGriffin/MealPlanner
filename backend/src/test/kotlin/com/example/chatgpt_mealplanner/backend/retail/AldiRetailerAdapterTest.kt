@@ -49,7 +49,7 @@ class AldiRetailerAdapterTest {
         assertEquals(1, success.productsWithOffers.size)
         val item = success.productsWithOffers.single()
         assertEquals(RetailerId.ALDI, item.product.retailerId)
-        assertEquals(95L, item.offer.price.minorUnits)
+        assertEquals(95L, item.offer.price.amountMinor)
         assertEquals(RetailPriceScope.RETAILER_GENERAL, item.offer.priceScope)
         assertEquals(RetailAvailability.UNKNOWN, item.offer.availability)
         assertTrue(success.warnings.any { it.contains("may differ in store") })
