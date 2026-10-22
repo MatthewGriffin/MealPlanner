@@ -178,6 +178,38 @@ fun ChatScreen(
         )
     }
 
+    if (uiState.showMealPlanConflictDialog) {
+        val conflicts = uiState.mealPlanConflicts
+        AlertDialog(
+            onDismissRequest = { onEvent(ChatUiEvent.CancelMealPlanReplacement) },
+            title = { Text("Replace existing planned meals?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("These meals already occupy slots in the proposed plan. Accepting will delete them and replace them with the new meals:")
+                    conflicts.forEach { conflict ->
+                        Text(
+                            text = "• ${conflict.meal.date} — ${conflict.meal.mealType}: ${conflict.meal.title}",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                    Text("Meals in other dates or meal slots will be left unchanged.")
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val plan = uiState.latestMealPlan
+                        if (plan != null) onEvent(ChatUiEvent.AcceptMealPlan(plan, replaceConflicts = true))
+                    },
+                    enabled = uiState.latestMealPlan != null && !uiState.isSavingProposal
+                ) { Text("Replace and accept plan") }
+            },
+            dismissButton = {
+                TextButton(onClick = { onEvent(ChatUiEvent.CancelMealPlanReplacement) }) { Text("Keep existing meals") }
+            }
+        )
+    }
+
     if (uiState.showCookConfirmationDialog && uiState.cookConfirmationMealId != null) {
         AlertDialog(
             onDismissRequest = { onEvent(ChatUiEvent.DismissCookConfirmation) },
