@@ -336,6 +336,11 @@ class ChatViewModel @Inject constructor(
         if (text.isBlank()) return
         if (requestStateHolderFlow.value.requestState == ChatRequestState.IN_FLIGHT) return
 
+        // A proposal belongs to the previous assistant turn. Do not leave its Save card
+        // visible while a new request (especially a multi-day plan) is being processed.
+        latestProposalFlow.value = null
+        latestProposedActionFlow.value = null
+
         val visibleText = displayMessageText ?: text
         safeLog("[CHAT_SEND] messageLength=${text.length}")
 
