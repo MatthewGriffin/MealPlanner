@@ -168,8 +168,11 @@ class OpenStreetMapStoreDirectory(
                         }
                     }
                 }
-                mappedStores.none { it.retailerId == request.retailerId } -> {
-                    onProgress("Looking for missing ${displayName(request.retailerId)} listings…")
+                else -> {
+                    // Even when the shared query found one branch for the selected retailer,
+                    // supplement it: nearby branches can be missing independently (e.g. one
+                    // Morrisons Daily is mapped while Cromwell Road is absent).
+                    onProgress("Checking for additional ${displayName(request.retailerId)} branches…")
                     try {
                         kotlinx.coroutines.withTimeout(12_000L) {
                             searchNominatimFallback(request.retailerId, lat, lon, request.radiusMeters)
@@ -179,7 +182,6 @@ class OpenStreetMapStoreDirectory(
                         emptyList()
                     }
                 }
-                else -> emptyList()
             }
             logTiming("nominatim_fallbacks", fallbackStarted)
             if (fallbackStores.isNotEmpty()) usedNominatimFallback = true
