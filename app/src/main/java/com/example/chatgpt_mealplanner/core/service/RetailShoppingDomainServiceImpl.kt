@@ -57,6 +57,13 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
     override suspend fun optimizeShoppingBasket(
         preferences: UserShoppingPreferences,
         onLookupProgress: (String) -> Unit
+    ): DomainResult<BasketComparisonResult> =
+        optimizeShoppingBasket(preferences, onLookupProgress) { }
+
+    override suspend fun optimizeShoppingBasket(
+        preferences: UserShoppingPreferences,
+        onLookupProgress: (String) -> Unit,
+        onBasketUpdate: (BasketComparisonResult) -> Unit
     ): DomainResult<BasketComparisonResult> {
         safeLog("[RETAIL_OPTIMIZE_ENTRY] implementation=RetailShoppingDomainServiceImpl buildAudit=TOMATO_CACHE_FLOW_20261001_01")
 
@@ -135,7 +142,7 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
         val userMappings = retailRepository.getProductMappings()
         val matcher = RetailProductMatcher(userMappings)
 
-        requirementSpecs.forEach { req ->
+        requirementSpecs.forEachIndexed { requirementIndex, req ->
             safeLog("[RETAIL_REQUIREMENT_START] requirement=${req.displayName} quantity=${req.requiredQuantity} unit=${req.requiredUnit}")
             onLookupProgress("Checking ${req.displayName}…")
 
@@ -264,6 +271,21 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
             }
 
             safeLog("[RETAIL_REQUIREMENT_READY_FOR_OPTIMIZER] buildAudit=TOMATO_CACHE_FLOW_20261001_01 requirement=\"${req.displayName}\"")
+
+            // Publish a partial basket now, so the chosen store and matched product
+            // appear item-by-item rather than waiting for every retailer search.
+            val partialCandidates = retailRepository.getCandidateProductsWithOffers()
+            if (partialCandidates.isNotEmpty()) {
+                val partialPlan = BasketOptimizer(matcher).optimizeBasket(
+                    requirements = requirementSpecs.take(requirementIndex + 1),
+                    availableProductsWithOffers = PreferredBranchOfferSelector.select(
+                        partialCandidates,
+                        preferences.preferredStores
+                    ),
+                    preferences = preferences
+                )
+                onBasketUpdate(partialPlan)
+            }
         }
 
         var candidateProducts = retailRepository.getCandidateProductsWithOffers()
