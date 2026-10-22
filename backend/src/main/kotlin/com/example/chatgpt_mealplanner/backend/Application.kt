@@ -8,6 +8,7 @@ import com.example.chatgpt_mealplanner.backend.retail.IcelandProductParser
 import com.example.chatgpt_mealplanner.backend.retail.IcelandRetailerAdapter
 import com.example.chatgpt_mealplanner.backend.retail.IcelandSourceClient
 import com.example.chatgpt_mealplanner.backend.retail.OpenStreetMapStoreDirectory
+import com.example.chatgpt_mealplanner.backend.retail.TescoRetailerAdapter
 import com.example.chatgpt_mealplanner.backend.retail.StoreDirectoryProvider
 import com.example.chatgpt_mealplanner.retail.contract.RetailerCapabilityDto
 import com.example.chatgpt_mealplanner.retail.contract.RetailerCapabilityMode
@@ -57,6 +58,7 @@ fun Application.module(
     val icelandAdapter = IcelandRetailerAdapter(icelandClient, icelandParser)
     val asdaAdapter = AsdaRetailerAdapter()
     val aldiAdapter = AldiRetailerAdapter()
+    val tescoAdapter = TescoRetailerAdapter()
     val foodWarehouseAdapter = FoodWarehouseRetailerAdapter()
     val storeDirectory = storeDirectoryProvider ?: OpenStreetMapStoreDirectory(httpClient)
 
@@ -76,7 +78,6 @@ fun Application.module(
                 description = "Iceland live HTML / JSON-LD catalog search available."
             )
             val branchOnlyCapabilities = listOf(
-                RetailerId.TESCO,
                 RetailerId.MORRISONS,
                 RetailerId.SAINSBURYS,
                 RetailerId.LIDL
@@ -96,6 +97,7 @@ fun Application.module(
                     icelandCap,
                     asdaAdapter.getCapability(),
                     aldiAdapter.getCapability(),
+                    tescoAdapter.getCapability(),
                     foodWarehouseAdapter.getCapability()
                 ) + branchOnlyCapabilities
             )
@@ -131,8 +133,9 @@ fun Application.module(
                 RetailerId.ICELAND -> icelandAdapter.searchProducts(req.query)
                 RetailerId.ASDA -> asdaAdapter.searchProducts(req.query)
                 RetailerId.ALDI -> aldiAdapter.searchProducts(req.query)
+                RetailerId.TESCO -> tescoAdapter.searchProducts(req.query)
                 RetailerId.FOOD_WAREHOUSE -> foodWarehouseAdapter.searchProducts(req.query)
-                RetailerId.TESCO, RetailerId.MORRISONS, RetailerId.SAINSBURYS, RetailerId.LIDL ->
+                RetailerId.MORRISONS, RetailerId.SAINSBURYS, RetailerId.LIDL ->
                     com.example.chatgpt_mealplanner.retail.contract.RetailProductSearchResult.Unavailable(
                         reason = "Live price search is not configured for this retailer yet.",
                         errorCode = "SOURCE_UNAVAILABLE",
