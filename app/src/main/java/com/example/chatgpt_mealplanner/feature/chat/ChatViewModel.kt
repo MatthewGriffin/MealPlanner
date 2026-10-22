@@ -89,6 +89,8 @@ class ChatViewModel @Inject constructor(
     private val mealChangeRequestTitleFlow = MutableStateFlow("")
     private val latestProposalFlow = MutableStateFlow<ValidatedMealProposal?>(null)
     private val latestMealPlanFlow = MutableStateFlow<List<MealProposal>?>(null)
+    private val mealPlanConflictsFlow = MutableStateFlow<List<com.example.chatgpt_mealplanner.core.model.MealWithIngredients>>(emptyList())
+    private val showMealPlanConflictDialogFlow = MutableStateFlow(false)
     private val latestProposedActionFlow = MutableStateFlow<AiProposedAction?>(null)
     private val isSavingProposalFlow = MutableStateFlow(false)
 
@@ -115,7 +117,9 @@ class ChatViewModel @Inject constructor(
         showMealChangeRequestDialogFlow,
         mealChangeRequestDraftFlow,
         mealChangeRequestTitleFlow,
-        latestMealPlanFlow
+        latestMealPlanFlow,
+        mealPlanConflictsFlow,
+        showMealPlanConflictDialogFlow
     ) { flows ->
         @Suppress("UNCHECKED_CAST")
         val reqHolder = flows[4] as RequestStateHolder
@@ -126,6 +130,8 @@ class ChatViewModel @Inject constructor(
             messages = (flows[1] as List<*>).map { it as ChatMessageEntity },
             latestProposal = flows[2] as ValidatedMealProposal?,
             latestMealPlan = flows[16] as List<MealProposal>?,
+            mealPlanConflicts = flows[17] as List<com.example.chatgpt_mealplanner.core.model.MealWithIngredients>,
+            showMealPlanConflictDialog = flows[18] as Boolean,
             latestProposedAction = flows[3] as AiProposedAction?,
             isSavingProposal = flows[12] as Boolean,
             isLoading = isReqInFlight,
@@ -271,7 +277,11 @@ class ChatViewModel @Inject constructor(
             ChatUiEvent.CancelMealChangeRequestDraft -> cancelMealChangeRequestDraft()
             ChatUiEvent.RetryLastFailedMessage -> retryLastFailedMessage()
             is ChatUiEvent.SaveMealProposalToPlan -> saveMealProposalToPlan(event.proposal)
-            is ChatUiEvent.AcceptMealPlan -> saveMealPlanToPlan(event.meals)
+            is ChatUiEvent.AcceptMealPlan -> saveMealPlanToPlan(event.meals, event.replaceConflicts)
+            ChatUiEvent.CancelMealPlanReplacement -> {
+                showMealPlanConflictDialogFlow.value = false
+                mealPlanConflictsFlow.value = emptyList()
+            }
             is ChatUiEvent.ConfirmCookedMeal -> confirmCookedMeal(event.mealId)
             ChatUiEvent.DismissCookConfirmation -> dismissCookConfirmation()
             ChatUiEvent.ClearErrorMessage -> errorMessageFlow.value = null
@@ -553,7 +563,7 @@ class ChatViewModel @Inject constructor(
         }
     }
 
-    private fun saveMealPlanToPlan(meals: List<MealProposal>) {
+    private fun saveMealPlanToPlan(meals: List<MealProposal>, replaceConflicts: Boolean = false) {
         if (isSavingProposalFlow.value) return
         if (meals.size < 2 || meals.any { it.title.isBlank() || it.ingredients.isEmpty() || it.steps.isEmpty() || it.suggestedDate.isNullOrBlank() }) {
             errorMessageFlow.value = "This meal plan is missing dates, ingredients, or cooking instructions. Ask the assistant to regenerate the complete plan."
@@ -563,11 +573,38 @@ class ChatViewModel @Inject constructor(
         viewModelScope.launch {
             var saved = 0
             try {
-                for (proposal in meals) {
-                    val slot = com.example.chatgpt_mealplanner.core.ai.resolver.MealSlotResolver.resolveSlot(
+                val resolvedSlots = meals.map { proposal ->
+                    proposal to com.example.chatgpt_mealplanner.core.ai.resolver.MealSlotResolver.resolveSlot(
                         requestedDateStr = proposal.suggestedDate,
                         requestedMealTypeStr = proposal.mealType
                     )
+                }
+                val firstDate = resolvedSlots.minOf { it.second.date }
+                val lastDate = resolvedSlots.maxOf { it.second.date }
+                val existingMeals = mealRepository.observeMealsForWeek(firstDate, lastDate).firstOrNull().orEmpty()
+                val occupiedSlots = resolvedSlots.map { it.second.date to it.second.mealType }.toSet()
+                val conflicts = existingMeals.filter { (it.meal.date to it.meal.mealType) in occupiedSlots }
+                if (conflicts.isNotEmpty() && !replaceConflicts) {
+                    mealPlanConflictsFlow.value = conflicts
+                    showMealPlanConflictDialogFlow.value = true
+                    return@launch
+                }
+                if (replaceConflicts) {
+                    val currentMeals = mealRepository.observeMealsForWeek(firstDate, lastDate).firstOrNull().orEmpty()
+                    val currentConflicts = currentMeals.filter { (it.meal.date to it.meal.mealType) in occupiedSlots }
+                    for (conflict in currentConflicts) {
+                        when (val deletion = mealDomainService.deletePlannedMeal(conflict.meal.id)) {
+                            is DomainResult.Success -> Unit
+                            is DomainResult.Failure -> {
+                                errorMessageFlow.value = "Couldn't replace '${conflict.meal.title}': ${formatDomainError(deletion.error)}. No new meals were added."
+                                return@launch
+                            }
+                        }
+                    }
+                    showMealPlanConflictDialogFlow.value = false
+                    mealPlanConflictsFlow.value = emptyList()
+                }
+                for ((proposal, slot) in resolvedSlots) {
                     val meal = Meal(
                         id = UUID.randomUUID().toString(),
                         date = slot.date,
@@ -606,6 +643,8 @@ class ChatViewModel @Inject constructor(
                     }
                 }
                 latestMealPlanFlow.value = null
+                showMealPlanConflictDialogFlow.value = false
+                mealPlanConflictsFlow.value = emptyList()
                 errorMessageFlow.value = "Accepted meal plan: added all $saved meals to your planner. Shopping requirements update automatically."
             } finally {
                 isSavingProposalFlow.value = false
