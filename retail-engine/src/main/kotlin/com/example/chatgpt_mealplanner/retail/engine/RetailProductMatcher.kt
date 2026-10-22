@@ -188,6 +188,21 @@ class RetailProductMatcher(
             return returnMatch(requirementDisplayName, candidateProduct, match)
         }
 
+
+        // Do not treat a mixed-ingredient product as a substitute for one ingredient.
+        // For example, "Carrots, Sugar Snaps and Baby Corn" is not plain carrots.
+        if (nameLower.contains(" and ") && !reqLower.contains(" and ")) {
+            val match = RetailMatchCandidate(
+                product = candidateProduct,
+                matchType = MatchType.INCOMPATIBLE,
+                confidence = MatchConfidence.LOW,
+                isAutoBasketEligible = false,
+                reasoning = "Product combines multiple ingredients but the shopping requirement requests a single ingredient."
+            )
+            safeLog("[RETAIL_MATCH_REJECT] requirement=\"$requirementDisplayName\" candidate=\"${candidateProduct.name}\" reason=MULTI_INGREDIENT_PRODUCT")
+            return returnMatch(requirementDisplayName, candidateProduct, match)
+        }
+
         // 2. Exact canonical match
         if (requirementCanonicalId != null && candidateProduct.canonicalIngredientId == requirementCanonicalId) {
             return returnMatch(
