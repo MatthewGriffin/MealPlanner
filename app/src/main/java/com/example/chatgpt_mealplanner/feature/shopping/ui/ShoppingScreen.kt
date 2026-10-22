@@ -58,7 +58,8 @@ import com.example.chatgpt_mealplanner.retail.contract.RetailFreshnessPolicy
 fun ShoppingScreen(
     uiState: ShoppingUiState,
     onEvent: (ShoppingUiEvent) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onOpenMeal: (mealId: String, mealDate: String) -> Unit = { _, _ -> }
 ) {
     LaunchedEffect(Unit) {
         println("[AI_MEALPLANNER] [SHOPPING_SCREEN_ENTRY] buildAudit=SHOPPING_AUDIT_20261001_02")
@@ -75,6 +76,8 @@ fun ShoppingScreen(
     if (uiState.selectedItemForDetail != null) {
         ShoppingItemDetailDialog(
             itemWithSources = uiState.selectedItemForDetail,
+            basketComparisonResult = uiState.basketComparisonResult,
+            onOpenMeal = { mealId, mealDate -> onOpenMeal(mealId, mealDate) },
             onDismiss = { onEvent(ShoppingUiEvent.SelectItemDetail(null)) }
         )
     }
