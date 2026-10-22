@@ -500,10 +500,13 @@ class GeminiMealPlannerAiProvider @Inject constructor(
                 calls = toolCalls
             )
         } else if (textResponse.isNotBlank()) {
-            val proposal = extractMealProposalFromText(textResponse)
+            val mealPlan = extractMealPlanFromText(textResponse)
+            val userFacingText = if (mealPlan != null) textResponse.substringBefore("MEAL_PLAN_JSON:").trim() else textResponse
+            val proposal = if (mealPlan == null) extractMealProposalFromText(textResponse) else null
             AiProviderResponse.FinalResponse(
-                text = textResponse,
+                text = userFacingText,
                 proposal = proposal,
+                mealPlan = mealPlan,
                 proposedAction = null,
                 modelId = currentModel
             )
@@ -678,6 +681,45 @@ class GeminiMealPlannerAiProvider @Inject constructor(
         }
         safeLog("[GEMINI_CREDENTIAL] keyRecordExists=false, keyIsBlank=true, keyLength=0, repositoryKeyPresent=false, providerKeyPresent=false")
         return ""
+    }
+
+    private fun extractMealPlanFromText(text: String): List<MealProposal>? {
+        if (!text.contains("MEAL_PLAN_JSON:")) return null
+        return try {
+            val array = json.parseToJsonElement(text.substringAfter("MEAL_PLAN_JSON:").trim()).jsonArray
+            val meals = array.map { element ->
+                val obj = element.jsonObject
+                MealProposal(
+                    title = obj["title"]?.jsonPrimitive?.content ?: return null,
+                    mealType = obj["mealType"]?.jsonPrimitive?.content,
+                    suggestedDate = obj["suggestedDate"]?.jsonPrimitive?.content ?: obj["date"]?.jsonPrimitive?.content,
+                    servings = obj["servings"]?.jsonPrimitive?.content?.toIntOrNull() ?: 2,
+                    ingredients = obj["ingredients"]?.jsonArray?.map { ingredientElement ->
+                        val ingredient = ingredientElement.jsonObject
+                        ProposedIngredient(
+                            displayName = ingredient["displayName"]?.jsonPrimitive?.content ?: return null,
+                            quantity = ingredient["quantity"]?.jsonPrimitive?.content?.toDoubleOrNull()
+                                ?: ingredient["plannedQuantity"]?.jsonPrimitive?.content?.toDoubleOrNull() ?: return null,
+                            unit = ingredient["unit"]?.jsonPrimitive?.content
+                                ?: ingredient["plannedUnit"]?.jsonPrimitive?.content ?: "ITEM",
+                            optional = ingredient["optional"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false,
+                            substitutionAllowed = ingredient["substitutionAllowed"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: true
+                        )
+                    } ?: emptyList(),
+                    steps = obj["steps"]?.jsonArray?.mapIndexed { index, stepElement ->
+                        val step = stepElement.jsonObject
+                        com.example.chatgpt_mealplanner.contract.RecipeStep(
+                            order = step["order"]?.jsonPrimitive?.content?.toIntOrNull() ?: index + 1,
+                            instruction = step["instruction"]?.jsonPrimitive?.content ?: ""
+                        )
+                    } ?: emptyList(),
+                    reasoningSummary = obj["reasoningSummary"]?.jsonPrimitive?.content ?: "Part of the proposed weekly plan"
+                )
+            }
+            meals.takeIf { it.size > 1 && it.all { meal -> meal.title.isNotBlank() && meal.suggestedDate != null && meal.ingredients.isNotEmpty() && meal.steps.isNotEmpty() } }
+        } catch (_: Throwable) {
+            null
+        }
     }
 
     private fun extractMealProposalFromText(text: String): MealProposal? {
