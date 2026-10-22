@@ -52,9 +52,11 @@ class RetailCapabilitiesRouteTest {
 
         listOf(RetailerId.MORRISONS, RetailerId.SAINSBURYS, RetailerId.LIDL).forEach { retailerId ->
             val capability = capsRes.capabilities.first { it.retailerId == retailerId }
-            assertEquals(RetailerCapabilityMode.MANUAL_AND_CACHED_ONLY, capability.mode)
-            assertEquals(false, capability.searchSupported)
-            assertEquals(false, capability.livePriceSupported)
+            assertEquals(RetailerCapabilityMode.LIVE_SEARCH_AVAILABLE, capability.mode)
+            assertEquals(true, capability.searchSupported)
+            assertEquals(true, capability.livePriceSupported)
+            assertEquals(false, capability.availabilitySupported)
+            assertEquals(false, capability.promotionsSupported)
         }
     }
 }
