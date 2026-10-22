@@ -280,9 +280,9 @@ class RetailShoppingAuthorityTest {
             shoppingDao = shoppingDao,
             retailRepository = retailRepository,
             retailDao = retailDao,
-            icelandAdapter = fakeIcelandAdapter,
-            allowLiveLookupsInTests = true
+            icelandAdapter = fakeIcelandAdapter
         )
+        retailShoppingDomainService.allowLiveLookupsInTests = true
 
         val result = retailShoppingDomainService.optimizeShoppingBasket(
             UserShoppingPreferences(enabledRetailers = setOf(RetailerId.ICELAND))
