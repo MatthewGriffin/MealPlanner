@@ -372,7 +372,7 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
         queries: List<String>,
         retailerFilter: RetailerId? = null
     ) {
-        val retailers = retailerFilter?.let(::listOf) ?: listOf(
+        val retailers = retailerFilter?.let { listOf(it) } ?: listOf(
             RetailerId.ICELAND,
             RetailerId.ALDI,
             RetailerId.TESCO,
