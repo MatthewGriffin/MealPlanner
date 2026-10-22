@@ -61,6 +61,25 @@ class AdditionalRetailerAdapterTest {
     }
 
     @Test
+    fun blankQueryAndSourceFailureReturnStructuredFallbackResults() = runBlocking {
+        val blankResult = AdditionalRetailerAdapter().searchProducts(RetailerId.MORRISONS, "   ")
+        val blankUnavailable = assertIs<RetailProductSearchResult.Unavailable>(blankResult)
+        assertEquals("EMPTY_QUERY", blankUnavailable.errorCode)
+        assertTrue(blankUnavailable.cachedFallbackAvailable)
+
+        val failingClient = object : AdditionalRetailerSourceClient() {
+            override suspend fun searchHtml(retailerId: RetailerId, query: String): String {
+                throw IllegalStateException("fixture source failure")
+            }
+        }
+        val sourceResult = AdditionalRetailerAdapter(failingClient).searchProducts(RetailerId.SAINSBURYS, "milk")
+        val sourceUnavailable = assertIs<RetailProductSearchResult.Unavailable>(sourceResult)
+        assertEquals("SOURCE_UNAVAILABLE", sourceUnavailable.errorCode)
+        assertTrue(sourceUnavailable.reason.contains("fixture source failure"))
+        assertTrue(sourceUnavailable.cachedFallbackAvailable)
+    }
+
+    @Test
     fun parserFailureKeepsCachedFallbackAvailable() = runBlocking {
         val client = object : AdditionalRetailerSourceClient() {
             override suspend fun searchHtml(retailerId: RetailerId, query: String) = "<html><body>no structured products</body></html>"
