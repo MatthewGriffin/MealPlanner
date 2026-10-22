@@ -49,6 +49,22 @@ class RetailProductMatcherTest {
     }
 
     @Test
+    fun matcher_singleCarrots_requirementRejectsMixedVegetablePack() {
+        val matcher = RetailProductMatcher()
+        val product = RetailProduct(
+            retailerId = RetailerId.ICELAND,
+            retailerProductId = "mixed_veg_1",
+            name = "Carrots, Sugar Snaps and Baby Corn",
+            storageClass = RetailStorageClass.FROZEN
+        )
+
+        val match = matcher.evaluateMatch(null, "Carrots", product)
+
+        assertEquals(MatchType.INCOMPATIBLE, match.matchType)
+        assertFalse(match.isAutoBasketEligible)
+    }
+
+    @Test
     fun matcher_userRejectedMapping_overridesAutomatedMatch() {
         val rejectedKey = UserProductMappingKey(
             retailerId = RetailerId.ASDA.name,
