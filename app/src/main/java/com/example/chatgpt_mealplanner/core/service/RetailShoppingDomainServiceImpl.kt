@@ -41,9 +41,11 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
     private val asdaAdapter: AsdaRetailerAdapter = AsdaRetailerAdapter(),
     private val aldiAdapter: AldiRetailerAdapter = AldiRetailerAdapter(),
     private val tescoAdapter: TescoRetailerAdapter = TescoRetailerAdapter(),
-    private val additionalRetailerAdapter: AdditionalRetailerAdapter = AdditionalRetailerAdapter(),
-    private val allowLiveLookupsInTests: Boolean = false
+    private val additionalRetailerAdapter: AdditionalRetailerAdapter = AdditionalRetailerAdapter()
 ) : RetailShoppingDomainService {
+
+    /** Opt-in for tests that inject a fake retailer adapter; never enabled in production. */
+    internal var allowLiveLookupsInTests: Boolean = false
 
     private val freshnessPolicy: RetailFreshnessPolicy = RetailFreshnessPolicy()
     private val cacheJson = Json { ignoreUnknownKeys = true; encodeDefaults = true }
