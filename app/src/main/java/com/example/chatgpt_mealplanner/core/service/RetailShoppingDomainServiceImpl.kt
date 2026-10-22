@@ -333,7 +333,7 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
     ): DomainResult<List<PackAlternative>> {
         var candidateProducts = retailRepository.getCandidateProductsWithOffers()
         if (candidateProducts.isEmpty()) {
-            fetchAndCacheLiveProducts(listOf(shoppingListItemId))
+            fetchAndCacheLiveProducts(listOf(shoppingListItemId), retailerFilter)
             candidateProducts = retailRepository.getCandidateProductsWithOffers()
         }
         if (retailerFilter != null) {
@@ -354,7 +354,7 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
     ): DomainResult<List<RetailProductWithOffer>> {
         var candidateProducts = retailRepository.getCandidateProductsWithOffers()
         if (candidateProducts.isEmpty()) {
-            fetchAndCacheLiveProducts(listOf(query))
+            fetchAndCacheLiveProducts(listOf(query), retailerFilter)
             candidateProducts = retailRepository.getCandidateProductsWithOffers()
         }
         val queryLower = query.lowercase()
@@ -368,26 +368,42 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
         return DomainResult.Success(matches.take(5))
     }
 
-    private suspend fun fetchAndCacheLiveProducts(queries: List<String>) {
+    private suspend fun fetchAndCacheLiveProducts(
+        queries: List<String>,
+        retailerFilter: RetailerId? = null
+    ) {
+        val retailers = retailerFilter?.let(::listOf) ?: listOf(
+            RetailerId.ICELAND,
+            RetailerId.ALDI,
+            RetailerId.TESCO,
+            RetailerId.MORRISONS,
+            RetailerId.SAINSBURYS,
+            RetailerId.LIDL
+        )
         for (q in queries) {
             if (q.isBlank()) continue
             val safeQuery = q.take(50).replace("\n", " ").trim()
-
-            try {
-                when (val result = icelandAdapter.searchProducts(safeQuery)) {
-                    is RetailProductSearchResult.Success -> {
-                        if (result.productsWithOffers.isNotEmpty()) {
-                            retailRepository.cacheProductsWithOffers(result.productsWithOffers)
-                        }
+            for (retailerId in retailers) {
+                try {
+                    val result = when (retailerId) {
+                        RetailerId.ICELAND -> icelandAdapter.searchProducts(safeQuery)
+                        RetailerId.ALDI -> aldiAdapter.searchProducts(safeQuery)
+                        RetailerId.TESCO -> tescoAdapter.searchProducts(safeQuery)
+                        RetailerId.MORRISONS, RetailerId.SAINSBURYS, RetailerId.LIDL ->
+                            additionalRetailerAdapter.searchProducts(retailerId, safeQuery)
+                        else -> continue
                     }
-                    is RetailProductSearchResult.PartialSuccess -> {
-                        if (result.productsWithOffers.isNotEmpty()) {
-                            retailRepository.cacheProductsWithOffers(result.productsWithOffers)
-                        }
+                    when (result) {
+                        is RetailProductSearchResult.Success ->
+                            if (result.productsWithOffers.isNotEmpty()) retailRepository.cacheProductsWithOffers(result.productsWithOffers)
+                        is RetailProductSearchResult.PartialSuccess ->
+                            if (result.productsWithOffers.isNotEmpty()) retailRepository.cacheProductsWithOffers(result.productsWithOffers)
+                        is RetailProductSearchResult.Unavailable -> Unit
                     }
-                    else -> {}
+                } catch (_: Exception) {
+                    // Live source failures are non-fatal; cached/manual results remain available.
                 }
-            } catch (_: Exception) {}
+            }
         }
     }
 
