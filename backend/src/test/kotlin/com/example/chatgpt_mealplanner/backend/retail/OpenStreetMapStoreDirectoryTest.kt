@@ -696,7 +696,7 @@ class OpenStreetMapStoreDirectoryTest {
                     radiusMeters = 5000
                 )
             )
-            assertTrue(searchedTerms.contains("McColl'"), "Expected a legacy McColl's lookup; got $searchedTerms")
+            assertTrue(searchedTerms.contains("McColl's"), "Expected a legacy McColl's lookup; got $searchedTerms")
             assertEquals(1, response.stores.size)
             assertEquals("Morrisons Daily", response.stores.single().name)
             assertEquals("CH65 4AA", response.stores.single().postcode)
