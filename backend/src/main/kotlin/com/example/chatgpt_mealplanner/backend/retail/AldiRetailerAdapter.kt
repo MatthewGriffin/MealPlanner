@@ -18,7 +18,8 @@ open class AldiRetailerAdapter(
     private val parser: IcelandProductParser = IcelandProductParser(
         retailerId = RetailerId.ALDI,
         priceScope = RetailPriceScope.RETAILER_GENERAL,
-        useStructuredAvailability = false
+        useStructuredAvailability = false,
+        usePageWidePromotionHeuristic = false
     )
 ) {
     open fun getCapability() = RetailerCapabilityDto(
@@ -27,7 +28,7 @@ open class AldiRetailerAdapter(
         searchSupported = true,
         livePriceSupported = true,
         availabilitySupported = false,
-        promotionsSupported = true,
+        promotionsSupported = false,
         description = "Public ALDI product search and retailer-wide catalogue prices; branch stock is not confirmed and remains unknown."
     )
 
