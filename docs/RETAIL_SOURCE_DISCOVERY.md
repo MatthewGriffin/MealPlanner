@@ -65,6 +65,10 @@ A branch-specific offer should only be considered branch evidence when the sourc
 
 Never manufacture a branch ID from a name, postcode, store format, or local UUID. Online price evidence may still be useful for comparison but must not be shown as confirmed in-store price or stock.
 
+## Parser hardening completed
+
+The shared structured-data parser now accepts JSON-LD product records expressed as a single object, an array, an `@graph`, or an `ItemList` with wrapped products. Repeated records with the same retailer product ID are deduplicated. Decimal prices are converted to minor currency units using decimal arithmetic and half-up rounding, avoiding floating-point truncation (for example, £1.99 becoming 199 pence). Fixture tests cover these cases, but the tests still need to be executed in the project build.
+
 ## Next technical step
 
 Run the complete Android/backend build and tests, then verify each public search route against live HTML and save representative sanitized fixtures. Investigate branch-specific stock separately; where an official checker is interactive and no supported endpoint is available, retain UNKNOWN rather than reverse-engineering private endpoints or inferring stock. For every retailer, retain retailer-wide results as a fallback when branch-level evidence is unavailable, and keep the scope and freshness explicit. Do not turn unknown availability into in-stock.
