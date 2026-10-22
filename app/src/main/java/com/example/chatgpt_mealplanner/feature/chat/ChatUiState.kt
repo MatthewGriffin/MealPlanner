@@ -4,6 +4,7 @@ import com.example.chatgpt_mealplanner.contract.AiProposedAction
 import com.example.chatgpt_mealplanner.contract.MealProposal
 import com.example.chatgpt_mealplanner.contract.ValidatedMealProposal
 import com.example.chatgpt_mealplanner.core.database.entity.ChatMessageEntity
+import com.example.chatgpt_mealplanner.core.model.MealWithIngredients
 
 enum class ChatRequestState {
     IDLE,
@@ -17,6 +18,8 @@ data class ChatUiState(
     val messages: List<ChatMessageEntity> = emptyList(),
     val latestProposal: ValidatedMealProposal? = null,
     val latestMealPlan: List<MealProposal>? = null,
+    val mealPlanConflicts: List<MealWithIngredients> = emptyList(),
+    val showMealPlanConflictDialog: Boolean = false,
     val latestProposedAction: AiProposedAction? = null,
     val isSavingProposal: Boolean = false,
     val isLoading: Boolean = false,
@@ -49,7 +52,8 @@ sealed interface ChatUiEvent {
     object CancelMealChangeRequestDraft : ChatUiEvent
     object RetryLastFailedMessage : ChatUiEvent
     data class SaveMealProposalToPlan(val proposal: MealProposal) : ChatUiEvent
-    data class AcceptMealPlan(val meals: List<MealProposal>) : ChatUiEvent
+    data class AcceptMealPlan(val meals: List<MealProposal>, val replaceConflicts: Boolean = false) : ChatUiEvent
+    object CancelMealPlanReplacement : ChatUiEvent
     data class ConfirmCookedMeal(val mealId: String) : ChatUiEvent
     object DismissCookConfirmation : ChatUiEvent
     object ClearErrorMessage : ChatUiEvent
