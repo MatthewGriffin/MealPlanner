@@ -12,7 +12,6 @@ import io.ktor.http.isSuccess
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import java.net.URLEncoder
 
 /**
  * Public retailer search pages for retailers without a verified branch-level endpoint.
@@ -36,8 +35,11 @@ open class AdditionalRetailerSourceClient(
             RetailerId.MORRISONS -> URLBuilder("https://groceries.morrisons.com/search").apply {
                 parameters.append("q", query.trim())
             }.buildString()
-            RetailerId.SAINSBURYS -> "https://www.sainsburys.co.uk/gol-ui/SearchResults/" +
-                URLEncoder.encode(query.trim(), Charsets.UTF_8.name()).replace("+", "%20")
+            RetailerId.SAINSBURYS -> URLBuilder("https://www.sainsburys.co.uk/groceries-api/gol-services/product/v1/product").apply {
+                parameters.append("filter[keyword]", query.trim())
+                parameters.append("page_number", "1")
+                parameters.append("page_size", "24")
+            }.buildString()
             RetailerId.LIDL -> URLBuilder("https://www.lidl.co.uk/q/search").apply {
                 parameters.append("q", query.trim())
             }.buildString()
@@ -45,7 +47,7 @@ open class AdditionalRetailerSourceClient(
         }
         val response = httpClient.get(url) {
             header(HttpHeaders.UserAgent, "PantryAssistantRetailSearch/1.0 (https://github.com/MatthewGriffin/MealPlanner)")
-            header(HttpHeaders.Accept, "text/html,application/xhtml+xml,application/json;q=0.9")
+            header(HttpHeaders.Accept, if (retailerId == RetailerId.SAINSBURYS) "application/json" else "text/html,application/xhtml+xml,application/json;q=0.9")
         }
         if (!response.status.isSuccess()) {
             throw IllegalStateException("${retailerId.name} public product search returned HTTP ${response.status.value}")
