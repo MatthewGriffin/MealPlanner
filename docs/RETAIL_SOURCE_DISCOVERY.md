@@ -9,7 +9,14 @@ This document records what the current website-backed integrations actually esta
 | **ASDA** | Disabled pending a verified approved source | Cached/manual evidence only while disabled | Unknown unless explicit saved evidence exists | Not implemented |
 | **Iceland** | Best-effort public website search HTML / JSON-LD with an experimental browser-config discovery path | Parsed catalogue offers are labelled online | Only explicit product-level source status; not branch stock | Not implemented; no branch-scoped offer ID |
 | **The Food Warehouse** | No independent live search | Cached/manual evidence only | Unknown unless explicit saved evidence exists | Not implemented |
-| **Tesco, Morrisons, Sainsbury's, Aldi, Lidl** | No live source currently integrated | Cached/manual evidence only | Unknown unless explicit source evidence exists | Not implemented |
+| **ALDI** | Public website search route `/results?q=...`, parsed from product JSON-LD when present | Retailer-general public catalogue price; may differ in store | Always UNKNOWN in this integration; no branch stock checker integration | Not implemented |
+| **Tesco, Morrisons, Sainsbury's, Lidl** | No live source currently integrated | Cached/manual evidence only | Unknown unless explicit source evidence exists | Not implemented |
+
+## ALDI: public product search
+
+The backend queries ALDI's public search route (`https://www.aldi.co.uk/results?q=...`) and parses structured Product / ItemList JSON-LD when present. This source is retailer-wide: it does not accept a selected branch and is not evidence of stock in a particular store. Offers use `RETAILER_GENERAL` price scope, and availability is forced to `UNKNOWN` even if generic structured data includes an availability field. The result is marked partial success with warnings that prices may differ in store and the stock checker is not integrated. If the live page has no parseable structured offers, the adapter returns a structured unavailable result so cached/manual fallback remains possible.
+
+The parser has fixture-level coverage, but the live route and its current JSON-LD coverage have not yet been verified by running the backend against the production site. The ALDI stock checker is an estimate and is not treated as branch-level evidence here.
 
 ## ASDA: gated pending source verification
 
@@ -33,7 +40,7 @@ The client experimentally attempts a direct Algolia product-search request befor
 
 ## Preferred branch matching
 
-A branch preference is a user preference, not proof that a source response is scoped to that branch. The contract separates an app-local preference ID from optional retailer-issued branch identity. The current offer parsers do not populate branch-specific offer IDs, so the app cannot currently produce verified branch-level prices or stock from live search.
+A branch preference is a user preference, not proof that a source response is scoped to that branch. The contract separates an app-local preference ID from optional retailer-issued branch identity. The current offer parsers do not populate branch-specific offer IDs, so the app cannot currently produce verified branch-level prices or stock from live search. ALDI's new public catalogue adapter deliberately supplies retailer-general prices only and leaves availability unknown.
 
 A branch-specific offer should only be considered branch evidence when the source response establishes:
 1. A stable retailer branch ID matching the selected branch.
