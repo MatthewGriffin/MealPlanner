@@ -12,6 +12,12 @@ interface RetailShoppingDomainService {
         preferences: UserShoppingPreferences = UserShoppingPreferences()
     ): DomainResult<BasketComparisonResult>
 
+    /** Optional non-blocking UI progress updates while retailer lookups are running. */
+    suspend fun optimizeShoppingBasket(
+        preferences: UserShoppingPreferences,
+        onLookupProgress: (String) -> Unit
+    ): DomainResult<BasketComparisonResult> = optimizeShoppingBasket(preferences)
+
     suspend fun getItemOptions(
         shoppingListItemId: String,
         retailerFilter: RetailerId? = null
