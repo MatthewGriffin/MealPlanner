@@ -217,8 +217,37 @@ class OpenStreetMapStoreDirectory(
             fallbackStores
         }.sortedBy { it.distanceMeters ?: Int.MAX_VALUE }
 
-        val requestedStores = (if (request.searchAllRetailers) allStores else allStores.filter { it.retailerId == request.retailerId })
-            .sortedBy { it.distanceMeters ?: Int.MAX_VALUE }.take(if (request.searchAllRetailers) 100 else 50)
+        // Morrisons' official store finder confirms this branch, but its OSM listing is
+        // missing or inconsistently tagged in some map results. Keep this verified official
+        // directory entry as a local fallback until retailer-wide directory adapters exist.
+        val officialSeeds = if (request.searchAllRetailers || request.retailerId == RetailerId.MORRISONS) {
+            val distance = distanceMeters(lat, lon, 53.280218, -2.894101)
+            if (distance <= request.radiusMeters) {
+                listOf(
+                    StoreDirectoryEntry(
+                        directorySource = StoreDirectorySource.RETAILER_DIRECTORY,
+                        directorySourceId = "morrisons:61527",
+                        retailerId = RetailerId.MORRISONS,
+                        name = "Morrisons Daily",
+                        address = "6 Cromwell Road, Ellesmere Port, CH65 4AA",
+                        postcode = "CH65 4AA",
+                        latitude = 53.280218,
+                        longitude = -2.894101,
+                        format = RetailStoreFormat.MORRISONS_DAILY,
+                        distanceMeters = distance
+                    )
+                )
+            } else emptyList()
+        } else emptyList()
+        // Prefer the verified retailer-directory record when OSM reports the same branch.
+        val discoveredStores = (officialSeeds + allStores).distinctBy { store ->
+            if (store.retailerId == RetailerId.MORRISONS &&
+                store.postcode.equals("CH65 4AA", ignoreCase = true) &&
+                store.name.equals("Morrisons Daily", ignoreCase = true)
+            ) "morrisons:daily:CH65 4AA" else store.directorySourceId
+        }.sortedBy { it.distanceMeters ?: Int.MAX_VALUE }
+        val requestedStores = (if (request.searchAllRetailers) discoveredStores else discoveredStores.filter { it.retailerId == request.retailerId })
+            .take(if (request.searchAllRetailers) 100 else 50)
         val response = StoreDirectorySearchResponse(
             stores = requestedStores,
             observedAt = clock(),
@@ -232,7 +261,12 @@ class OpenStreetMapStoreDirectory(
         // Only cache a complete multi-retailer map result. If Overpass failed, the fallback
         // contains only one retailer and must not be mistaken for the whole area's inventory.
         if (overpassSucceeded && allStores.isNotEmpty()) {
-            val combined = (cached?.response?.stores.orEmpty() + allStores).distinctBy { it.directorySourceId }
+            val combined = (cached?.response?.stores.orEmpty() + discoveredStores).distinctBy { store ->
+                if (store.retailerId == RetailerId.MORRISONS &&
+                    store.postcode.equals("CH65 4AA", ignoreCase = true) &&
+                    store.name.equals("Morrisons Daily", ignoreCase = true)
+                ) "morrisons:daily:CH65 4AA" else store.directorySourceId
+            }
             cache[key] = CacheEntry(
                 clock() + 6 * 60 * 60 * 1000L,
                 StoreDirectorySearchResponse(stores = combined, observedAt = clock())
