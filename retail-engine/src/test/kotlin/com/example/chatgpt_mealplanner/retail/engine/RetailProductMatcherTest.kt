@@ -80,6 +80,23 @@ class RetailProductMatcherTest {
     }
 
     @Test
+    fun matcher_heavyCream_acceptsRetailerPunctuationAndWordOrderVariations() {
+        val matcher = RetailProductMatcher()
+        listOf("Cream, Double 300ml", "Double-Cream 300ml", "Whipping Cream 300ml").forEachIndexed { index, name ->
+            val product = RetailProduct(
+                retailerId = RetailerId.ASDA,
+                retailerProductId = "cream_variant_$index",
+                name = name,
+                storageClass = RetailStorageClass.FRESH
+            )
+            assertTrue(
+                matcher.evaluateMatch(null, "Heavy cream", product).isAutoBasketEligible,
+                "Expected '$name' to satisfy a heavy cream requirement"
+            )
+        }
+    }
+
+    @Test
     fun matcher_roastingPotatoes_acceptsOrdinaryPotatoVarieties_butRejectsPreparedProducts() {
         val matcher = RetailProductMatcher()
         listOf("Maris Piper Potatoes 2kg", "White Potatoes 2kg", "King Edward Potatoes").forEachIndexed { index, name ->
