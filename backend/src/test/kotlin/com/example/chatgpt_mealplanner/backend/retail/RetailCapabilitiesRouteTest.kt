@@ -44,7 +44,13 @@ class RetailCapabilitiesRouteTest {
         assertEquals(true, aldiCap.livePriceSupported)
         assertEquals(false, aldiCap.availabilitySupported)
 
-        listOf(RetailerId.TESCO, RetailerId.MORRISONS, RetailerId.SAINSBURYS, RetailerId.LIDL).forEach { retailerId ->
+        val tescoCap = capsRes.capabilities.first { it.retailerId == RetailerId.TESCO }
+        assertEquals(RetailerCapabilityMode.LIVE_SEARCH_AVAILABLE, tescoCap.mode)
+        assertEquals(true, tescoCap.searchSupported)
+        assertEquals(true, tescoCap.livePriceSupported)
+        assertEquals(false, tescoCap.availabilitySupported)
+
+        listOf(RetailerId.MORRISONS, RetailerId.SAINSBURYS, RetailerId.LIDL).forEach { retailerId ->
             val capability = capsRes.capabilities.first { it.retailerId == retailerId }
             assertEquals(RetailerCapabilityMode.MANUAL_AND_CACHED_ONLY, capability.mode)
             assertEquals(false, capability.searchSupported)
