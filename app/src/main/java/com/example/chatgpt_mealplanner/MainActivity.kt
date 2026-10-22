@@ -127,6 +127,7 @@ class MainActivity : ComponentActivity() {
                     if (notificationRouteState.value != null) currentScreen = Screen.MEAL_PLANNER
                 }
                 var lowStockItemToAdd by remember { mutableStateOf<com.example.chatgpt_mealplanner.core.model.InventoryItem?>(null) }
+                var pendingRecipeDate by remember { mutableStateOf<String?>(null) }
                 var mealChangeRequestForAi by remember { mutableStateOf<com.example.chatgpt_mealplanner.core.database.entity.MealChangeRequestEntity?>(null) }
                 val isFollower = remember { appRoleResolver.isFollower() }
                 if (isFollower && currentScreen == Screen.CHAT) {
@@ -267,6 +268,12 @@ class MainActivity : ComponentActivity() {
                                 }
                                 notificationRouteState.value = null
                             }
+                            LaunchedEffect(pendingRecipeDate) {
+                                pendingRecipeDate?.let { date ->
+                                    mealPlannerViewModel.onEvent(MealPlannerUiEvent.SelectDate(date))
+                                }
+                                pendingRecipeDate = null
+                            }
                             val state by mealPlannerViewModel.uiState.collectAsState()
                             MealPlannerScreen(
                                 uiState = state,
@@ -291,7 +298,12 @@ class MainActivity : ComponentActivity() {
                             ShoppingScreen(
                                 uiState = state,
                                 onEvent = shoppingViewModel::onEvent,
-                                modifier = Modifier.padding(innerPadding)
+                                modifier = Modifier.padding(innerPadding),
+                                onOpenMeal = { _, mealDate ->
+                                    pendingRecipeDate = mealDate
+                                    shoppingViewModel.onEvent(com.example.chatgpt_mealplanner.feature.shopping.ShoppingUiEvent.SelectItemDetail(null))
+                                    currentScreen = Screen.MEAL_PLANNER
+                                }
                             )
                         }
 
