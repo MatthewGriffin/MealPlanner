@@ -1,5 +1,6 @@
 package com.example.chatgpt_mealplanner.feature.shopping.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -20,10 +21,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.chatgpt_mealplanner.core.model.ShoppingListItemWithSources
+import com.example.chatgpt_mealplanner.retail.contract.BasketComparisonResult
+import com.example.chatgpt_mealplanner.retail.contract.RetailerId
 
 @Composable
 fun ShoppingItemDetailDialog(
     itemWithSources: ShoppingListItemWithSources,
+    basketComparisonResult: BasketComparisonResult? = null,
+    onOpenMeal: (mealId: String, mealDate: String) -> Unit = { _, _ -> },
     onDismiss: () -> Unit
 ) {
     val item = itemWithSources.item
@@ -95,6 +100,38 @@ fun ShoppingItemDetailDialog(
                     )
                 }
 
+                val comparisonPlans = basketComparisonResult?.let { result ->
+                    (listOfNotNull(result.selectedPlan, result.bestSingleStorePlan, result.bestMultiStorePlan) + result.alternativePlans)
+                        .distinctBy { it.planId }
+                }.orEmpty()
+                val perStorePrices = comparisonPlans.flatMap { plan ->
+                    plan.lines.filter { line ->
+                        line.shoppingRequirementId == item.id ||
+                            line.requirementDisplayName.equals(item.displayName, ignoreCase = true)
+                    }.map { line -> Triple(line.retailerId, line.lineTotalCost, plan.planId == basketComparisonResult?.selectedPlan?.planId) }
+                }.groupBy { it.first }.mapValues { (_, offers) -> offers.minByOrNull { it.second }!! }
+
+                if (perStorePrices.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text("Price comparison by store", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                    Text(
+                        "Estimated pack cost for this requirement. The selected price is the one used in the current basket plan.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    perStorePrices.entries.sortedBy { it.key.name }.forEach { (retailer, offer) ->
+                        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(retailer.displayNameForShopping(), style = MaterialTheme.typography.bodyMedium)
+                                if (offer.third) {
+                                    Text("Used by current basket plan", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                                }
+                            }
+                            Text(offer.second.toFormattedString(), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+
                 if (sources.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
@@ -109,6 +146,7 @@ fun ShoppingItemDetailDialog(
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .clickable { onOpenMeal(src.mealId, src.mealDate) }
                                     .padding(vertical = 2.dp),
                                 colors = CardDefaults.cardColors(
                                     containerColor = MaterialTheme.colorScheme.surfaceVariant
@@ -124,7 +162,13 @@ fun ShoppingItemDetailDialog(
                                         Text(
                                             text = src.mealTitle,
                                             style = MaterialTheme.typography.bodyMedium,
-                                            fontWeight = FontWeight.Bold
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                        Text(
+                                            text = "Open recipe",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.primary
                                         )
                                         Text(
                                             text = "Date: ${src.mealDate}",
@@ -150,4 +194,16 @@ fun ShoppingItemDetailDialog(
             }
         }
     )
+}
+
+
+private fun RetailerId.displayNameForShopping(): String = when (this) {
+    RetailerId.ASDA -> "ASDA"
+    RetailerId.ICELAND -> "Iceland"
+    RetailerId.FOOD_WAREHOUSE -> "The Food Warehouse"
+    RetailerId.TESCO -> "Tesco"
+    RetailerId.MORRISONS -> "Morrisons"
+    RetailerId.SAINSBURYS -> "Sainsbury's"
+    RetailerId.ALDI -> "Aldi"
+    RetailerId.LIDL -> "Lidl"
 }
