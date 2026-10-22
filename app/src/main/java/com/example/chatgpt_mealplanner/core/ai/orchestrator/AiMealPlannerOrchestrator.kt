@@ -371,7 +371,7 @@ class AiMealPlannerOrchestrator @Inject constructor(
                 val currentPending = pendingMutationStore.getPendingMutation(conversationId) as? com.example.chatgpt_mealplanner.core.ai.pending.PendingAiMutation.AddPlannedMeal
                 val hasValidOfferAwaiting = currentPending != null && currentPending.state == com.example.chatgpt_mealplanner.core.ai.pending.PendingMutationState.AWAITING_CONFIRMATION && currentPending.ingredients.isNotEmpty()
 
-                if (hasValidOfferAwaiting) {
+                if (hasValidOfferAwaiting && !mealPlanRequest) {
                     val pendingOffer = currentPending!!
                     textToReturn = formatAppOwnedRecipeProposal(pendingOffer)
                     // The text parser may have extracted only the bold title from the final prose,
@@ -900,6 +900,16 @@ class AiMealPlannerOrchestrator @Inject constructor(
                 lower.contains("menu for the week") ||
                 lower.contains("plan for the week") ||
                 lower.contains("week of meals") ||
+                lower.contains("remainder of the week") ||
+                lower.contains("rest of the week") ||
+                lower.contains("remaining week") ||
+                lower.contains("remaining days of the week") ||
+                lower.contains("rest of this week") ||
+                lower.contains("remainder of this week") ||
+                lower.contains("meals for this week") ||
+                lower.contains("meals for the week") ||
+                lower.contains("this week's meals") ||
+                lower.contains("this weeks meals") ||
                 lower.contains("7-day plan") ||
                 lower.contains("7 day plan") ||
                 lower.contains("seven-day plan") ||
