@@ -202,6 +202,7 @@ class ChatViewModel @Inject constructor(
     fun prepareMealChangeRequest(request: MealChangeRequestEntity) {
         mealChangeRequestIdFlow.value = request.id
         latestProposalFlow.value = null
+        latestMealPlanFlow.value = null
         latestProposedActionFlow.value = null
         mealChangeRequestDraftFlow.value = request.requestText
         mealChangeRequestTitleFlow.value = "this meal"
@@ -420,6 +421,7 @@ class ChatViewModel @Inject constructor(
                 is AiOrchestrationResult.Final -> {
                     transitionRequestState(ChatRequestState.SUCCEEDED, retainedMessage = null, retainedMessageId = null)
                     latestProposalFlow.value = result.validatedProposal
+                    latestMealPlanFlow.value = result.mealPlan?.takeIf { it.size > 1 }
                     latestProposedActionFlow.value = result.proposedAction
 
                     val confirmAction = result.proposedAction as? AiProposedAction.ConfirmCookedMeal
