@@ -18,7 +18,8 @@ open class TescoRetailerAdapter(
     private val parser: IcelandProductParser = IcelandProductParser(
         retailerId = RetailerId.TESCO,
         priceScope = RetailPriceScope.ONLINE,
-        useStructuredAvailability = false
+        useStructuredAvailability = false,
+        usePageWidePromotionHeuristic = false
     )
 ) {
     open fun getCapability() = RetailerCapabilityDto(
@@ -27,7 +28,7 @@ open class TescoRetailerAdapter(
         searchSupported = true,
         livePriceSupported = true,
         availabilitySupported = false,
-        promotionsSupported = true,
+        promotionsSupported = false,
         description = "Public Tesco grocery search with online guide prices; selected-store prices and branch stock are not confirmed."
     )
 
