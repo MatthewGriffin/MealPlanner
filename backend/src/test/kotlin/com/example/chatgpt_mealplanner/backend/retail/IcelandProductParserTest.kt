@@ -129,6 +129,12 @@ class IcelandProductParserTest {
                       "name": "Bread in graph",
                       "sku": "bread-graph",
                       "offers": {"@type": "Offer", "price": "1.25", "priceCurrency": "GBP"}
+                    },
+                    {
+                      "@type": "Product",
+                      "name": "Duplicate milk card",
+                      "sku": "milk-array",
+                      "offers": {"@type": "Offer", "price": "1.99", "priceCurrency": "GBP"}
                     }
                   ]
                 }
