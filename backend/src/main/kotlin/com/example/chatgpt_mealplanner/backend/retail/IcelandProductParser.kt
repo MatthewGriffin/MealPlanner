@@ -24,7 +24,7 @@ data class ParsedProductRecord(
     val warnings: List<String> = emptyList()
 )
 
-class IcelandProductParser {
+class IcelandProductParser(private val retailerId: RetailerId = RetailerId.ICELAND) {
 
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -109,7 +109,7 @@ class IcelandProductParser {
                 val brand = value("brand", "manufacturer")
                 val pack = parsePackString(name)
                 val product = RetailProduct(
-                    retailerId = RetailerId.ICELAND,
+                    retailerId = retailerId,
                     retailerProductId = id,
                     name = name,
                     brand = brand ?: "Iceland",
@@ -121,7 +121,7 @@ class IcelandProductParser {
                     storageClass = parseStorageClassFromName(name)
                 )
                 val offer = RetailOffer(
-                    retailerId = RetailerId.ICELAND,
+                    retailerId = retailerId,
                     retailerProductId = id,
                     price = money,
                     promotion = null,
@@ -142,7 +142,7 @@ class IcelandProductParser {
         val url = jsonObj["@id"]?.jsonPrimitive?.content ?: jsonObj["url"]?.jsonPrimitive?.content
         val sku = jsonObj["sku"]?.jsonPrimitive?.content
             ?: url?.substringAfterLast("/")?.substringBefore(".html")
-            ?: "iceland_${Math.abs(name.hashCode())}"
+            ?: "${retailerId.name.lowercase()}_${Math.abs(name.hashCode())}"
 
         val offersObj = jsonObj["offers"]?.jsonObject ?: return null
 
@@ -172,10 +172,10 @@ class IcelandProductParser {
         val storageClass = parseStorageClassFromName(name)
 
         val product = RetailProduct(
-            retailerId = RetailerId.ICELAND,
+            retailerId = retailerId,
             retailerProductId = sku,
             name = name,
-            brand = "Iceland",
+            brand = if (retailerId == RetailerId.ICELAND) "Iceland" else retailerId.name.lowercase().replaceFirstChar { it.uppercase() },
             packCount = packMeta.packCount,
             packSize = packMeta.packSize,
             packSizeUnit = packMeta.packSizeUnit,
@@ -185,7 +185,7 @@ class IcelandProductParser {
         )
 
         val offer = RetailOffer(
-            retailerId = RetailerId.ICELAND,
+            retailerId = retailerId,
             retailerProductId = sku,
             price = finalPrice,
             promotion = parsePromotionFromHtml(fullHtml),
