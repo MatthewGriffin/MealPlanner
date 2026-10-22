@@ -11,7 +11,9 @@ This document records what the current website-backed integrations actually esta
 | **The Food Warehouse** | No independent live search | Cached/manual evidence only | Unknown unless explicit saved evidence exists | Not implemented |
 | **ALDI** | Public website search route `/results?q=...`, parsed from product JSON-LD when present | Retailer-general public catalogue price; may differ in store | Always UNKNOWN in this integration; no branch stock checker integration | Not implemented |
 | **Tesco** | Public grocery search route, parsed from Product JSON-LD when present | Online guide prices; may vary by delivery area and in-store | Always UNKNOWN in this integration; branch stock not checked | Not implemented |
-| **Morrisons, Sainsbury's, Lidl** | No live product-price source currently integrated | Cached/manual evidence only | Unknown unless explicit source evidence exists | Not implemented |
+| **Morrisons** | Public online grocery search; structured product data when present | Online catalogue prices; delivery-area context may affect results | Always UNKNOWN in this integration | Not implemented |
+| **Sainsbury's** | Public grocery search route; structured product data when present | Online catalogue prices; Nectar eligibility/context may affect effective prices | Always UNKNOWN in this integration; official stock checker remains separate | Not implemented |
+| **Lidl** | Public website search for published products/offers | Retailer-general prices for a changing subset, not a full grocery catalogue | Always UNKNOWN in this integration | Not implemented |
 
 ## ALDI: public product search
 
@@ -24,6 +26,12 @@ The parser has fixture-level coverage, but the live route and its current JSON-L
 The backend queries Tesco's public grocery search route (`https://www.tesco.com/groceries/en-GB/search?query=...`) and parses structured Product / ItemList JSON-LD when present. Offers use `ONLINE` scope because Tesco describes online prices as guide prices that can differ from in-store prices. The search request does not establish the user's selected branch, and structured availability is ignored so the adapter always leaves stock `UNKNOWN`. Page-wide promotion inference is disabled because a promotion elsewhere on a search page is not proof that each product has that offer. If no structured offers parse, the adapter returns a structured unavailable result and keeps cached/manual fallback available.
 
 The adapter has fixture-level tests, but production HTML parsing has not yet been verified with a live backend run. Tesco's app offers store-specific stock checking; this public website integration does not reproduce that feature.
+
+## Morrisons, Sainsbury's, and Lidl: public catalogue searches
+
+The additional retailer adapter uses each retailer's public website search route and parses structured Product / ItemList JSON-LD only when it is present. Morrisons and Sainsbury's results are labelled ONLINE; Lidl results are labelled RETAILER_GENERAL because its public website is not a complete online grocery catalogue. The client uses ordinary public HTML requests with a modest per-client throttle and does not call undocumented private JSON APIs.
+
+These routes and parsers are best-effort, not yet verified by a live backend run. If a page changes, blocks requests, or contains no supported structured product records, the adapter returns SOURCE_UNAVAILABLE or SOURCE_FORMAT_CHANGED and preserves cached/manual fallback. Availability is forced to UNKNOWN and page-wide promotions are disabled for all three. In particular, Sainsbury's official store stock checker is not integrated into this product-price adapter; the fact that a checker exists does not establish an accessible supported endpoint.
 
 ## ASDA: gated pending source verification
 
@@ -59,4 +67,4 @@ Never manufacture a branch ID from a name, postcode, store format, or local UUID
 
 ## Next technical step
 
-Integrate the first retailer catalogue source that can be accessed reliably and permissibly without bypassing access controls, then investigate branch-specific stock separately. For every retailer, retain retailer-wide results as a fallback when branch-level evidence is unavailable, and keep the scope and freshness explicit. Do not turn unknown availability into in-stock.
+Run the complete Android/backend build and tests, then verify each public search route against live HTML and save representative sanitized fixtures. Investigate branch-specific stock separately; where an official checker is interactive and no supported endpoint is available, retain UNKNOWN rather than reverse-engineering private endpoints or inferring stock. For every retailer, retain retailer-wide results as a fallback when branch-level evidence is unavailable, and keep the scope and freshness explicit. Do not turn unknown availability into in-stock.
