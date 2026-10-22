@@ -168,6 +168,19 @@ fun ShoppingScreen(
                         }
                     }
 
+                    uiState.retailLookupMessage?.let { lookupMessage ->
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = lookupMessage,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                        }
+                    }
+
                     val plan = uiState.basketComparisonResult?.selectedPlan
                     if (plan != null) {
                         val matchedCount = plan.lines.size
