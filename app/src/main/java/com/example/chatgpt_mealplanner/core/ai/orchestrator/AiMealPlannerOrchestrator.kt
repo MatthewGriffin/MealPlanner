@@ -1011,6 +1011,9 @@ class AiMealPlannerOrchestrator @Inject constructor(
         2. Do NOT offer "Would you like me to generate your shopping list?", "Would you like me to add these recipe ingredients to Shopping?", or equivalent redundant shopping offers after proposing or adding a meal.
         3. Manual shopping tool 'add_manual_shopping_item' remains available for explicitly non-meal user items (e.g. 'add kitchen towels to my shopping list').
 
+        STRUCTURED WHOLE-PLAN OUTPUT:
+        Whenever the response contains multiple planned meals, append a valid JSON array at the very end using the exact prefix MEAL_PLAN_JSON:. Each object must include title, suggestedDate in YYYY-MM-DD format, mealType, servings, ingredients (objects with displayName, quantity, unit, optional, substitutionAllowed), and steps (objects with order and instruction). Every meal needs complete ingredients and cooking instructions. Do not wrap the JSON in markdown fences and put nothing after it. This structured payload drives the app's single Accept meal plan card; never call offer_add_planned_meal for each meal in a multi-meal plan.
+
         MEAL-PLAN WORKFLOW (DISTINCT FROM A SINGLE RECIPE):
         1. Treat requests to generate, create, suggest, or adjust a meal plan/menu for multiple days as a menu-level workflow. Present the complete plan as a readable day-by-day list and ask whether the user wants adjustments or wants to choose a meal to expand.
         2. Do NOT call 'offer_add_planned_meal' for any individual meal while responding to a meal-plan request. Do not create a recipe card for the first meal, and do not ask whether the user wants the full recipe for today's meal by default. The plan itself is the response; the user can choose a specific meal to expand in a later message.
