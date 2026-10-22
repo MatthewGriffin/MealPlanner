@@ -27,7 +27,8 @@ data class ParsedProductRecord(
 class IcelandProductParser(
     private val retailerId: RetailerId = RetailerId.ICELAND,
     private val priceScope: RetailPriceScope = RetailPriceScope.ONLINE,
-    private val useStructuredAvailability: Boolean = true
+    private val useStructuredAvailability: Boolean = true,
+    private val usePageWidePromotionHeuristic: Boolean = true
 ) {
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -195,7 +196,7 @@ class IcelandProductParser(
             retailerId = retailerId,
             retailerProductId = sku,
             price = finalPrice,
-            promotion = parsePromotionFromHtml(fullHtml),
+            promotion = if (usePageWidePromotionHeuristic) parsePromotionFromHtml(fullHtml) else null,
             availability = if (useStructuredAvailability) availability else RetailAvailability.UNKNOWN,
             priceScope = priceScope,
             observedAt = System.currentTimeMillis()
