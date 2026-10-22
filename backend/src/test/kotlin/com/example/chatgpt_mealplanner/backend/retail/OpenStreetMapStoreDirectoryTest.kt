@@ -700,6 +700,9 @@ class OpenStreetMapStoreDirectoryTest {
             assertEquals(2, response.stores.size, "A found Morrisons branch must not suppress the missing-branch fallback")
             val cromwell = response.stores.single { it.name == "Morrisons Daily" }
             assertEquals("CH65 4AA", cromwell.postcode)
+            assertEquals("6 Cromwell Road, Ellesmere Port, CH65 4AA", cromwell.address)
+            assertEquals(StoreDirectorySource.RETAILER_DIRECTORY, cromwell.directorySource)
+            assertEquals("morrisons:61527", cromwell.directorySourceId)
             assertEquals(RetailStoreFormat.MORRISONS_DAILY, cromwell.format)
             assertTrue(response.stores.any { it.name == "Morrisons Supermarket" })
         } finally {
