@@ -65,6 +65,40 @@ class RetailProductMatcherTest {
     }
 
     @Test
+    fun matcher_heavyCreamWithChoicePhrase_matchesUKDoubleCream() {
+        val matcher = RetailProductMatcher()
+        val product = RetailProduct(
+            retailerId = RetailerId.ICELAND,
+            retailerProductId = "double_cream_300",
+            name = "Fresh Double Cream 300ml",
+            storageClass = RetailStorageClass.FRESH
+        )
+
+        val match = matcher.evaluateMatch(null, "Heavy cream, toppings of choice", product)
+
+        assertTrue(match.isAutoBasketEligible, "UK double cream should satisfy a heavy cream requirement")
+    }
+
+    @Test
+    fun matcher_roastingPotatoes_acceptsOrdinaryPotatoVarieties_butRejectsPreparedProducts() {
+        val matcher = RetailProductMatcher()
+        listOf("Maris Piper Potatoes 2kg", "White Potatoes 2kg", "King Edward Potatoes").forEachIndexed { index, name ->
+            val product = RetailProduct(RetailerId.ASDA, "roast_potato_$index", name, storageClass = RetailStorageClass.FRESH)
+            assertTrue(
+                matcher.evaluateMatch(null, "Roasting potatoes", product).isAutoBasketEligible,
+                "Expected '$name' to be suitable for roasting"
+            )
+        }
+        listOf("Ready to Roast Potato Wedges", "Potato Crisps", "Potato Salad").forEachIndexed { index, name ->
+            val product = RetailProduct(RetailerId.ASDA, "prepared_potato_$index", name, storageClass = RetailStorageClass.AMBIENT)
+            assertFalse(
+                matcher.evaluateMatch(null, "Roasting potatoes", product).isAutoBasketEligible,
+                "Expected prepared product '$name' not to match raw roasting potatoes"
+            )
+        }
+    }
+
+    @Test
     fun matcher_userRejectedMapping_overridesAutomatedMatch() {
         val rejectedKey = UserProductMappingKey(
             retailerId = RetailerId.ASDA.name,
