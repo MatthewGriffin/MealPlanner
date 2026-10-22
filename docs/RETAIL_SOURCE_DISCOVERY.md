@@ -10,13 +10,20 @@ This document records what the current website-backed integrations actually esta
 | **Iceland** | Best-effort public website search HTML / JSON-LD with an experimental browser-config discovery path | Parsed catalogue offers are labelled online | Only explicit product-level source status; not branch stock | Not implemented; no branch-scoped offer ID |
 | **The Food Warehouse** | No independent live search | Cached/manual evidence only | Unknown unless explicit saved evidence exists | Not implemented |
 | **ALDI** | Public website search route `/results?q=...`, parsed from product JSON-LD when present | Retailer-general public catalogue price; may differ in store | Always UNKNOWN in this integration; no branch stock checker integration | Not implemented |
-| **Tesco, Morrisons, Sainsbury's, Lidl** | No live source currently integrated | Cached/manual evidence only | Unknown unless explicit source evidence exists | Not implemented |
+| **Tesco** | Public grocery search route, parsed from Product JSON-LD when present | Online guide prices; may vary by delivery area and in-store | Always UNKNOWN in this integration; branch stock not checked | Not implemented |
+| **Morrisons, Sainsbury's, Lidl** | No live product-price source currently integrated | Cached/manual evidence only | Unknown unless explicit source evidence exists | Not implemented |
 
 ## ALDI: public product search
 
 The backend queries ALDI's public search route (`https://www.aldi.co.uk/results?q=...`) and parses structured Product / ItemList JSON-LD when present. This source is retailer-wide: it does not accept a selected branch and is not evidence of stock in a particular store. Offers use `RETAILER_GENERAL` price scope, and availability is forced to `UNKNOWN` even if generic structured data includes an availability field. The result is marked partial success with warnings that prices may differ in store and the stock checker is not integrated. If the live page has no parseable structured offers, the adapter returns a structured unavailable result so cached/manual fallback remains possible.
 
 The parser has fixture-level coverage, but the live route and its current JSON-LD coverage have not yet been verified by running the backend against the production site. The ALDI stock checker is an estimate and is not treated as branch-level evidence here.
+
+## Tesco: public grocery search
+
+The backend queries Tesco's public grocery search route (`https://www.tesco.com/groceries/en-GB/search?query=...`) and parses structured Product / ItemList JSON-LD when present. Offers use `ONLINE` scope because Tesco describes online prices as guide prices that can differ from in-store prices. The search request does not establish the user's selected branch, and structured availability is ignored so the adapter always leaves stock `UNKNOWN`. If no structured offers parse, the adapter returns a structured unavailable result and keeps cached/manual fallback available.
+
+The adapter has fixture-level tests, but production HTML parsing has not yet been verified with a live backend run. Tesco's app offers store-specific stock checking; this public website integration does not reproduce that feature.
 
 ## ASDA: gated pending source verification
 
@@ -40,7 +47,7 @@ The client experimentally attempts a direct Algolia product-search request befor
 
 ## Preferred branch matching
 
-A branch preference is a user preference, not proof that a source response is scoped to that branch. The contract separates an app-local preference ID from optional retailer-issued branch identity. The current offer parsers do not populate branch-specific offer IDs, so the app cannot currently produce verified branch-level prices or stock from live search. ALDI's new public catalogue adapter deliberately supplies retailer-general prices only and leaves availability unknown.
+A branch preference is a user preference, not proof that a source response is scoped to that branch. The contract separates an app-local preference ID from optional retailer-issued branch identity. The current offer parsers do not populate branch-specific offer IDs, so the app cannot currently produce verified branch-level prices or stock from live search. ALDI's public catalogue adapter deliberately supplies retailer-general prices only, and Tesco's adapter supplies online guide prices only; both leave availability unknown.
 
 A branch-specific offer should only be considered branch evidence when the source response establishes:
 1. A stable retailer branch ID matching the selected branch.
