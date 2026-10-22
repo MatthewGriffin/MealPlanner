@@ -1,6 +1,7 @@
 package com.example.chatgpt_mealplanner.backend
 
 import com.example.chatgpt_mealplanner.backend.config.BackendConfig
+import com.example.chatgpt_mealplanner.backend.retail.AldiRetailerAdapter
 import com.example.chatgpt_mealplanner.backend.retail.AsdaRetailerAdapter
 import com.example.chatgpt_mealplanner.backend.retail.FoodWarehouseRetailerAdapter
 import com.example.chatgpt_mealplanner.backend.retail.IcelandProductParser
@@ -55,6 +56,7 @@ fun Application.module(
     val icelandParser = IcelandProductParser()
     val icelandAdapter = IcelandRetailerAdapter(icelandClient, icelandParser)
     val asdaAdapter = AsdaRetailerAdapter()
+    val aldiAdapter = AldiRetailerAdapter()
     val foodWarehouseAdapter = FoodWarehouseRetailerAdapter()
     val storeDirectory = storeDirectoryProvider ?: OpenStreetMapStoreDirectory(httpClient)
 
@@ -77,7 +79,6 @@ fun Application.module(
                 RetailerId.TESCO,
                 RetailerId.MORRISONS,
                 RetailerId.SAINSBURYS,
-                RetailerId.ALDI,
                 RetailerId.LIDL
             ).map { retailerId ->
                 RetailerCapabilityDto(
@@ -94,6 +95,7 @@ fun Application.module(
                 capabilities = listOf(
                     icelandCap,
                     asdaAdapter.getCapability(),
+                    aldiAdapter.getCapability(),
                     foodWarehouseAdapter.getCapability()
                 ) + branchOnlyCapabilities
             )
@@ -128,8 +130,9 @@ fun Application.module(
             val result = when (req.retailerId) {
                 RetailerId.ICELAND -> icelandAdapter.searchProducts(req.query)
                 RetailerId.ASDA -> asdaAdapter.searchProducts(req.query)
+                RetailerId.ALDI -> aldiAdapter.searchProducts(req.query)
                 RetailerId.FOOD_WAREHOUSE -> foodWarehouseAdapter.searchProducts(req.query)
-                RetailerId.TESCO, RetailerId.MORRISONS, RetailerId.SAINSBURYS, RetailerId.ALDI, RetailerId.LIDL ->
+                RetailerId.TESCO, RetailerId.MORRISONS, RetailerId.SAINSBURYS, RetailerId.LIDL ->
                     com.example.chatgpt_mealplanner.retail.contract.RetailProductSearchResult.Unavailable(
                         reason = "Live price search is not configured for this retailer yet.",
                         errorCode = "SOURCE_UNAVAILABLE",
