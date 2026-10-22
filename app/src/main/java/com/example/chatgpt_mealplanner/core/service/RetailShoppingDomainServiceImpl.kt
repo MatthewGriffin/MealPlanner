@@ -180,7 +180,7 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
 
                 if (!useCache && (!isTestEnv || allowLiveLookupsInTests)) {
                     onLookupProgress("Looking up ${req.displayName} at ${retailerId.name.lowercase().replaceFirstChar { it.uppercase() }}…")
-                    val safeQuery = req.displayName.take(50).replace("\n", " ").trim()
+                    val safeQuery = (if (req.displayName.contains("heavy cream", ignoreCase = true)) "double cream" else req.displayName).take(50).replace("\n", " ").trim()
                     if (retailerId == RetailerId.ICELAND) {
                         try {
                             when (val result = icelandAdapter.searchProducts(safeQuery)) {
