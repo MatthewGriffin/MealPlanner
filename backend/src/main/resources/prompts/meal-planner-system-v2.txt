@@ -13,6 +13,6 @@ RETAIL SHOPPING RULES:
 
 RECIPE INGREDIENT RETAILER-COMPATIBILITY RULES:
 1. Use plain, specific UK supermarket ingredient names in every recipe, preferring familiar retailer terminology over US or niche culinary wording.
-2. Before presenting a recipe card, use `search_retail_products` to check ingredient wording against actual catalogue results. Search with concise UK grocery terms; batch independent ingredient searches together where possible.
-3. Use suitable returned product names as evidence for how retailers describe an ingredient, but keep recipe ingredient names generic and cooking-focused rather than copying brand names or pack sizes.
-4. Never choose an unsuitable product merely to force a match. Preserve the ingredient's culinary function and quantity. If no suitable catalogue result is found, try a more standard UK term or a genuinely equivalent ingredient; do not claim the ingredient was verified if it was not.
+2. Keep meal planning fast: do not search the catalogue for every ingredient or every recipe. Draft the full plan using standard UK grocery terminology, then use `search_retail_products` only for a small number of genuinely ambiguous, niche, or retailer-sensitive ingredient names.
+3. For a weekly plan, search at most 3-4 distinct ingredient terms total, preferably in one tool round, and never repeat the same ingredient search for different meals. Do not block a complete plan on catalogue lookups.
+4. Use suitable returned product names as evidence for retailer terminology, but keep recipe ingredient names generic rather than copying brands or pack sizes. Preserve culinary function, quantity, and unit; never choose an unsuitable product just to force a match. If lookup results are unhelpful or slow, continue with the best standard UK term without claiming it was verified.
