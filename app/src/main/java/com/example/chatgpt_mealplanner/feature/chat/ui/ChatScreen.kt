@@ -82,7 +82,7 @@ fun ChatScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val listState = rememberLazyListState()
 
-    val totalItemCount = uiState.messages.size + (if (uiState.latestProposal != null) 1 else 0) + (if (uiState.isLoading) 1 else 0)
+    val totalItemCount = uiState.messages.size + (if (uiState.latestMealPlan != null || uiState.latestProposal != null) 1 else 0) + (if (uiState.isLoading) 1 else 0)
     val targetIndex = (totalItemCount - 1).coerceAtLeast(0)
 
     var hasScrolledToInitialBottom by remember(uiState.activeConversationId) { mutableStateOf(false) }
@@ -268,7 +268,15 @@ fun ChatScreen(
                     }
                 }
 
-                uiState.latestProposal?.let { proposal ->
+                uiState.latestMealPlan?.let { meals ->
+                    item(key = "meal_plan_proposal") {
+                        MealPlanProposalCard(
+                            meals = meals,
+                            onAccept = { onEvent(ChatUiEvent.AcceptMealPlan(it)) },
+                            isSaving = uiState.isSavingProposal
+                        )
+                    }
+                } ?: uiState.latestProposal?.let { proposal ->
                     item(key = "meal_proposal") {
                         MealProposalCard(
                             validatedProposal = proposal,
