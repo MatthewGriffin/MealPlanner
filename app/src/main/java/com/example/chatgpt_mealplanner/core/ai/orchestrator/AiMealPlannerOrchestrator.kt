@@ -172,7 +172,11 @@ class AiMealPlannerOrchestrator @Inject constructor(
             contextPayloadJson = contextPayloadJson,
             contextPayload = contextPayload,
             messages = historicalMessages,
-            availableTools = AiToolId.entries.toList()
+            // A meal-plan request is a menu-level workflow, not a single-recipe proposal.
+            // Keep recipe-offer tools out so the first meal cannot become an accidental Save meal card.
+            availableTools = AiToolId.entries.filter { tool ->
+                !isMealPlanRequest(userMessageText) || tool != AiToolId.OFFER_ADD_PLANNED_MEAL
+            }
         )
 
         var providerResponse = provider.send(request)
@@ -272,7 +276,7 @@ class AiMealPlannerOrchestrator @Inject constructor(
                 finalResponseText.contains("method", ignoreCase = true) ||
                 (providerResponse as? AiProviderResponse.FinalResponse)?.proposal != null
 
-        if (isEligibleProposalIntent && textSuggestsRecipeProposal && !hasOfferCaptured && !plannerMutationCommitted && providerResponse is AiProviderResponse.FinalResponse) {
+        if (!isMealPlanRequest(userMessageText) && isEligibleProposalIntent && textSuggestsRecipeProposal && !hasOfferCaptured && !plannerMutationCommitted && providerResponse is AiProviderResponse.FinalResponse) {
             safeLog("[STRUCTURED_OFFER_REPAIR] needed=true attempt=1")
 
             val repairRequest = request.copy(
@@ -861,6 +865,21 @@ class AiMealPlannerOrchestrator @Inject constructor(
         return cleaned
     }
 
+    private fun isMealPlanRequest(userMessageText: String): Boolean {
+        val lower = userMessageText.lowercase().replace(Regex("[’‘]"), "'")
+        val mentionsPlan = lower.contains("meal plan") ||
+                lower.contains("weekly plan") ||
+                lower.contains("weekly menu") ||
+                lower.contains("menu for the week") ||
+                lower.contains("plan for the week") ||
+                lower.contains("week of meals") ||
+                lower.contains("7-day plan") ||
+                lower.contains("7 day plan") ||
+                lower.contains("seven-day plan") ||
+                lower.contains("seven day plan")
+        return mentionsPlan
+    }
+
     private fun sanitizeUncommittedPlannerClaims(text: String): String {
         // Model prose is not evidence of a database write. Cover contractions,
         // plural meals and passive completion claims as well as "I have added".
@@ -925,10 +944,16 @@ class AiMealPlannerOrchestrator @Inject constructor(
         2. Do NOT offer "Would you like me to generate your shopping list?", "Would you like me to add these recipe ingredients to Shopping?", or equivalent redundant shopping offers after proposing or adding a meal.
         3. Manual shopping tool 'add_manual_shopping_item' remains available for explicitly non-meal user items (e.g. 'add kitchen towels to my shopping list').
 
+        MEAL-PLAN WORKFLOW (DISTINCT FROM A SINGLE RECIPE):
+        1. Treat requests to generate, create, suggest, or adjust a meal plan/menu for multiple days as a menu-level workflow. Present the complete plan as a readable day-by-day list and ask whether the user wants adjustments or wants to choose a meal to expand.
+        2. Do NOT call 'offer_add_planned_meal' for any individual meal while responding to a meal-plan request. Do not create a recipe card for the first meal, and do not ask whether the user wants the full recipe for today's meal by default. The plan itself is the response; the user can choose a specific meal to expand in a later message.
+        3. Do not save the proposed plan automatically. Only save meals when the user explicitly asks to add/save/schedule the plan, and use the appropriate supported write tools. If the app cannot save the whole plan atomically, explain the supported next step rather than implying all meals were saved.
+        4. For a single recipe or meal suggestion (not a multi-day plan), continue to follow the recipe-card workflow below.
+
         RECIPE PROPOSAL AND ADD OFFER MANDATE:
         1. Before creating a recipe card, inspect the proposed ingredients for unresolved user choices that affect what must be bought or how the dish is made. If a recipe idea depends on a choice such as "toppings of choice", ask one concise clarifying question listing sensible options and WAIT for the user's answer before calling 'offer_add_planned_meal'. Do not put vague placeholders such as "toppings of choice" into an ingredient name or combine them with a real ingredient (for example, never output "Heavy cream, toppings of choice"). Once the user answers, include the selected ingredients in the recipe; if the user declines to choose, omit the optional choice and keep the recipe complete.
         2. Optional garnish that does not materially affect shopping or preparation may simply be omitted or clearly marked optional; do not interrupt the user for trivial garnish choices.
-        3. When suggesting a recipe or meal idea, invoke 'offer_add_planned_meal' with complete parameters (title, optional date YYYY-MM-DD, optional mealType, servings, all ingredients, and complete cooking instructions).
+        3. When suggesting a single recipe or meal idea, invoke 'offer_add_planned_meal' with complete parameters (title, optional date YYYY-MM-DD, optional mealType, servings, all ingredients, and complete cooking instructions).
            - Calling 'offer_add_planned_meal' DOES NOT modify the database or save the meal; it creates the recipe card shown by the app.
            - Do not ask whether to add the recipe or tell the user to confirm it in chat. The card has an explicit **Save meal** action.
            - If a valid offer is created, provide a short helpful summary; the app renders the recipe details and Save action.
