@@ -14,8 +14,9 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /**
- * Public retailer search pages for retailers without a verified branch-level endpoint.
- * This client intentionally does not call undocumented JSON APIs or bypass access controls.
+ * Public retailer search sources for retailers without a verified branch-level endpoint.
+ * Sainsbury's public unauthenticated product-search response is JSON; no authenticated
+ * basket, checkout, or private store-stock endpoint is called.
  */
 open class AdditionalRetailerSourceClient(
     private val httpClient: HttpClient = HttpClient(OkHttp),
