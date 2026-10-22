@@ -33,6 +33,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -59,13 +60,39 @@ class ShoppingViewModel @Inject constructor(
     private val retailLookupMessageFlow = MutableStateFlow<String?>(null)
     private var basketOptimizationJob: kotlinx.coroutines.Job? = null
     private var basketOptimizationVersion = 0L
+    private var lastBasketOptimizationSignature: String? = null
 
     private val activeShoppingListFlow = combine(
         shoppingRepository.observeActiveShoppingListWithItems(),
         retailerPreferenceStore.observeEnabledRetailers(),
         retailStorePreferenceStore.observePreferredStores()
-    ) { listWithItems, _, _ -> listWithItems }
-        .onEach { listWithItems -> runBasketOptimization(listWithItems) }
+    ) { listWithItems, enabledRetailers, preferredStores ->
+        Triple(listWithItems, enabledRetailers, preferredStores)
+    }
+        .onEach { (listWithItems, enabledRetailers, preferredStores) ->
+            val requirementSignature = listWithItems?.let { list ->
+                list.shoppingList.id + "|" + list.items.joinToString("|") { entry ->
+                    val item = entry.item
+                    listOf(
+                        item.id,
+                        item.displayName,
+                        item.suggestedPurchaseQuantity,
+                        item.suggestedPurchaseUnit,
+                        item.reason,
+                        item.requirementConfidence,
+                        item.quantityUncertain
+                    ).joinToString(":")
+                }
+            } ?: "empty"
+            // Checking an item changes its status, not the basket requirements.
+            // Keep the current retailer lookup running instead of cancelling and restarting it.
+            val signature = "$requirementSignature|$enabledRetailers|$preferredStores"
+            if (signature != lastBasketOptimizationSignature) {
+                lastBasketOptimizationSignature = signature
+                runBasketOptimization(listWithItems)
+            }
+        }
+        .map { it.first }
     private val stapleRulesFlow = stapleRuleRepository.observeAllStapleRules()
 
     @Suppress("UNCHECKED_CAST")
