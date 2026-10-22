@@ -124,7 +124,9 @@ class RemoteMealPlannerAiProvider @Inject constructor(
             is AiBackendResponse.Final -> AiProviderResponse.FinalResponse(
                 text = backendResponse.text,
                 proposal = backendResponse.proposal,
-                proposedAction = backendResponse.proposedAction
+                mealPlan = backendResponse.mealPlan,
+                proposedAction = backendResponse.proposedAction,
+                modelId = backendResponse.modelId
             )
             is AiBackendResponse.ToolCalls -> AiProviderResponse.ToolCalls(
                 providerContinuationToken = backendResponse.providerContinuationToken,
