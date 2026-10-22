@@ -161,6 +161,13 @@ fun ShoppingScreen(
                         }
                         Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
                             Text("$checkedCount/${shoppingItems.size}", style = MaterialTheme.typography.bodySmall)
+                            uiState.retailLookupMessage?.let { lookupMessage ->
+                                Text(
+                                    text = lookupMessage,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                             if (checkedCount < shoppingItems.size) {
                                 LinearProgressIndicator(
                                     progress = { checkedCount.toFloat() / shoppingItems.size },
@@ -169,19 +176,6 @@ fun ShoppingScreen(
                             }
                         }
                     }
-
-                    uiState.retailLookupMessage?.let { lookupMessage ->
-                        Column(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
-                        ) {
-                            Text(
-                                text = lookupMessage,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-
                     val plan = uiState.basketComparisonResult?.selectedPlan
                     if (plan != null) {
                         val matchedCount = plan.lines.size
@@ -336,7 +330,7 @@ fun ShoppingItemCard(
     onDetailClicked: () -> Unit
 ) {
     val item = itemWithSources.item
-    val isChecked = item.status == ShoppingItemStatus.CHECKED
+    val isChecked = item.status == ShoppingItemStatus.CHECKED || item.status == ShoppingItemStatus.PURCHASED_CONFIRMED
 
     LaunchedEffect(item.id, basketLine) {
         val assignmentState = if (basketLine != null) "ASSIGNED" else "UNASSIGNED"
