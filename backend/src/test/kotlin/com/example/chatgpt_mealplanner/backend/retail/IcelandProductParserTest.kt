@@ -95,6 +95,55 @@ class IcelandProductParserTest {
     }
 
     @Test
+    fun parseJsonLdSupportsArraysGraphsAndWrappedItemLists() {
+        val html = """
+            <html><head>
+              <script type="application/ld+json">
+                [
+                  {
+                    "@type": "BreadcrumbList",
+                    "itemListElement": []
+                  },
+                  {
+                    "@type": "ItemList",
+                    "itemListElement": [
+                      {
+                        "@type": "ListItem",
+                        "item": {
+                          "@type": "Product",
+                          "name": "Milk in array list",
+                          "sku": "milk-array",
+                          "offers": {"@type": "Offer", "price": "1.99", "priceCurrency": "GBP"}
+                        }
+                      }
+                    ]
+                  }
+                ]
+              </script>
+              <script type="application/ld+json">
+                {
+                  "@context": "https://schema.org",
+                  "@graph": [
+                    {
+                      "@type": ["Product"],
+                      "name": "Bread in graph",
+                      "sku": "bread-graph",
+                      "offers": {"@type": "Offer", "price": "1.25", "priceCurrency": "GBP"}
+                    }
+                  ]
+                }
+              </script>
+            </head><body></body></html>
+        """.trimIndent()
+
+        val records = parser.parseHtmlPage(html)
+
+        assertEquals(2, records.size)
+        assertEquals(setOf("milk-array", "bread-graph"), records.map { it.productWithOffer.product.retailerProductId }.toSet())
+        assertEquals(setOf(Money(199L), Money(125L)), records.map { it.productWithOffer.offer.price }.toSet())
+    }
+
+    @Test
     fun parseAlgoliaResponseRequiresProductIdNameAndPrice() {
         val response = """
             {
