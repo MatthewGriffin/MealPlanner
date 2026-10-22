@@ -193,8 +193,8 @@ class IcelandProductParser(
             retailerProductId = sku,
             price = finalPrice,
             promotion = parsePromotionFromHtml(fullHtml),
-            availability = availability,
-            priceScope = RetailPriceScope.ONLINE,
+            availability = if (useStructuredAvailability) availability else RetailAvailability.UNKNOWN,
+            priceScope = priceScope,
             observedAt = System.currentTimeMillis()
         )
 
