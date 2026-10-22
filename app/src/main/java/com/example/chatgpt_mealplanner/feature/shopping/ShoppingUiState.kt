@@ -36,6 +36,7 @@ data class ShoppingUiState(
     val selectedItemForDetail: ShoppingListItemWithSources? = null,
     val showAddManualDialog: Boolean = false,
     val basketComparisonResult: BasketComparisonResult? = null,
+    val retailLookupMessage: String? = null,
     val retailerGroups: List<RetailerGroup> = emptyList(),
     val manualItemName: String = "",
     val manualItemNotes: String = ""
