@@ -291,13 +291,14 @@ class AiMealPlannerOrchestrator @Inject constructor(
                 intentClass == com.example.chatgpt_mealplanner.core.ai.context.UserMessageIntentClass.FOLLOW_UP_TO_ACTIVE_PROPOSAL)
 
         val finalResponseText = (providerResponse as? AiProviderResponse.FinalResponse)?.text ?: ""
+        val responseIsMultiMealPlan = isMultiMealResponse(finalResponseText)
         val textSuggestsRecipeProposal = finalResponseText.contains("recipe", ignoreCase = true) ||
                 finalResponseText.contains("ingredients", ignoreCase = true) ||
                 finalResponseText.contains("instructions", ignoreCase = true) ||
                 finalResponseText.contains("method", ignoreCase = true) ||
                 (providerResponse as? AiProviderResponse.FinalResponse)?.proposal != null
 
-        if (!isMealPlanRequest(userMessageText) && isEligibleProposalIntent && textSuggestsRecipeProposal && !hasOfferCaptured && !plannerMutationCommitted && providerResponse is AiProviderResponse.FinalResponse) {
+        if (!responseIsMultiMealPlan && !isMealPlanRequest(userMessageText) && isEligibleProposalIntent && textSuggestsRecipeProposal && !hasOfferCaptured && !plannerMutationCommitted && providerResponse is AiProviderResponse.FinalResponse) {
             safeLog("[STRUCTURED_OFFER_REPAIR] needed=true attempt=1")
 
             val repairRequest = request.copy(
@@ -353,7 +354,8 @@ class AiMealPlannerOrchestrator @Inject constructor(
         return when (providerResponse) {
             is AiProviderResponse.FinalResponse -> {
                 val finalRes = providerResponse as AiProviderResponse.FinalResponse
-                var validatedProposal = if (isMealPlanRequest(userMessageText)) {
+                val responseIsMultiMealPlan = isMultiMealResponse(finalRes.text)
+                var validatedProposal = if (responseIsMultiMealPlan || isMealPlanRequest(userMessageText)) {
                     null
                 } else {
                     finalRes.proposal?.let { recipeValidator.validateProposal(it) }
@@ -371,7 +373,7 @@ class AiMealPlannerOrchestrator @Inject constructor(
                 val currentPending = pendingMutationStore.getPendingMutation(conversationId) as? com.example.chatgpt_mealplanner.core.ai.pending.PendingAiMutation.AddPlannedMeal
                 val hasValidOfferAwaiting = currentPending != null && currentPending.state == com.example.chatgpt_mealplanner.core.ai.pending.PendingMutationState.AWAITING_CONFIRMATION && currentPending.ingredients.isNotEmpty()
 
-                if (hasValidOfferAwaiting && !mealPlanRequest) {
+                if (hasValidOfferAwaiting && !mealPlanRequest && !responseIsMultiMealPlan) {
                     val pendingOffer = currentPending!!
                     textToReturn = formatAppOwnedRecipeProposal(pendingOffer)
                     // The text parser may have extracted only the bold title from the final prose,
@@ -915,6 +917,34 @@ class AiMealPlannerOrchestrator @Inject constructor(
                 lower.contains("seven-day plan") ||
                 lower.contains("seven day plan")
         return mentionsPlan
+    }
+
+    /**
+     * Classify the assistant's actual output, not the wording of the user's request.
+     * A multi-day/multi-meal answer must never be turned into the single-recipe Save card.
+     */
+    private fun isMultiMealResponse(text: String): Boolean {
+        val lines = text.lineSequence().map { it.trim() }
+            .filter { it.isNotBlank() }
+            .toList()
+        if (lines.isEmpty()) return false
+
+        val dayHeadings = Regex(
+            "(?i)^(?:#{1,6}\\s*)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?:\\s*[:—–-].*)?$"
+        )
+        val daySections = lines.count { dayHeadings.matches(it) }
+        if (daySections >= 2) return true
+
+        val mealEntry = Regex(
+            "(?i)^(?:[-*•]\\s*|\\d+[.)]\\s*|#{1,6}\\s*)?(?:(?:meal|option)\\s*\\d+\s*[:.)—–-]?\\s*)?(?:(?:breakfast|brunch|lunch|dinner|tea|supper)\\s*[:—–-]\\s*).{3,}$"
+        )
+        if (lines.count { mealEntry.matches(it) } >= 2) return true
+
+        val numberedMealTitles = Regex("(?i)^\\d+[.)]\\s+.{4,}$")
+        val numberedEntries = lines.count { numberedMealTitles.matches(it) }
+        return numberedEntries >= 2 && lines.any {
+            Regex("(?i)\\b(?:ingredients|method|instructions|cook|serve)\\b").containsMatchIn(it)
+        }
     }
 
     private fun sanitizeUncommittedPlannerClaims(text: String): String {
