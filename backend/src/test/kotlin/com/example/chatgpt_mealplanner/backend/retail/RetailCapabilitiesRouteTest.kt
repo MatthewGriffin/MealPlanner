@@ -31,12 +31,20 @@ class RetailCapabilitiesRouteTest {
         assertEquals(RetailerCapabilityMode.LIVE_SEARCH_AVAILABLE, icelandCap.mode)
 
         val asdaCap = capsRes.capabilities.first { it.retailerId == RetailerId.ASDA }
-        assertEquals(RetailerCapabilityMode.LIVE_SEARCH_AVAILABLE, asdaCap.mode)
+        assertEquals(RetailerCapabilityMode.MANUAL_AND_CACHED_ONLY, asdaCap.mode)
+        assertEquals(false, asdaCap.searchSupported)
+        assertEquals(false, asdaCap.livePriceSupported)
 
         val fwCap = capsRes.capabilities.first { it.retailerId == RetailerId.FOOD_WAREHOUSE }
         assertEquals(RetailerCapabilityMode.SHARED_CATALOGUE_WITH_ICELAND, fwCap.mode)
 
-        listOf(RetailerId.TESCO, RetailerId.MORRISONS, RetailerId.SAINSBURYS, RetailerId.ALDI, RetailerId.LIDL).forEach { retailerId ->
+        val aldiCap = capsRes.capabilities.first { it.retailerId == RetailerId.ALDI }
+        assertEquals(RetailerCapabilityMode.LIVE_SEARCH_AVAILABLE, aldiCap.mode)
+        assertEquals(true, aldiCap.searchSupported)
+        assertEquals(true, aldiCap.livePriceSupported)
+        assertEquals(false, aldiCap.availabilitySupported)
+
+        listOf(RetailerId.TESCO, RetailerId.MORRISONS, RetailerId.SAINSBURYS, RetailerId.LIDL).forEach { retailerId ->
             val capability = capsRes.capabilities.first { it.retailerId == retailerId }
             assertEquals(RetailerCapabilityMode.MANUAL_AND_CACHED_ONLY, capability.mode)
             assertEquals(false, capability.searchSupported)
