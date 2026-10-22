@@ -179,7 +179,10 @@ class IcelandProductParser(
             retailerId = retailerId,
             retailerProductId = sku,
             name = name,
-            brand = if (retailerId == RetailerId.ICELAND) "Iceland" else retailerId.name.lowercase().replaceFirstChar { it.uppercase() },
+            brand = jsonObj["brand"]?.let { brandElement ->
+                if (brandElement is JsonObject) brandElement["name"]?.let(::primitiveContent)
+                else primitiveContent(brandElement)
+            } ?: if (retailerId == RetailerId.ICELAND) "Iceland" else retailerId.name.lowercase().replaceFirstChar { it.uppercase() },
             packCount = packMeta.packCount,
             packSize = packMeta.packSize,
             packSizeUnit = packMeta.packSizeUnit,
