@@ -151,9 +151,10 @@ class ShoppingViewModel @Inject constructor(
         retailLookupMessageFlow.value = null
         if (listWithItems?.items.isNullOrEmpty()) return
 
-        retailLookupMessageFlow.value = "Preparing retailer lookups…"
+        retailLookupMessageFlow.value = "0/" + (listWithItems?.items?.size ?: 0) + " · Preparing retailer lookups…"
         basketOptimizationJob = viewModelScope.launch {
             val count = listWithItems?.items?.size ?: 0
+            var lookupProgressCount = 0
             println("[AI_MEALPLANNER] [SHOPPING_ASSIGNMENT_CALL] shoppingItemCount=$count")
             val result = try {
                 // A saved preferred branch is the user's explicit signal that this
@@ -180,7 +181,10 @@ class ShoppingViewModel @Inject constructor(
                     preferences,
                     { message ->
                         if (version == basketOptimizationVersion) {
-                            retailLookupMessageFlow.value = message
+                            if (message.startsWith("Checking ")) {
+                                lookupProgressCount = (lookupProgressCount + 1).coerceAtMost(count)
+                            }
+                            retailLookupMessageFlow.value = "$lookupProgressCount/$count · $message"
                         }
                     },
                     { partialResult ->
