@@ -1,5 +1,6 @@
 package com.example.chatgpt_mealplanner.core.service
 
+import com.example.chatgpt_mealplanner.backend.retail.AldiRetailerAdapter
 import com.example.chatgpt_mealplanner.backend.retail.AsdaRetailerAdapter
 import com.example.chatgpt_mealplanner.backend.retail.IcelandRetailerAdapter
 import com.example.chatgpt_mealplanner.core.database.dao.RetailDao
@@ -35,7 +36,8 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
     private val retailRepository: RetailRepository,
     @Suppress("UNUSED_PARAMETER") private val retailDao: RetailDao? = null,
     private val icelandAdapter: IcelandRetailerAdapter = IcelandRetailerAdapter(),
-    private val asdaAdapter: AsdaRetailerAdapter = AsdaRetailerAdapter()
+    private val asdaAdapter: AsdaRetailerAdapter = AsdaRetailerAdapter(),
+    private val aldiAdapter: AldiRetailerAdapter = AldiRetailerAdapter()
 ) : RetailShoppingDomainService {
 
     private val freshnessPolicy: RetailFreshnessPolicy = RetailFreshnessPolicy()
@@ -192,6 +194,28 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
                             }
                         } catch (_: Exception) {
                             safeLog("[RETAIL_LIVE_SEARCH] requirement=${req.displayName} retailer=ASDA query=\"$safeQuery\" resultCount=0 success=false")
+                        }
+                    } else if (retailerId == RetailerId.ALDI) {
+                        try {
+                            when (val result = aldiAdapter.searchProducts(safeQuery)) {
+                                is RetailProductSearchResult.Success -> {
+                                    if (result.productsWithOffers.isNotEmpty()) {
+                                        retailRepository.cacheProductsWithOffers(result.productsWithOffers)
+                                        safeLog("[RETAIL_LIVE_SEARCH] requirement=${req.displayName} retailer=ALDI query=\"$safeQuery\" resultCount=${result.productsWithOffers.size} success=true")
+                                    }
+                                }
+                                is RetailProductSearchResult.PartialSuccess -> {
+                                    if (result.productsWithOffers.isNotEmpty()) {
+                                        retailRepository.cacheProductsWithOffers(result.productsWithOffers)
+                                        safeLog("[RETAIL_LIVE_SEARCH] requirement=${req.displayName} retailer=ALDI query=\"$safeQuery\" resultCount=${result.productsWithOffers.size} success=true")
+                                    }
+                                }
+                                is RetailProductSearchResult.Unavailable -> {
+                                    safeLog("[RETAIL_LIVE_SEARCH] requirement=${req.displayName} retailer=ALDI query=\"$safeQuery\" resultCount=0 success=false")
+                                }
+                            }
+                        } catch (_: Exception) {
+                            safeLog("[RETAIL_LIVE_SEARCH] requirement=${req.displayName} retailer=ALDI query=\"$safeQuery\" resultCount=0 success=false")
                         }
                     }
                 }
