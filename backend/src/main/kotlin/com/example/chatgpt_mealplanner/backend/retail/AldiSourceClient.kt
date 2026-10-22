@@ -16,14 +16,14 @@ import kotlinx.coroutines.delay
  * Reads ALDI's public product-search page. This is a retailer-wide catalogue source,
  * not a store-stock API; it must not be used to claim selected-branch availability.
  */
-class AldiSourceClient(
+open class AldiSourceClient(
     private val httpClient: HttpClient = HttpClient(OkHttp),
     private val minRequestIntervalMs: Long = 1000L
 ) {
     private val mutex = Mutex()
     private var lastRequestAt = 0L
 
-    suspend fun searchHtml(query: String): String {
+    open suspend fun searchHtml(query: String): String {
         require(query.isNotBlank()) { "ALDI search query must not be blank" }
         mutex.withLock {
             val waitMs = minRequestIntervalMs - (System.currentTimeMillis() - lastRequestAt)
