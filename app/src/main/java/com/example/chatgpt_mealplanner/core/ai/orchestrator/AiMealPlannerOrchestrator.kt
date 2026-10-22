@@ -354,7 +354,7 @@ class AiMealPlannerOrchestrator @Inject constructor(
         return when (providerResponse) {
             is AiProviderResponse.FinalResponse -> {
                 val finalRes = providerResponse as AiProviderResponse.FinalResponse
-                val responseIsMultiMealPlan = isMultiMealResponse(finalRes.text)
+                val responseIsMultiMealPlan = (finalRes.mealPlan?.size ?: 0) > 1 || isMultiMealResponse(finalRes.text)
                 var validatedProposal = if (responseIsMultiMealPlan) {
                     null
                 } else {
@@ -500,7 +500,8 @@ class AiMealPlannerOrchestrator @Inject constructor(
                 AiOrchestrationResult.Final(
                     assistantText = textToReturn,
                     validatedProposal = validatedProposal,
-                    proposedAction = if (isMealPlanRequest(userMessageText)) {
+                    mealPlan = finalRes.mealPlan,
+                    proposedAction = if (isMealPlanRequest(userMessageText) || finalRes.mealPlan != null) {
                         null
                     } else if (hasValidOfferAwaiting) {
                         com.example.chatgpt_mealplanner.contract.AiProposedAction.SaveMeal(
