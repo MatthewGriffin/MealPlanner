@@ -8,8 +8,6 @@ import com.example.chatgpt_mealplanner.retail.contract.RetailerCapabilityDto
 import com.example.chatgpt_mealplanner.retail.contract.RetailerCapabilityMode
 import com.example.chatgpt_mealplanner.retail.contract.RetailerId
 import io.ktor.http.URLBuilder
-import java.net.URLEncoder
-import java.nio.charset.StandardCharsets
 
 /**
  * ALDI's public website search exposes retailer-wide product listings and prices.
@@ -65,7 +63,6 @@ open class AldiRetailerAdapter(
             "Prices are retailer-wide public catalogue listings and may differ in store.",
             "ALDI stock-checker estimates are not integrated; availability is unknown."
         )
-        val encodedQuery = URLEncoder.encode(query.trim(), StandardCharsets.UTF_8.name())
         val metadata = RetailSourceMetadata(
             retailerId = RetailerId.ALDI,
             sourceType = RetailOfferSourceType.LIVE,
