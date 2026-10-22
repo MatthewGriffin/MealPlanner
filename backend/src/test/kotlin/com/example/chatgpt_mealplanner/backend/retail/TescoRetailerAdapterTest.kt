@@ -36,6 +36,7 @@ class TescoRetailerAdapterTest {
         assertTrue(capability.searchSupported)
         assertTrue(capability.livePriceSupported)
         assertFalse(capability.availabilitySupported)
+        assertFalse(capability.promotionsSupported)
     }
 
     @Test
