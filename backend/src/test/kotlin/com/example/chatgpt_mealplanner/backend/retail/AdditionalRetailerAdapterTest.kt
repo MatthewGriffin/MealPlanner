@@ -40,8 +40,10 @@ class AdditionalRetailerAdapterTest {
 
     @Test
     fun cataloguePricesAreScopedAndStockRemainsUnknown() = runBlocking {
+        val sainsburysJson = """{"products":[{"product_uid":"sainsburys-milk-1","name":"Store Brand Semi Skimmed Milk 2 Pints","retail_price":"1.10","in_stock":true,"image_url":"https://example.invalid/milk.jpg"}]}"""
         val client = object : AdditionalRetailerSourceClient() {
-            override suspend fun searchHtml(retailerId: RetailerId, query: String) = html
+            override suspend fun searchHtml(retailerId: RetailerId, query: String) =
+                if (retailerId == RetailerId.SAINSBURYS) sainsburysJson else html
         }
         val adapter = AdditionalRetailerAdapter(client)
         listOf(
