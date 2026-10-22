@@ -70,8 +70,8 @@ class RetailProductMatcher(
         // phrase to a real ingredient (for example, "Heavy cream, toppings of choice").
         // Match the actual ingredient identity without treating the choice phrase as food.
         val reqLower = requirementDisplayName.lowercase()
-            .replace(Regex("[,;]?\\\\s*(?:optional )?(?:toppings?|garnishes?) of choice.*$"), "")
-            .replace(Regex("\\\\s*\\\\(optional\\\\)\\\\s*$"), "")
+            .replace(Regex("[,;]?\\s*(?:optional )?(?:toppings?|garnishes?) of choice.*$"), "")
+            .replace(Regex("\\s*\\(optional\\)\\s*$"), "")
             .trim()
 
         // Distinct food guard: "Beans with Sausages" vs "Baked Beans"
@@ -157,7 +157,7 @@ class RetailProductMatcher(
         }
 
         // UK double cream is the closest standard retail equivalent to US-style heavy cream.
-        val wantsHeavyCream = reqLower in setOf("heavy cream", "double cream", "whipping cream")
+        val wantsHeavyCream = reqLower.contains("heavy cream") || reqLower in setOf("double cream", "whipping cream")
         if (wantsHeavyCream) {
             val isCream = nameLower.contains("cream")
             val isEquivalentCream = nameLower.contains("double cream") ||
