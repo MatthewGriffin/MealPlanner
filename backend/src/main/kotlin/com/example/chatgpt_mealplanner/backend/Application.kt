@@ -2,6 +2,7 @@ package com.example.chatgpt_mealplanner.backend
 
 import com.example.chatgpt_mealplanner.backend.config.BackendConfig
 import com.example.chatgpt_mealplanner.backend.retail.AldiRetailerAdapter
+import com.example.chatgpt_mealplanner.backend.retail.AdditionalRetailerAdapter
 import com.example.chatgpt_mealplanner.backend.retail.AsdaRetailerAdapter
 import com.example.chatgpt_mealplanner.backend.retail.FoodWarehouseRetailerAdapter
 import com.example.chatgpt_mealplanner.backend.retail.IcelandProductParser
@@ -59,6 +60,7 @@ fun Application.module(
     val asdaAdapter = AsdaRetailerAdapter()
     val aldiAdapter = AldiRetailerAdapter()
     val tescoAdapter = TescoRetailerAdapter()
+    val additionalRetailerAdapter = AdditionalRetailerAdapter()
     val foodWarehouseAdapter = FoodWarehouseRetailerAdapter()
     val storeDirectory = storeDirectoryProvider ?: OpenStreetMapStoreDirectory(httpClient)
 
@@ -78,20 +80,6 @@ fun Application.module(
                 description = "Iceland live HTML / JSON-LD catalog search available."
             )
             val branchOnlyCapabilities = listOf(
-                RetailerId.MORRISONS,
-                RetailerId.SAINSBURYS,
-                RetailerId.LIDL
-            ).map { retailerId ->
-                RetailerCapabilityDto(
-                    retailerId = retailerId,
-                    mode = RetailerCapabilityMode.MANUAL_AND_CACHED_ONLY,
-                    searchSupported = false,
-                    livePriceSupported = false,
-                    availabilitySupported = false,
-                    promotionsSupported = false,
-                    description = "${retailerId.name.lowercase().replaceFirstChar { it.uppercase() }} branch discovery is available, but live product and price lookup is not configured. Saved/manual data may be available."
-                )
-            }
             val response = RetailerCapabilitiesResponse(
                 capabilities = listOf(
                     icelandCap,
@@ -99,7 +87,7 @@ fun Application.module(
                     aldiAdapter.getCapability(),
                     tescoAdapter.getCapability(),
                     foodWarehouseAdapter.getCapability()
-                ) + branchOnlyCapabilities
+                ) + listOf(RetailerId.MORRISONS, RetailerId.SAINSBURYS, RetailerId.LIDL).map(additionalRetailerAdapter::getCapability)
             )
             call.respond(response)
         }
@@ -135,12 +123,7 @@ fun Application.module(
                 RetailerId.ALDI -> aldiAdapter.searchProducts(req.query)
                 RetailerId.TESCO -> tescoAdapter.searchProducts(req.query)
                 RetailerId.FOOD_WAREHOUSE -> foodWarehouseAdapter.searchProducts(req.query)
-                RetailerId.MORRISONS, RetailerId.SAINSBURYS, RetailerId.LIDL ->
-                    com.example.chatgpt_mealplanner.retail.contract.RetailProductSearchResult.Unavailable(
-                        reason = "Live price search is not configured for this retailer yet.",
-                        errorCode = "SOURCE_UNAVAILABLE",
-                        cachedFallbackAvailable = true
-                    )
+                RetailerId.MORRISONS, RetailerId.SAINSBURYS, RetailerId.LIDL -> additionalRetailerAdapter.searchProducts(req.retailerId, req.query)
             }
             call.respond(result)
         }
