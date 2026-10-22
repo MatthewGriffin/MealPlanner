@@ -175,10 +175,29 @@ class AiMealPlannerOrchestrator @Inject constructor(
             // A meal-plan request is a menu-level workflow, not a single-recipe proposal.
             // Keep recipe-offer tools out so the first meal cannot become an accidental Save meal card.
             availableTools = AiToolId.entries.filter { tool ->
-                !isMealPlanRequest(userMessageText) || tool != AiToolId.OFFER_ADD_PLANNED_MEAL
+                if (!isMealPlanRequest(userMessageText)) {
+                    tool != AiToolId.OFFER_ADD_PLANNED_MEAL
+                } else {
+                    // Meal-plan generation should not wait on retailer catalogue/network lookups.
+                    // Retailer matching happens later when the user expands a selected meal.
+                    tool in setOf(
+                        AiToolId.GET_INVENTORY_SUMMARY,
+                        AiToolId.GET_INVENTORY_FOR_INGREDIENT,
+                        AiToolId.GET_USABLE_INVENTORY,
+                        AiToolId.GET_LOW_STOCK_ITEMS,
+                        AiToolId.GET_USE_SOON_ITEMS,
+                        AiToolId.GET_RECENT_COOKED_MEALS,
+                        AiToolId.GET_UPCOMING_PLANNED_MEALS,
+                        AiToolId.GET_MEAL_DETAILS,
+                        AiToolId.GET_AVAILABLE_LEFTOVERS,
+                        AiToolId.GET_ACTIVE_SHOPPING_LIST
+                    )
+                }
             }
         )
 
+        val mealPlanRequest = isMealPlanRequest(userMessageText)
+        safeLog("[AI_PLAN_MODE] enabled=$mealPlanRequest retailerLookups=" + if (mealPlanRequest) "DISABLED" else "AVAILABLE")
         var providerResponse = provider.send(request)
         var roundCount = 0
         var readSucceeded = false
@@ -191,7 +210,8 @@ class AiMealPlannerOrchestrator @Inject constructor(
         var failedWritesCount = 0
 
         while (providerResponse is AiProviderResponse.ToolCalls) {
-            if (roundCount >= MAX_TOOL_ROUNDS) {
+            val maxRoundsForRequest = if (mealPlanRequest) 2 else MAX_TOOL_ROUNDS
+            if (roundCount >= maxRoundsForRequest) {
                 return AiOrchestrationResult.Error(
                     code = "MAX_TOOL_ROUNDS_EXCEEDED",
                     userFacingMessage = "Exceeded maximum tool execution rounds."
