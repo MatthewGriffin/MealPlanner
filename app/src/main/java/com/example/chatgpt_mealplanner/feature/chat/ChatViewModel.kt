@@ -88,6 +88,7 @@ class ChatViewModel @Inject constructor(
     private val mealChangeRequestDraftFlow = MutableStateFlow("")
     private val mealChangeRequestTitleFlow = MutableStateFlow("")
     private val latestProposalFlow = MutableStateFlow<ValidatedMealProposal?>(null)
+    private val latestMealPlanFlow = MutableStateFlow<List<MealProposal>?>(null)
     private val latestProposedActionFlow = MutableStateFlow<AiProposedAction?>(null)
     private val isSavingProposalFlow = MutableStateFlow(false)
 
@@ -113,7 +114,8 @@ class ChatViewModel @Inject constructor(
         isSavingProposalFlow,
         showMealChangeRequestDialogFlow,
         mealChangeRequestDraftFlow,
-        mealChangeRequestTitleFlow
+        mealChangeRequestTitleFlow,
+        latestMealPlanFlow
     ) { flows ->
         @Suppress("UNCHECKED_CAST")
         val reqHolder = flows[4] as RequestStateHolder
@@ -123,6 +125,7 @@ class ChatViewModel @Inject constructor(
             activeConversationId = flows[0] as String,
             messages = (flows[1] as List<*>).map { it as ChatMessageEntity },
             latestProposal = flows[2] as ValidatedMealProposal?,
+            latestMealPlan = flows[16] as List<MealProposal>?,
             latestProposedAction = flows[3] as AiProposedAction?,
             isSavingProposal = flows[12] as Boolean,
             isLoading = isReqInFlight,
@@ -267,6 +270,7 @@ class ChatViewModel @Inject constructor(
             ChatUiEvent.CancelMealChangeRequestDraft -> cancelMealChangeRequestDraft()
             ChatUiEvent.RetryLastFailedMessage -> retryLastFailedMessage()
             is ChatUiEvent.SaveMealProposalToPlan -> saveMealProposalToPlan(event.proposal)
+            is ChatUiEvent.AcceptMealPlan -> saveMealPlanToPlan(event.meals)
             is ChatUiEvent.ConfirmCookedMeal -> confirmCookedMeal(event.mealId)
             ChatUiEvent.DismissCookConfirmation -> dismissCookConfirmation()
             ChatUiEvent.ClearErrorMessage -> errorMessageFlow.value = null
@@ -339,6 +343,7 @@ class ChatViewModel @Inject constructor(
         // A proposal belongs to the previous assistant turn. Do not leave its Save card
         // visible while a new request (especially a multi-day plan) is being processed.
         latestProposalFlow.value = null
+        latestMealPlanFlow.value = null
         latestProposedActionFlow.value = null
 
         val visibleText = displayMessageText ?: text
@@ -358,6 +363,7 @@ class ChatViewModel @Inject constructor(
                 is AiOrchestrationResult.Final -> {
                     transitionRequestState(ChatRequestState.SUCCEEDED, retainedMessage = null, retainedMessageId = null)
                     latestProposalFlow.value = result.validatedProposal
+                    latestMealPlanFlow.value = result.mealPlan?.takeIf { it.size > 1 }
                     latestProposedActionFlow.value = result.proposedAction
 
                     val confirmAction = result.proposedAction as? AiProposedAction.ConfirmCookedMeal
@@ -539,6 +545,66 @@ class ChatViewModel @Inject constructor(
                         errorMessageFlow.value = formatDomainError(createResult.error)
                     }
                 }
+            } finally {
+                isSavingProposalFlow.value = false
+            }
+        }
+    }
+
+    private fun saveMealPlanToPlan(meals: List<MealProposal>) {
+        if (isSavingProposalFlow.value) return
+        if (meals.size < 2 || meals.any { it.title.isBlank() || it.ingredients.isEmpty() || it.steps.isEmpty() || it.suggestedDate.isNullOrBlank() }) {
+            errorMessageFlow.value = "This meal plan is missing dates, ingredients, or cooking instructions. Ask the assistant to regenerate the complete plan."
+            return
+        }
+        isSavingProposalFlow.value = true
+        viewModelScope.launch {
+            var saved = 0
+            try {
+                for (proposal in meals) {
+                    val slot = com.example.chatgpt_mealplanner.core.ai.resolver.MealSlotResolver.resolveSlot(
+                        requestedDateStr = proposal.suggestedDate,
+                        requestedMealTypeStr = proposal.mealType
+                    )
+                    val meal = Meal(
+                        id = UUID.randomUUID().toString(),
+                        date = slot.date,
+                        mealType = slot.mealType,
+                        title = proposal.title,
+                        servings = proposal.servings,
+                        batchPortions = proposal.batchPortions,
+                        immediatePortions = proposal.immediatePortions,
+                        leftoverPortions = proposal.leftoverPortions,
+                        cookInTwoBatches = proposal.cookInTwoBatches,
+                        tags = proposal.tags.mapNotNull { runCatching { MealTag.valueOf(it.uppercase()) }.getOrNull() }.toSet(),
+                        instructions = proposal.steps.sortedBy { it.order }.joinToString("\n") { "${it.order}. ${it.instruction}" }
+                    )
+                    val ingredients = proposal.ingredients.map { ingredient ->
+                        MealIngredient(
+                            id = UUID.randomUUID().toString(),
+                            mealId = meal.id,
+                            canonicalIngredientId = ingredient.canonicalIngredientId,
+                            displayName = ingredient.displayName,
+                            plannedQuantity = ingredient.quantity,
+                            plannedUnit = com.example.chatgpt_mealplanner.core.model.parseQuantityUnit(ingredient.unit),
+                            optional = ingredient.optional,
+                            substitutionAllowed = ingredient.substitutionAllowed
+                        )
+                    }
+                    when (val result = mealDomainService.createPlannedMeal(meal, ingredients)) {
+                        is DomainResult.Success -> saved++
+                        is DomainResult.Failure -> {
+                            errorMessageFlow.value = if (saved == 0) {
+                                "Couldn't add '${proposal.title}' to the meal plan: ${formatDomainError(result.error)}"
+                            } else {
+                                "Added $saved of ${meals.size} meals before '${proposal.title}' failed: ${formatDomainError(result.error)}"
+                            }
+                            return@launch
+                        }
+                    }
+                }
+                latestMealPlanFlow.value = null
+                errorMessageFlow.value = "Accepted meal plan: added all $saved meals to your planner. Shopping requirements update automatically."
             } finally {
                 isSavingProposalFlow.value = false
             }
