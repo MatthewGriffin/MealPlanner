@@ -298,7 +298,7 @@ class AiMealPlannerOrchestrator @Inject constructor(
                 finalResponseText.contains("method", ignoreCase = true) ||
                 (providerResponse as? AiProviderResponse.FinalResponse)?.proposal != null
 
-        if (!responseIsMultiMealPlan && !isMealPlanRequest(userMessageText) && isEligibleProposalIntent && textSuggestsRecipeProposal && !hasOfferCaptured && !plannerMutationCommitted && providerResponse is AiProviderResponse.FinalResponse) {
+        if (!responseIsMultiMealPlan && isEligibleProposalIntent && textSuggestsRecipeProposal && !hasOfferCaptured && !plannerMutationCommitted && providerResponse is AiProviderResponse.FinalResponse) {
             safeLog("[STRUCTURED_OFFER_REPAIR] needed=true attempt=1")
 
             val repairRequest = request.copy(
@@ -355,7 +355,7 @@ class AiMealPlannerOrchestrator @Inject constructor(
             is AiProviderResponse.FinalResponse -> {
                 val finalRes = providerResponse as AiProviderResponse.FinalResponse
                 val responseIsMultiMealPlan = isMultiMealResponse(finalRes.text)
-                var validatedProposal = if (responseIsMultiMealPlan || isMealPlanRequest(userMessageText)) {
+                var validatedProposal = if (responseIsMultiMealPlan) {
                     null
                 } else {
                     finalRes.proposal?.let { recipeValidator.validateProposal(it) }
@@ -373,7 +373,7 @@ class AiMealPlannerOrchestrator @Inject constructor(
                 val currentPending = pendingMutationStore.getPendingMutation(conversationId) as? com.example.chatgpt_mealplanner.core.ai.pending.PendingAiMutation.AddPlannedMeal
                 val hasValidOfferAwaiting = currentPending != null && currentPending.state == com.example.chatgpt_mealplanner.core.ai.pending.PendingMutationState.AWAITING_CONFIRMATION && currentPending.ingredients.isNotEmpty()
 
-                if (hasValidOfferAwaiting && !mealPlanRequest && !responseIsMultiMealPlan) {
+                if (hasValidOfferAwaiting && !responseIsMultiMealPlan) {
                     val pendingOffer = currentPending!!
                     textToReturn = formatAppOwnedRecipeProposal(pendingOffer)
                     // The text parser may have extracted only the bold title from the final prose,
