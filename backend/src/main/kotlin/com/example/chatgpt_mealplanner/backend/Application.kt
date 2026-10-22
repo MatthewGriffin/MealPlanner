@@ -79,7 +79,6 @@ fun Application.module(
                 promotionsSupported = true,
                 description = "Iceland live HTML / JSON-LD catalog search available."
             )
-            val branchOnlyCapabilities = listOf(
             val response = RetailerCapabilitiesResponse(
                 capabilities = listOf(
                     icelandCap,
