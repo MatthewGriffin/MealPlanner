@@ -387,20 +387,37 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
         query: String,
         retailerFilter: RetailerId?
     ): DomainResult<List<RetailProductWithOffer>> {
+        if (query.isBlank()) return DomainResult.Success(emptyList())
+
         var candidateProducts = retailRepository.getCandidateProductsWithOffers()
-        if (candidateProducts.isEmpty()) {
-            fetchAndCacheLiveProducts(listOf(query), retailerFilter)
-            candidateProducts = retailRepository.getCandidateProductsWithOffers()
+        val queryTokens = query.lowercase()
+            .split(Regex("[^a-z0-9]+"))
+            .filter { it.isNotBlank() }
+            .toSet()
+        fun matchesQuery(candidate: RetailProductWithOffer): Boolean {
+            val productTokens = candidate.product.name.lowercase()
+                .split(Regex("[^a-z0-9]+"))
+                .filter { it.isNotBlank() }
+                .toSet()
+            return queryTokens.isNotEmpty() && productTokens.containsAll(queryTokens) ||
+                candidate.product.canonicalIngredientId?.equals(query, ignoreCase = true) == true
         }
-        val queryLower = query.lowercase()
-        var matches = candidateProducts.filter {
-            it.product.name.lowercase().contains(queryLower) ||
-                    (it.product.canonicalIngredientId?.lowercase()?.contains(queryLower) == true)
-        }
+
+        // A non-empty cache may still have no evidence for this particular ingredient.
+        // Search live retailer catalogues in that case, then evaluate the refreshed cache.
+        var matches = candidateProducts.filter { matchesQuery(it) }
         if (retailerFilter != null) {
             matches = matches.filter { it.product.retailerId == retailerFilter }
         }
-        return DomainResult.Success(matches.take(5))
+        if (matches.isEmpty()) {
+            fetchAndCacheLiveProducts(listOf(query), retailerFilter)
+            candidateProducts = retailRepository.getCandidateProductsWithOffers()
+            matches = candidateProducts.filter { matchesQuery(it) }
+            if (retailerFilter != null) {
+                matches = matches.filter { it.product.retailerId == retailerFilter }
+            }
+        }
+        return DomainResult.Success(matches.take(10))
     }
 
     private suspend fun fetchAndCacheLiveProducts(
@@ -408,6 +425,7 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
         retailerFilter: RetailerId? = null
     ) {
         val retailers = retailerFilter?.let { listOf(it) } ?: listOf(
+            RetailerId.ASDA,
             RetailerId.ICELAND,
             RetailerId.ALDI,
             RetailerId.TESCO,
@@ -421,6 +439,7 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
             for (retailerId in retailers) {
                 try {
                     val result = when (retailerId) {
+                        RetailerId.ASDA -> asdaAdapter.searchProducts(safeQuery)
                         RetailerId.ICELAND -> icelandAdapter.searchProducts(safeQuery)
                         RetailerId.ALDI -> aldiAdapter.searchProducts(safeQuery)
                         RetailerId.TESCO -> tescoAdapter.searchProducts(safeQuery)
