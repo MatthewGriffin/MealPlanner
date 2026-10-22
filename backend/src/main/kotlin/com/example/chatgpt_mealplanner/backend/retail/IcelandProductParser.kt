@@ -24,7 +24,11 @@ data class ParsedProductRecord(
     val warnings: List<String> = emptyList()
 )
 
-class IcelandProductParser(private val retailerId: RetailerId = RetailerId.ICELAND) {
+class IcelandProductParser(
+    private val retailerId: RetailerId = RetailerId.ICELAND,
+    private val priceScope: RetailPriceScope = RetailPriceScope.ONLINE,
+    private val useStructuredAvailability: Boolean = true
+) {
 
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -125,8 +129,8 @@ class IcelandProductParser(private val retailerId: RetailerId = RetailerId.ICELA
                     retailerProductId = id,
                     price = money,
                     promotion = null,
-                    availability = availability,
-                    priceScope = RetailPriceScope.ONLINE,
+                    availability = if (useStructuredAvailability) availability else RetailAvailability.UNKNOWN,
+                    priceScope = priceScope,
                     observedAt = System.currentTimeMillis()
                 )
                 ParsedProductRecord(RetailProductWithOffer(product, offer))
