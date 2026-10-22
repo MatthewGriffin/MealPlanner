@@ -164,7 +164,7 @@ class RetailProductMatcher(
             reqLower in setOf("double cream", "whipping cream", "heavy whipping cream")
         if (wantsHeavyCream) {
             val isCream = normalizedProductName.split(" ").contains("cream")
-            val isEquivalentCream = Regex("\b(double|whipping|heavy)\b.*\bcream\b|\bcream\b.*\b(double|whipping|heavy)\b")
+            val isEquivalentCream = Regex("\\b(double|whipping|heavy)\\b.*\\bcream\\b|\\bcream\\b.*\\b(double|whipping|heavy)\\b")
                 .containsMatchIn(normalizedProductName)
             val isPreparedOrFlavoured = listOf("ice cream", "sour cream", "clotted cream", "cream cheese", "custard", "spray cream").any { normalizedProductName.contains(it) }
             if (isCream && isEquivalentCream && !isPreparedOrFlavoured) {
