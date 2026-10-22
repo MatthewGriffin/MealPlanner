@@ -160,11 +160,13 @@ fun ShoppingScreen(
                                 it.item.status == ShoppingItemStatus.PURCHASED_CONFIRMED
                         }
                         Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
-                            Text("$checkedCount of ${shoppingItems.size} items checked", style = MaterialTheme.typography.bodySmall)
-                            LinearProgressIndicator(
-                                progress = { checkedCount.toFloat() / shoppingItems.size },
-                                modifier = Modifier.fillMaxWidth()
-                            )
+                            Text("$checkedCount/${shoppingItems.size}", style = MaterialTheme.typography.bodySmall)
+                            if (checkedCount < shoppingItems.size) {
+                                LinearProgressIndicator(
+                                    progress = { checkedCount.toFloat() / shoppingItems.size },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
                         }
                     }
 
@@ -177,7 +179,6 @@ fun ShoppingScreen(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                         }
                     }
 
