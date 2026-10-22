@@ -66,7 +66,13 @@ class RetailProductMatcher(
         }
 
         val nameLower = candidateProduct.name.lowercase()
+        // Recipe-generated shopping labels sometimes append a vague optional-choice
+        // phrase to a real ingredient (for example, "Heavy cream, toppings of choice").
+        // Match the actual ingredient identity without treating the choice phrase as food.
         val reqLower = requirementDisplayName.lowercase()
+            .replace(Regex("[,;]?\\\\s*(?:optional )?(?:toppings?|garnishes?) of choice.*$"), "")
+            .replace(Regex("\\\\s*\\\\(optional\\\\)\\\\s*$"), "")
+            .trim()
 
         // Distinct food guard: "Beans with Sausages" vs "Baked Beans"
         if (reqLower == "baked beans" || reqLower.contains("beans")) {
@@ -147,6 +153,36 @@ class RetailProductMatcher(
                 )
                 safeLog("[RETAIL_MATCH] requirement=\"$requirementDisplayName\" candidate=\"${candidateProduct.name}\" categoryMatch=false modifierCompatible=false autoEligible=false reason=EXCLUDED_PRODUCT_TYPE")
                 return returnMatch(requirementDisplayName, candidateProduct, match)
+            }
+        }
+
+        // UK double cream is the closest standard retail equivalent to US-style heavy cream.
+        val wantsHeavyCream = reqLower in setOf("heavy cream", "double cream", "whipping cream")
+        if (wantsHeavyCream) {
+            val isCream = nameLower.contains("cream")
+            val isEquivalentCream = nameLower.contains("double cream") ||
+                nameLower.contains("whipping cream") || nameLower.contains("heavy cream")
+            val isPreparedOrFlavoured = listOf("ice cream", "sour cream", "clotted cream", "cream cheese", "custard", "spray cream").any { nameLower.contains(it) }
+            if (isCream && isEquivalentCream && !isPreparedOrFlavoured) {
+                return returnMatch(requirementDisplayName, candidateProduct, RetailMatchCandidate(
+                    candidateProduct, MatchType.CATEGORY_MATCH, MatchConfidence.HIGH, true,
+                    "Heavy cream matched to UK double/whipping cream equivalent."
+                ))
+            }
+        }
+
+        // Any ordinary potato suitable for roasting is a valid substitute for a
+        // generic "roasting potatoes" requirement; exclude prepared potato products.
+        val wantsRoastingPotatoes = reqLower in setOf("roasting potatoes", "potatoes for roasting", "roast potatoes")
+        if (wantsRoastingPotatoes) {
+            val isPotato = Regex("\\\\bpotatoes?\\\\b").containsMatchIn(nameLower) ||
+                listOf("maris piper", "king edward", "desiree", "rooster potatoes").any { nameLower.contains(it) }
+            val isPrepared = listOf("crisps", "chips", "wedges", "mash", "mashed", "potato salad", "croquette", "waffles", "ready meal", "roast potatoes ready").any { nameLower.contains(it) }
+            if (isPotato && !isPrepared) {
+                return returnMatch(requirementDisplayName, candidateProduct, RetailMatchCandidate(
+                    candidateProduct, MatchType.CATEGORY_MATCH, MatchConfidence.HIGH, true,
+                    "Ordinary potatoes are a suitable substitute for roasting potatoes."
+                ))
             }
         }
 
