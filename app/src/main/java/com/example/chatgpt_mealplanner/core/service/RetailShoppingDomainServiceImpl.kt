@@ -49,6 +49,11 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
 
     override suspend fun optimizeShoppingBasket(
         preferences: UserShoppingPreferences
+    ): DomainResult<BasketComparisonResult> = optimizeShoppingBasket(preferences) { }
+
+    override suspend fun optimizeShoppingBasket(
+        preferences: UserShoppingPreferences,
+        onLookupProgress: (String) -> Unit
     ): DomainResult<BasketComparisonResult> {
         safeLog("[RETAIL_OPTIMIZE_ENTRY] implementation=RetailShoppingDomainServiceImpl buildAudit=TOMATO_CACHE_FLOW_20261001_01")
 
@@ -99,6 +104,14 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
         }
 
         safeLog("[RETAIL_OPTIMIZER_INPUT] buildAudit=TOMATO_CACHE_FLOW_20261001_01 requirementCount=${requirementSpecs.size} names=\"${requirementSpecs.joinToString { it.displayName }}\"")
+
+        // Unit tests must remain deterministic and must never fan out to real retailer websites.
+        val isTestEnv = try {
+            Class.forName("org.junit.Test")
+            true
+        } catch (_: Throwable) {
+            false
+        }
         // Reuse the durable basket result until list requirements, selected stores/retailers,
         // or user-confirmed product mappings change. Invalid payloads safely fall through.
         val cacheFingerprint = buildBasketCacheFingerprint(requirementSpecs, preferences)
@@ -121,6 +134,7 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
 
         requirementSpecs.forEach { req ->
             safeLog("[RETAIL_REQUIREMENT_START] requirement=${req.displayName} quantity=${req.requiredQuantity} unit=${req.requiredUnit}")
+            onLookupProgress("Checking ${req.displayName}…")
 
             val allCandidates = retailRepository.getCandidateProductsWithOffers()
             val queryLower = req.displayName.lowercase()
@@ -153,7 +167,8 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
 
                 safeLog("[RETAIL_CACHE_CHECK] buildAudit=TOMATO_CACHE_FLOW_20261001_01 requirement=${req.displayName} retailer=${retailerId.name} textRelevantCount=$textRelevantCount eligibleFreshCount=$eligibleFreshCount decision=$decisionStr")
 
-                if (!useCache) {
+                if (!useCache && !isTestEnv) {
+                    onLookupProgress("Looking up ${req.displayName} at ${retailerId.name.lowercase().replaceFirstChar { it.uppercase() }}…")
                     val safeQuery = req.displayName.take(50).replace("\n", " ").trim()
                     if (retailerId == RetailerId.ICELAND) {
                         try {
@@ -249,12 +264,6 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
         }
 
         var candidateProducts = retailRepository.getCandidateProductsWithOffers()
-        val isTestEnv = try {
-            Class.forName("org.junit.Test")
-            true
-        } catch (_: Throwable) {
-            false
-        }
         if (candidateProducts.isEmpty() && !isTestEnv) {
             // Phase 7A Fixtures Fallback for production/device only
             candidateProducts = FakeRetailerFixtures.getAsdaFixtures() + FakeRetailerFixtures.getIcelandFixtures()
