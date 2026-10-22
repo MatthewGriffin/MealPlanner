@@ -936,7 +936,7 @@ class AiMealPlannerOrchestrator @Inject constructor(
         if (daySections >= 2) return true
 
         val mealEntry = Regex(
-            "(?i)^(?:[-*•]\\s*|\\d+[.)]\\s*|#{1,6}\\s*)?(?:(?:meal|option)\\s*\\d+\s*[:.)—–-]?\\s*)?(?:(?:breakfast|brunch|lunch|dinner|tea|supper)\\s*[:—–-]\\s*).{3,}$"
+            "(?i)^(?:[-*•]\\s*|\\d+[.)]\\s*|#{1,6}\\s*)?(?:(?:meal|option)\\s*\\d+\\s*[:.)—–-]?\\s*)?(?:(?:breakfast|brunch|lunch|dinner|tea|supper)\\s*[:—–-]\\s*).{3,}$"
         )
         if (lines.count { mealEntry.matches(it) } >= 2) return true
 
