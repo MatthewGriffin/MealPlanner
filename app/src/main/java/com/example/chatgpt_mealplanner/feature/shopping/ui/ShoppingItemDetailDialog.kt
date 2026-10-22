@@ -104,12 +104,14 @@ fun ShoppingItemDetailDialog(
                     (listOfNotNull(result.selectedPlan, result.bestSingleStorePlan, result.bestMultiStorePlan) + result.alternativePlans)
                         .distinctBy { it.planId }
                 }.orEmpty()
+                fun isThisRequirement(line: com.example.chatgpt_mealplanner.retail.contract.BasketLine): Boolean =
+                    line.shoppingRequirementId == item.id ||
+                        line.requirementDisplayName.equals(item.displayName, ignoreCase = true)
+                val selectedRetailers = basketComparisonResult?.selectedPlan?.lines
+                    ?.filter(::isThisRequirement)?.map { it.retailerId }?.toSet().orEmpty()
                 val perStorePrices = comparisonPlans.flatMap { plan ->
-                    plan.lines.filter { line ->
-                        line.shoppingRequirementId == item.id ||
-                            line.requirementDisplayName.equals(item.displayName, ignoreCase = true)
-                    }.map { line -> Triple(line.retailerId, line.lineTotalCost, plan.planId == basketComparisonResult?.selectedPlan?.planId) }
-                }.groupBy { it.first }.mapValues { (_, offers) -> offers.minByOrNull { it.second }!! }
+                    plan.lines.filter(::isThisRequirement).map { line -> line.retailerId to line.lineTotalCost }
+                }.groupBy { it.first }.mapValues { (_, offers) -> offers.minByOrNull { it.second }!!.second }
 
                 if (perStorePrices.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(12.dp))
@@ -123,11 +125,11 @@ fun ShoppingItemDetailDialog(
                         Row(modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(retailer.displayNameForShopping(), style = MaterialTheme.typography.bodyMedium)
-                                if (offer.third) {
+                                if (retailer in selectedRetailers) {
                                     Text("Used by current basket plan", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                                 }
                             }
-                            Text(offer.second.toFormattedString(), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                            Text(offer.toFormattedString(), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }
