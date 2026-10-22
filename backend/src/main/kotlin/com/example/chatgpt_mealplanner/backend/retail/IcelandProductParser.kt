@@ -69,7 +69,7 @@ class IcelandProductParser(
                 .getOrNull()
                 ?.let(::visit)
         }
-        return records
+        return records.distinctBy { it.productWithOffer.product.retailerProductId }
     }
 
     /**
