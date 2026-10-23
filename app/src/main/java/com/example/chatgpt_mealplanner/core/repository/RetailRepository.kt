@@ -16,4 +16,12 @@ interface RetailRepository {
     )
     suspend fun getCandidateProductsWithOffers(): List<RetailProductWithOffer>
     suspend fun cacheProductsWithOffers(items: List<RetailProductWithOffer>)
+
+    /** Atomically replace one retailer's catalogue; default preserves compatibility for test doubles. */
+    suspend fun replaceCatalogueWithOffers(retailerId: RetailerId, items: List<RetailProductWithOffer>) {
+        require(items.all { it.product.retailerId == retailerId && it.offer.retailerId == retailerId }) {
+            "Catalogue items must all belong to the requested retailer."
+        }
+        cacheProductsWithOffers(items)
+    }
 }
