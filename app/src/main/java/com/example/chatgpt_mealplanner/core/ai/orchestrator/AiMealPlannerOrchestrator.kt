@@ -941,11 +941,10 @@ class AiMealPlannerOrchestrator @Inject constructor(
         )
         if (lines.count { mealEntry.matches(it) } >= 2) return true
 
-        val numberedMealTitles = Regex("(?i)^\\d+[.)]\\s+.{4,}$")
-        val numberedEntries = lines.count { numberedMealTitles.matches(it) }
-        return numberedEntries >= 2 && lines.any {
-            Regex("(?i)\\b(?:ingredients|method|instructions|cook|serve)\\b").containsMatchIn(it)
-        }
+        // Do not classify a single recipe as a multi-meal plan just because its
+        // ingredients or cooking steps use a numbered list. Multi-meal responses
+        // are identified by multiple day headings or explicit meal-slot entries above.
+        return false
     }
 
     private fun sanitizeUncommittedPlannerClaims(text: String): String {
