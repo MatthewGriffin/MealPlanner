@@ -22,14 +22,14 @@ class IcelandStarterCatalogueSeedWorker @AssistedInject constructor(
 ) : CoroutineWorker(appContext, workerParams) {
 
     override suspend fun doWork(): Result = try {
-        val alreadyHasCatalogue = retailRepository.getCandidateProductsWithOffers().any {
-            it.product.retailerId == RetailerId.ICELAND &&
-                !it.product.retailerProductId.startsWith("RECEIPT_") &&
+        val existingIcelandProducts = retailRepository.getCandidateProductsWithOffers()
+            .filter { it.product.retailerId == RetailerId.ICELAND }
+        val alreadyHasCatalogue = existingIcelandProducts.any {
+            !it.product.retailerProductId.startsWith("RECEIPT_") &&
                 !it.product.retailerProductId.startsWith("STARTER_")
         }
-        val alreadyHasStarter = retailRepository.getCandidateProductsWithOffers().any {
-            it.product.retailerId == RetailerId.ICELAND &&
-                it.product.retailerProductId.startsWith("STARTER_")
+        val alreadyHasStarter = existingIcelandProducts.any {
+            it.product.retailerProductId.startsWith("STARTER_")
         }
         if (!alreadyHasCatalogue && !alreadyHasStarter) {
             retailRepository.replaceCatalogueWithOffers(
