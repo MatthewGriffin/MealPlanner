@@ -28,6 +28,7 @@ class IcelandLiveSmokeTest {
         val result = adapter.searchProducts("broccoli")
         assertTrue(result is RetailProductSearchResult.Success || result is RetailProductSearchResult.PartialSuccess)
     }
+
     @Test
     fun optionalEmptyQueryCatalogueSmokeTest_checksPaginationAndProductParsing() = runBlocking {
         val liveEnabled = System.getenv("ICELAND_LIVE_TESTS") == "true"
