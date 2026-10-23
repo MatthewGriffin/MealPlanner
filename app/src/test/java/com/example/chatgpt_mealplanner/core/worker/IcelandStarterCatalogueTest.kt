@@ -14,7 +14,7 @@ class IcelandStarterCatalogueTest {
     fun starterCatalogueHasUniqueIcelandProductsWithExplicitOnlineEstimateScope() {
         val products = IcelandStarterCatalogue.products()
 
-        assertEquals(18, products.size)
+        assertEquals(19, products.size)
         assertEquals(
             products.size,
             products.map { it.product.retailerProductId }.distinct().size
