@@ -40,10 +40,10 @@ interface RetailDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPriceSnapshots(snapshots: List<RetailPriceSnapshotEntity>)
 
-    @Query("DELETE FROM retail_products WHERE retailerId = :retailerId")
+    @Query("DELETE FROM retail_products WHERE retailerId = :retailerId AND substr(retailerProductId, 1, 8) != 'RECEIPT_'")
     suspend fun deleteProductsForRetailer(retailerId: RetailerId)
 
-    @Query("DELETE FROM retail_price_snapshots WHERE retailerId = :retailerId")
+    @Query("DELETE FROM retail_price_snapshots WHERE retailerId = :retailerId AND substr(retailerProductId, 1, 8) != 'RECEIPT_'")
     suspend fun deletePriceSnapshotsForRetailer(retailerId: RetailerId)
 
     @androidx.room.Transaction
