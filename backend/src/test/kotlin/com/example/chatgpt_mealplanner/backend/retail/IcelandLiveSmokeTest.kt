@@ -26,7 +26,10 @@ class IcelandLiveSmokeTest {
         val adapter = IcelandRetailerAdapter(client)
 
         val result = adapter.searchProducts("broccoli")
-        assertTrue(result is RetailProductSearchResult.Success || result is RetailProductSearchResult.PartialSuccess)
+        assertTrue(
+            result is RetailProductSearchResult.Success || result is RetailProductSearchResult.PartialSuccess,
+            "Iceland live search did not return products: $result"
+        )
     }
 
     @Test
@@ -42,7 +45,14 @@ class IcelandLiveSmokeTest {
             val client = IcelandSourceClient(httpClient)
             val parser = IcelandProductParser()
             val firstPage = client.fetchAlgoliaCataloguePageJson(page = 0, hitsPerPage = 100)
-            assertTrue(firstPage != null, "Iceland's public Algolia catalogue request returned no response")
+            if (firstPage == null) {
+                val searchFallback = runCatching { client.fetchSearchHtml("broccoli") }
+                    .fold(
+                        onSuccess = { "HTTP HTML fallback succeeded (${it.length} characters)" },
+                        onFailure = { "HTML fallback failed: ${it::class.simpleName}: ${it.message}" }
+                    )
+                error("Iceland Algolia catalogue request returned no response. $searchFallback. Check homepage/JavaScript config discovery and live site access.")
+            }
 
             val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
             val root = json.parseToJsonElement(firstPage!!).jsonObject
