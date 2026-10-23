@@ -84,6 +84,24 @@ class MorrisonsSitemapLiveSmokeTest {
                     "product_url_count=${productUrls.size}"
             )
 
+            // Sample category sitemap entries to check whether different categories expose
+            // crawlable product listings, rather than assuming the milk category is representative.
+            val categorySitemap = sitemapContents.firstOrNull {
+                it.first.contains("categories", ignoreCase = true) && it.second in 200..299
+            }
+            val categoryUrls = categorySitemap?.third.orEmpty().filter {
+                it.contains("/categories/", ignoreCase = true) && !it.contains("/promotions/", ignoreCase = true)
+            }.distinct()
+            println("MORRISONS_SMOKE category_sitemap_urls=${categoryUrls.size}")
+            categoryUrls.take(8).forEachIndexed { index, url ->
+                val (status, body) = fetch(url)
+                val cardCount = Regex("""product-card-container""").findAll(body).count()
+                println(
+                    "MORRISONS_SMOKE category_sample_${index + 1} status=$status url=$url " +
+                        "body_chars=${body.length} product_card_markers=$cardCount " +
+                        "has_total_products=${body.contains("totalProducts")}"
+                )
+            }
             // Product detail pages can return 403 even when the public catalogue/sitemap is readable.
             // Test category listing pages independently: they may contain product cards with names,
             // prices and stable IDs without requiring a request to each product detail page.
