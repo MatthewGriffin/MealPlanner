@@ -25,6 +25,7 @@ internal object IcelandAlgoliaConfigDiscovery {
         Regex("""(?i)(?:indexName|productIndexName|productsIndex|ALGOLIA_INDEX_NAME)\s*["']?\s*[:=]\s*["']([A-Za-z0-9_./-]{2,})["']"""),
         Regex("""(?i)initIndex\s*\(\s*["']([A-Za-z0-9_./-]{2,})["']\s*\)""")
     )
+    private val indexBasePattern = Regex("""(?i)(?:algoliaIndexBase|algoliaIndexBaseDefault)\s*["']?\s*[:=]\s*["']([A-Za-z0-9_./-]{2,})["']""")
 
     fun find(sources: List<String>): Config? {
         // Iceland embeds its runtime configuration inside HTML-escaped JSON attributes
@@ -32,7 +33,12 @@ internal object IcelandAlgoliaConfigDiscovery {
         val combined = decodeHtmlEntities(sources.joinToString("\n"))
         val appId = firstMatch(combined, appIdPatterns) ?: return null
         val apiKey = firstMatch(combined, apiKeyPatterns) ?: return null
-        val indexName = firstMatch(combined, indexPatterns) ?: return null
+        // Iceland’s storefront derives the default product index from its configured base.
+        // main.js uses `${algoliaIndexBase}__products__default`; regional indexes append
+        // a region to the base first, but the public homepage exposes the default base.
+        val indexName = firstMatch(combined, indexPatterns)
+            ?: indexBasePattern.find(combined)?.groupValues?.getOrNull(1)?.let { "${it}__products__default" }
+            ?: return null
         if (!appId.matches(Regex("[A-Z0-9]{8,}"))) return null
         if (!apiKey.matches(Regex("[a-fA-F0-9]{20,}"))) return null
         if (!indexName.matches(Regex("[A-Za-z0-9_./-]{2,}"))) return null
