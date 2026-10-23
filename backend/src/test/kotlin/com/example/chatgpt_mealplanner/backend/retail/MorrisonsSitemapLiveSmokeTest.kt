@@ -96,50 +96,63 @@ class MorrisonsSitemapLiveSmokeTest {
                     "price_mentions=$priceMentions structured_product_data=$hasProductStructuredData"
             )
 
-            // Isolate the visible card for the first product title and inspect only likely price markup.
-            val titleMarker = """data-test="fop-title""""
-            val titlePosition = categoryBody.indexOf(titleMarker, ignoreCase = true)
-            if (titlePosition >= 0) {
-                val cardMarker = Regex("""(?is)<div\b[^>]*class=["'][^"']*product-card-container[^"']*["'][^>]*>""")
-                val cardStart = cardMarker.findAll(categoryBody.substring(0, titlePosition))
-                    .lastOrNull()?.range?.first
-                if (cardStart != null) {
-                    val nextCard = cardMarker.find(categoryBody, titlePosition + titleMarker.length)
-                    val cardEnd = (nextCard?.range?.first ?: (titlePosition + 12000))
-                        .coerceAtMost(categoryBody.length)
-                    val card = categoryBody.substring(cardStart, cardEnd)
-                    val priceAttributeTags = Regex("""(?is)<[^>]*(?:price|amount|currency|cost)[^>]*>""")
-                        .findAll(card)
-                        .map { it.value.replace(Regex("""\s+"""), " ").take(260) }
-                        .distinct()
-                        .take(12)
-                        .toList()
-                    println("MORRISONS_SMOKE first_card_chars=${card.length} title_position_in_card=${titlePosition - cardStart}")
-                    println("MORRISONS_SMOKE first_card_price_attribute_tags=$priceAttributeTags")
+            // Parse visible product cards to verify name, ID, shelf price and unit price together.
+            val cardMarker = Regex("""(?is)<div\b[^>]*class=["'][^"']*product-card-container[^"']*["'][^>]*>""")
+            val cardStarts = cardMarker.findAll(categoryBody).map { it.range.first }.toList()
+            val titleRegex = Regex("""(?is)<[^>]*data-test=["']fop-title["'][^>]*>(.*?)</[^>]+>""")
+            val priceRegex = Regex("""(?is)<[^>]*data-test=["']fop-price["'][^>]*>(.*?)</[^>]+>""")
+            val unitPriceRegex = Regex("""(?is)<[^>]*data-test=["']fop-price-per-unit["'][^>]*>(.*?)</[^>]+>""")
+            val productPathRegex = Regex("""(?i)/products/[^/""'<>]+/(\d{6,})""")
+            fun visibleText(value: String): String = value
+                .replace(Regex("""(?is)<[^>]+>"""), " ")
+                .replace("&nbsp;", " ")
+                .replace("&amp;", "&")
+                .replace(Regex("""\s+"""), " ")
+                .trim()
 
-                    val poundSnippets = Regex("""£\s?\d+(?:\.\d{1,2})?""")
-                        .findAll(card)
-                        .map { match ->
-                            val from = (match.range.first - 180).coerceAtLeast(0)
-                            val to = (match.range.last + 181).coerceAtMost(card.length)
-                            card.substring(from, to).replace(Regex("""\s+"""), " ").take(420)
-                        }
-                        .distinct()
-                        .take(8)
-                        .toList()
-                    println("MORRISONS_SMOKE first_card_pound_snippets=$poundSnippets")
-                    println("MORRISONS_SMOKE first_card_text_snippet=" +
-                        card.replace(Regex("""<script\b[^>]*>.*?</script>"""), " ")
-                            .replace(Regex("""<style\b[^>]*>.*?</style>"""), " ")
-                            .replace(Regex("""<[^>]+>"""), " ")
-                            .replace(Regex("""\s+"""), " ")
-                            .take(1200))
-                } else {
-                    println("MORRISONS_SMOKE product_title_found_but_card_container_not_found")
-                }
-            } else {
-                println("MORRISONS_SMOKE product_title_marker_not_found")
+            val parsedCards = cardStarts.mapIndexedNotNull { index, cardStart ->
+                val cardEnd = cardStarts.getOrNull(index + 1) ?: categoryBody.length
+                val card = categoryBody.substring(cardStart, cardEnd)
+                val name = titleRegex.find(card)?.groupValues?.get(1)?.let(::visibleText).orEmpty()
+                val price = priceRegex.find(card)?.groupValues?.get(1)?.let(::visibleText).orEmpty()
+                val unitPrice = unitPriceRegex.find(card)?.groupValues?.get(1)?.let(::visibleText).orEmpty()
+                val productId = productPathRegex.find(card)?.groupValues?.get(1).orEmpty()
+                if (name.isBlank() && price.isBlank() && productId.isBlank()) null
+                else mapOf("name" to name, "id" to productId, "price" to price, "unitPrice" to unitPrice)
             }
+            val completeCards = parsedCards.count {
+                it["name"].orEmpty().isNotBlank() &&
+                    it["id"].orEmpty().isNotBlank() &&
+                    Regex("""£\s?\d+(?:\.\d{1,2})?""").containsMatchIn(it["price"].orEmpty())
+            }
+            println(
+                "MORRISONS_SMOKE card_parse card_containers=${cardStarts.size} parsed_cards=${parsedCards.size} " +
+                    "complete_name_id_price=$completeCards missing_name=${parsedCards.count { it["name"].orEmpty().isBlank() }} " +
+                    "missing_id=${parsedCards.count { it["id"].orEmpty().isBlank() }} " +
+                    "missing_price=${parsedCards.count { !Regex("""£\s?\d+(?:\.\d{1,2})?""").containsMatchIn(it["price"].orEmpty()) }}"
+            )
+            parsedCards.take(10).forEachIndexed { index, item ->
+                println("MORRISONS_SMOKE parsed_card_${index + 1}=$item")
+            }
+
+            val paginationSnippets = Regex("""(?is)<[^>]*(?:rel=["']next["']|aria-label=["'][^"']*(?:next|page)[^"']*|data-test=["'][^"']*(?:pagination|load-more|next-page)[^"']*)[^>]*>""")
+                .findAll(categoryBody)
+                .map { it.value.replace(Regex("""\s+"""), " ").take(300) }
+                .distinct()
+                .take(15)
+                .toList()
+            val paginationMetadata = Regex("""(?i)(?:total[_A-Za-z-]*(?:record|product|page|result)|page[_A-Za-z-]*(?:size|number|count)|hasNextPage|nextPage|loadMore)""")
+                .findAll(categoryBody)
+                .map { match ->
+                    val from = (match.range.first - 100).coerceAtLeast(0)
+                    val to = (match.range.last + 180).coerceAtMost(categoryBody.length)
+                    categoryBody.substring(from, to).replace(Regex("""\s+"""), " ").take(300)
+                }
+                .distinct()
+                .take(12)
+                .toList()
+            println("MORRISONS_SMOKE pagination_elements=$paginationSnippets")
+            println("MORRISONS_SMOKE pagination_metadata=$paginationMetadata")
             val jsonLdBlocks = Regex("""(?is)<script[^>]*type=["']application/ld\+json["'][^>]*>(.*?)</script>""")
                 .findAll(categoryBody)
                 .map { it.groupValues[1].trim().replace(Regex("""\s+"""), " ").take(1000) }
