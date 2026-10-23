@@ -96,18 +96,26 @@ class MorrisonsSitemapLiveSmokeTest {
             categoryUrls.take(8).forEachIndexed { index, url ->
                 val (status, body) = fetch(url)
                 val cardCount = Regex("""product-card-container""").findAll(body).count()
-                val totalProducts = Regex("""(?i)["']totalProducts["']\\s*:\\s*(\\d+)""")
-                    .findAll(body).map { it.groupValues[1].toInt() }.distinct().toList()
-                val paginationFields = listOf("currentPage", "pageNumber", "pageSize", "pageCount", "hasNextPage", "nextPage", "isNextPageFetching")
-                    .associateWith { field ->
-                        Regex("""(?i)["']${Regex.escape(field)}["']\\s*:\\s*(?:"([^"]*)"|(true|false|\\d+))""")
-                            .findAll(body).map { it.groupValues.drop(1).firstOrNull { value -> value.isNotEmpty() }.orEmpty() }
-                            .distinct().take(4).toList()
-                    }.filterValues { it.isNotEmpty() }
+                fun excerpts(token: String): List<String> {
+                    var offset = 0
+                    val found = mutableListOf<String>()
+                    while (found.size < 3) {
+                        val at = body.indexOf(token, offset, ignoreCase = true)
+                        if (at < 0) break
+                        val from = (at - 100).coerceAtLeast(0)
+                        val to = (at + 220).coerceAtMost(body.length)
+                        found += body.substring(from, to).replace(Regex("""\\s+"""), " ")
+                        offset = at + token.length
+                    }
+                    return found
+                }
+                val totalProductContexts = excerpts("totalProducts")
+                val paginationContexts = listOf("isNextPageFetching", "pageSize", "currentPage", "pageNumber", "hasNextPage")
+                    .associateWith(::excerpts).filterValues { it.isNotEmpty() }
                 println(
                     "MORRISONS_SMOKE category_sample_${index + 1} status=$status url=$url " +
                         "body_chars=${body.length} product_card_markers=$cardCount " +
-                        "total_products_values=$totalProducts pagination_fields=$paginationFields"
+                        "total_products_contexts=$totalProductContexts pagination_contexts=$paginationContexts"
                 )
             }
             // Product detail pages can return 403 even when the public catalogue/sitemap is readable.
