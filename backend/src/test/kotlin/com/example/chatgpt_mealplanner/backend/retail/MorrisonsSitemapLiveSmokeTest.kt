@@ -96,16 +96,28 @@ class MorrisonsSitemapLiveSmokeTest {
                     "price_mentions=$priceMentions structured_product_data=$hasProductStructuredData"
             )
 
-            // Print only short, bounded excerpts so the output can reveal the card markup
-            // without dumping the multi-megabyte category page into the test log.
-            val firstProductMarker = Regex("(?i)(?:/products/|product[_-]?id|productName|product_name)")
+            // The first /products/ occurrence is often in JSON-LD ItemList, not the visible card.
+            // Find an actual HTML anchor and print a bounded region around its product link.
+            val firstHtmlProductLink = Regex("(?is)<a\\\\b[^>]*href=[\\\\\"']([^\\\\\"']*/products/[^\\\\\"']+)[\\\\\"'][^>]*>")
                 .find(categoryBody)
-            if (firstProductMarker != null) {
-                val start = (firstProductMarker.range.first - 250).coerceAtLeast(0)
-                val end = (firstProductMarker.range.last + 900).coerceAtMost(categoryBody.length)
-                println("MORRISONS_SMOKE first_product_markup=${categoryBody.substring(start, end).replace(Regex("\\s+"), " ").take(1200)}")
+            if (firstHtmlProductLink != null) {
+                val start = (firstHtmlProductLink.range.first - 250).coerceAtLeast(0)
+                val end = (firstHtmlProductLink.range.last + 1800).coerceAtMost(categoryBody.length)
+                println("MORRISONS_SMOKE first_html_product_card=${categoryBody.substring(start, end).replace(Regex("\\\\s+"), " ").take(1800)}")
+            } else {
+                println("MORRISONS_SMOKE no_html_product_anchor_found")
             }
-            val dataMarkers = listOf("__NEXT_DATA__", "application/ld+json", "application/json", "product-card", "productCard", "price", "unitPrice")
+
+            val jsonLdBlocks = Regex("(?is)<script[^>]*type=[\\\\\"']application/ld\\\\+json[\\\\\"'][^>]*>(.*?)</script>")
+                .findAll(categoryBody)
+                .map { it.groupValues[1].trim().replace(Regex("\\\\s+"), " ").take(1000) }
+                .toList()
+            println("MORRISONS_SMOKE json_ld_blocks=${jsonLdBlocks.size}")
+            jsonLdBlocks.forEachIndexed { index, block ->
+                println("MORRISONS_SMOKE json_ld_${index + 1}=${block.take(1000)}")
+            }
+
+            val dataMarkers = listOf("data-test=", "data-testid=", "product-listing-structured-data", "product-card", "productCard", "productName", "product_name", "unitPrice", "price")
                 .associateWith { marker -> Regex(Regex.escape(marker), RegexOption.IGNORE_CASE).findAll(categoryBody).count() }
             println("MORRISONS_SMOKE data_marker_counts=$dataMarkers")
             println("MORRISONS_SMOKE first_product_urls=${listedProductUrls.take(5)}")
