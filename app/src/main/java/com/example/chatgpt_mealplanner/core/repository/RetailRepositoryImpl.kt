@@ -118,6 +118,56 @@ class RetailRepositoryImpl @Inject constructor(
         }
     }
 
+    override suspend fun replaceCatalogueWithOffers(
+        retailerId: RetailerId,
+        items: List<RetailProductWithOffer>
+    ) {
+        require(items.all { it.product.retailerId == retailerId && it.offer.retailerId == retailerId }) {
+            "Catalogue items must all belong to the requested retailer."
+        }
+        val now = System.currentTimeMillis()
+        val productEntities = items.map { item ->
+            RetailProductEntity(
+                id = "${item.product.retailerId.name}_${item.product.retailerProductId}",
+                retailerId = item.product.retailerId,
+                retailerProductId = item.product.retailerProductId,
+                name = item.product.name,
+                brand = item.product.brand,
+                canonicalIngredientId = item.product.canonicalIngredientId,
+                barcode = item.product.barcode,
+                category = item.product.category,
+                imageUrl = item.product.imageUrl,
+                packageType = item.product.packageType,
+                netQuantity = item.product.netQuantity,
+                netQuantityUnit = item.product.netQuantityUnit,
+                packCount = item.product.packCount,
+                packSize = item.product.packSize,
+                packSizeUnit = item.product.packSizeUnit,
+                storageClass = item.product.storageClass,
+                createdAt = now,
+                updatedAt = now
+            )
+        }
+        val snapshots = items.map { item ->
+            require(item.offer.sourceType != RetailOfferSourceType.FIXTURE) {
+                "Production RetailRepository cannot cache FIXTURE source offers."
+            }
+            RetailPriceSnapshotEntity(
+                id = UUID.randomUUID().toString(),
+                retailerId = item.offer.retailerId,
+                retailerProductId = item.offer.retailerProductId,
+                priceMinorPence = item.offer.price.amountMinor,
+                currencyCode = item.offer.price.currencyCode,
+                promotionJson = null,
+                availability = item.offer.availability,
+                observedAt = item.offer.observedAt
+            )
+        }
+        // Room runs this delete-and-insert operation as one transaction. If any write fails,
+        // the previous retailer catalogue and its price snapshots remain intact.
+        retailDao.replaceRetailerCatalogue(retailerId, productEntities, snapshots)
+    }
+
     override suspend fun cacheProductsWithOffers(items: List<RetailProductWithOffer>) {
         val prodEntities = items.map {
             RetailProductEntity(
