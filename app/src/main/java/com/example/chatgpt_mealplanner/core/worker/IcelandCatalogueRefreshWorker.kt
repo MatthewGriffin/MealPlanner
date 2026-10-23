@@ -79,8 +79,8 @@ class IcelandCatalogueRefreshWorker @AssistedInject constructor(
             retailRepository.cacheProductsWithOffers(allProducts.values.toList())
             preferences.edit().putLong(KEY_LAST_SUCCESS, System.currentTimeMillis()).apply()
             Result.success()
-        } catch (_: kotlinx.coroutines.CancellationException) {
-            throw
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (_: Exception) {
             Result.retry()
         } finally {
