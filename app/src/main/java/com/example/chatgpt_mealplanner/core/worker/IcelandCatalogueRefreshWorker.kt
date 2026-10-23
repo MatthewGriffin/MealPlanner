@@ -1,6 +1,7 @@
 package com.example.chatgpt_mealplanner.core.worker
 
 import android.content.Context
+import android.util.Log
 import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
@@ -78,6 +79,10 @@ class IcelandCatalogueRefreshWorker @AssistedInject constructor(
             }
 
             retailRepository.replaceCatalogueWithOffers(RetailerId.ICELAND, allProducts.values.toList())
+            Log.i(
+                TAG,
+                "Published complete Iceland catalogue: pages=$page, uniqueProducts=${allProducts.size}"
+            )
             preferences.edit().putLong(KEY_LAST_SUCCESS, System.currentTimeMillis()).apply()
             IcelandCatalogueRefreshScheduler.scheduleWeekly(applicationContext)
             Result.success()
@@ -96,6 +101,7 @@ class IcelandCatalogueRefreshWorker @AssistedInject constructor(
         const val KEY_FORCE_REFRESH = "force_refresh"
         private const val PREFERENCES = "retail_catalogue_refresh"
         private const val KEY_LAST_SUCCESS = "iceland_last_success_at"
+        private const val TAG = "IcelandCatalogueRefresh"
         private const val PAGE_SIZE = 100
         private const val MAX_PAGES = 500
         private const val MINIMUM_PRODUCTS = 100
