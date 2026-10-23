@@ -15,6 +15,7 @@ import com.example.chatgpt_mealplanner.retail.contract.RetailerCapabilityDto
 import com.example.chatgpt_mealplanner.retail.contract.RetailerCapabilityMode
 import com.example.chatgpt_mealplanner.retail.contract.RetailerCapabilitiesResponse
 import com.example.chatgpt_mealplanner.retail.contract.RetailerId
+import com.example.chatgpt_mealplanner.retail.contract.RetailProductWithOffer
 import com.example.chatgpt_mealplanner.retail.contract.StoreDirectorySearchRequest
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
@@ -33,11 +34,24 @@ import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable
 data class RetailSearchBackendRequest(
     val retailerId: RetailerId,
     val query: String
+)
+
+@Serializable
+data class RetailCataloguePageResponse(
+    val retailerId: RetailerId,
+    val page: Int,
+    val pageSize: Int,
+    val totalPages: Int,
+    val products: List<RetailProductWithOffer>,
+    val observedAt: Long,
+    val priceScopeNote: String
 )
 
 fun main() {
@@ -105,6 +119,55 @@ fun Application.module(
                 call.respond(
                     HttpStatusCode.ServiceUnavailable,
                     mapOf("error" to "Store directory temporarily unavailable. Try again later.")
+                )
+            }
+        }
+
+        get("/v1/retail/catalogue/iceland") {
+            val page = call.request.queryParameters["page"]?.toIntOrNull() ?: 0
+            val pageSize = call.request.queryParameters["pageSize"]?.toIntOrNull() ?: 100
+            if (page < 0 || page > 10000 || pageSize !in 1..100) {
+                call.respond(
+                    HttpStatusCode.BadRequest,
+                    mapOf("error" to "page must be 0..10000 and pageSize must be 1..100")
+                )
+                return@get
+            }
+
+            try {
+                val raw = icelandClient.fetchAlgoliaCataloguePageJson(page, pageSize)
+                if (raw == null) {
+                    call.respond(
+                        HttpStatusCode.ServiceUnavailable,
+                        mapOf("error" to "Iceland's public catalogue index could not be discovered; no catalogue data was returned.")
+                    )
+                    return@get
+                }
+                val root = Json.parseToJsonElement(raw).jsonObject
+                val totalPages = root["nbPages"]?.jsonPrimitive?.content?.toIntOrNull()
+                    ?: run {
+                        call.respond(
+                            HttpStatusCode.ServiceUnavailable,
+                            mapOf("error" to "Iceland's catalogue response did not include pagination metadata.")
+                        )
+                        return@get
+                    }
+                val products = icelandParser.parseAlgoliaResponse(raw).map { it.productWithOffer }
+                call.respond(
+                    RetailCataloguePageResponse(
+                        retailerId = RetailerId.ICELAND,
+                        page = page,
+                        pageSize = pageSize,
+                        totalPages = totalPages,
+                        products = products,
+                        observedAt = System.currentTimeMillis(),
+                        priceScopeNote = "Online catalogue prices; not confirmation of physical-branch price or stock."
+                    )
+                )
+            } catch (_: Exception) {
+                call.respond(
+                    HttpStatusCode.ServiceUnavailable,
+                    mapOf("error" to "Iceland catalogue page could not be retrieved or parsed. Keep the previous cache and retry later.")
                 )
             }
         }
