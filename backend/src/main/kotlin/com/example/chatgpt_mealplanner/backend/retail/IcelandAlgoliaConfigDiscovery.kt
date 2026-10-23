@@ -22,7 +22,7 @@ internal object IcelandAlgoliaConfigDiscovery {
         Regex("""(?i)algoliasearch\s*\(\s*["'][A-Z0-9]{8,}["']\s*,\s*["']([a-f0-9]{20,})["']""")
     )
     private val indexPatterns = listOf(
-        Regex("""(?i)(?:indexName|productIndexName|productsIndex|ALGOLIA_INDEX_NAME|algoliaIndexBaseDefault|algoliaIndexBase)\s*["']?\s*[:=]\s*["']([A-Za-z0-9_./-]{2,})["']"""),
+        Regex("""(?i)(?:indexName|productIndexName|productsIndex|ALGOLIA_INDEX_NAME)\s*["']?\s*[:=]\s*["']([A-Za-z0-9_./-]{2,})["']"""),
         Regex("""(?i)initIndex\s*\(\s*["']([A-Za-z0-9_./-]{2,})["']\s*\)""")
     )
 
