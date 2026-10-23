@@ -36,6 +36,7 @@ class IcelandCatalogueRefreshWorker @AssistedInject constructor(
         val lastSuccess = preferences.getLong(KEY_LAST_SUCCESS, 0L)
         if (!inputData.getBoolean(KEY_FORCE_REFRESH, false) &&
             lastSuccess > 0L && System.currentTimeMillis() - lastSuccess < TimeUnit.DAYS.toMillis(7)) {
+            IcelandCatalogueRefreshScheduler.scheduleWeekly(applicationContext)
             return Result.success()
         }
 
@@ -78,6 +79,7 @@ class IcelandCatalogueRefreshWorker @AssistedInject constructor(
 
             retailRepository.cacheProductsWithOffers(allProducts.values.toList())
             preferences.edit().putLong(KEY_LAST_SUCCESS, System.currentTimeMillis()).apply()
+            IcelandCatalogueRefreshScheduler.scheduleWeekly(applicationContext)
             Result.success()
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
@@ -89,7 +91,7 @@ class IcelandCatalogueRefreshWorker @AssistedInject constructor(
     }
 
     companion object {
-        const val UNIQUE_WORK_NAME = "iceland_catalogue_refresh"
+        const val LAUNCH_WORK_NAME = "iceland_catalogue_refresh_on_launch"
         const val PERIODIC_WORK_NAME = "iceland_catalogue_refresh_weekly"
         const val KEY_FORCE_REFRESH = "force_refresh"
         private const val PREFERENCES = "retail_catalogue_refresh"
