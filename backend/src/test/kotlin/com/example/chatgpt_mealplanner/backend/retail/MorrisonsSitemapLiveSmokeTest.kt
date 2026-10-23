@@ -96,10 +96,18 @@ class MorrisonsSitemapLiveSmokeTest {
             categoryUrls.take(8).forEachIndexed { index, url ->
                 val (status, body) = fetch(url)
                 val cardCount = Regex("""product-card-container""").findAll(body).count()
+                val totalProducts = Regex("""(?i)["']totalProducts["']\\s*:\\s*(\\d+)""")
+                    .findAll(body).map { it.groupValues[1].toInt() }.distinct().toList()
+                val paginationFields = listOf("currentPage", "pageNumber", "pageSize", "pageCount", "hasNextPage", "nextPage", "isNextPageFetching")
+                    .associateWith { field ->
+                        Regex("""(?i)["']${Regex.escape(field)}["']\\s*:\\s*(?:"([^"]*)"|(true|false|\\d+))""")
+                            .findAll(body).map { it.groupValues.drop(1).firstOrNull { value -> value.isNotEmpty() }.orEmpty() }
+                            .distinct().take(4).toList()
+                    }.filterValues { it.isNotEmpty() }
                 println(
                     "MORRISONS_SMOKE category_sample_${index + 1} status=$status url=$url " +
                         "body_chars=${body.length} product_card_markers=$cardCount " +
-                        "has_total_products=${body.contains("totalProducts")}"
+                        "total_products_values=$totalProducts pagination_fields=$paginationFields"
                 )
             }
             // Product detail pages can return 403 even when the public catalogue/sitemap is readable.
