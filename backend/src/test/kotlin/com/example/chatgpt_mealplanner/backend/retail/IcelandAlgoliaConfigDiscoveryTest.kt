@@ -48,27 +48,26 @@ class IcelandAlgoliaConfigDiscoveryTest {
                 """
                 &quot;algoliaIndexBase&quot;:&quot;r1_iceuk_production&quot;,
                 &quot;algoliaAppId&quot;:&quot;FAWURXX413&quot;,
-                &quot;algoliaApiKey&quot;:&quot;dd51afec328646fc6b538411032deeb0&quot;,
-                const products = client.initIndex("r1_iceuk_production_products");
+                &quot;algoliaApiKey&quot;:&quot;dd51afec328646fc6b538411032deeb0&quot;
                 """.trimIndent()
             )
         )
 
         assertEquals("FAWURXX413", config?.applicationId)
         assertEquals("dd51afec328646fc6b538411032deeb0", config?.searchApiKey)
-        assertEquals("r1_iceuk_production_products", config?.indexName)
+        assertEquals("r1_iceuk_production__products__default", config?.indexName)
     }
 
     @Test
-    fun doesNotTreatAnIndexBaseAsAnIndexName() {
-        assertNull(
-            IcelandAlgoliaConfigDiscovery.find(
-                listOf(
-                    """&quot;algoliaIndexBase&quot;:&quot;r1_iceuk_production&quot;,
-                    &quot;algoliaAppId&quot;:&quot;FAWURXX413&quot;,
-                    &quot;algoliaApiKey&quot;:&quot;dd51afec328646fc6b538411032deeb0&quot;""")
+    fun derivesDefaultProductIndexFromIcelandIndexBase() {
+        val config = IcelandAlgoliaConfigDiscovery.find(
+            listOf(
+                """&quot;algoliaIndexBase&quot;:&quot;r1_iceuk_production&quot;,
+                &quot;algoliaAppId&quot;:&quot;FAWURXX413&quot;,
+                &quot;algoliaApiKey&quot;:&quot;dd51afec328646fc6b538411032deeb0&quot;"""
             )
         )
+        assertEquals("r1_iceuk_production__products__default", config?.indexName)
     }
 
     @Test
