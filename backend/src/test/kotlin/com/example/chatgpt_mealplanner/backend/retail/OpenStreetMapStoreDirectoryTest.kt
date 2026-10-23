@@ -23,11 +23,19 @@ class OpenStreetMapStoreDirectoryTest {
         var postcodeLookups = 0
         var overpassRequests = 0
         val client = HttpClient(MockEngine { request ->
-            if (request.url.host == "nominatim.openstreetmap.org") {
+            if (request.url.host == "nominatim.openstreetmap.org" &&
+                request.url.parameters["q"] == "SW1A 1AA, United Kingdom"
+            ) {
                 postcodeLookups++
-                assertEquals("SW1A 1AA, United Kingdom", request.url.parameters["q"])
                 respond(
                     content = """[{"lat":"51.5","lon":"-0.1"}]""",
+                    status = HttpStatusCode.OK,
+                    headers = headersOf(HttpHeaders.ContentType, "application/json")
+                )
+            } else if (request.url.host == "nominatim.openstreetmap.org") {
+                // Nominatim branch supplementation is distinct from postcode geocoding.
+                respond(
+                    content = "[]",
                     status = HttpStatusCode.OK,
                     headers = headersOf(HttpHeaders.ContentType, "application/json")
                 )
@@ -299,7 +307,7 @@ class OpenStreetMapStoreDirectoryTest {
     @Test
     fun sharedQuerySearchesAllSupportedRetailers() {
         val query = directory.buildMultiRetailerQuery(51.5, -0.1, 3000)
-        assertTrue(query.contains("ASDA|Iceland|Food.*Warehouse|Tesco|Morrisons|Sainsbury|Aldi|Lidl"))
+        assertTrue(query.contains("ASDA|Iceland|Food.*Warehouse|Tesco|Morrisons|McColl.?s|Sainsbury|Aldi|Lidl"))
         assertTrue(query.contains("""nwr["shop"]["name"~"""))
         assertTrue(query.contains("""nwr["brand"~"""))
         assertTrue(query.contains("""nwr["operator"~"""))
@@ -408,16 +416,24 @@ class OpenStreetMapStoreDirectoryTest {
     fun nearbyRetailerResultsAreSharedFromOneOverpassRequest() = runBlocking {
         var overpassRequests = 0
         val client = HttpClient(MockEngine { request ->
-            assertEquals("overpass-api.de", request.url.host)
-            overpassRequests++
-            respond(
-                content = """{"elements":[
+            if (request.url.host == "nominatim.openstreetmap.org") {
+                respond(
+                    content = "[]",
+                    status = HttpStatusCode.OK,
+                    headers = headersOf(HttpHeaders.ContentType, "application/json")
+                )
+            } else {
+                assertEquals("overpass-api.de", request.url.host)
+                overpassRequests++
+                respond(
+                    content = """{"elements":[
                   {"type":"node","id":1001,"lat":51.5,"lon":-0.1,"tags":{"name":"ASDA Superstore","brand":"ASDA","shop":"supermarket","addr:postcode":"SW1A 1AA"}},
                   {"type":"node","id":1002,"lat":51.501,"lon":-0.101,"tags":{"name":"Tesco Express","brand":"Tesco","shop":"convenience","addr:postcode":"SW1A 1AB"}}
                 ]}""",
                 status = HttpStatusCode.OK,
-                headers = headersOf(HttpHeaders.ContentType, "application/json")
-            )
+                    headers = headersOf(HttpHeaders.ContentType, "application/json")
+                )
+            }
         })
         try {
             val sharedDirectory = OpenStreetMapStoreDirectory(client)
