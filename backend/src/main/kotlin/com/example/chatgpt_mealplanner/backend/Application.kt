@@ -112,7 +112,13 @@ fun Application.module(
                 return@post
             }
             try {
-                call.respond(storeDirectory.search(request))
+                val result = storeDirectory.search(request)
+                // Keep required attribution metadata in the public API even when its values
+                // match the data class defaults (Kotlin serialization omits defaults by default).
+                call.respondText(
+                    Json { encodeDefaults = true }.encodeToString(StoreDirectorySearchResponse.serializer(), result),
+                    io.ktor.http.ContentType.Application.Json
+                )
             } catch (e: IllegalArgumentException) {
                 call.respond(HttpStatusCode.BadRequest, mapOf("error" to (e.message ?: "Invalid store search request")))
             } catch (_: Exception) {
