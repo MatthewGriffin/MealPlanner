@@ -76,6 +76,10 @@ class IcelandSourceClient(
             header("x-algolia-application-id", discovered.applicationId)
             header("x-algolia-api-key", discovered.searchApiKey)
             header(HttpHeaders.UserAgent, config.userAgent)
+            // Iceland exposes a browser-restricted Algolia key; send the retailer page
+            // as the referer, as the storefront browser client does.
+            header("Referer", "https://www.iceland.co.uk/")
+            header("Origin", "https://www.iceland.co.uk")
             contentType(ContentType.Application.Json)
             setBody(requestBody)
         }
