@@ -73,6 +73,8 @@ class IcelandSourceClientTest {
                     assertEquals(HttpMethod.Post, request.method)
                     assertEquals("ABCDEF1234", request.headers["x-algolia-application-id"])
                     assertEquals("0123456789abcdef0123456789abcdef", request.headers["x-algolia-api-key"])
+                    assertEquals("https://www.iceland.co.uk/", request.headers["Referer"])
+                    assertEquals("https://www.iceland.co.uk", request.headers["Origin"])
                     respond(searchResponse, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
                 }
                 else -> error("Unexpected request: ${request.method} ${request.url}")
