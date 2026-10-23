@@ -17,6 +17,7 @@ import com.example.chatgpt_mealplanner.retail.contract.RetailerCapabilitiesRespo
 import com.example.chatgpt_mealplanner.retail.contract.RetailerId
 import com.example.chatgpt_mealplanner.retail.contract.RetailProductWithOffer
 import com.example.chatgpt_mealplanner.retail.contract.StoreDirectorySearchRequest
+import com.example.chatgpt_mealplanner.retail.contract.StoreDirectorySearchResponse
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.serialization.kotlinx.json.json
@@ -29,10 +30,12 @@ import io.ktor.server.netty.Netty
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
+import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
