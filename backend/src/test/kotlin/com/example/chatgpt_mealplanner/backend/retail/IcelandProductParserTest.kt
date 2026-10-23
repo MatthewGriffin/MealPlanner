@@ -187,6 +187,38 @@ class IcelandProductParserTest {
     }
 
     @Test
+    fun parseAlgoliaResponseSupportsIcelandCurrencyPriceAndInStockFields() {
+        val response = """
+            {
+              "hits": [
+                {
+                  "id": "57193",
+                  "name": "Iceland Broccoli",
+                  "brand": "Iceland",
+                  "price": {"GBP": 1},
+                  "in_stock": true
+                },
+                {
+                  "id": "57194",
+                  "name": "Iceland Frozen Peas",
+                  "price": {"GBP": 1.25},
+                  "in_stock": false
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val records = parser.parseAlgoliaResponse(response)
+
+        assertEquals(2, records.size)
+        assertEquals("57193", records[0].productWithOffer.product.retailerProductId)
+        assertEquals(Money(100L), records[0].productWithOffer.offer.price)
+        assertEquals(RetailAvailability.IN_STOCK, records[0].productWithOffer.offer.availability)
+        assertEquals(Money(125L), records[1].productWithOffer.offer.price)
+        assertEquals(RetailAvailability.OUT_OF_STOCK, records[1].productWithOffer.offer.availability)
+    }
+
+    @Test
     fun parsePriceString_handlesPoundsAndPenceCorrectly() {
         assertEquals(Money(100L), parser.parsePriceString("£1.00"))
         assertEquals(Money(125L), parser.parsePriceString("£1.25"))
