@@ -211,7 +211,12 @@ fun Application.module(
             try {
                 val raw = additionalRetailerAdapter.fetchSainsburysCataloguePageJson(page, pageSize)
                 val root = Json.parseToJsonElement(raw).jsonObject
-                val totalProducts = root["total_record_count"]?.jsonPrimitive?.content?.toIntOrNull()
+                // Current Sainsbury's responses put pagination counts under "controls";
+                // tolerate the older/alternate top-level shapes as well.
+                val controls = root["controls"] as? kotlinx.serialization.json.JsonObject
+                val totalProducts = controls?.get("total_record_count")?.jsonPrimitive?.content?.toIntOrNull()
+                    ?: controls?.get("totalRecordCount")?.jsonPrimitive?.content?.toIntOrNull()
+                    ?: root["total_record_count"]?.jsonPrimitive?.content?.toIntOrNull()
                     ?: root["totalRecordCount"]?.jsonPrimitive?.content?.toIntOrNull()
                     ?: run {
                         call.respond(
