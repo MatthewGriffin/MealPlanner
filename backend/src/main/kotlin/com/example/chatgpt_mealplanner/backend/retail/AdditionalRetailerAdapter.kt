@@ -28,6 +28,9 @@ import kotlinx.serialization.json.jsonPrimitive
 open class AdditionalRetailerAdapter(
     private val client: AdditionalRetailerSourceClient = AdditionalRetailerSourceClient()
 ) {
+    internal suspend fun fetchSainsburysCataloguePageJson(pageNumber: Int, pageSize: Int): String =
+        client.fetchSainsburysCataloguePageJson(pageNumber, pageSize)
+
     internal fun parseSainsburysJson(raw: String): List<RetailProductWithOffer> {
         val root = runCatching { Json { ignoreUnknownKeys = true }.parseToJsonElement(raw).jsonObject }.getOrNull()
             ?: return emptyList()
