@@ -579,11 +579,27 @@ class ChatViewModel @Inject constructor(
                         requestedMealTypeStr = proposal.mealType
                     )
                 }
+                // A generated plan must never contain two meals for the same date and meal slot.
+                // Checking only against persisted meals misses duplicates inside the proposal itself.
+                val duplicateSlots = resolvedSlots
+                    .groupBy { it.second.date to it.second.mealType }
+                    .filterValues { it.size > 1 }
+                if (duplicateSlots.isNotEmpty()) {
+                    val descriptions = duplicateSlots.keys
+                        .sortedWith(compareBy<Pair<String, com.example.chatgpt_mealplanner.core.model.MealType>> { it.first }.thenBy { it.second.name })
+                        .joinToString { (date, type) -> "$date (${type.name.lowercase()})" }
+                    errorMessageFlow.value = "This meal plan contains multiple meals in the same slot: $descriptions. Nothing was saved. Ask the assistant to regenerate the plan with only one meal per date and meal type."
+                    return@launch
+                }
+
                 val firstDate = resolvedSlots.minOf { it.second.date }
                 val lastDate = resolvedSlots.maxOf { it.second.date }
                 val existingMeals = mealRepository.observeMealsForWeek(firstDate, lastDate).firstOrNull().orEmpty()
                 val occupiedSlots = resolvedSlots.map { it.second.date to it.second.mealType }.toSet()
-                val conflicts = existingMeals.filter { (it.meal.date to it.meal.mealType) in occupiedSlots }
+                val conflicts = existingMeals.filter {
+                    it.meal.status == com.example.chatgpt_mealplanner.core.model.MealStatus.PLANNED &&
+                        (it.meal.date to it.meal.mealType) in occupiedSlots
+                }
                 if (conflicts.isNotEmpty() && !replaceConflicts) {
                     mealPlanConflictsFlow.value = conflicts
                     showMealPlanConflictDialogFlow.value = true
