@@ -579,19 +579,6 @@ class ChatViewModel @Inject constructor(
                         requestedMealTypeStr = proposal.mealType
                     )
                 }
-                // A generated plan must never contain two meals for the same date and meal slot.
-                // Checking only against persisted meals misses duplicates inside the proposal itself.
-                val duplicateSlots = resolvedSlots
-                    .groupBy { it.second.date to it.second.mealType }
-                    .filterValues { it.size > 1 }
-                if (duplicateSlots.isNotEmpty()) {
-                    val descriptions = duplicateSlots.keys
-                        .sortedWith(compareBy<Pair<String, com.example.chatgpt_mealplanner.core.model.MealType>> { it.first }.thenBy { it.second.name })
-                        .joinToString { (date, type) -> "$date (${type.name.lowercase()})" }
-                    errorMessageFlow.value = "This meal plan contains multiple meals in the same slot: $descriptions. Nothing was saved. Ask the assistant to regenerate the plan with only one meal per date and meal type."
-                    return@launch
-                }
-
                 val firstDate = resolvedSlots.minOf { it.second.date }
                 val lastDate = resolvedSlots.maxOf { it.second.date }
                 val existingMeals = mealRepository.observeMealsForWeek(firstDate, lastDate).firstOrNull().orEmpty()
@@ -607,7 +594,21 @@ class ChatViewModel @Inject constructor(
                 }
                 if (replaceConflicts) {
                     val currentMeals = mealRepository.observeMealsForWeek(firstDate, lastDate).firstOrNull().orEmpty()
-                    val currentConflicts = currentMeals.filter { (it.meal.date to it.meal.mealType) in occupiedSlots }
+                    val currentConflicts = currentMeals.filter {
+                        it.meal.status == com.example.chatgpt_mealplanner.core.model.MealStatus.PLANNED &&
+                            (it.meal.date to it.meal.mealType) in occupiedSlots
+                    }
+                    // A replace action is only valid after the user has seen the confirmation
+                    // for these exact existing meals. If the slots changed since the dialog was
+                    // shown (or the action was invoked without the dialog), show confirmation first.
+                    val presentedConflictIds = mealPlanConflictsFlow.value.map { it.meal.id }.toSet()
+                    val currentConflictIds = currentConflicts.map { it.meal.id }.toSet()
+                    if (currentConflicts.isNotEmpty() &&
+                        (!showMealPlanConflictDialogFlow.value || !presentedConflictIds.containsAll(currentConflictIds))) {
+                        mealPlanConflictsFlow.value = currentConflicts
+                        showMealPlanConflictDialogFlow.value = true
+                        return@launch
+                    }
                     for (conflict in currentConflicts) {
                         when (val deletion = mealDomainService.deletePlannedMeal(conflict.meal.id)) {
                             is DomainResult.Success -> Unit
