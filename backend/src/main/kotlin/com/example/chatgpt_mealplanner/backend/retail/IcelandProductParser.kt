@@ -99,11 +99,11 @@ class IcelandProductParser(
                     .firstNotNullOfOrNull { hit[it] }
                 val priceText = priceElement?.let { price ->
                     primitiveContent(price) ?: (price as? JsonObject)?.let { nested ->
-                        listOf("value", "amount", "current", "price").firstNotNullOfOrNull { nested[it]?.let(::primitiveContent) }
+                        listOf("GBP", "value", "amount", "current", "price").firstNotNullOfOrNull { nested[it]?.let(::primitiveContent) }
                     }
                 } ?: return@runCatching null
                 val money = parsePriceString(priceText) ?: return@runCatching null
-                val availabilityText = value("availability", "stockStatus", "stock_status").orEmpty()
+                val availabilityText = value("availability", "stockStatus", "stock_status", "in_stock").orEmpty()
                 val availability = when {
                     availabilityText.contains("outofstock", true) || availabilityText.equals("false", true) -> RetailAvailability.OUT_OF_STOCK
                     availabilityText.contains("instock", true) || availabilityText.equals("true", true) -> RetailAvailability.IN_STOCK
