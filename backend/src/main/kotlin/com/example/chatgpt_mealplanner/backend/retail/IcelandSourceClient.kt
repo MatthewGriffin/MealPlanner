@@ -44,14 +44,31 @@ class IcelandSourceClient(
      */
     suspend fun fetchAlgoliaSearchJson(query: String): String? {
         require(query.isNotBlank()) { "Iceland search query must not be blank" }
-        val discovered = cachedAlgoliaConfig ?: discoverAlgoliaConfig().also { config ->
-            if (config != null) cachedAlgoliaConfig = config
+        return fetchAlgoliaPageJson(query.trim(), page = 0, hitsPerPage = 30)
+    }
+
+    /**
+     * Fetch one bounded page of Iceland's public browser-side product index.
+     * An empty query requests the index's default catalogue ordering. Callers must
+     * inspect nbPages and request pages incrementally; this method never crawls
+     * the whole catalogue in one request.
+     */
+    suspend fun fetchAlgoliaCataloguePageJson(page: Int, hitsPerPage: Int = 100): String? {
+        require(page >= 0) { "Catalogue page must be zero or greater" }
+        require(hitsPerPage in 1..100) { "Catalogue page size must be between 1 and 100" }
+        return fetchAlgoliaPageJson(query = "", page = page, hitsPerPage = hitsPerPage)
+    }
+
+    private suspend fun fetchAlgoliaPageJson(query: String, page: Int, hitsPerPage: Int): String? {
+        val discovered = cachedAlgoliaConfig ?: discoverAlgoliaConfig().also { found ->
+            if (found != null) cachedAlgoliaConfig = found
         } ?: return null
         val url = "https://${discovered.applicationId}-dsn.algolia.net/1/indexes/${encodePathSegment(discovered.indexName)}/query"
         val requestBody = json.encodeToString(
             buildJsonObject {
-                put("query", query.trim())
-                put("hitsPerPage", 30)
+                put("query", query)
+                put("page", page)
+                put("hitsPerPage", hitsPerPage)
             }
         )
         awaitRequestSlot()
