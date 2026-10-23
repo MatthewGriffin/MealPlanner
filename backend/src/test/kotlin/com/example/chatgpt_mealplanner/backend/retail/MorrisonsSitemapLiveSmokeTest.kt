@@ -93,22 +93,25 @@ class MorrisonsSitemapLiveSmokeTest {
                 it.contains("/categories/", ignoreCase = true) && !it.contains("/promotions/", ignoreCase = true)
             }.distinct()
             println("MORRISONS_SMOKE category_sitemap_urls=${categoryUrls.size}")
+            // Reuse the proven milk-page selectors and compare parsed card counts with the
+            // embedded Redux state. Keep the parser local to this diagnostic until live
+            // samples establish consistent category markup.
             categoryUrls.take(8).forEachIndexed { index, url ->
                 val (status, body) = fetch(url)
-                val cardMarker = Regex("""(?is)<div\\b[^>]*class=["'][^"']*product-card-container[^"']*["'][^>]*>""")
+                val cardMarker = Regex("""(?is)<div\b[^>]*class=["'][^"']*product-card-container[^"']*["'][^>]*>""")
                 val cardStarts = cardMarker.findAll(body).map { it.range.first }.toList()
                 val titleRegex = Regex("""(?is)<[^>]*data-test=["']fop-title["'][^>]*>(.*?)</[^>]+>""")
                 val priceRegex = Regex("""(?is)<[^>]*data-test=["']fop-price["'][^>]*>(.*?)</[^>]+>""")
-                val productPathRegex = Regex("""(?i)/products/[^/""'<>]+/(\\d{6,})""")
+                val productPathRegex = Regex("""(?i)/products/[^/""'<>]+/(\d{6,})""")
                 fun visibleText(value: String): String = value
                     .replace(Regex("""(?is)<[^>]+>"""), " ")
                     .replace("&nbsp;", " ")
                     .replace("&amp;", "&")
-                    .replace(Regex("""\\s+"""), " ")
+                    .replace(Regex("""\s+"""), " ")
                     .trim()
-                val cards = cardStarts.mapIndexedNotNull { cardIndex, start ->
-                    val end = cardStarts.getOrNull(cardIndex + 1) ?: body.length
-                    val card = body.substring(start, end)
+                val cards = cardStarts.mapIndexedNotNull { cardIndex, cardStart ->
+                    val cardEnd = cardStarts.getOrNull(cardIndex + 1) ?: body.length
+                    val card = body.substring(cardStart, cardEnd)
                     val name = titleRegex.find(card)?.groupValues?.get(1)?.let(::visibleText).orEmpty()
                     val price = priceRegex.find(card)?.groupValues?.get(1)?.let(::visibleText).orEmpty()
                     val id = productPathRegex.find(card)?.groupValues?.get(1).orEmpty()
@@ -117,15 +120,26 @@ class MorrisonsSitemapLiveSmokeTest {
                 }
                 val completeCards = cards.count { (name, id, price) ->
                     name.isNotBlank() && id.isNotBlank() &&
-                        Regex("""£\\s?\\d+(?:\\.\\d{1,2})?""").containsMatchIn(price)
+                        Regex("""£\s?\d+(?:\.\d{1,2})?""").containsMatchIn(price)
                 }
-                val totalProducts = Regex("""(?i)["']?totalProducts["']?\\s*:\\s*(\\d+)""")
-                    .findAll(body).map { it.groupValues[1].toInt() }.firstOrNull()
+                val totalProducts = Regex(""""totalProducts"\s*:\s*(\d+)""")
+                    .find(body)?.groupValues?.get(1)?.toIntOrNull()
+                val categoryId = Regex(""""retailerCategoryId"\s*:\s*"([^"]+)"""")
+                    .find(body)?.groupValues?.get(1)
+                val firstProductListCount = Regex("""(?is)<script[^>]*type=["']application/ld\+json["'][^>]*>(.*?)</script>""")
+                    .findAll(body)
+                    .map { it.groupValues[1] }
+                    .mapNotNull { block ->
+                        Regex(""""@type"\s*:\s*"ItemList"""").find(block)?.let {
+                            Regex(""""position"\s*:""").findAll(block).count()
+                        }
+                    }
+                    .firstOrNull()
                 println(
-                    "MORRISONS_SMOKE category_sample_${index + 1} status=$status url=$url " +
-                        "body_chars=${body.length} total_products=$totalProducts " +
-                        "card_containers=${cardStarts.size} parsed_cards=${cards.size} complete_cards=$completeCards " +
-                        "sample_products=${cards.take(3)}"
+                    "MORRISONS_SMOKE category_sample_\${index + 1} status=\$status url=\$url " +
+                        "body_chars=\${body.length} category_id=\$categoryId total_products=\$totalProducts " +
+                        "card_containers=\${cardStarts.size} parsed_cards=\${cards.size} complete_cards=\$completeCards " +
+                        "jsonld_itemlist_count=\$firstProductListCount sample_products=\${cards.take(3)}"
                 )
             }
             // Product detail pages can return 403 even when the public catalogue/sitemap is readable.
