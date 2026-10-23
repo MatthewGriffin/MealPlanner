@@ -40,6 +40,21 @@ class IcelandCatalogueRefreshWorker @AssistedInject constructor(
             return Result.success()
         }
 
+        // Seed an empty first-install cache before attempting the live crawl. The seed is
+        // deliberately small and dated; a later complete crawl atomically replaces it.
+        val hasIcelandCatalogue = retailRepository.getCandidateProductsWithOffers().any {
+            it.product.retailerId == RetailerId.ICELAND &&
+                !it.product.retailerProductId.startsWith("RECEIPT_")
+        }
+        if (!hasIcelandCatalogue) {
+            runCatching {
+                retailRepository.replaceCatalogueWithOffers(
+                    RetailerId.ICELAND,
+                    IcelandStarterCatalogue.products()
+                )
+            }
+        }
+
         val httpClient = HttpClient(OkHttp)
         return try {
             val source = IcelandSourceClient(httpClient)
