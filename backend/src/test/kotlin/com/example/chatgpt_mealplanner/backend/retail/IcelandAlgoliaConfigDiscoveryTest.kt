@@ -42,6 +42,23 @@ class IcelandAlgoliaConfigDiscoveryTest {
     }
 
     @Test
+    fun discoversHtmlEscapedIcelandRuntimeConfiguration() {
+        val config = IcelandAlgoliaConfigDiscovery.find(
+            listOf(
+                """
+                &quot;algoliaIndexBase&quot;:&quot;r1_iceuk_production&quot;,
+                &quot;algoliaAppId&quot;:&quot;FAWURXX413&quot;,
+                &quot;algoliaApiKey&quot;:&quot;dd51afec328646fc6b538411032deeb0&quot;
+                """.trimIndent()
+            )
+        )
+
+        assertEquals("FAWURXX413", config?.applicationId)
+        assertEquals("dd51afec328646fc6b538411032deeb0", config?.searchApiKey)
+        assertEquals("r1_iceuk_production", config?.indexName)
+    }
+
+    @Test
     fun refusesToGuessMissingIndexOrCredentials() {
         assertNull(
             IcelandAlgoliaConfigDiscovery.find(
