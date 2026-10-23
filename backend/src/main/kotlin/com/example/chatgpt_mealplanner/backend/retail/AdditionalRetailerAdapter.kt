@@ -28,7 +28,7 @@ import kotlinx.serialization.json.jsonPrimitive
 open class AdditionalRetailerAdapter(
     private val client: AdditionalRetailerSourceClient = AdditionalRetailerSourceClient()
 ) {
-    private fun parseSainsburysJson(raw: String): List<RetailProductWithOffer> {
+    internal fun parseSainsburysJson(raw: String): List<RetailProductWithOffer> {
         val root = runCatching { Json { ignoreUnknownKeys = true }.parseToJsonElement(raw).jsonObject }.getOrNull()
             ?: return emptyList()
         val products = root["products"] as? JsonArray ?: return emptyList()
