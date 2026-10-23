@@ -27,6 +27,26 @@ open class AdditionalRetailerSourceClient(
 
     open suspend fun searchHtml(retailerId: RetailerId, query: String): String {
         require(query.isNotBlank()) { "Retailer search query must not be blank" }
+        return fetch(retailerId, query.trim(), pageNumber = 1, pageSize = 24)
+    }
+
+    /**
+     * Fetch one page from Sainsbury's public product endpoint without a keyword filter.
+     * This is only a candidate catalogue source: callers must validate the response's
+     * pagination metadata and complete every page before treating the result as a catalogue.
+     */
+    open suspend fun fetchSainsburysCataloguePageJson(pageNumber: Int, pageSize: Int = 60): String {
+        require(pageNumber >= 1) { "Sainsbury's page number must be one or greater" }
+        require(pageSize in 1..60) { "Sainsbury's page size must be between 1 and 60" }
+        return fetch(RetailerId.SAINSBURYS, query = "", pageNumber = pageNumber, pageSize = pageSize)
+    }
+
+    private suspend fun fetch(
+        retailerId: RetailerId,
+        query: String,
+        pageNumber: Int,
+        pageSize: Int
+    ): String {
         mutex.withLock {
             val waitMs = minRequestIntervalMs - (System.currentTimeMillis() - lastRequestAt)
             if (waitMs > 0) delay(waitMs)
@@ -34,15 +54,15 @@ open class AdditionalRetailerSourceClient(
         }
         val url = when (retailerId) {
             RetailerId.MORRISONS -> URLBuilder("https://groceries.morrisons.com/search").apply {
-                parameters.append("q", query.trim())
+                parameters.append("q", query)
             }.buildString()
             RetailerId.SAINSBURYS -> URLBuilder("https://www.sainsburys.co.uk/groceries-api/gol-services/product/v1/product").apply {
-                parameters.append("filter[keyword]", query.trim())
-                parameters.append("page_number", "1")
-                parameters.append("page_size", "24")
+                if (query.isNotBlank()) parameters.append("filter[keyword]", query)
+                parameters.append("page_number", pageNumber.toString())
+                parameters.append("page_size", pageSize.toString())
             }.buildString()
             RetailerId.LIDL -> URLBuilder("https://www.lidl.co.uk/q/search").apply {
-                parameters.append("q", query.trim())
+                parameters.append("q", query)
             }.buildString()
             else -> throw IllegalArgumentException("No public search route configured for $retailerId")
         }
