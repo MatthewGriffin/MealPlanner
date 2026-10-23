@@ -114,8 +114,8 @@ class MorrisonsSitemapLiveSmokeTest {
                         .distinct()
                         .take(12)
                         .toList()
-                    println("MORRISONS_SMOKE first_card_chars=\${card.length} title_position_in_card=\${titlePosition - cardStart}")
-                    println("MORRISONS_SMOKE first_card_price_attribute_tags=\$priceAttributeTags")
+                    println("MORRISONS_SMOKE first_card_chars=${card.length} title_position_in_card=${titlePosition - cardStart}")
+                    println("MORRISONS_SMOKE first_card_price_attribute_tags=$priceAttributeTags")
 
                     val poundSnippets = Regex("""£\s?\d+(?:\.\d{1,2})?""")
                         .findAll(card)
@@ -127,7 +127,7 @@ class MorrisonsSitemapLiveSmokeTest {
                         .distinct()
                         .take(8)
                         .toList()
-                    println("MORRISONS_SMOKE first_card_pound_snippets=\$poundSnippets")
+                    println("MORRISONS_SMOKE first_card_pound_snippets=$poundSnippets")
                     println("MORRISONS_SMOKE first_card_text_snippet=" +
                         card.replace(Regex("""<script\b[^>]*>.*?</script>"""), " ")
                             .replace(Regex("""<style\b[^>]*>.*?</style>"""), " ")
