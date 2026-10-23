@@ -37,6 +37,27 @@ interface RetailDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPriceSnapshot(snapshot: RetailPriceSnapshotEntity)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPriceSnapshots(snapshots: List<RetailPriceSnapshotEntity>)
+
+    @Query("DELETE FROM retail_products WHERE retailerId = :retailerId")
+    suspend fun deleteProductsForRetailer(retailerId: RetailerId)
+
+    @Query("DELETE FROM retail_price_snapshots WHERE retailerId = :retailerId")
+    suspend fun deletePriceSnapshotsForRetailer(retailerId: RetailerId)
+
+    @androidx.room.Transaction
+    suspend fun replaceRetailerCatalogue(
+        retailerId: RetailerId,
+        products: List<RetailProductEntity>,
+        snapshots: List<RetailPriceSnapshotEntity>
+    ) {
+        deletePriceSnapshotsForRetailer(retailerId)
+        deleteProductsForRetailer(retailerId)
+        if (products.isNotEmpty()) insertProducts(products)
+        if (snapshots.isNotEmpty()) insertPriceSnapshots(snapshots)
+    }
+
     @Query("SELECT * FROM retail_product_mappings WHERE canonicalIngredientId = :canonicalId")
     suspend fun getMappingsForCanonicalIngredient(canonicalId: String): List<RetailProductMappingEntity>
 
