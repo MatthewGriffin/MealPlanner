@@ -62,7 +62,7 @@ class IcelandLiveSmokeTest {
                 assertTrue(secondRoot["hits"]?.jsonArray?.isNotEmpty() == true)
             }
 
-            println("Iceland empty-query smoke test: pages=\u0024totalPages, firstPageHits=\u0024{hits.size}, parsedProducts=\u0024{parsedProducts.size}")
+            println("Iceland empty-query smoke test: pages=" + totalPages + ", firstPageHits=" + hits.size + ", parsedProducts=" + parsedProducts.size)
         } finally {
             httpClient.close()
         }
