@@ -77,7 +77,7 @@ class IcelandCatalogueRefreshWorker @AssistedInject constructor(
                 return Result.retry()
             }
 
-            retailRepository.cacheProductsWithOffers(allProducts.values.toList())
+            retailRepository.replaceCatalogueWithOffers(RetailerId.ICELAND, allProducts.values.toList())
             preferences.edit().putLong(KEY_LAST_SUCCESS, System.currentTimeMillis()).apply()
             IcelandCatalogueRefreshScheduler.scheduleWeekly(applicationContext)
             Result.success()
