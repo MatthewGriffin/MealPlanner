@@ -117,6 +117,18 @@ class MorrisonsSitemapLiveSmokeTest {
                 println("MORRISONS_SMOKE json_ld_${index + 1}=${block.take(1000)}")
             }
 
+            // Print bounded excerpts around fields likely to contain the actual card data.
+            listOf("productName", "unitPrice", "product-card-price", "pricePerUnit", "currentPrice").forEach { token ->
+                val position = categoryBody.indexOf(token, ignoreCase = true)
+                if (position >= 0) {
+                    val start = (position - 350).coerceAtLeast(0)
+                    val end = (position + 900).coerceAtMost(categoryBody.length)
+                    println("MORRISONS_SMOKE field_excerpt_$token=${categoryBody.substring(start, end).replace(Regex("""\\s+"""), " ").take(1200)}")
+                } else {
+                    println("MORRISONS_SMOKE field_excerpt_$token=NOT_FOUND")
+                }
+            }
+
             val dataMarkers = listOf("data-test=", "data-testid=", "product-listing-structured-data", "product-card", "productCard", "productName", "product_name", "unitPrice", "price")
                 .associateWith { marker -> Regex(Regex.escape(marker), RegexOption.IGNORE_CASE).findAll(categoryBody).count() }
             println("MORRISONS_SMOKE data_marker_counts=$dataMarkers")
