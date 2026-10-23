@@ -96,21 +96,50 @@ class MorrisonsSitemapLiveSmokeTest {
                     "price_mentions=$priceMentions structured_product_data=$hasProductStructuredData"
             )
 
-            // The first /products/ occurrence is often in JSON-LD ItemList, not the visible card.
-            // Find an actual HTML anchor and print a bounded region around its product link.
-            val firstHtmlProductLink = Regex("""(?is)<a\b[^>]*href=["']([^"']*/products/[^"']+)["'][^>]*>""")
-                .find(categoryBody)
-            if (firstHtmlProductLink != null) {
-                val start = (firstHtmlProductLink.range.first - 500).coerceAtLeast(0)
-                val nextLink = Regex("""(?is)<a\\b[^>]*data-test=["\']fop-product-link["\']""")
-                    .find(categoryBody, firstHtmlProductLink.range.last + 1)
-                val end = (nextLink?.range?.first ?: (firstHtmlProductLink.range.last + 7000))
-                    .coerceAtMost(categoryBody.length)
-                println("MORRISONS_SMOKE first_html_product_card=" + categoryBody.substring(start, end).replace(Regex("""\\s+"""), " ").take(6500))
-            } else {
-                println("MORRISONS_SMOKE no_html_product_anchor_found")
-            }
+            // Isolate the visible card for the first product title and inspect only likely price markup.
+            val titleMarker = """data-test="fop-title""""
+            val titlePosition = categoryBody.indexOf(titleMarker, ignoreCase = true)
+            if (titlePosition >= 0) {
+                val cardMarker = Regex("""(?is)<div\b[^>]*class=["'][^"']*product-card-container[^"']*["'][^>]*>""")
+                val cardStart = cardMarker.findAll(categoryBody.substring(0, titlePosition))
+                    .lastOrNull()?.range?.first
+                if (cardStart != null) {
+                    val nextCard = cardMarker.find(categoryBody, titlePosition + titleMarker.length)
+                    val cardEnd = (nextCard?.range?.first ?: (titlePosition + 12000))
+                        .coerceAtMost(categoryBody.length)
+                    val card = categoryBody.substring(cardStart, cardEnd)
+                    val priceAttributeTags = Regex("""(?is)<[^>]*(?:price|amount|currency|cost)[^>]*>""")
+                        .findAll(card)
+                        .map { it.value.replace(Regex("""\s+"""), " ").take(260) }
+                        .distinct()
+                        .take(12)
+                        .toList()
+                    println("MORRISONS_SMOKE first_card_chars=\${card.length} title_position_in_card=\${titlePosition - cardStart}")
+                    println("MORRISONS_SMOKE first_card_price_attribute_tags=\$priceAttributeTags")
 
+                    val poundSnippets = Regex("""£\s?\d+(?:\.\d{1,2})?""")
+                        .findAll(card)
+                        .map { match ->
+                            val from = (match.range.first - 180).coerceAtLeast(0)
+                            val to = (match.range.last + 181).coerceAtMost(card.length)
+                            card.substring(from, to).replace(Regex("""\s+"""), " ").take(420)
+                        }
+                        .distinct()
+                        .take(8)
+                        .toList()
+                    println("MORRISONS_SMOKE first_card_pound_snippets=\$poundSnippets")
+                    println("MORRISONS_SMOKE first_card_text_snippet=" +
+                        card.replace(Regex("""<script\b[^>]*>.*?</script>"""), " ")
+                            .replace(Regex("""<style\b[^>]*>.*?</style>"""), " ")
+                            .replace(Regex("""<[^>]+>"""), " ")
+                            .replace(Regex("""\s+"""), " ")
+                            .take(1200))
+                } else {
+                    println("MORRISONS_SMOKE product_title_found_but_card_container_not_found")
+                }
+            } else {
+                println("MORRISONS_SMOKE product_title_marker_not_found")
+            }
             val jsonLdBlocks = Regex("""(?is)<script[^>]*type=["']application/ld\+json["'][^>]*>(.*?)</script>""")
                 .findAll(categoryBody)
                 .map { it.groupValues[1].trim().replace(Regex("""\s+"""), " ").take(1000) }
