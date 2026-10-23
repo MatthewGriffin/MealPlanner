@@ -59,12 +59,30 @@ class MorrisonsSitemapLiveSmokeTest {
             )
             println("MORRISONS_SMOKE sitemap_index_status=$indexStatus sitemap_count=${sitemapUrls.size}")
 
-            val sitemapUrl = productSitemapUrls.first()
-            val (sitemapStatus, sitemapBody) = fetch(sitemapUrl)
-            assertTrue(sitemapStatus in 200..299, "Morrisons product sitemap returned HTTP $sitemapStatus")
-            val productUrls = locations(sitemapBody).filter { it.contains("/products/", ignoreCase = true) }
+            // Inspect every sitemap referenced by the index to determine whether category
+            // URLs are also published, rather than assuming the first product sitemap is enough.
+            val sitemapContents = sitemapUrls.map { url ->
+                val (status, body) = fetch(url)
+                val entries = if (status in 200..299) locations(body) else emptyList()
+                val productEntries = entries.filter { it.contains("/products/", ignoreCase = true) }
+                val categoryEntries = entries.filter { it.contains("/categories/", ignoreCase = true) }
+                println(
+                    "MORRISONS_SMOKE sitemap status=$status url=$url entries=${entries.size} " +
+                        "product_urls=${productEntries.size} category_urls=${categoryEntries.size} " +
+                        "sample_entries=${entries.take(3)}"
+                )
+                Triple(url, status, entries)
+            }
+            val productSitemap = sitemapContents.firstOrNull {
+                it.first.contains("product", ignoreCase = true) && it.second in 200..299
+            }
+            assertTrue(productSitemap != null, "No product sitemap from the index could be fetched successfully")
+            val productUrls = productSitemap!!.third.filter { it.contains("/products/", ignoreCase = true) }
             assertTrue(productUrls.isNotEmpty(), "Morrisons product sitemap contained no product URLs")
-            println("MORRISONS_SMOKE product_sitemap_status=$sitemapStatus product_url_count=${productUrls.size}")
+            println(
+                "MORRISONS_SMOKE product_sitemap_status=${productSitemap.second} " +
+                    "product_url_count=${productUrls.size}"
+            )
 
             // Product detail pages can return 403 even when the public catalogue/sitemap is readable.
             // Test category listing pages independently: they may contain product cards with names,
