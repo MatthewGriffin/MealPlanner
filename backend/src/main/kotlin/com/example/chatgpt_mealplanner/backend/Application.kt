@@ -57,6 +57,19 @@ data class RetailCataloguePageResponse(
     val priceScopeNote: String
 )
 
+@Serializable
+data class SainsburysCataloguePageResponse(
+    val retailerId: RetailerId,
+    val page: Int,
+    val pageSize: Int,
+    val totalProducts: Int,
+    val totalPages: Int,
+    val products: List<RetailProductWithOffer>,
+    val observedAt: Long,
+    val priceScopeNote: String,
+    val completenessNote: String
+)
+
 fun main() {
     val config = BackendConfig()
     embeddedServer(Netty, port = config.port, host = "0.0.0.0", module = { module(config) }).start(wait = true)
@@ -177,6 +190,83 @@ fun Application.module(
                 call.respond(
                     HttpStatusCode.ServiceUnavailable,
                     mapOf("error" to "Iceland catalogue page could not be retrieved or parsed. Keep the previous cache and retry later.")
+                )
+            }
+        }
+
+        get("/v1/retail/catalogue/sainsburys") {
+            // The public endpoint is known to block some automated clients and its
+            // catalogue/pagination behavior is not yet verified end-to-end. Expose one
+            // bounded page at a time; never silently return a partial "full catalogue".
+            val page = call.request.queryParameters["page"]?.toIntOrNull() ?: 1
+            val pageSize = call.request.queryParameters["pageSize"]?.toIntOrNull() ?: 60
+            if (page < 1 || page > 165 || pageSize !in 1..60) {
+                call.respond(
+                    HttpStatusCode.BadRequest,
+                    mapOf("error" to "page must be 1..165 and pageSize must be 1..60")
+                )
+                return@get
+            }
+
+            try {
+                val raw = additionalRetailerAdapter.fetchSainsburysCataloguePageJson(page, pageSize)
+                val root = Json.parseToJsonElement(raw).jsonObject
+                val totalProducts = root["total_record_count"]?.jsonPrimitive?.content?.toIntOrNull()
+                    ?: root["totalRecordCount"]?.jsonPrimitive?.content?.toIntOrNull()
+                    ?: run {
+                        call.respond(
+                            HttpStatusCode.ServiceUnavailable,
+                            mapOf("error" to "Sainsbury's response did not include supported total-count metadata; no catalogue page was published.")
+                        )
+                        return@get
+                    }
+                if (totalProducts < 0 || totalProducts > 9900) {
+                    call.respond(
+                        HttpStatusCode.ServiceUnavailable,
+                        mapOf("error" to "Sainsbury's catalogue count is outside the supported 0..9900 range; completeness cannot be established.")
+                    )
+                    return@get
+                }
+                val totalPages = if (totalProducts == 0) 0 else (totalProducts + pageSize - 1) / pageSize
+                if (totalPages > 165 || (totalPages == 0 && page != 1) || (totalPages > 0 && page > totalPages)) {
+                    call.respond(
+                        HttpStatusCode.BadRequest,
+                        mapOf("error" to "Requested page is outside the advertised Sainsbury's catalogue range.")
+                    )
+                    return@get
+                }
+                val rawProducts = root["products"] as? kotlinx.serialization.json.JsonArray
+                    ?: run {
+                        call.respond(
+                            HttpStatusCode.ServiceUnavailable,
+                            mapOf("error" to "Sainsbury's response did not contain a products array; no catalogue page was published.")
+                        )
+                        return@get
+                    }
+                if (totalProducts > 0 && rawProducts.isEmpty()) {
+                    call.respond(
+                        HttpStatusCode.ServiceUnavailable,
+                        mapOf("error" to "Sainsbury's returned an empty page despite advertising products; completeness cannot be established.")
+                    )
+                    return@get
+                }
+                call.respond(
+                    SainsburysCataloguePageResponse(
+                        retailerId = RetailerId.SAINSBURYS,
+                        page = page,
+                        pageSize = pageSize,
+                        totalProducts = totalProducts,
+                        totalPages = totalPages,
+                        products = additionalRetailerAdapter.parseSainsburysJson(raw),
+                        observedAt = System.currentTimeMillis(),
+                        priceScopeNote = "Online catalogue prices only; not physical-branch prices or stock.",
+                        completenessNote = "This is one source page, not a verified complete catalogue. A collector must fetch every advertised page and confirm stable totalProducts and page counts before replacing cached data."
+                    )
+                )
+            } catch (_: Exception) {
+                call.respond(
+                    HttpStatusCode.ServiceUnavailable,
+                    mapOf("error" to "Sainsbury's catalogue page could not be retrieved or validated. Keep the previous cache and retry later.")
                 )
             }
         }
