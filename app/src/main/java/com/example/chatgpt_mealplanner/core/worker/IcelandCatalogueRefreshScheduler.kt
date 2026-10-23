@@ -18,17 +18,23 @@ object IcelandCatalogueRefreshScheduler {
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
-        val request = OneTimeWorkRequestBuilder<IcelandCatalogueRefreshWorker>()
+        val seedRequest = OneTimeWorkRequestBuilder<IcelandStarterCatalogueSeedWorker>()
+            .addTag("retail-catalogue")
+            .build()
+        val refreshRequest = OneTimeWorkRequestBuilder<IcelandCatalogueRefreshWorker>()
             .setConstraints(constraints)
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
             .addTag("retail-catalogue")
             .build()
         runCatching {
-            WorkManager.getInstance(appContext).enqueueUniqueWork(
-                IcelandCatalogueRefreshWorker.LAUNCH_WORK_NAME,
-                ExistingWorkPolicy.KEEP,
-                request
-            )
+            WorkManager.getInstance(appContext)
+                .beginUniqueWork(
+                    IcelandCatalogueRefreshWorker.LAUNCH_WORK_NAME,
+                    ExistingWorkPolicy.KEEP,
+                    seedRequest
+                )
+                .then(refreshRequest)
+                .enqueue()
         }
     }
 
