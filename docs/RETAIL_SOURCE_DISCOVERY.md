@@ -41,6 +41,12 @@ The additional retailer adapter uses public search sources for Morrisons, Sainsb
 
 These routes and parsers are best-effort, not yet verified by a live backend run. The Sainsbury's product-search endpoint is a public website endpoint rather than a documented partner API and may change without notice. If a page changes, blocks requests, or contains no supported structured product records, the adapter returns SOURCE_UNAVAILABLE or SOURCE_FORMAT_CHANGED and preserves cached/manual fallback. Availability is forced to UNKNOWN and page-wide promotions are disabled for all three. In particular, Sainsbury's official store stock checker is not integrated into this product-price adapter; the fact that a checker exists does not establish an accessible supported endpoint.
 
+## Sainsbury's paged catalogue endpoint (experimental)
+
+The backend now exposes `GET /v1/retail/catalogue/sainsburys?page=1&pageSize=60` as a bounded, page-at-a-time probe of the public product endpoint. Page numbers are one-based and page size is limited to 60; the endpoint refuses unsupported or missing total-count metadata, counts above 9,900, missing product arrays, and empty pages when the source advertises products. It returns the source count/page count and a warning that a single page is not a complete catalogue. A collector must fetch every advertised page and verify the count remains stable before publishing a replacement cache. If requests are blocked or metadata changes, keep the prior cache and retry.
+
+This is deliberately **not yet a verified full-catalogue integration**. The source endpoint is not a documented partner API and some automated clients may receive HTTP 403. The route and parser have fixture-level coverage only; a live crawl and full-catalogue completion test are still required before adding a Sainsbury's background cache importer or claiming full coverage. Prices are ONLINE and availability remains UNKNOWN regardless of generic `in_stock` fields.
+
 ## ASDA: gated pending source verification
 
 The repository contains an experimental Algolia client and parser, but the endpoint is undocumented and requires a key whose provenance and permitted use have not been established. The adapter therefore does not invoke that client and reports MANUAL_AND_CACHED_ONLY. This is intentional: an endpoint being discoverable on a website is not by itself proof that automated use is permitted.
