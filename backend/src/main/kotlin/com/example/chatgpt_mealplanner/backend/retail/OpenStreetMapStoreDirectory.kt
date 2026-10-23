@@ -146,6 +146,10 @@ class OpenStreetMapStoreDirectory(
             // the entire combined result is empty silently hides valid nearby branches.
             val fallbackStarted = System.nanoTime()
             val fallbackStores = when {
+                // A configured API key explicitly selects the keyed Overpass service.
+                // Do not send follow-up searches to public Nominatim when that service
+                // returns a valid response, including an empty result set.
+                configuredApiKey != null -> emptyList()
                 request.searchAllRetailers -> {
                     // A retailer appearing in the shared map response does not mean all
                     // of its nearby branches were found. Supplement every supported retailer,
@@ -253,7 +257,7 @@ class OpenStreetMapStoreDirectory(
             observedAt = clock(),
             warnings = when {
                 usedNominatimFallback && overpassSucceeded -> listOf("Some branches were found using OpenStreetMap search listings because the main map query may miss smaller stores. Branch coverage and details may be incomplete; check the branch name before saving.")
-                usedNominatimFallback -> listOf("The main branch map search was unavailable. These results came from OpenStreetMap search listings and may be incomplete; check the branch name before saving.")
+                usedNominatimFallback -> listOf("Overpass was unavailable; these results came from OpenStreetMap search listings and may be incomplete; check the branch name before saving.")
                 requestedStores.isEmpty() -> listOf("No matching supported retailer branches were found nearby. Coverage may be incomplete; verify with the retailer.")
                 else -> emptyList()
             }
