@@ -5,8 +5,8 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
-import kotlin.test.assertTrue
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.jsonArray
@@ -15,27 +15,28 @@ class IcelandLiveSmokeTest {
 
     @Test
     fun optionalLiveSmokeTest_executesOnlyWhenExplicitlyEnabled() = runBlocking {
-        val liveEnabled = System.getenv("ICELAND_LIVE_TESTS") == "true"
-        if (!liveEnabled) {
+        if (System.getenv("ICELAND_LIVE_TESTS") != "true") {
             println("Skipping IcelandLiveSmokeTest because ICELAND_LIVE_TESTS is not set to 'true'.")
             return@runBlocking
         }
 
         val httpClient = HttpClient(OkHttp)
-        val client = IcelandSourceClient(httpClient)
-        val adapter = IcelandRetailerAdapter(client)
-
-        val result = adapter.searchProducts("broccoli")
-        assertTrue(
-            result is RetailProductSearchResult.Success || result is RetailProductSearchResult.PartialSuccess,
-            "Iceland live search did not return products: $result"
-        )
+        try {
+            val client = IcelandSourceClient(httpClient)
+            val adapter = IcelandRetailerAdapter(client)
+            val result = adapter.searchProducts("broccoli")
+            assertTrue(
+                result is RetailProductSearchResult.Success || result is RetailProductSearchResult.PartialSuccess,
+                "Iceland live search did not return products: $result"
+            )
+        } finally {
+            httpClient.close()
+        }
     }
 
     @Test
-    fun optionalEmptyQueryCatalogueSmokeTest_checksPaginationAndProductParsing() = runBlocking {
-        val liveEnabled = System.getenv("ICELAND_LIVE_TESTS") == "true"
-        if (!liveEnabled) {
+    fun optionalEmptyQueryCatalogueSmokeTest_crawlsEveryPageAndParsesProducts() = runBlocking {
+        if (System.getenv("ICELAND_LIVE_TESTS") != "true") {
             println("Skipping Iceland empty-query catalogue smoke test because ICELAND_LIVE_TESTS is not set to 'true'.")
             return@runBlocking
         }
@@ -44,46 +45,44 @@ class IcelandLiveSmokeTest {
         try {
             val client = IcelandSourceClient(httpClient)
             val parser = IcelandProductParser()
-            val firstPage = client.fetchAlgoliaCataloguePageJson(page = 0, hitsPerPage = 100)
-            if (firstPage == null) {
-                val homepage = runCatching { client.fetchSearchHtml("broccoli") }
-                val htmlDiagnostics = homepage.fold(
-                    onSuccess = { html ->
-                        val scripts = Regex("""(?i)<script[^>]+src=["']([^"']+)["']""")
-                            .findAll(html).map { it.groupValues[1] }.distinct().take(30).joinToString()
-                        val jsonLdCount = Regex("""(?i)<script[^>]*type=["']application/ld\+json["']""")
-                            .findAll(html).count()
-                        val algoliaMentions = Regex("""(?i).{0,50}(?:algolia|applicationId|apiKey|indexName).{0,80}""")
-                            .findAll(html).take(8).joinToString(" | ") { it.value.replace(Regex("\\s+"), " ") }
-                        "HTML succeeded (${html.length} chars); JSON-LD scripts=$jsonLdCount; script URLs=$scripts; config snippets=$algoliaMentions"
-                    },
-                    onFailure = { "HTML fallback failed: ${it::class.simpleName}: ${it.message}" }
-                )
-                error("Iceland Algolia catalogue request returned no response. $htmlDiagnostics")
-            }
-
             val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
-            val root = json.parseToJsonElement(firstPage!!).jsonObject
-            val totalPages = root["nbPages"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0
-            val hits = root["hits"]?.jsonArray.orEmpty()
-            val parsedProducts = parser.parseAlgoliaResponse(firstPage)
+            val allProductIds = LinkedHashSet<String>()
+            var expectedPages: Int? = null
+            var totalHits = 0
+            var totalParsed = 0
+            var page = 0
 
-            assertTrue(totalPages > 0, "Empty-query response must expose positive nbPages")
-            assertTrue(hits.isNotEmpty(), "Empty-query first page must contain products")
-            assertTrue(parsedProducts.isNotEmpty(), "Empty-query first page must parse into priced products")
+            while (expectedPages == null || page < expectedPages!!) {
+                val raw = client.fetchAlgoliaCataloguePageJson(page = page, hitsPerPage = 100)
+                    ?: error("Iceland returned no catalogue response for page $page")
+                val root = json.parseToJsonElement(raw).jsonObject
+                val responsePage = root["page"]?.jsonPrimitive?.content?.toIntOrNull()
+                val totalPages = root["nbPages"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0
+                val hits = root["hits"]?.jsonArray.orEmpty()
+                val parsed = parser.parseAlgoliaResponse(raw)
 
-            if (totalPages > 1) {
-                val secondPage = client.fetchAlgoliaCataloguePageJson(page = 1, hitsPerPage = 100)
-                assertTrue(secondPage != null, "Iceland's public Algolia page 1 request returned no response")
-                val secondRoot = json.parseToJsonElement(secondPage!!).jsonObject
-                assertEquals(1, secondRoot["page"]?.jsonPrimitive?.content?.toIntOrNull())
-                assertTrue(secondRoot["hits"]?.jsonArray?.isNotEmpty() == true)
+                assertEquals(page, responsePage, "Iceland response page does not match requested page")
+                assertTrue(totalPages > 0, "Catalogue response must expose positive nbPages")
+                assertTrue(page < totalPages, "Catalogue pagination ended before requested page $page")
+                if (expectedPages == null) expectedPages = totalPages
+                assertEquals(expectedPages, totalPages, "Iceland changed nbPages during the catalogue crawl")
+                assertTrue(hits.isNotEmpty(), "Catalogue page $page contained no hits")
+                assertTrue(parsed.isNotEmpty(), "Catalogue page $page contained no parseable priced products")
+
+                totalHits += hits.size
+                totalParsed += parsed.size
+                parsed.forEach { allProductIds += it.productWithOffer.product.retailerProductId }
+                page++
             }
 
-            println("Iceland empty-query smoke test: pages=" + totalPages + ", firstPageHits=" + hits.size + ", parsedProducts=" + parsedProducts.size)
+            assertEquals(expectedPages, page, "Not all Iceland catalogue pages were fetched")
+            assertTrue(allProductIds.size >= 100, "Full catalogue crawl produced suspiciously few unique products")
+            println(
+                "Iceland full catalogue smoke test: pages=$page, rawHits=$totalHits, " +
+                    "parsedOffers=$totalParsed, uniqueProductIds=${allProductIds.size}"
+            )
         } finally {
             httpClient.close()
         }
     }
-
 }
