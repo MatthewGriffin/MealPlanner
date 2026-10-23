@@ -67,7 +67,8 @@ class IcelandLiveSmokeTest {
                 if (expectedPages == null) expectedPages = totalPages
                 assertEquals(expectedPages, totalPages, "Iceland changed nbPages during the catalogue crawl")
                 assertTrue(hits.isNotEmpty(), "Catalogue page $page contained no hits")
-                assertTrue(parsed.isNotEmpty(), "Catalogue page $page contained no parseable priced products")
+                // Some valid Algolia records (notably out-of-stock items) omit price entirely.
+                // Keep crawling these pages; only priced records can become RetailOffers.
 
                 totalHits += hits.size
                 totalParsed += parsed.size
@@ -76,7 +77,8 @@ class IcelandLiveSmokeTest {
             }
 
             assertEquals(expectedPages, page, "Not all Iceland catalogue pages were fetched")
-            assertTrue(allProductIds.size >= 100, "Full catalogue crawl produced suspiciously few unique products")
+            assertTrue(totalParsed >= 100, "Full catalogue crawl produced suspiciously few priced products")
+            assertTrue(allProductIds.size >= 100, "Full catalogue crawl produced suspiciously few unique priced product IDs")
             println(
                 "Iceland full catalogue smoke test: pages=$page, rawHits=$totalHits, " +
                     "parsedOffers=$totalParsed, uniqueProductIds=${allProductIds.size}"
