@@ -22,12 +22,14 @@ internal object IcelandAlgoliaConfigDiscovery {
         Regex("""(?i)algoliasearch\s*\(\s*["'][A-Z0-9]{8,}["']\s*,\s*["']([a-f0-9]{20,})["']""")
     )
     private val indexPatterns = listOf(
-        Regex("""(?i)(?:indexName|productIndexName|productsIndex|ALGOLIA_INDEX_NAME)\s*["']?\s*[:=]\s*["']([A-Za-z0-9_./-]{2,})["']"""),
+        Regex("""(?i)(?:indexName|productIndexName|productsIndex|ALGOLIA_INDEX_NAME|algoliaIndexBaseDefault|algoliaIndexBase)\s*["']?\s*[:=]\s*["']([A-Za-z0-9_./-]{2,})["']"""),
         Regex("""(?i)initIndex\s*\(\s*["']([A-Za-z0-9_./-]{2,})["']\s*\)""")
     )
 
     fun find(sources: List<String>): Config? {
-        val combined = sources.joinToString("\n")
+        // Iceland embeds its runtime configuration inside HTML-escaped JSON attributes
+        // (for example &quot;algoliaAppId&quot;). Decode these entities before matching.
+        val combined = decodeHtmlEntities(sources.joinToString("\n"))
         val appId = firstMatch(combined, appIdPatterns) ?: return null
         val apiKey = firstMatch(combined, apiKeyPatterns) ?: return null
         val indexName = firstMatch(combined, indexPatterns) ?: return null
@@ -36,6 +38,18 @@ internal object IcelandAlgoliaConfigDiscovery {
         if (!indexName.matches(Regex("[A-Za-z0-9_./-]{2,}"))) return null
         return Config(appId, apiKey, indexName)
     }
+
+    private fun decodeHtmlEntities(value: String): String =
+        value
+            .replace("&quot;", "\"")
+            .replace("&#34;", "\"")
+            .replace("&#x22;", "\"")
+            .replace("&apos;", "'")
+            .replace("&#39;", "'")
+            .replace("&#x27;", "'")
+            .replace("&amp;", "&")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
 
     private fun firstMatch(source: String, patterns: List<Regex>): String? =
         patterns.firstNotNullOfOrNull { pattern -> pattern.find(source)?.groupValues?.getOrNull(1) }
