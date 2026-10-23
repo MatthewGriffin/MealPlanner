@@ -80,7 +80,12 @@ class IcelandSourceClient(
             setBody(requestBody)
         }
         if (!response.status.isSuccess()) {
-            throw IllegalStateException("Iceland Algolia search returned HTTP " + response.status.value)
+            val responseDetails = response.bodyAsText()
+                .replace(Regex("\\s+"), " ")
+                .take(500)
+            throw IllegalStateException(
+                "Iceland Algolia search returned HTTP ${response.status.value}: ${responseDetails.ifBlank { "<empty response body>" }}"
+            )
         }
         return response.bodyAsText()
     }
