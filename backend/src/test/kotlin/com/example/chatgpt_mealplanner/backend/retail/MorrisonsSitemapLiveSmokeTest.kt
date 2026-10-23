@@ -95,27 +95,37 @@ class MorrisonsSitemapLiveSmokeTest {
             println("MORRISONS_SMOKE category_sitemap_urls=${categoryUrls.size}")
             categoryUrls.take(8).forEachIndexed { index, url ->
                 val (status, body) = fetch(url)
-                val cardCount = Regex("""product-card-container""").findAll(body).count()
-                fun excerpts(token: String): List<String> {
-                    var offset = 0
-                    val found = mutableListOf<String>()
-                    while (found.size < 3) {
-                        val at = body.indexOf(token, offset, ignoreCase = true)
-                        if (at < 0) break
-                        val from = (at - 100).coerceAtLeast(0)
-                        val to = (at + 220).coerceAtMost(body.length)
-                        found += body.substring(from, to).replace(Regex("""\\s+"""), " ")
-                        offset = at + token.length
-                    }
-                    return found
+                val cardMarker = Regex("""(?is)<div\\b[^>]*class=["'][^"']*product-card-container[^"']*["'][^>]*>""")
+                val cardStarts = cardMarker.findAll(body).map { it.range.first }.toList()
+                val titleRegex = Regex("""(?is)<[^>]*data-test=["']fop-title["'][^>]*>(.*?)</[^>]+>""")
+                val priceRegex = Regex("""(?is)<[^>]*data-test=["']fop-price["'][^>]*>(.*?)</[^>]+>""")
+                val productPathRegex = Regex("""(?i)/products/[^/""'<>]+/(\\d{6,})""")
+                fun visibleText(value: String): String = value
+                    .replace(Regex("""(?is)<[^>]+>"""), " ")
+                    .replace("&nbsp;", " ")
+                    .replace("&amp;", "&")
+                    .replace(Regex("""\\s+"""), " ")
+                    .trim()
+                val cards = cardStarts.mapIndexedNotNull { cardIndex, start ->
+                    val end = cardStarts.getOrNull(cardIndex + 1) ?: body.length
+                    val card = body.substring(start, end)
+                    val name = titleRegex.find(card)?.groupValues?.get(1)?.let(::visibleText).orEmpty()
+                    val price = priceRegex.find(card)?.groupValues?.get(1)?.let(::visibleText).orEmpty()
+                    val id = productPathRegex.find(card)?.groupValues?.get(1).orEmpty()
+                    if (name.isBlank() && price.isBlank() && id.isBlank()) null
+                    else Triple(name, id, price)
                 }
-                val totalProductContexts = excerpts("totalProducts")
-                val paginationContexts = listOf("isNextPageFetching", "pageSize", "currentPage", "pageNumber", "hasNextPage")
-                    .associateWith(::excerpts).filterValues { it.isNotEmpty() }
+                val completeCards = cards.count { (name, id, price) ->
+                    name.isNotBlank() && id.isNotBlank() &&
+                        Regex("""£\\s?\\d+(?:\\.\\d{1,2})?""").containsMatchIn(price)
+                }
+                val totalProducts = Regex("""(?i)["']?totalProducts["']?\\s*:\\s*(\\d+)""")
+                    .findAll(body).map { it.groupValues[1].toInt() }.firstOrNull()
                 println(
                     "MORRISONS_SMOKE category_sample_${index + 1} status=$status url=$url " +
-                        "body_chars=${body.length} product_card_markers=$cardCount " +
-                        "total_products_contexts=$totalProductContexts pagination_contexts=$paginationContexts"
+                        "body_chars=${body.length} total_products=$totalProducts " +
+                        "card_containers=${cardStarts.size} parsed_cards=${cards.size} complete_cards=$completeCards " +
+                        "sample_products=${cards.take(3)}"
                 )
             }
             // Product detail pages can return 403 even when the public catalogue/sitemap is readable.
