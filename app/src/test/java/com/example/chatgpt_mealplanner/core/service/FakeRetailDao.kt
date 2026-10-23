@@ -48,6 +48,22 @@ class FakeRetailDao : RetailDao {
         snapshots.add(snapshot)
     }
 
+    override suspend fun insertPriceSnapshots(snapshots: List<RetailPriceSnapshotEntity>) {
+        this.snapshots.addAll(snapshots)
+    }
+
+    override suspend fun deleteProductsForRetailer(retailerId: RetailerId) {
+        products.entries.removeAll { (_, product) ->
+            product.retailerId == retailerId && !product.retailerProductId.startsWith("RECEIPT_")
+        }
+    }
+
+    override suspend fun deletePriceSnapshotsForRetailer(retailerId: RetailerId) {
+        snapshots.removeAll { snapshot ->
+            snapshot.retailerId == retailerId && !snapshot.retailerProductId.startsWith("RECEIPT_")
+        }
+    }
+
     override suspend fun getMappingsForCanonicalIngredient(canonicalId: String): List<RetailProductMappingEntity> {
         return mappings.values.filter { it.canonicalIngredientId == canonicalId }
     }
