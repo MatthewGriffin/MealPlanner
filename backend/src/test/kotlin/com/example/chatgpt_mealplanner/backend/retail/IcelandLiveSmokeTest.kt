@@ -46,12 +46,20 @@ class IcelandLiveSmokeTest {
             val parser = IcelandProductParser()
             val firstPage = client.fetchAlgoliaCataloguePageJson(page = 0, hitsPerPage = 100)
             if (firstPage == null) {
-                val searchFallback = runCatching { client.fetchSearchHtml("broccoli") }
-                    .fold(
-                        onSuccess = { "HTTP HTML fallback succeeded (${it.length} characters)" },
-                        onFailure = { "HTML fallback failed: ${it::class.simpleName}: ${it.message}" }
-                    )
-                error("Iceland Algolia catalogue request returned no response. $searchFallback. Check homepage/JavaScript config discovery and live site access.")
+                val homepage = runCatching { client.fetchSearchHtml("broccoli") }
+                val htmlDiagnostics = homepage.fold(
+                    onSuccess = { html ->
+                        val scripts = Regex("""(?i)<script[^>]+src=["']([^"']+)["']""")
+                            .findAll(html).map { it.groupValues[1] }.distinct().take(30).joinToString()
+                        val jsonLdCount = Regex("""(?i)<script[^>]*type=["']application/ld\+json["']""")
+                            .findAll(html).count()
+                        val algoliaMentions = Regex("""(?i).{0,50}(?:algolia|applicationId|apiKey|indexName).{0,80}""")
+                            .findAll(html).take(8).joinToString(" | ") { it.value.replace(Regex("\\s+"), " ") }
+                        "HTML succeeded (${html.length} chars); JSON-LD scripts=$jsonLdCount; script URLs=$scripts; config snippets=$algoliaMentions"
+                    },
+                    onFailure = { "HTML fallback failed: ${it::class.simpleName}: ${it.message}" }
+                )
+                error("Iceland Algolia catalogue request returned no response. $htmlDiagnostics")
             }
 
             val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
