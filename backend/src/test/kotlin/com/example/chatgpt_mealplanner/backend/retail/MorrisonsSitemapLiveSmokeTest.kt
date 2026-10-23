@@ -101,9 +101,12 @@ class MorrisonsSitemapLiveSmokeTest {
             val firstHtmlProductLink = Regex("""(?is)<a\b[^>]*href=["']([^"']*/products/[^"']+)["'][^>]*>""")
                 .find(categoryBody)
             if (firstHtmlProductLink != null) {
-                val start = (firstHtmlProductLink.range.first - 250).coerceAtLeast(0)
-                val end = (firstHtmlProductLink.range.last + 1800).coerceAtMost(categoryBody.length)
-                println("MORRISONS_SMOKE first_html_product_card=${categoryBody.substring(start, end).replace(Regex("""\s+"""), " ").take(1800)}")
+                val start = (firstHtmlProductLink.range.first - 500).coerceAtLeast(0)
+                val nextLink = Regex("""(?is)<a\\b[^>]*data-test=["\']fop-product-link["\']""")
+                    .find(categoryBody, firstHtmlProductLink.range.last + 1)
+                val end = (nextLink?.range?.first ?: (firstHtmlProductLink.range.last + 7000))
+                    .coerceAtMost(categoryBody.length)
+                println("MORRISONS_SMOKE first_html_product_card=" + categoryBody.substring(start, end).replace(Regex("""\\s+"""), " ").take(6500))
             } else {
                 println("MORRISONS_SMOKE no_html_product_anchor_found")
             }
