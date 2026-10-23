@@ -63,9 +63,8 @@ class IcelandCatalogueRefreshWorker @AssistedInject constructor(
                 expectedPages = totalPages
 
                 val parsed = parser.parseAlgoliaResponse(raw).map { it.productWithOffer }
-                // A page with hits but no parseable product records indicates source drift.
-                val hitCount = root["hits"]?.let { runCatching { it as kotlinx.serialization.json.JsonArray }.getOrNull()?.size } ?: 0
-                if (hitCount > 0 && parsed.isEmpty()) return Result.retry()
+                // Iceland includes valid catalogue records without a price (often out of stock).
+                // These cannot become RetailOffers, so skip them without treating the whole page as invalid.
                 parsed.forEach { product ->
                     allProducts[product.product.retailerProductId] = product
                 }
