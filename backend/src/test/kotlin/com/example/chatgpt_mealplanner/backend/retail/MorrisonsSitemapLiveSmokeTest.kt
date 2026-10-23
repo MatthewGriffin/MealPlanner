@@ -98,19 +98,19 @@ class MorrisonsSitemapLiveSmokeTest {
 
             // The first /products/ occurrence is often in JSON-LD ItemList, not the visible card.
             // Find an actual HTML anchor and print a bounded region around its product link.
-            val firstHtmlProductLink = Regex("(?is)<a\\\\b[^>]*href=[\\\\\"']([^\\\\\"']*/products/[^\\\\\"']+)[\\\\\"'][^>]*>")
+            val firstHtmlProductLink = Regex("""(?is)<a\b[^>]*href=["']([^"']*/products/[^"']+)["'][^>]*>""")
                 .find(categoryBody)
             if (firstHtmlProductLink != null) {
                 val start = (firstHtmlProductLink.range.first - 250).coerceAtLeast(0)
                 val end = (firstHtmlProductLink.range.last + 1800).coerceAtMost(categoryBody.length)
-                println("MORRISONS_SMOKE first_html_product_card=${categoryBody.substring(start, end).replace(Regex("\\\\s+"), " ").take(1800)}")
+                println("MORRISONS_SMOKE first_html_product_card=${categoryBody.substring(start, end).replace(Regex("""\s+"""), " ").take(1800)}")
             } else {
                 println("MORRISONS_SMOKE no_html_product_anchor_found")
             }
 
-            val jsonLdBlocks = Regex("(?is)<script[^>]*type=[\\\\\"']application/ld\\\\+json[\\\\\"'][^>]*>(.*?)</script>")
+            val jsonLdBlocks = Regex("""(?is)<script[^>]*type=["']application/ld\+json["'][^>]*>(.*?)</script>""")
                 .findAll(categoryBody)
-                .map { it.groupValues[1].trim().replace(Regex("\\\\s+"), " ").take(1000) }
+                .map { it.groupValues[1].trim().replace(Regex("""\s+"""), " ").take(1000) }
                 .toList()
             println("MORRISONS_SMOKE json_ld_blocks=${jsonLdBlocks.size}")
             jsonLdBlocks.forEachIndexed { index, block ->
