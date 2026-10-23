@@ -118,7 +118,7 @@ class IcelandSourceClientTest {
     }
 
     @Test
-    fun blankSearchIsRejectedBeforeMakingRequest() = runBlocking {
+    fun blankSearchIsRejectedBeforeMakingRequest(): Unit = runBlocking {
         val httpClient = HttpClient(MockEngine {
             error("HTTP request should not be made for a blank query")
         })
