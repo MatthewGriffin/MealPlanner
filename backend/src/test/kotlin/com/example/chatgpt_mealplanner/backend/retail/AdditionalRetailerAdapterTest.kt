@@ -60,6 +60,24 @@ class AdditionalRetailerAdapterTest {
         }
     }
 
+
+    @Test
+    fun sainsburysCataloguePageParserMapsOnlyPricedProductsAndIgnoresStock() {
+        val raw = """{
+          "total_record_count": 2,
+          "products": [
+            {"product_uid":"catalogue-milk","name":"Milk","retail_price":"1.25","in_stock":true},
+            {"product_uid":"catalogue-eggs","name":"Eggs","retail_price":"2.00","in_stock":false}
+          ]
+        }"""
+        val products = AdditionalRetailerAdapter().parseSainsburysJson(raw)
+        assertEquals(2, products.size)
+        assertEquals(listOf("catalogue-milk", "catalogue-eggs"), products.map { it.product.retailerProductId })
+        assertEquals(listOf(125L, 200L), products.map { it.offer.price.amountMinor })
+        assertTrue(products.all { it.offer.priceScope == RetailPriceScope.ONLINE })
+        assertTrue(products.all { it.offer.availability == RetailAvailability.UNKNOWN })
+    }
+
     @Test
     fun blankQueryAndSourceFailureReturnStructuredFallbackResults() = runBlocking {
         val blankResult = AdditionalRetailerAdapter().searchProducts(RetailerId.MORRISONS, "   ")
