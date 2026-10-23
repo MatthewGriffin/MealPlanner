@@ -12,7 +12,7 @@ internal object IcelandAlgoliaConfigDiscovery {
     )
 
     private val appIdPatterns = listOf(
-        Regex("""(?i)(?:applicationId|applicationID|appId|ALGOLIA_APP_ID)\s*["']?\s*[:=]\s*["']([A-Z0-9]{8,})["']"""),
+        Regex("""(?i)(?:applicationId|applicationID|appId|algoliaAppId|ALGOLIA_APP_ID)\s*["']?\s*[:=]\s*["']([A-Z0-9]{8,})["']"""),
         Regex("""(?i)["']x-algolia-application-id["']\s*[,=:]\s*["']([A-Z0-9]{8,})["']"""),
         Regex("""(?i)algoliasearch\s*\(\s*["']([A-Z0-9]{8,})["']""")
     )
