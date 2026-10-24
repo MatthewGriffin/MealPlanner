@@ -4,11 +4,13 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import kotlinx.coroutines.runBlocking
 import org.junit.Test
+import org.junit.Assume.assumeTrue
 
 class IcelandLiveDiagnosticTest {
 
     @Test
     fun testAllPhysicalItemsWithCategoryMapping() = runBlocking {
+        assumeTrue("Set ICELAND_LIVE_TESTS=true to run the Iceland live diagnostic.", System.getenv("ICELAND_LIVE_TESTS") == "true")
         val httpClient = HttpClient(OkHttp)
         val client = IcelandSourceClient(
             httpClient = httpClient,
