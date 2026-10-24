@@ -136,10 +136,10 @@ class MorrisonsSitemapLiveSmokeTest {
                     }
                     .firstOrNull()
                 println(
-                    "MORRISONS_SMOKE category_sample_\${index + 1} status=\$status url=\$url " +
-                        "body_chars=\${body.length} category_id=\$categoryId total_products=\$totalProducts " +
-                        "card_containers=\${cardStarts.size} parsed_cards=\${cards.size} complete_cards=\$completeCards " +
-                        "jsonld_itemlist_count=\$firstProductListCount sample_products=\${cards.take(3)}"
+                    "MORRISONS_SMOKE category_sample_${index + 1} status=$status url=$url " +
+                        "body_chars=${body.length} category_id=$categoryId total_products=$totalProducts " +
+                        "card_containers=${cardStarts.size} parsed_cards=${cards.size} complete_cards=$completeCards " +
+                        "jsonld_itemlist_count=$firstProductListCount sample_products=${cards.take(3)}"
                 )
             }
             // Product detail pages can return 403 even when the public catalogue/sitemap is readable.
