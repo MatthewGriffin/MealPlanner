@@ -4,6 +4,7 @@ import com.example.chatgpt_mealplanner.retail.contract.RetailProductSearchResult
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import kotlinx.coroutines.runBlocking
+import org.junit.Assume.assumeTrue
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -15,10 +16,7 @@ class IcelandLiveSmokeTest {
 
     @Test
     fun optionalLiveSmokeTest_executesOnlyWhenExplicitlyEnabled() = runBlocking {
-        if (System.getenv("ICELAND_LIVE_TESTS") != "true") {
-            println("Skipping IcelandLiveSmokeTest because ICELAND_LIVE_TESTS is not set to 'true'.")
-            return@runBlocking
-        }
+        assumeTrue("Set ICELAND_LIVE_TESTS=true to run Iceland live smoke tests.", System.getenv("ICELAND_LIVE_TESTS") == "true")
 
         val httpClient = HttpClient(OkHttp)
         try {
@@ -36,10 +34,7 @@ class IcelandLiveSmokeTest {
 
     @Test
     fun optionalEmptyQueryCatalogueSmokeTest_crawlsEveryPageAndParsesProducts() = runBlocking {
-        if (System.getenv("ICELAND_LIVE_TESTS") != "true") {
-            println("Skipping Iceland empty-query catalogue smoke test because ICELAND_LIVE_TESTS is not set to 'true'.")
-            return@runBlocking
-        }
+        assumeTrue("Set ICELAND_LIVE_TESTS=true to run Iceland live smoke tests.", System.getenv("ICELAND_LIVE_TESTS") == "true")
 
         val httpClient = HttpClient(OkHttp)
         try {
