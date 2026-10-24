@@ -7,6 +7,7 @@ import io.ktor.client.request.header
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
 import kotlinx.coroutines.runBlocking
+import org.junit.Assume.assumeTrue
 import kotlin.test.Test
 import kotlin.test.assertTrue
 
@@ -21,10 +22,7 @@ import kotlin.test.assertTrue
 class MorrisonsSitemapLiveSmokeTest {
     @Test
     fun publicSitemapAndCategoryListingExposeProductData() = runBlocking {
-        if (!System.getenv("MORRISONS_LIVE_SMOKE_TEST").equals("true", ignoreCase = true)) {
-            println("Skipping live Morrisons smoke test; set MORRISONS_LIVE_SMOKE_TEST=true to enable.")
-            return@runBlocking
-        }
+        assumeTrue("Set MORRISONS_LIVE_SMOKE_TEST=true to run the Morrisons live smoke test.", System.getenv("MORRISONS_LIVE_SMOKE_TEST").equals("true", ignoreCase = true))
 
         val client = HttpClient(OkHttp)
         try {
