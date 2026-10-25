@@ -16,7 +16,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.put
 
-class AsdaSourceClient(
+open class AsdaSourceClient(
     private val httpClient: HttpClient = HttpClient(OkHttp),
     private val apiKeyProvider: () -> String = {
         val buildConfigKey = runCatching {
@@ -32,7 +32,7 @@ class AsdaSourceClient(
     private val url = "https://8i6wskccnv-dsn.algolia.net/1/indexes/*/queries"
     private val json = Json
 
-    suspend fun search(query: String): String {
+    open suspend fun search(query: String): String {
         val apiKey = apiKeyProvider()
         if (apiKey.isBlank()) {
             throw IllegalStateException("ASDA Algolia API key not configured")
