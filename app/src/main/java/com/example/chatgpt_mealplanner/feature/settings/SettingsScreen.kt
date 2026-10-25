@@ -274,7 +274,7 @@ fun SettingsScreen(
                 Text("Preferred Store Locations", fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    "Save branches you use. Live catalogue search is available for Iceland, Aldi, Tesco, Morrisons, Sainsbury's and Lidl; Food Warehouse shares Iceland's catalogue, while ASDA live lookup is disabled pending an approved source. Catalogue prices are not proof of a branch's price or stock, and selected-branch stock is not yet integrated.",
+                    "Save branches you use. Live catalogue search is available for ASDA, Iceland, Aldi, Tesco, Morrisons, Sainsbury's and Lidl; Food Warehouse shares Iceland's catalogue. Catalogue prices are not proof of a branch's price or stock, and selected-branch stock is not yet integrated.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
