@@ -75,6 +75,51 @@ class RetailProductMatcher(
             .replace(Regex("\\s*\\(optional\\)\\s*$"), "")
             .trim()
 
+        // Plain ingredient requirements must not silently accept seasoned, coated,
+        // breaded or otherwise prepared variants just because the core word appears.
+        // Keep this ahead of canonical-ID matching: retailer feeds may assign the
+        // broad CHICKEN identity to prepared chicken products too.
+        val normalizedRequirementName = reqLower.replace(Regex("[^a-z0-9]+"), " ").trim()
+        val normalizedCandidateName = normalizedProductName
+        val wantsChicken = normalizedRequirementName.split(" ").any { it in setOf("chicken", "chickens") } &&
+            listOf("fried", "southern", "american", "inspired", "breaded", "battered", "coated", "crispy", "nugget", "nuggets", "goujon", "goujons", "kiev", "schnitzel", "seasoned", "marinated", "flavoured", "flavored", "roast", "roasted").none { normalizedRequirementName.contains(it) }
+        val chickenPreparationTerms = listOf("southern fried", "american inspired", "breaded", "battered", "coated", "crispy", "nugget", "goujon", "kiev", "schnitzel", "seasoned", "marinated", "flavoured", "flavored", "bbq", "barbecue", "peri peri", "tikka", "fajita")
+        if (wantsChicken && normalizedCandidateName.split(" ").any { it == "chicken" } &&
+            chickenPreparationTerms.any { normalizedCandidateName.contains(it) }) {
+            return returnMatch(requirementDisplayName, candidateProduct, RetailMatchCandidate(
+                candidateProduct, MatchType.INCOMPATIBLE, MatchConfidence.LOW, false,
+                "Prepared, coated or seasoned chicken is not a match for a plain chicken requirement."
+            ))
+        }
+
+        // In UK supermarket terminology, US "all-purpose flour" normally maps to
+        // plain flour. Do not substitute self-raising, bread or specialist flour.
+        val wantsAllPurposeFlour = normalizedRequirementName in setOf("all purpose flour", "all purpose wheat flour")
+        if (wantsAllPurposeFlour) {
+            val candidateHasFlour = normalizedCandidateName.split(" ").contains("flour")
+            val excludedFlourType = listOf(
+                "self raising", "self-raising", "raising", "bread flour", "strong flour",
+                "gluten free", "gluten-free", "wholemeal", "whole wheat", "rye flour",
+                "cornflour", "corn flour", "almond flour", "coconut flour", "rice flour",
+                "spelt flour", "chapati flour", "00 flour", "pizza flour"
+            ).any { normalizedCandidateName.contains(it.replace(Regex("[^a-z0-9]+"), " ").trim()) }
+            val isPlainFlour = candidateHasFlour && !excludedFlourType &&
+                (normalizedCandidateName.contains("plain flour") || normalizedCandidateName == "flour" ||
+                    normalizedCandidateName.startsWith("plain flour "))
+            if (isPlainFlour) {
+                return returnMatch(requirementDisplayName, candidateProduct, RetailMatchCandidate(
+                    candidateProduct, MatchType.CATEGORY_MATCH, MatchConfidence.HIGH, true,
+                    "All-purpose flour matched to UK plain flour; specialist and self-raising flours excluded."
+                ))
+            }
+            if (candidateHasFlour) {
+                return returnMatch(requirementDisplayName, candidateProduct, RetailMatchCandidate(
+                    candidateProduct, MatchType.INCOMPATIBLE, MatchConfidence.LOW, false,
+                    "Flour type is not a safe equivalent for all-purpose flour."
+                ))
+            }
+        }
+
         // Distinct food guard: "Beans with Sausages" vs "Baked Beans"
         if (reqLower == "baked beans" || reqLower.contains("beans")) {
             if (nameLower.contains("sausage") || nameLower.contains("pork") || nameLower.contains("chilli") || nameLower.contains("bbq")) {
