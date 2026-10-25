@@ -366,21 +366,45 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
         shoppingListItemId: String,
         retailerFilter: RetailerId?
     ): DomainResult<List<PackAlternative>> {
+        // Resolve the actual requirement first. The item ID is not a useful retail
+        // search term, and a non-empty ASDA cache must not suppress other-store lookups.
+        val activeList = shoppingDao.getActiveShoppingList()
+        val requirement = activeList?.let { shoppingDao.getShoppingListWithItems(it.id) }
+            ?.items
+            ?.firstOrNull { it.item.id == shoppingListItemId }
+            ?.item
+        if (requirement == null) return DomainResult.Success(emptyList())
+
+        val requiredQuantity = requirement.suggestedPurchaseQuantity
+            ?: requirement.requiredQuantity
+            ?: 1.0
+        val requiredUnit = (requirement.suggestedPurchaseUnit ?: requirement.requiredUnit ?: QuantityUnit.UNIT).name
+        val matcher = RetailProductMatcher(retailRepository.getProductMappings())
+
         var candidateProducts = retailRepository.getCandidateProductsWithOffers()
-        if (candidateProducts.isEmpty()) {
-            fetchAndCacheLiveProducts(listOf(shoppingListItemId), retailerFilter)
+        fun matchingCandidates(products: List<RetailProductWithOffer>): List<RetailProductWithOffer> =
+            products.filter { candidate ->
+                (retailerFilter == null || candidate.product.retailerId == retailerFilter) &&
+                    candidate.offer.availability.name != "OUT_OF_STOCK" &&
+                    matcher.evaluateMatch(requirement.canonicalIngredientId, requirement.displayName, candidate.product)
+                        .isAutoBasketEligible
+            }
+
+        var matches = matchingCandidates(candidateProducts)
+        // Search when this ingredient has no valid cached match, even if another
+        // retailer (commonly ASDA) has products in the cache.
+        if (matches.isEmpty()) {
+            fetchAndCacheLiveProducts(listOf(requirement.displayName), retailerFilter)
             candidateProducts = retailRepository.getCandidateProductsWithOffers()
+            matches = matchingCandidates(candidateProducts)
         }
-        if (retailerFilter != null) {
-            candidateProducts = candidateProducts.filter { it.product.retailerId == retailerFilter }
-        }
-        val packEngine = PackSelectionEngine()
-        val alternatives = packEngine.generatePackAlternatives(
-            requiredQuantity = 1.0,
-            requiredUnit = "GRAM",
-            candidateMatches = candidateProducts
+
+        val alternatives = PackSelectionEngine().generatePackAlternatives(
+            requiredQuantity = requiredQuantity,
+            requiredUnit = requiredUnit,
+            candidateMatches = matches
         )
-        return DomainResult.Success(alternatives.take(5))
+        return DomainResult.Success(alternatives.take(10))
     }
 
     override suspend fun searchProducts(
