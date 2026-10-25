@@ -25,7 +25,7 @@ This document specifies the Ktor backend retailer stack, JSON-LD vs. HTML parser
 
 ## 3. Source permission and branch-scope boundary
 
-- ASDA automated retrieval is gated in `AsdaRetailerAdapter` until explicit permission or an approved API/feed is available. The existing undocumented Algolia client/parser are not invoked by the adapter.
+- ASDA search invokes the existing Algolia client with the configured API key and parses live catalogue hits. Offers are online-scoped; product-level availability remains UNKNOWN, and cached/manual fallback remains available on source failure.
 - Iceland's current parser returns online-scope offers only. It does not provide a retailer-issued branch ID, and page-wide basket controls are not used as product-level stock evidence.
 - `RetailStoreLocation.id` is an app-local preference ID. Branch offers may match only `RetailStoreLocation.retailerStoreId`, populated from an authorised retailer directory/feed; if it is absent, branch-scoped offers are excluded for that preferred retailer.
 - Do not promote `ONLINE` offers to `STORE_SPECIFIC` or `IN_STORE` based on postcode, store name, format, or a selected preference. Branch-level integration requires a documented/authorised source with stable branch IDs and product-level scoped prices/availability.
