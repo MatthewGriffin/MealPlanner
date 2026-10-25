@@ -303,7 +303,7 @@ class AiMealPlannerOrchestrator @Inject constructor(
                 finalResponseText.contains("method", ignoreCase = true) ||
                 (providerResponse as? AiProviderResponse.FinalResponse)?.proposal != null
 
-        if (!responseIsMultiMealPlan && isEligibleProposalIntent && textSuggestsRecipeProposal && !hasOfferCaptured && !plannerMutationCommitted && providerResponse is AiProviderResponse.FinalResponse) {
+        if (!isRetailProductSearchOnlyRequest(userMessageText) && !responseIsMultiMealPlan && isEligibleProposalIntent && textSuggestsRecipeProposal && !hasOfferCaptured && !plannerMutationCommitted && providerResponse is AiProviderResponse.FinalResponse) {
             safeLog("[STRUCTURED_OFFER_REPAIR] needed=true attempt=1")
 
             val repairRequest = request.copy(
@@ -379,7 +379,18 @@ class AiMealPlannerOrchestrator @Inject constructor(
                     safeLog("[RESPONSE_SANITIZATION] originalLength=$origLen sanitizedLength=$newLen removedCompletedWriteClaim=${origLen != newLen}")
                 }
 
-                val currentPending = pendingMutationStore.getPendingMutation(conversationId) as? com.example.chatgpt_mealplanner.core.ai.pending.PendingAiMutation.AddPlannedMeal
+                var currentPending = pendingMutationStore.getPendingMutation(conversationId) as? com.example.chatgpt_mealplanner.core.ai.pending.PendingAiMutation.AddPlannedMeal
+                if (retailProductSearchOnly) {
+                    // A product lookup must not inherit or create a Save meal card from this
+                    // conversation's prior proposal state.
+                    activeProposalStore.clearActiveProposal(conversationId)
+                    if (currentPending != null) {
+                        pendingMutationStore.clearPendingMutation(conversationId, reason = "RETAIL_PRODUCT_LOOKUP_ONLY")
+                        currentPending = null
+                    }
+                    validatedProposal = null
+                    safeLog("[RETAIL_LOOKUP_UI_GUARD] clearedMealProposal=true")
+                }
                 val hasValidOfferAwaiting = currentPending != null && currentPending.state == com.example.chatgpt_mealplanner.core.ai.pending.PendingMutationState.AWAITING_CONFIRMATION && currentPending.ingredients.isNotEmpty()
 
                 if (hasValidOfferAwaiting && !responseIsMultiMealPlan) {
