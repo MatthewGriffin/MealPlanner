@@ -574,7 +574,8 @@ class GeminiMealPlannerAiProvider @Inject constructor(
                             putJsonObject("requirementId") { put("type", "STRING"); put("description", "Shopping requirement ID") }
                         }
                         AiToolId.SEARCH_RETAIL_PRODUCTS -> {
-                            putJsonObject("query") { put("type", "STRING"); put("description", "Retail product search query") }
+                            putJsonObject("query") { put("type", "STRING"); put("description", "Product term to search for, without retailer name (e.g. milk)") }
+                            putJsonObject("retailerFilter") { put("type", "STRING"); put("description", "Optional retailer ID filter: ASDA, ICELAND, ALDI, TESCO, MORRISONS, SAINSBURYS, or LIDL") }
                         }
                         AiToolId.MOVE_PLANNED_MEAL -> {
                             putJsonObject("mealId") { put("type", "STRING"); put("description", "Target meal ID") }
