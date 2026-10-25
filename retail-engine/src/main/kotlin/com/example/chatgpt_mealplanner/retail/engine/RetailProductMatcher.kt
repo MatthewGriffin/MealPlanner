@@ -75,49 +75,53 @@ class RetailProductMatcher(
             .replace(Regex("\\s*\\(optional\\)\\s*$"), "")
             .trim()
 
-        // Plain ingredient requirements must not silently accept seasoned, coated,
-        // breaded or otherwise prepared variants just because the core word appears.
-        // Keep this ahead of canonical-ID matching: retailer feeds may assign the
-        // broad CHICKEN identity to prepared chicken products too.
-        val normalizedRequirementName = reqLower.replace(Regex("[^a-z0-9]+"), " ").trim()
+        // General product-title compatibility check. Canonical IDs are useful evidence,
+        // but can be too broad in retailer feeds; reject a title that adds many meaningful
+        // concepts absent from the requirement instead of allowing the ID to force a match.
+        val normalizedRequirementName = reqLower
+            .replace(Regex("[^a-z0-9]+"), " ")
+            .trim()
         val normalizedCandidateName = normalizedProductName
-        val wantsChicken = normalizedRequirementName.split(" ").any { it in setOf("chicken", "chickens") } &&
-            listOf("fried", "southern", "american", "inspired", "breaded", "battered", "coated", "crispy", "nugget", "nuggets", "goujon", "goujons", "kiev", "schnitzel", "seasoned", "marinated", "flavoured", "flavored", "roast", "roasted").none { normalizedRequirementName.contains(it) }
-        val chickenPreparationTerms = listOf("southern fried", "american inspired", "breaded", "battered", "coated", "crispy", "nugget", "goujon", "kiev", "schnitzel", "seasoned", "marinated", "flavoured", "flavored", "bbq", "barbecue", "peri peri", "tikka", "fajita")
-        if (wantsChicken && normalizedCandidateName.split(" ").any { it == "chicken" } &&
-            chickenPreparationTerms.any { normalizedCandidateName.contains(it) }) {
-            return returnMatch(requirementDisplayName, candidateProduct, RetailMatchCandidate(
-                candidateProduct, MatchType.INCOMPATIBLE, MatchConfidence.LOW, false,
-                "Prepared, coated or seasoned chicken is not a match for a plain chicken requirement."
-            ))
+
+        // Normalize common naming equivalents, not individual product titles.
+        // Keep this deliberately small and phrase-based so the same matcher works across stores.
+        fun normalizeFoodTerms(value: String): List<String> {
+            val normalized = value
+                .replace(Regex("\\ball purpose\\b"), "plain")
+                .replace(Regex("\\bminced\\b"), "mince")
+                .replace(Regex("\\btinned\\b"), "canned")
+                .replace(Regex("\\bdiced\\b|\\bchopped\\b|\\bsliced\\b|\\bshredded\\b|\\bgrated\\b"), " ")
+                .replace(Regex("\\b\\d+(?:\\.\\d+)?\\s*(?:kg|g|mg|ml|l|litre|litres|liter|liters|oz|lb|lbs|pack|packs)\\b"), " ")
+                .replace(Regex("[^a-z0-9]+"), " ")
+                .trim()
+            val ignored = setOf(
+                "a", "an", "and", "the", "of", "for", "with", "in", "to",
+                "fresh", "quality", "selected", "large", "small", "value",
+                "pack", "packs", "product", "products"
+            )
+            return normalized.split(Regex("\\s+"))
+                .filter { it.length > 1 && it !in ignored }
+                .distinct()
         }
 
-        // In UK supermarket terminology, US "all-purpose flour" normally maps to
-        // plain flour. Do not substitute self-raising, bread or specialist flour.
-        val wantsAllPurposeFlour = normalizedRequirementName in setOf("all purpose flour", "all purpose wheat flour")
-        if (wantsAllPurposeFlour) {
-            val candidateHasFlour = normalizedCandidateName.split(" ").contains("flour")
-            val excludedFlourType = listOf(
-                "self raising", "self-raising", "raising", "bread flour", "strong flour",
-                "gluten free", "gluten-free", "wholemeal", "whole wheat", "rye flour",
-                "cornflour", "corn flour", "almond flour", "coconut flour", "rice flour",
-                "spelt flour", "chapati flour", "00 flour", "pizza flour"
-            ).any { normalizedCandidateName.contains(it.replace(Regex("[^a-z0-9]+"), " ").trim()) }
-            val isPlainFlour = candidateHasFlour && !excludedFlourType &&
-                (normalizedCandidateName.contains("plain flour") || normalizedCandidateName == "flour" ||
-                    normalizedCandidateName.startsWith("plain flour "))
-            if (isPlainFlour) {
-                return returnMatch(requirementDisplayName, candidateProduct, RetailMatchCandidate(
-                    candidateProduct, MatchType.CATEGORY_MATCH, MatchConfidence.HIGH, true,
-                    "All-purpose flour matched to UK plain flour; specialist and self-raising flours excluded."
-                ))
-            }
-            if (candidateHasFlour) {
-                return returnMatch(requirementDisplayName, candidateProduct, RetailMatchCandidate(
-                    candidateProduct, MatchType.INCOMPATIBLE, MatchConfidence.LOW, false,
-                    "Flour type is not a safe equivalent for all-purpose flour."
-                ))
-            }
+        val requirementTokens = normalizeFoodTerms(normalizedRequirementName)
+        val candidateTokens = normalizeFoodTerms(normalizedCandidateName)
+        val meaningfulRequirementTokens = requirementTokens.toSet()
+        val candidateOnlyTokens = candidateTokens.filterNot { it in meaningfulRequirementTokens }
+        val sharedRequirementTokens = requirementTokens.count { it in candidateTokens }
+        val requirementCoverage = if (requirementTokens.isEmpty()) 0.0
+            else sharedRequirementTokens.toDouble() / requirementTokens.size
+        // Long titles can include branding and merchandising text; reject only when
+        // they introduce substantially more unmatched semantic content than they share.
+        val excessiveUnmatchedContent = candidateOnlyTokens.size >= 3 &&
+            candidateOnlyTokens.size > sharedRequirementTokens * 2
+        val hasSomeIdentityEvidence = sharedRequirementTokens > 0
+
+        if (hasSomeIdentityEvidence && excessiveUnmatchedContent && requirementCoverage < 0.8) {
+            return returnMatch(requirementDisplayName, candidateProduct, RetailMatchCandidate(
+                candidateProduct, MatchType.INCOMPATIBLE, MatchConfidence.LOW, false,
+                "Product title adds substantial unmatched content and does not reliably describe the requested ingredient."
+            ))
         }
 
         // Distinct food guard: "Beans with Sausages" vs "Baked Beans"
