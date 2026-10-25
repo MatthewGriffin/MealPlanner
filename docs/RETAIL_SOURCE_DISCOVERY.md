@@ -6,7 +6,7 @@ This document records what the current website-backed integrations actually esta
 
 | Retailer | Live retrieval | Price evidence | Availability | Physical branch support |
 |---|---|---|---|---|
-| **ASDA** | Disabled pending a verified approved source | Cached/manual evidence only while disabled | Unknown unless explicit saved evidence exists | Not implemented |
+| **ASDA** | Live Algolia catalogue search enabled | Live online catalogue prices plus cached/manual fallback | Unknown unless explicit product-level evidence exists | Not implemented |
 | **Iceland** | Best-effort public website search HTML / JSON-LD with an experimental browser-config discovery path | Parsed catalogue offers are labelled online | Only explicit product-level source status; not branch stock | Not implemented; no branch-scoped offer ID |
 | **The Food Warehouse** | No independent live search | Cached/manual evidence only | Unknown unless explicit saved evidence exists | Not implemented |
 | **ALDI** | Public website search route `/results?q=...`, parsed from product JSON-LD when present | Retailer-general public catalogue price; may differ in store | Always UNKNOWN in this integration; no branch stock checker integration | Not implemented |
@@ -49,7 +49,7 @@ This is deliberately **not yet a verified full-catalogue integration**. The sour
 
 Live verification attempted on 2026-10-25 with `SAINSBURYS_LIVE_SMOKE_TEST=true ./gradlew :backend:test --tests '*RetailerLiveSmokeTest.sainsburysPublicCatalogueSearch'` failed because the public product-search request returned HTTP 403 (`SOURCE_UNAVAILABLE`). The test did not reach product parsing, so this is evidence of request rejection in that environment, not evidence of incompatible response markup. Do not try to bypass the restriction. Keep cached/manual fallback available and treat Sainsbury's live search as unverified until a permitted, stable response can be inspected.
 
-## ASDA: gated pending source verification
+## ASDA: live Algolia catalogue search
 
 The repository contains an experimental Algolia client and parser, but the endpoint is undocumented and requires a key whose provenance and permitted use have not been established. The adapter therefore does not invoke that client and reports MANUAL_AND_CACHED_ONLY. This is intentional: an endpoint being discoverable on a website is not by itself proof that automated use is permitted.
 
