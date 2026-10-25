@@ -109,15 +109,13 @@ class RetailProductMatcher(
         val meaningfulRequirementTokens = requirementTokens.toSet()
         val candidateOnlyTokens = candidateTokens.filterNot { it in meaningfulRequirementTokens }
         val sharedRequirementTokens = requirementTokens.count { it in candidateTokens }
-        val requirementCoverage = if (requirementTokens.isEmpty()) 0.0
-            else sharedRequirementTokens.toDouble() / requirementTokens.size
         // Long titles can include branding and merchandising text; reject only when
         // they introduce substantially more unmatched semantic content than they share.
         val excessiveUnmatchedContent = candidateOnlyTokens.size >= 3 &&
             candidateOnlyTokens.size > sharedRequirementTokens * 2
         val hasSomeIdentityEvidence = sharedRequirementTokens > 0
 
-        if (hasSomeIdentityEvidence && excessiveUnmatchedContent && requirementCoverage < 0.8) {
+        if (hasSomeIdentityEvidence && excessiveUnmatchedContent) {
             return returnMatch(requirementDisplayName, candidateProduct, RetailMatchCandidate(
                 candidateProduct, MatchType.INCOMPATIBLE, MatchConfidence.LOW, false,
                 "Product title adds substantial unmatched content and does not reliably describe the requested ingredient."
