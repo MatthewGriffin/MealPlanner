@@ -58,9 +58,14 @@ class ShoppingDomainServiceImpl @Inject constructor(
             }
         }
 
+        // Ingredient rows without a canonical ID still need to aggregate across meals.
+        // Using the meal-ingredient row ID here made every unresolved ingredient its own
+        // shopping-list line, even when several meals all required "garlic cloves".
         val groupedIngredients = mutableMapOf<String, MutableList<Pair<com.example.chatgpt_mealplanner.core.model.Meal, com.example.chatgpt_mealplanner.core.model.MealIngredient>>>()
         allIngredientsWithMeals.forEach { (meal, ing) ->
-            val key = ing.canonicalIngredientId ?: "UNRESOLVED_${ing.id}"
+            val canonicalId = ing.canonicalIngredientId?.trim()?.takeIf { it.isNotEmpty() }
+            val key = canonicalId?.let { "canonical:${it.lowercase()}" }
+                ?: "name:${normalizeIngredientGroupingName(ing.displayName)}"
             groupedIngredients.getOrPut(key) { mutableListOf() }.add(Pair(meal, ing))
         }
 
@@ -347,6 +352,23 @@ class ShoppingDomainServiceImpl @Inject constructor(
         inventoryDao.updateItem(updated)
         return DomainResult.Success(Unit)
     }
+
+    /**
+     * Stable fallback identity for ingredients that have not been assigned a canonical ID.
+     * This is deliberately generic: normalise harmless formatting and singular/plural
+     * differences, but keep meaningful words so distinct ingredients are not combined.
+     */
+    private fun normalizeIngredientGroupingName(name: String): String =
+        name.lowercase()
+            .trim()
+            .replace(Regex("[^a-z0-9]+"), " ")
+            .trim()
+            .replace(Regex("\\bcloves\\b"), "clove")
+            .replace(Regex("\\bpotatoes\\b"), "potato")
+            .replace(Regex("\\btomatoes\\b"), "tomato")
+            .replace(Regex("\\bonions\\b"), "onion")
+            .replace(Regex("\\beggs\\b"), "egg")
+            .replace(Regex("\\s+"), " ")
 
     private fun isLotMatchingRuleOrIngredient(lot: com.example.chatgpt_mealplanner.core.model.InventoryItem, canonicalId: String?): Boolean {
         if (lot.status == ItemStatus.DISCARDED || canonicalId == null) return false
