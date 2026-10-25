@@ -363,11 +363,6 @@ class ShoppingDomainServiceImpl @Inject constructor(
             .trim()
             .replace(Regex("[^a-z0-9]+"), " ")
             .trim()
-            .replace(Regex("\\bcloves\\b"), "clove")
-            .replace(Regex("\\bpotatoes\\b"), "potato")
-            .replace(Regex("\\btomatoes\\b"), "tomato")
-            .replace(Regex("\\bonions\\b"), "onion")
-            .replace(Regex("\\beggs\\b"), "egg")
             .replace(Regex("\\s+"), " ")
 
     private fun isLotMatchingRuleOrIngredient(lot: com.example.chatgpt_mealplanner.core.model.InventoryItem, canonicalId: String?): Boolean {
