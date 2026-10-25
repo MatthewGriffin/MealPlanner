@@ -308,4 +308,50 @@ class RetailProductMatcherTest {
         val match = matcher.evaluateMatch(null, "Tinned Tomatoes", product)
         assertTrue(match.isAutoBasketEligible)
     }
+
+    @Test
+    fun matcher_allPurposeFlour_matchesUKPlainFlour_butRejectsOtherFlourTypes() {
+        val matcher = RetailProductMatcher()
+        listOf("Plain Flour 1.5kg", "ASDA Plain Flour 1.5kg").forEachIndexed { index, name ->
+            val product = RetailProduct(RetailerId.ASDA, "plain_flour_$index", name, storageClass = RetailStorageClass.AMBIENT)
+            val match = matcher.evaluateMatch(null, "All purpose flour", product)
+            assertTrue(match.isAutoBasketEligible, "Expected '$name' to satisfy all-purpose flour")
+        }
+        listOf(
+            "Self Raising Flour 1.5kg",
+            "Strong White Bread Flour 1.5kg",
+            "Gluten Free Plain Flour",
+            "Wholemeal Flour"
+        ).forEachIndexed { index, name ->
+            val product = RetailProduct(RetailerId.ASDA, "other_flour_$index", name, storageClass = RetailStorageClass.AMBIENT)
+            val match = matcher.evaluateMatch(null, "All purpose flour", product)
+            assertFalse(match.isAutoBasketEligible, "Expected '$name' not to auto-match all-purpose flour")
+        }
+    }
+
+    @Test
+    fun matcher_dicedChicken_rejectsSeasonedOrCoatedPreparedChicken() {
+        val matcher = RetailProductMatcher()
+        val preparedNames = listOf(
+            "American Inspired Southern Fried Chicken",
+            "Southern Fried Chicken Breast Strips",
+            "Crispy Breaded Chicken Pieces",
+            "BBQ Chicken Chunks"
+        )
+        preparedNames.forEachIndexed { index, name ->
+            val product = RetailProduct(RetailerId.ASDA, "prepared_chicken_$index", name, canonicalIngredientId = "CHICKEN", storageClass = RetailStorageClass.FROZEN)
+            val match = matcher.evaluateMatch("CHICKEN", "Diced Chicken", product)
+            assertFalse(match.isAutoBasketEligible, "Expected '$name' not to match plain diced chicken")
+            assertEquals(MatchType.INCOMPATIBLE, match.matchType)
+        }
+    }
+
+    @Test
+    fun matcher_dicedChicken_acceptsPlainChickenProducts() {
+        val matcher = RetailProductMatcher()
+        listOf("Diced Chicken Breast 500g", "Chicken Breast Fillets 600g", "Fresh Chicken Breast").forEachIndexed { index, name ->
+            val product = RetailProduct(RetailerId.ASDA, "plain_chicken_$index", name, canonicalIngredientId = "CHICKEN", storageClass = RetailStorageClass.FRESH)
+            assertTrue(matcher.evaluateMatch("CHICKEN", "Diced Chicken", product).isAutoBasketEligible, "Expected '$name' to match plain diced chicken")
+        }
+    }
 }
