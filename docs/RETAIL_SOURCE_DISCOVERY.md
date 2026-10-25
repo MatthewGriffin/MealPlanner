@@ -47,6 +47,8 @@ The backend now exposes `GET /v1/retail/catalogue/sainsburys?page=1&pageSize=60`
 
 This is deliberately **not yet a verified full-catalogue integration**. The source endpoint is not a documented partner API and some automated clients may receive HTTP 403. The route and parser have fixture-level coverage only; a live crawl and full-catalogue completion test are still required before adding a Sainsbury's background cache importer or claiming full coverage. Prices are ONLINE and availability remains UNKNOWN regardless of generic `in_stock` fields.
 
+Live verification attempted on 2026-10-25 with `SAINSBURYS_LIVE_SMOKE_TEST=true ./gradlew :backend:test --tests '*RetailerLiveSmokeTest.sainsburysPublicCatalogueSearch'` failed because the public product-search request returned HTTP 403 (`SOURCE_UNAVAILABLE`). The test did not reach product parsing, so this is evidence of request rejection in that environment, not evidence of incompatible response markup. Do not try to bypass the restriction. Keep cached/manual fallback available and treat Sainsbury's live search as unverified until a permitted, stable response can be inspected.
+
 ## ASDA: gated pending source verification
 
 The repository contains an experimental Algolia client and parser, but the endpoint is undocumented and requires a key whose provenance and permitted use have not been established. The adapter therefore does not invoke that client and reports MANUAL_AND_CACHED_ONLY. This is intentional: an endpoint being discoverable on a website is not by itself proof that automated use is permitted.
