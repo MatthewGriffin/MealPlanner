@@ -356,7 +356,11 @@ class AiMealPlannerOrchestrator @Inject constructor(
         return when (providerResponse) {
             is AiProviderResponse.FinalResponse -> {
                 val finalRes = providerResponse as AiProviderResponse.FinalResponse
-                val responseIsMultiMealPlan = (finalRes.mealPlan?.size ?: 0) > 1 || isMultiMealResponse(finalRes.text)
+                val retailProductSearchOnly = isRetailProductSearchOnlyRequest(userMessageText)
+                // A retailer lookup is not permission to generate a menu. Treat any structured
+                // plan returned on a product-only turn as ineligible for the meal-plan UI.
+                val responseIsMultiMealPlan = retailProductSearchOnly ||
+                        (finalRes.mealPlan?.size ?: 0) > 1 || isMultiMealResponse(finalRes.text)
                 var validatedProposal = if (responseIsMultiMealPlan) {
                     null
                 } else {
@@ -502,8 +506,8 @@ class AiMealPlannerOrchestrator @Inject constructor(
                 AiOrchestrationResult.Final(
                     assistantText = textToReturn,
                     validatedProposal = validatedProposal,
-                    mealPlan = finalRes.mealPlan,
-                    proposedAction = if (isMealPlanRequest(userMessageText) || finalRes.mealPlan != null) {
+                    mealPlan = if (retailProductSearchOnly) null else finalRes.mealPlan,
+                    proposedAction = if (retailProductSearchOnly || isMealPlanRequest(userMessageText) || finalRes.mealPlan != null) {
                         null
                     } else if (hasValidOfferAwaiting) {
                         com.example.chatgpt_mealplanner.contract.AiProposedAction.SaveMeal(
@@ -897,6 +901,20 @@ class AiMealPlannerOrchestrator @Inject constructor(
         return cleaned
     }
 
+    private fun isRetailProductSearchOnlyRequest(userMessageText: String): Boolean {
+        val lower = userMessageText.lowercase().replace(Regex("[’‘]"), "'")
+        val asksForRetailLookup = listOf("search", "look up", "lookup", "find", "show me", "list", "compare")
+            .any(lower::contains) &&
+            listOf("asda", "supermarket", "retailer", "product", "price", "prices", "milk", "bread", "eggs", "cheapest")
+                .any(lower::contains)
+        val asksForMealPlanning = listOf(
+            "meal plan", "weekly plan", "weekly menu", "menu for the week", "plan for the week",
+            "recipe", "recipes", "meal idea", "meal ideas", "what can i cook", "what can i make",
+            "suggest a meal", "suggest dinner", "suggest lunch", "suggest breakfast"
+        ).any(lower::contains)
+        return asksForRetailLookup && !asksForMealPlanning
+    }
+
     private fun isMealPlanRequest(userMessageText: String): Boolean {
         val lower = userMessageText.lowercase().replace(Regex("[’‘]"), "'")
         val mentionsPlan = lower.contains("meal plan") ||
@@ -989,6 +1007,11 @@ class AiMealPlannerOrchestrator @Inject constructor(
     private val SYSTEM_PROMPT = """
         You are Pantry Planner AI, an expert household meal planning and inventory assistant.
         Database is authoritative. Use tools for dynamic queries. Household size default is 2.
+
+        INTENT SEPARATION — IMPORTANT:
+        1. If the user only asks to search, find, compare, or check supermarket products, prices, pack sizes, or promotions, perform the requested retail lookup and answer with those results only.
+        2. A product lookup is NOT a request for a recipe or meal plan. Do not add a recipe, menu, or structured MEAL_PLAN_JSON unless the user explicitly asks for meal ideas, a recipe, or meal planning in the same message.
+        3. Only return a structured multi-meal plan when the user explicitly requests a plan or multiple meals. Do not infer that request from prior conversation context.
 
         UK LOCALISATION MANDATE:
         1. Always use UK English spelling and UK grocery terminology (e.g. 'tinned tomatoes' instead of 'canned tomatoes', 'aubergine', 'courgette', 'coriander', 'spring onion', 'icing sugar').
