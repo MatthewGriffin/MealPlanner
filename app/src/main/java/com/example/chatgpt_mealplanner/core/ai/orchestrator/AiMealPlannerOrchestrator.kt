@@ -915,8 +915,19 @@ class AiMealPlannerOrchestrator @Inject constructor(
         return cleaned
     }
 
+    /**
+     * Negative instructions about what not to generate are constraints, not user intent.
+     * For example, "search ASDA for milk; do not generate a recipe or meal plan" must
+     * remain a retailer lookup and must not disable the retail-search tool.
+     */
+    private fun intentTextWithoutNegatedGenerationInstructions(userMessageText: String): String =
+        userMessageText
+            .replace(Regex("(?i)\\b(?:do not|don't|dont|never|avoid)\\s+(?:generate|create|make|include|produce|write)\\b[^.!?\\n]{0,120}"), "")
+            .lowercase()
+            .replace(Regex("[’‘]"), "'")
+
     private fun isRetailProductSearchOnlyRequest(userMessageText: String): Boolean {
-        val lower = userMessageText.lowercase().replace(Regex("[’‘]"), "'")
+        val lower = intentTextWithoutNegatedGenerationInstructions(userMessageText)
         val asksForRetailLookup = listOf("search", "look up", "lookup", "find", "show me", "list", "compare")
             .any(lower::contains) &&
             listOf("asda", "supermarket", "retailer", "product", "price", "prices", "milk", "bread", "eggs", "cheapest")
@@ -930,7 +941,7 @@ class AiMealPlannerOrchestrator @Inject constructor(
     }
 
     private fun isMealPlanRequest(userMessageText: String): Boolean {
-        val lower = userMessageText.lowercase().replace(Regex("[’‘]"), "'")
+        val lower = intentTextWithoutNegatedGenerationInstructions(userMessageText)
         val mentionsPlan = lower.contains("meal plan") ||
                 lower.contains("weekly plan") ||
                 lower.contains("weekly menu") ||
