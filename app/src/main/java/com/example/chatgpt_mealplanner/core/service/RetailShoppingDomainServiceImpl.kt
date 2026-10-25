@@ -17,6 +17,7 @@ import com.example.chatgpt_mealplanner.retail.contract.PriceFreshness
 import com.example.chatgpt_mealplanner.retail.contract.RetailFreshnessPolicy
 import com.example.chatgpt_mealplanner.retail.contract.RetailProductSearchResult
 import com.example.chatgpt_mealplanner.retail.contract.RetailProductWithOffer
+import com.example.chatgpt_mealplanner.retail.contract.RetailAvailability
 import com.example.chatgpt_mealplanner.retail.contract.RetailerId
 import com.example.chatgpt_mealplanner.retail.contract.UserShoppingPreferences
 import com.example.chatgpt_mealplanner.retail.engine.BasketOptimizer
@@ -385,19 +386,24 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
         fun matchingCandidates(products: List<RetailProductWithOffer>): List<RetailProductWithOffer> =
             products.filter { candidate ->
                 (retailerFilter == null || candidate.product.retailerId == retailerFilter) &&
-                    candidate.offer.availability.name != "OUT_OF_STOCK" &&
+                    candidate.offer.availability != RetailAvailability.OUT_OF_STOCK &&
                     matcher.evaluateMatch(requirement.canonicalIngredientId, requirement.displayName, candidate.product)
                         .isAutoBasketEligible
             }
 
         var matches = matchingCandidates(candidateProducts)
-        // Search when this ingredient has no valid cached match, even if another
-        // retailer (commonly ASDA) has products in the cache.
-        if (matches.isEmpty()) {
-            fetchAndCacheLiveProducts(listOf(requirement.displayName), retailerFilter)
-            candidateProducts = retailRepository.getCandidateProductsWithOffers()
-            matches = matchingCandidates(candidateProducts)
+        // A cached match at one retailer must not hide alternatives at the others.
+        // Fill retailer gaps independently, then rebuild the comparison from the cache.
+        val retailersToCheck = retailerFilter?.let { listOf(it) } ?: listOf(
+            RetailerId.ASDA, RetailerId.ICELAND, RetailerId.ALDI, RetailerId.TESCO,
+            RetailerId.MORRISONS, RetailerId.SAINSBURYS, RetailerId.LIDL
+        )
+        val retailersAlreadyMatched = matches.map { it.product.retailerId }.toSet()
+        for (store in retailersToCheck.filter { it !in retailersAlreadyMatched }) {
+            fetchAndCacheLiveProducts(listOf(requirement.displayName), store)
         }
+        candidateProducts = retailRepository.getCandidateProductsWithOffers()
+        matches = matchingCandidates(candidateProducts)
 
         val alternatives = PackSelectionEngine().generatePackAlternatives(
             requiredQuantity = requiredQuantity,
