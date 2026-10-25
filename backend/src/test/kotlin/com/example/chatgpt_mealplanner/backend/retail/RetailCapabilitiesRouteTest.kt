@@ -11,7 +11,6 @@ import io.ktor.server.testing.testApplication
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
 
 class RetailCapabilitiesRouteTest {
 
@@ -31,9 +30,11 @@ class RetailCapabilitiesRouteTest {
         assertEquals(RetailerCapabilityMode.LIVE_SEARCH_AVAILABLE, icelandCap.mode)
 
         val asdaCap = capsRes.capabilities.first { it.retailerId == RetailerId.ASDA }
-        assertEquals(RetailerCapabilityMode.MANUAL_AND_CACHED_ONLY, asdaCap.mode)
-        assertEquals(false, asdaCap.searchSupported)
-        assertEquals(false, asdaCap.livePriceSupported)
+        assertEquals(RetailerCapabilityMode.LIVE_SEARCH_AVAILABLE, asdaCap.mode)
+        assertEquals(true, asdaCap.searchSupported)
+        assertEquals(true, asdaCap.livePriceSupported)
+        assertEquals(false, asdaCap.availabilitySupported)
+        assertEquals(true, asdaCap.promotionsSupported)
 
         val fwCap = capsRes.capabilities.first { it.retailerId == RetailerId.FOOD_WAREHOUSE }
         assertEquals(RetailerCapabilityMode.SHARED_CATALOGUE_WITH_ICELAND, fwCap.mode)
