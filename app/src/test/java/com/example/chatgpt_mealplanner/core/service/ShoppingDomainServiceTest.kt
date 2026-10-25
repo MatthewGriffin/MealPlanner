@@ -287,6 +287,30 @@ class ShoppingDomainServiceTest {
         assertEquals("Fresh Milk", manualItems.first().item.displayName)
     }
 
+    @Test
+    fun unresolvedSameNamedIngredientsAcrossMeals_areCombinedIntoOneShoppingRequirement() = runTest {
+        val firstMeal = createMealEntity("meal_garlic_1", "2099-01-01", MealStatus.PLANNED)
+        val secondMeal = createMealEntity("meal_garlic_2", "2099-01-02", MealStatus.PLANNED)
+        mealDao.insertMeal(firstMeal)
+        mealDao.insertMeal(secondMeal)
+        mealDao.insertMealIngredients(
+            listOf(
+                createMealIngredientEntity("ingredient_garlic_1", firstMeal.id, "", "Garlic cloves", 2.0, QuantityUnit.UNIT)
+                    .copy(canonicalIngredientId = null),
+                createMealIngredientEntity("ingredient_garlic_2", secondMeal.id, "", " garlic   cloves ", 3.0, QuantityUnit.UNIT)
+                    .copy(canonicalIngredientId = null)
+            )
+        )
+
+        val result = service.calculateShoppingRequirements(null, null)
+        assertTrue(result is DomainResult.Success)
+        val items = (result as DomainResult.Success).value
+
+        assertEquals("Repeated unresolved ingredient names should produce one line", 1, items.size)
+        assertEquals(5.0, items.single().item.requiredQuantity!!, 0.001)
+        assertEquals(2, items.single().sources.size)
+    }
+
     private fun createLot(id: String, canonicalId: String, name: String, qty: Double, unit: QuantityUnit) = InventoryItemEntity(
         id = id,
         barcode = null,
