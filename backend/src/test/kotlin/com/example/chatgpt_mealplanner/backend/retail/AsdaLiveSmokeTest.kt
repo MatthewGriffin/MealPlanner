@@ -44,10 +44,10 @@ class AsdaLiveSmokeTest {
             assertTrue(products.isNotEmpty(), "ASDA returned no parsed priced products")
             assertTrue(products.all { it.product.retailerId == RetailerId.ASDA })
             assertTrue(products.all { it.offer.retailerId == RetailerId.ASDA })
-            assertTrue(products.all { it.offer.price.minorUnits > 0L }, "ASDA returned a non-positive price")
+            assertTrue(products.all { it.offer.price.amountMinor > 0L }, "ASDA returned a non-positive price")
             assertTrue(products.all { it.offer.sourceType == RetailOfferSourceType.LIVE })
-            assertEquals(1, products.map { it.offer.price.currency }.distinct().size)
-            assertEquals("GBP", products.first().offer.price.currency)
+            assertEquals(1, products.map { it.offer.price.currencyCode }.distinct().size)
+            assertEquals("GBP", products.first().offer.price.currencyCode)
             println("ASDA live smoke test: parsedPricedProducts=${products.size}")
         } finally {
             httpClient.close()
