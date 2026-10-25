@@ -541,8 +541,10 @@ class AiToolDispatcher @Inject constructor(
     private suspend fun handleSearchRetailProducts(argsJson: String): DomainResult<AiToolPayload> {
         val query = extractStringArg(argsJson, "query")
             ?: return DomainResult.Failure(DomainError.InvalidQuantity(0.0))
+        val retailerFilter = extractStringArg(argsJson, "retailerFilter")
+            ?.let { value -> runCatching { RetailerId.valueOf(value.trim().uppercase()) }.getOrNull() }
 
-        val result = retailShoppingDomainService.searchProducts(query)
+        val result = retailShoppingDomainService.searchProducts(query, retailerFilter)
 
         return when (result) {
             is DomainResult.Success -> {
