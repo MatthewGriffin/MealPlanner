@@ -176,8 +176,10 @@ class AiMealPlannerOrchestrator @Inject constructor(
             // Keep recipe-offer tools out so the first meal cannot become an accidental Save meal card.
             availableTools = AiToolId.entries.filter { tool ->
                 if (!isMealPlanRequest(userMessageText)) {
-                    tool != AiToolId.OFFER_ADD_PLANNED_MEAL &&
-                        tool != AiToolId.REGENERATE_SHOPPING_LIST
+                    // Single-recipe requests need this tool so the model can return a
+                    // complete, confirmable recipe offer. Meal-plan requests use the
+                    // separate menu-level flow below and intentionally exclude it.
+                    tool != AiToolId.REGENERATE_SHOPPING_LIST
                 } else {
                     // Meal-plan generation should not wait on retailer catalogue/network lookups.
                     // Retailer matching happens later when the user expands a selected meal.
