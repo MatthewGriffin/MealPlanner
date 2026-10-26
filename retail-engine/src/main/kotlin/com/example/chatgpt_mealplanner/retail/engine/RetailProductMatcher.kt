@@ -132,9 +132,9 @@ class RetailProductMatcher(
             .replace(Regex("\\s*\\(optional\\)\\s*$"), "")
             // Remove unnecessary preparation wording from common grocery staples.
             // These are naming normalizations, not product-specific exceptions.
-            .replace(Regex("\\b(?:coarsely|finely)\\s+ground\\s+(?=black pepper\\b)"), "")
+            .replace(Regex("\\b(?:coarsely|coarsley|finely)\\s+ground\\s+(?=black pepper\\b)"), "")
             .replace(Regex("\\bground\\s+(?=black pepper\\b)"), "")
-            .replace(Regex("\\bkernels?\\b(?=\\s*$)"), "")
+            .replace(Regex("\\bkernel(?:s)?|kernal(?:s)?\\b(?=\\s*$)"), "")
             .replace(Regex("\\bwhite\\s+(?=cheddar\\b)"), "")
             .replace(Regex("\\s+"), " ")
             .trim()
