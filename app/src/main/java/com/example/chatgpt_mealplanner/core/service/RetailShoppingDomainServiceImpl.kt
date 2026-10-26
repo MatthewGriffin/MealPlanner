@@ -407,31 +407,53 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
         candidateProducts = retailRepository.getCandidateProductsWithOffers()
         matches = matchingCandidates(candidateProducts)
 
-        val alternatives = PackSelectionEngine().generatePackAlternatives(
-            requiredQuantity = requiredQuantity,
-            requiredUnit = requiredUnit,
-            candidateMatches = matches
+        // Produce one result per retailer. Generate pack choices separately so a
+        // retailer with many cached products cannot consume another retailer's slots.
+        val confidenceRank = mapOf(
+            com.example.chatgpt_mealplanner.retail.contract.MatchConfidence.EXACT to 0,
+            com.example.chatgpt_mealplanner.retail.contract.MatchConfidence.HIGH to 1,
+            com.example.chatgpt_mealplanner.retail.contract.MatchConfidence.MEDIUM to 2,
+            com.example.chatgpt_mealplanner.retail.contract.MatchConfidence.LOW to 3,
+            com.example.chatgpt_mealplanner.retail.contract.MatchConfidence.REQUIRES_CONFIRMATION to 4
         )
-
-        // Keep the comparison representative across retailers. A global take(10)
-        // lets one retailer with many pack variants (often ASDA) crowd every other
-        // store out of the result. The contract promises up to five options per retailer.
-        val alternativesPerRetailer = alternatives
-            .groupBy { it.productWithOffer.product.retailerId }
-            .values
-            .flatMap { retailerAlternatives ->
-                retailerAlternatives
-                    .sortedBy { it.totalCost.amountMinor }
-                    .take(5)
+        val alternativesByRetailer = matches
+            .groupBy { it.product.retailerId }
+            .mapNotNull { (retailerId, retailerMatches) ->
+                val rankedMatches = retailerMatches.sortedBy { candidate ->
+                    val match = matcher.evaluateMatch(
+                        requirement.canonicalIngredientId,
+                        requirement.displayName,
+                        candidate.product
+                    )
+                    confidenceRank[match.confidence] ?: Int.MAX_VALUE
+                }
+                val retailerAlternatives = PackSelectionEngine().generatePackAlternatives(
+                    requiredQuantity = requiredQuantity,
+                    requiredUnit = requiredUnit,
+                    candidateMatches = rankedMatches
+                )
+                retailerAlternatives.minWithOrNull(
+                    compareBy<PackAlternative> { alternative ->
+                        val match = matcher.evaluateMatch(
+                            requirement.canonicalIngredientId,
+                            requirement.displayName,
+                            alternative.productWithOffer.product
+                        )
+                        confidenceRank[match.confidence] ?: Int.MAX_VALUE
+                    }.thenBy { it.totalCost.amountMinor }
+                     .thenBy { it.expectedRemainder }
+                )?.let { retailerId to it }
             }
-            .sortedBy { it.totalCost.amountMinor }
+            .sortedBy { it.first.name }
+            .map { it.second }
 
         safeLog(
             "[RETAIL_ITEM_OPTIONS_SUMMARY] requirement=${requirement.displayName} " +
                 "candidateCount=${candidateProducts.size} matchedCount=${matches.size} " +
-                "alternativeCount=${alternatives.size} byRetailer=${alternativesPerRetailer.groupingBy { it.productWithOffer.product.retailerId.name }.eachCount()}"
+                "retailerResults=${alternativesByRetailer.size} " +
+                "retailers=${alternativesByRetailer.map { it.productWithOffer.product.retailerId.name }}"
         )
-        return DomainResult.Success(alternativesPerRetailer)
+        return DomainResult.Success(alternativesByRetailer)
     }
 
     override suspend fun searchProducts(
