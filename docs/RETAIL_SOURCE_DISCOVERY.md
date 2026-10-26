@@ -85,6 +85,10 @@ Never manufacture a branch ID from a name, postcode, store format, or local UUID
 
 The shared structured-data parser now accepts JSON-LD product records expressed as a single object, an array, an `@graph`, or an `ItemList` with wrapped products. Repeated records with the same retailer product ID are deduplicated. Decimal prices are converted to minor currency units using decimal arithmetic and half-up rounding, avoiding floating-point truncation (for example, £1.99 becoming 199 pence). Fixture tests cover these cases, but the tests still need to be executed in the project build.
 
+## UI follow-up: branch-stock uncertainty message
+
+The shopping UI currently shows a message such as `Retailer price estimate · branch stock not confirmed`. Continue investigating permitted, reliable branch-stock sources for the supported retailers. **If no retailer can provide verified stock for the user's selected branch, remove the “branch stock not confirmed” message from the shopping UI** rather than displaying a permanent warning for a capability the app cannot offer. Do not replace it with an implication that stock is confirmed; keep product/price scope accurate wherever it affects the comparison.
+
 ## Next technical step
 
 Run the complete Android/backend build and tests, then verify each public search route against live HTML and save representative sanitized fixtures. Investigate branch-specific stock separately; where an official checker is interactive and no supported endpoint is available, retain UNKNOWN rather than reverse-engineering private endpoints or inferring stock. For every retailer, retain retailer-wide results as a fallback when branch-level evidence is unavailable, and keep the scope and freshness explicit. Do not turn unknown availability into in-stock.
