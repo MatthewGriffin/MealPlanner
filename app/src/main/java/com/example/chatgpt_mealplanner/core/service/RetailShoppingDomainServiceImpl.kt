@@ -384,41 +384,17 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
         val requiredUnit = (requirement.suggestedPurchaseUnit ?: requirement.requiredUnit ?: QuantityUnit.UNIT).name
         val matcher = RetailProductMatcher(retailRepository.getProductMappings())
 
-        var candidateProducts = retailRepository.getCandidateProductsWithOffers()
-        fun matchingCandidates(products: List<RetailProductWithOffer>): List<RetailProductWithOffer> =
-            products.filter { candidate ->
-                (retailerFilter == null || candidate.product.retailerId == retailerFilter) &&
-                    candidate.offer.availability != RetailAvailability.OUT_OF_STOCK &&
-                    matcher.evaluateMatch(requirement.canonicalIngredientId, requirement.displayName, candidate.product)
-                        .isAutoBasketEligible
-            }
-
-        var matches = matchingCandidates(candidateProducts)
-        // A cached match at one retailer must not hide alternatives at the others.
-        // Fill retailer gaps independently, then rebuild the comparison from the cache.
-        val retailersToCheck = retailerFilter?.let { listOf(it) } ?: listOf(
-            RetailerId.ASDA, RetailerId.ICELAND, RetailerId.ALDI, RetailerId.TESCO,
-            RetailerId.MORRISONS, RetailerId.SAINSBURYS, RetailerId.LIDL
-        )
-        // Search each eligible retailer even when its cache already contains a
-        // broad match. A cached breast fillet must not prevent a live search for the
-        // explicitly requested diced chicken, and stale generic results must not hide
-        // better store-specific wording.
-        val normalizedSearchTerm = requirement.displayName
-            .replace(Regex("\\b(?:coarsely|coarsley|finely)\\s+ground\\s+(?=black pepper\\b)", RegexOption.IGNORE_CASE), "")
-            .replace(Regex("\\bground\\s+(?=black pepper\\b)", RegexOption.IGNORE_CASE), "")
-            .replace(Regex("\\b(?:kernel|kernels|kernal|kernals)\\b(?=\\s*$)", RegexOption.IGNORE_CASE), "")
-            .replace(Regex("\\bwhite\\s+(?=cheddar\\b)", RegexOption.IGNORE_CASE), "")
-            .replace(Regex("\\s+"), " ")
-            .trim()
-        val liveSearchTerms = listOf(normalizedSearchTerm, requirement.displayName)
-            .filter { it.isNotBlank() }
-            .distinct()
-        for (store in retailersToCheck) {
-            fetchAndCacheLiveProducts(liveSearchTerms, store)
+        // Item details consume the same persisted product/offer cache populated by
+        // basket optimisation. Do not issue a second set of retailer searches here:
+        // that duplicates network work and can produce a different result set from
+        // the search that the basket was built from.
+        val candidateProducts = retailRepository.getCandidateProductsWithOffers()
+        val matches = candidateProducts.filter { candidate ->
+            (retailerFilter == null || candidate.product.retailerId == retailerFilter) &&
+                candidate.offer.availability != RetailAvailability.OUT_OF_STOCK &&
+                matcher.evaluateMatch(requirement.canonicalIngredientId, requirement.displayName, candidate.product)
+                    .isAutoBasketEligible
         }
-        candidateProducts = retailRepository.getCandidateProductsWithOffers()
-        matches = matchingCandidates(candidateProducts)
 
         // Produce one result per retailer. Generate pack choices separately so a
         // retailer with many cached products cannot consume another retailer's slots.
