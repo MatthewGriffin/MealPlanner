@@ -86,14 +86,32 @@ class RetailProductMatcher(
             ) attributes += "bone-in"
             return attributes
         }
+        // Product feeds often put the useful form/category in metadata rather than
+        // the display title (e.g. a title like "Succulent Large Chicken"). Evaluate all
+        // available descriptive fields instead of relying on one retailer's wording.
         val requirementFormAttributes = formAttributes(requirementDisplayName)
-        val candidateFormAttributes = formAttributes(candidateProduct.name)
+        val candidateDescription = listOfNotNull(
+            candidateProduct.name,
+            candidateProduct.category,
+            candidateProduct.packageType
+        ).joinToString(" ")
+        val candidateFormAttributes = formAttributes(candidateDescription)
+        val wantsPreparedPieces = Regex("\\b(diced|chopped|cubed|cut into pieces|strips)\\b")
+            .containsMatchIn(requirementDisplayName.lowercase())
+        val candidateIsOnlyGenericWholeItem =
+            wantsPreparedPieces &&
+            candidateFormAttributes.isEmpty() &&
+            Regex("\\b(chicken|turkey|duck|goose|pork|lamb|beef|fish)\\b")
+                .containsMatchIn(normalizedProductName) &&
+            !Regex("\\b(breast|fillet|thigh|steak|chop|mince|strips|pieces|chunks|portion|boneless)\\b")
+                .containsMatchIn(normalizedProductName)
         val incompatiblePhysicalForm =
             (candidateFormAttributes.contains("whole") && "whole" !in requirementFormAttributes) ||
             (candidateFormAttributes.contains("carcass") && "carcass" !in requirementFormAttributes) ||
             (candidateFormAttributes.contains("bone-in") &&
                 "bone-in" !in requirementFormAttributes &&
-                "boneless" !in requirementFormAttributes)
+                "boneless" !in requirementFormAttributes) ||
+            candidateIsOnlyGenericWholeItem
         if (incompatiblePhysicalForm) {
             return returnMatch(requirementDisplayName, candidateProduct, RetailMatchCandidate(
                 candidateProduct, MatchType.INCOMPATIBLE, MatchConfidence.LOW, false,
@@ -295,15 +313,24 @@ class RetailProductMatcher(
         val wantsPlainFlour = normalizedFlourRequirement == setOf("plain", "flour") ||
             normalizedFlourRequirement == setOf("all", "purpose", "flour")
         if (wantsPlainFlour) {
-            val candidateFlourTerms = normalizeFoodTerms(nameLower).toSet()
-            val incompatibleFlourType = listOf(
-                "self raising", "self raising flour", "strong", "bread", "wholemeal",
-                "whole wheat", "gluten free", "gluten-free", "raising", "cake"
-            ).any { phrase ->
-                nameLower.replace(Regex("[^a-z0-9]+"), " ").contains(phrase)
-            }
+            // Normalise punctuation before checking aliases, so retailer titles such as
+            // "All-Purpose Flour" and "All Purpose Flour" are treated identically.
+            val candidateNormalizedForFlour = nameLower
+                .replace(Regex("\\ball[- ]?purpose\\b"), "plain")
+                .replace(Regex("[^a-z0-9]+"), " ")
+                .trim()
+            val candidateFlourTerms = candidateNormalizedForFlour.split(Regex("\\s+")).toSet()
+            val incompatibleFlourType =
+                (("self" in candidateFlourTerms && "raising" in candidateFlourTerms) ||
+                    "strong" in candidateFlourTerms ||
+                    "bread" in candidateFlourTerms ||
+                    "wholemeal" in candidateFlourTerms ||
+                    ("whole" in candidateFlourTerms && "wheat" in candidateFlourTerms) ||
+                    ("gluten" in candidateFlourTerms && "free" in candidateFlourTerms) ||
+                    "cake" in candidateFlourTerms ||
+                    "raising" in candidateFlourTerms)
             val isPlainFlour = "flour" in candidateFlourTerms &&
-                ("plain" in candidateFlourTerms || "all purpose" in nameLower || "all-purpose" in nameLower)
+                !incompatibleFlourType
             if (incompatibleFlourType || !isPlainFlour) {
                 return returnMatch(requirementDisplayName, candidateProduct, RetailMatchCandidate(
                     candidateProduct, MatchType.INCOMPATIBLE, MatchConfidence.LOW, false,
