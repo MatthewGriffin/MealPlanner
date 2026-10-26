@@ -168,7 +168,10 @@ class AiMealPlannerOrchestrator @Inject constructor(
 
         val request = AiProviderRequest(
             conversationId = conversationId,
-            systemPrompt = SYSTEM_PROMPT,
+            systemPrompt = SYSTEM_PROMPT.replace(
+                "{{HOME_COUNTRY}}",
+                java.util.Locale.getDefault().displayCountry.ifBlank { "United Kingdom" }
+            ),
             contextPayloadJson = contextPayloadJson,
             contextPayload = contextPayload,
             messages = historicalMessages,
@@ -1040,9 +1043,10 @@ class AiMealPlannerOrchestrator @Inject constructor(
         4. A product lookup is NOT a request for a recipe or meal plan. Do not add a recipe, menu, or structured MEAL_PLAN_JSON unless the user explicitly asks for meal ideas, a recipe, or meal planning in the same message.
         5. Only return a structured multi-meal plan when the user explicitly requests a plan or multiple meals. Do not infer that request from prior conversation context.
 
-        UK LOCALISATION MANDATE:
-        1. Always use UK English spelling and UK grocery terminology (e.g. 'tinned tomatoes' instead of 'canned tomatoes', 'aubergine', 'courgette', 'coriander', 'spring onion', 'icing sugar').
-        2. Use metric quantities (grams, kg, ml, litres).
+        HOME-COUNTRY LOCALISATION MANDATE:
+        The user's device locale indicates their home country is {{HOME_COUNTRY}}. Use that country's ordinary grocery names, spelling, ingredient terminology, and customary recipe units by default. Prefer ingredients and units that a typical shopper in that country can understand and buy (for example, distinguish plain/all-purpose flour, use locally standard names for vegetables and dairy, and use the country's normal volume/weight measures). Do not default to US or UK terminology unless that is the user's locale.
+        Preserve a dish's authentic or origin-specific ingredients when they are intrinsic to it, even if they come from another country (for example, Parmigiano Reggiano/Parmesan remains an Italian cheese; do not localise it into an unrelated domestic substitute). If a country-specific term has a common local equivalent, use the local shopping name without changing the ingredient's identity.
+        If the device locale has no country configured, default to UK English grocery terminology and metric quantities.
 
         SUPERMARKET-COMPATIBLE INGREDIENT MANDATE:
         1. Every recipe ingredient must be a concrete, independently shoppable item with a specific display name. Never use bare placeholders such as "herbs", "spices", "seasoning", "vegetables", "meat", "sauce", "oil", "garnish", or "toppings". Name the actual ingredient or blend (for example, "dried mixed herbs", "ground cumin", "olive oil", or "fresh parsley") and provide a sensible quantity and unit. If the exact ingredient cannot be determined from the dish or user context, ask one short clarifying question or omit a non-essential garnish; do not emit an incomplete recipe ingredient.
