@@ -118,6 +118,26 @@ class RecipeValidatorTest {
         assertTrue(result.warnings.any { it.contains("cooked 'Chicken Curry' within the last 14 days") })
     }
 
+    @Test
+    fun rejectsVagueHerbsIngredient_thatCannotBeAddedToShoppingList() = runTest {
+        val proposal = MealProposal(
+            title = "Pasta",
+            servings = 2,
+            batchPortions = 2,
+            immediatePortions = 2,
+            leftoverPortions = 0,
+            ingredients = listOf(
+                ProposedIngredient(null, "Herbs", 1.0, "TEASPOON"),
+                ProposedIngredient("TOMATO", "Chopped tomatoes", 400.0, "GRAM")
+            ),
+            reasoningSummary = "Test recipe"
+        )
+
+        val result = validator.validateProposal(proposal)
+
+        assertTrue(result.issues.any { it.contains("Herbs") && it.contains("too vague to shop for") })
+    }
+
     private fun createLot(id: String, canonicalId: String, name: String, qty: Double, unit: QuantityUnit) = InventoryItemEntity(
         id = id,
         barcode = null,
