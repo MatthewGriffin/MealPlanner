@@ -104,9 +104,10 @@ fun ShoppingItemDetailDialog(
                     (listOfNotNull(result.selectedPlan, result.bestSingleStorePlan, result.bestMultiStorePlan) + result.alternativePlans)
                         .distinctBy { it.planId }
                 }.orEmpty()
+                // Requirement IDs are unique. Name fallback can attach another
+                // same-named shopping row's price to this item.
                 fun isThisRequirement(line: com.example.chatgpt_mealplanner.retail.contract.BasketLine): Boolean =
-                    line.shoppingRequirementId == item.id ||
-                        line.requirementDisplayName.equals(item.displayName, ignoreCase = true)
+                    line.shoppingRequirementId == item.id
                 val selectedRetailers = basketComparisonResult?.selectedPlan?.lines
                     ?.filter(::isThisRequirement)?.map { it.retailerId }?.toSet().orEmpty()
                 val perStorePrices = comparisonPlans.flatMap { plan ->
