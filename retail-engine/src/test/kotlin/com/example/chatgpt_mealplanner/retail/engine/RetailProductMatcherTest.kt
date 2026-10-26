@@ -349,24 +349,26 @@ class RetailProductMatcherTest {
     }
 
     @Test
-    fun matcher_dicedChicken_rejectsWholeOrBoneInChicken_evenWithSharedCanonicalId() {
+    fun matcher_rejectsIncompatibleWholeOrBoneInPhysicalForms_acrossIngredients() {
         val matcher = RetailProductMatcher()
         listOf(
-            "Whole Chicken 1.7kg",
-            "Fresh Whole Roasting Chicken",
-            "Chicken Drumsticks 1kg",
-            "Bone-In Chicken Thighs 800g",
-            "Chicken Wings 1kg"
-        ).forEachIndexed { index, name ->
+            Triple("CHICKEN", "Diced Chicken", "Whole Chicken 1.7kg"),
+            Triple("CHICKEN", "Diced Chicken", "Fresh Whole Roasting Chicken"),
+            Triple("CHICKEN", "Diced Chicken", "Chicken Drumsticks 1kg"),
+            Triple("CHICKEN", "Diced Chicken", "Bone-In Chicken Thighs 800g"),
+            Triple("CHICKEN", "Diced Chicken", "Chicken Wings 1kg"),
+            Triple("PORK", "Diced Pork", "Whole Pork Shoulder 1.7kg"),
+            Triple("PORK", "Diced Pork", "Bone-In Pork Chops 800g")
+        ).forEachIndexed { index, (canonicalId, requirement, name) ->
             val product = RetailProduct(
                 RetailerId.ASDA,
-                "bone_in_chicken_$index",
+                "physical_form_$index",
                 name,
-                canonicalIngredientId = "CHICKEN",
+                canonicalIngredientId = canonicalId,
                 storageClass = RetailStorageClass.FRESH
             )
-            val match = matcher.evaluateMatch("CHICKEN", "Diced Chicken", product)
-            assertFalse(match.isAutoBasketEligible, "Expected '$name' not to satisfy a diced chicken requirement")
+            val match = matcher.evaluateMatch(canonicalId, requirement, product)
+            assertFalse(match.isAutoBasketEligible, "Expected '$name' not to satisfy '$requirement'")
             assertEquals(MatchType.INCOMPATIBLE, match.matchType)
         }
     }
