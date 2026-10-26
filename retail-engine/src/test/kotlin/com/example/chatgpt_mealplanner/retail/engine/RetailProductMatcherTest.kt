@@ -349,6 +349,29 @@ class RetailProductMatcherTest {
     }
 
     @Test
+    fun matcher_dicedChicken_rejectsWholeOrBoneInChicken_evenWithSharedCanonicalId() {
+        val matcher = RetailProductMatcher()
+        listOf(
+            "Whole Chicken 1.7kg",
+            "Fresh Whole Roasting Chicken",
+            "Chicken Drumsticks 1kg",
+            "Bone-In Chicken Thighs 800g",
+            "Chicken Wings 1kg"
+        ).forEachIndexed { index, name ->
+            val product = RetailProduct(
+                RetailerId.ASDA,
+                "bone_in_chicken_$index",
+                name,
+                canonicalIngredientId = "CHICKEN",
+                storageClass = RetailStorageClass.FRESH
+            )
+            val match = matcher.evaluateMatch("CHICKEN", "Diced Chicken", product)
+            assertFalse(match.isAutoBasketEligible, "Expected '$name' not to satisfy a diced chicken requirement")
+            assertEquals(MatchType.INCOMPATIBLE, match.matchType)
+        }
+    }
+
+    @Test
     fun matcher_dicedChicken_acceptsPlainChickenProducts() {
         val matcher = RetailProductMatcher()
         listOf("Diced Chicken Breast 500g", "Chicken Breast Fillets 600g", "Fresh Chicken Breast").forEachIndexed { index, name ->
