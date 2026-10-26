@@ -38,6 +38,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -65,6 +66,9 @@ fun ShoppingScreen(
         println("[AI_MEALPLANNER] [SHOPPING_SCREEN_ENTRY] buildAudit=SHOPPING_AUDIT_20261001_02")
     }
     val snackbarHostState = remember { SnackbarHostState() }
+    // Store sections start collapsed so large multi-store lists stay compact.
+    // State is keyed by retailer identity so expanding one section doesn't affect another.
+    val expandedRetailerGroups = remember { mutableStateMapOf<String, Boolean>() }
 
     LaunchedEffect(uiState.userMessage) {
         uiState.userMessage?.let { msg ->
@@ -276,11 +280,16 @@ fun ShoppingScreen(
                                     it.item.status == ShoppingItemStatus.CHECKED ||
                                         it.item.status == ShoppingItemStatus.PURCHASED_CONFIRMED
                                 }
-                                item(key = "header_${group.retailerName}") {
+                                val groupKey = group.retailerId?.name ?: group.retailerName
+                                val isExpanded = expandedRetailerGroups[groupKey] == true
+                                item(key = "header_${groupKey}") {
                                     Card(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(top = 8.dp, bottom = 2.dp),
+                                            .padding(top = 8.dp, bottom = 2.dp)
+                                            .clickable {
+                                                expandedRetailerGroups[groupKey] = !isExpanded
+                                            },
                                         colors = CardDefaults.cardColors(
                                             containerColor = MaterialTheme.colorScheme.secondaryContainer
                                         )
@@ -292,12 +301,28 @@ fun ShoppingScreen(
                                             horizontalArrangement = Arrangement.SpaceBetween,
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Text(
-                                                text = "${group.retailerName} · $groupCheckedCount/${group.items.size}",
-                                                style = MaterialTheme.typography.titleSmall,
-                                                fontWeight = FontWeight.Bold,
-                                                color = MaterialTheme.colorScheme.onSecondaryContainer
-                                            )
+                                            Row(
+                                                modifier = Modifier.weight(1f),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Icon(
+                                                    imageVector = if (isExpanded) Icons.Default.Delete else Icons.Default.Add,
+                                                    contentDescription = if (isExpanded) "Collapse ${group.retailerName}" else "Expand ${group.retailerName}"
+                                                )
+                                                Column(modifier = Modifier.padding(start = 8.dp)) {
+                                                    Text(
+                                                        text = "${group.retailerName} · $groupCheckedCount/${group.items.size}",
+                                                        style = MaterialTheme.typography.titleSmall,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                                                    )
+                                                    Text(
+                                                        text = if (isExpanded) "Tap to collapse" else "Tap to expand",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                                                    )
+                                                }
+                                            }
                                             if (group.subtotal != null) {
                                                 Text(
                                                     text = group.subtotal.toFormattedString(),
@@ -307,23 +332,27 @@ fun ShoppingScreen(
                                                 )
                                             }
                                         }
-                                        Text(
-                                            text = group.priceScopeNotice,
-                                            modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 8.dp),
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSecondaryContainer
-                                        )
+                                        if (isExpanded) {
+                                            Text(
+                                                text = group.priceScopeNotice,
+                                                modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 8.dp),
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                                            )
+                                        }
                                     }
                                 }
 
-                                items(group.items, key = { it.item.id }) { itemWithSources ->
-                                    ShoppingItemCard(
-                                        itemWithSources = itemWithSources,
-                                        basketLine = group.lineByItemId[itemWithSources.item.id],
-                                        onToggleChecked = { id, status -> onEvent(ShoppingUiEvent.ToggleItemChecked(id, status)) },
-                                        onRemove = { id -> onEvent(ShoppingUiEvent.RemoveItem(id)) },
-                                        onDetailClicked = { onEvent(ShoppingUiEvent.SelectItemDetail(itemWithSources)) }
-                                    )
+                                if (isExpanded) {
+                                    items(group.items, key = { it.item.id }) { itemWithSources ->
+                                        ShoppingItemCard(
+                                            itemWithSources = itemWithSources,
+                                            basketLine = group.lineByItemId[itemWithSources.item.id],
+                                            onToggleChecked = { id, status -> onEvent(ShoppingUiEvent.ToggleItemChecked(id, status)) },
+                                            onRemove = { id -> onEvent(ShoppingUiEvent.RemoveItem(id)) },
+                                            onDetailClicked = { onEvent(ShoppingUiEvent.SelectItemDetail(itemWithSources)) }
+                                        )
+                                    }
                                 }
                             }
                         }
