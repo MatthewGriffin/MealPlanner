@@ -277,17 +277,19 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
             // Publish a partial basket now, so the chosen store and matched product
             // appear item-by-item rather than waiting for every retailer search.
             val partialCandidates = retailRepository.getCandidateProductsWithOffers()
-            if (partialCandidates.isNotEmpty()) {
-                val partialPlan = BasketOptimizer(matcher).optimizeBasket(
-                    requirements = requirementSpecs.take(requirementIndex + 1),
-                    availableProductsWithOffers = PreferredBranchOfferSelector.select(
-                        partialCandidates,
-                        preferences.preferredStores
-                    ),
-                    preferences = preferences
-                )
-                onBasketUpdate(partialPlan)
-            }
+            // Publish a fresh partial result even when no products have matched yet.
+            // Otherwise the UI can keep showing an old estimate (or no estimate) for
+            // the entire duration of a slow lookup. The UI labels it as updating until
+            // the final complete basket result arrives.
+            val partialPlan = BasketOptimizer(matcher).optimizeBasket(
+                requirements = requirementSpecs.take(requirementIndex + 1),
+                availableProductsWithOffers = PreferredBranchOfferSelector.select(
+                    partialCandidates,
+                    preferences.preferredStores
+                ),
+                preferences = preferences
+            )
+            onBasketUpdate(partialPlan)
         }
 
         var candidateProducts = retailRepository.getCandidateProductsWithOffers()
