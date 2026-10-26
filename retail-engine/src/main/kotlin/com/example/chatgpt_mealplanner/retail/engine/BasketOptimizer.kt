@@ -150,7 +150,23 @@ class BasketOptimizer(
                     safeLog("[BASKET_UNASSIGNED] requirement=${req.displayName} quantity=${req.requiredQuantity} unit=${req.requiredUnit} reason=\"Essential requirement unassigned - out of stock or no matching candidates found\"")
                 }
             } else {
-                val candidateProducts = matchedCandidates.map { it.first }
+                // Product-form compatibility outranks price: diced chicken must beat
+                // breast fillets when the requirement explicitly asks for diced chicken.
+                // PackSelectionEngine sorts by price, so rank before its five-candidate cap
+                // and select the final alternative by match confidence before total cost.
+                val confidenceRank = mapOf(
+                    MatchConfidence.EXACT to 0,
+                    MatchConfidence.HIGH to 1,
+                    MatchConfidence.MEDIUM to 2,
+                    MatchConfidence.LOW to 3,
+                    MatchConfidence.REQUIRES_CONFIRMATION to 4
+                )
+                val rankedMatches = matchedCandidates.sortedWith(
+                    compareBy<Pair<RetailProductWithOffer, com.example.chatgpt_mealplanner.retail.contract.RetailMatchCandidate>> {
+                        confidenceRank[it.second.confidence] ?: Int.MAX_VALUE
+                    }.thenBy { it.first.offer.price.amountMinor }
+                )
+                val candidateProducts = rankedMatches.map { it.first }
                 val alternatives = packEngine.generatePackAlternatives(
                     requiredQuantity = req.requiredQuantity,
                     requiredUnit = req.requiredUnit,
@@ -158,9 +174,19 @@ class BasketOptimizer(
                     enableLoyalty = preferences.enableAsdaRewards || preferences.enableIcelandBonusCard
                 )
 
-                val bestAlt = alternatives.firstOrNull()
+                val matchByProductId = rankedMatches.associate {
+                    it.first.product.retailerProductId to it.second
+                }
+                val bestAlt = alternatives.minWithOrNull(
+                    compareBy<com.example.chatgpt_mealplanner.retail.contract.PackAlternative> {
+                        confidenceRank[matchByProductId[it.productWithOffer.product.retailerProductId]?.confidence]
+                            ?: Int.MAX_VALUE
+                    }.thenBy { it.totalCost.amountMinor }
+                     .thenBy { it.expectedRemainder }
+                )
                 if (bestAlt != null) {
-                    val matchMeta = matchedCandidates.first { it.first.product.retailerProductId == bestAlt.productWithOffer.product.retailerProductId }.second
+                    val matchMeta = matchByProductId[bestAlt.productWithOffer.product.retailerProductId]
+                        ?: matcher.evaluateMatch(req.canonicalIngredientId, req.displayName, bestAlt.productWithOffer.product)
 
                     val line = BasketLine(
                         shoppingRequirementId = req.id,
