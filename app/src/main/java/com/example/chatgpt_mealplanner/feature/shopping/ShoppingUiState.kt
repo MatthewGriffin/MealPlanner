@@ -10,6 +10,7 @@ import com.example.chatgpt_mealplanner.core.model.StapleRule
 import com.example.chatgpt_mealplanner.retail.contract.BasketComparisonResult
 import com.example.chatgpt_mealplanner.retail.contract.BasketLine
 import com.example.chatgpt_mealplanner.retail.contract.Money
+import com.example.chatgpt_mealplanner.retail.contract.PackAlternative
 import com.example.chatgpt_mealplanner.retail.contract.RetailerId
 
 enum class ShoppingTab(val displayName: String) {
@@ -34,6 +35,8 @@ data class ShoppingUiState(
     val isLoading: Boolean = false,
     val userMessage: String? = null,
     val selectedItemForDetail: ShoppingListItemWithSources? = null,
+    val selectedItemOptions: List<PackAlternative> = emptyList(),
+    val isLoadingItemOptions: Boolean = false,
     val showAddManualDialog: Boolean = false,
     val basketComparisonResult: BasketComparisonResult? = null,
     val retailLookupMessage: String? = null,
