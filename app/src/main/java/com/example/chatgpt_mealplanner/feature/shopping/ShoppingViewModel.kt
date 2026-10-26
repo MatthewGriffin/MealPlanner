@@ -91,7 +91,7 @@ class ShoppingViewModel @Inject constructor(
             val signature = "$requirementSignature|$enabledRetailers|$preferredStores"
             if (signature != lastBasketOptimizationSignature) {
                 lastBasketOptimizationSignature = signature
-                runBasketOptimization(listWithItems)
+                runBasketOptimization(listWithItems, enabledRetailers, preferredStores)
             }
         }
         .map { it.first }
@@ -156,7 +156,11 @@ class ShoppingViewModel @Inject constructor(
         initialValue = ShoppingUiState()
     )
 
-    private fun runBasketOptimization(listWithItems: ShoppingListWithItems?) {
+    private fun runBasketOptimization(
+        listWithItems: ShoppingListWithItems?,
+        configuredRetailers: Set<RetailerId>,
+        savedStores: List<com.example.chatgpt_mealplanner.retail.contract.RetailStoreLocation>
+    ) {
         if (appRoleResolver.isFollower()) {
             val version = ++basketOptimizationVersion
             basketOptimizationJob?.cancel()
@@ -186,13 +190,14 @@ class ShoppingViewModel @Inject constructor(
             var lookupProgressCount = 0
             println("[AI_MEALPLANNER] [SHOPPING_ASSIGNMENT_CALL] shoppingItemCount=$count")
             val result = try {
-                // A saved preferred branch is the user's explicit signal that this
-                // retailer should participate in basket comparisons. Avoid a separate,
-                // easy-to-forget retailer checkbox list.
-                // Iceland and The Food Warehouse share one comparison setting and
-                // catalogue. Normalize older saved Food Warehouse branch preferences in
-                // memory so they remain usable without rewriting local persisted data.
-                val preferredStores = retailStorePreferenceStore.getPreferredStores()
+                // Retailer enablement and branch selection are separate preferences:
+                // compare every enabled retailer even if the user has not saved a branch
+                // for it yet. Known branch IDs still constrain branch-scoped offers.
+                // Iceland and The Food Warehouse share one catalogue/comparison setting.
+                val enabledRetailerIds = configuredRetailers.map { retailerId ->
+                    if (retailerId == RetailerId.FOOD_WAREHOUSE) RetailerId.ICELAND else retailerId
+                }.toSet()
+                val preferredStores = savedStores
                     .filter { it.isPreferred }
                     .map { store ->
                         if (store.retailerId == RetailerId.FOOD_WAREHOUSE) {
@@ -203,7 +208,7 @@ class ShoppingViewModel @Inject constructor(
                         } else store
                     }
                 val preferences = UserShoppingPreferences(
-                    enabledRetailers = preferredStores.map { it.retailerId }.toSet(),
+                    enabledRetailers = enabledRetailerIds,
                     preferredStores = preferredStores
                 )
                 // Retail adapters can perform synchronous network and parsing work.
