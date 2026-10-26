@@ -187,9 +187,15 @@ fun ShoppingScreen(
                     val lookupInProgress = uiState.retailLookupMessage != null
                     if (plan != null || lookupInProgress) {
                         val matchedCount = plan?.lines?.size ?: 0
-                        val unmatchedCount = plan?.unmatchedRequirements?.size
-                            ?: (uiState.activeListWithItems?.items?.size ?: 0)
                         val totalReqs = uiState.activeListWithItems?.items?.size ?: 0
+                        // During a partial lookup, the plan contains only requirements
+                        // processed so far. Count the rest as not priced yet rather than
+                        // presenting the partial result as a complete basket estimate.
+                        val unmatchedCount = if (lookupInProgress) {
+                            (totalReqs - matchedCount).coerceAtLeast(0)
+                        } else {
+                            plan?.unmatchedRequirements?.size ?: totalReqs
+                        }
 
                         val totalFormatted = when {
                             plan == null -> "Calculating…"
