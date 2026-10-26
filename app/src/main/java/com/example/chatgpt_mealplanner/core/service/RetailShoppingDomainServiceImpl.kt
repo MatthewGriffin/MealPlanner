@@ -335,6 +335,9 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
         preferences: UserShoppingPreferences
     ): String {
         val parts = mutableListOf<String>()
+        // Invalidate persisted basket comparisons when product-matching semantics change.
+        // Otherwise an old cached plan can keep showing a rejected match after a matcher fix.
+        parts += "retail_matcher_rules_v2"
         requirements.sortedBy { it.id }.forEach { req ->
             parts += listOf(req.id, req.canonicalIngredientId.orEmpty(), req.displayName,
                 req.requiredQuantity.toString(), req.requiredUnit, req.priority).joinToString("") {
