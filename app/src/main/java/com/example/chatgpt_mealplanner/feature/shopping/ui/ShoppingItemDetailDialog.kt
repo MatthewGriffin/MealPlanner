@@ -111,7 +111,7 @@ fun ShoppingItemDetailDialog(
                     )
                 }
 
-                if (isLoadingRetailerOptions || retailerOptions.isNotEmpty()) {
+                run {
                     Spacer(modifier = Modifier.height(12.dp))
                     Text("Available products by store", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                     Text(
