@@ -35,6 +35,8 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 @HiltViewModel
@@ -204,22 +206,27 @@ class ShoppingViewModel @Inject constructor(
                     enabledRetailers = preferredStores.map { it.retailerId }.toSet(),
                     preferredStores = preferredStores
                 )
-                val res = retailShoppingDomainService.optimizeShoppingBasket(
-                    preferences,
-                    { message ->
-                        if (version == basketOptimizationVersion) {
-                            if (message.startsWith("Checking ")) {
-                                lookupProgressCount = (lookupProgressCount + 1).coerceAtMost(count)
+                // Retail adapters can perform synchronous network and parsing work.
+                // Keep the complete lookup/optimization pipeline off the main thread;
+                // StateFlow updates from the callbacks are thread-safe.
+                val res = withContext(Dispatchers.IO) {
+                    retailShoppingDomainService.optimizeShoppingBasket(
+                        preferences,
+                        { message ->
+                            if (version == basketOptimizationVersion) {
+                                if (message.startsWith("Checking ")) {
+                                    lookupProgressCount = (lookupProgressCount + 1).coerceAtMost(count)
+                                }
+                                retailLookupMessageFlow.value = "$lookupProgressCount/$count · $message"
                             }
-                            retailLookupMessageFlow.value = "$lookupProgressCount/$count · $message"
+                        },
+                        { partialResult ->
+                            if (version == basketOptimizationVersion) {
+                                basketOptimizationFlow.value = partialResult
+                            }
                         }
-                    },
-                    { partialResult ->
-                        if (version == basketOptimizationVersion) {
-                            basketOptimizationFlow.value = partialResult
-                        }
-                    }
-                )
+                    )
+                }
                 if (res is DomainResult.Success) {
                     res.value.selectedPlan.lines.forEach { line ->
                         println("[AI_MEALPLANNER] [SHOPPING_ASSIGNMENT_RESULT] requirementId=${line.shoppingRequirementId} assigned=true retailer=${line.retailerId.name}")
