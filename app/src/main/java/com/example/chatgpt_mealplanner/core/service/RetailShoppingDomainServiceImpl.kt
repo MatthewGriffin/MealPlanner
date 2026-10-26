@@ -407,7 +407,7 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
         val normalizedSearchTerm = requirement.displayName
             .replace(Regex("\\b(?:coarsely|coarsley|finely)\\s+ground\\s+(?=black pepper\\b)", RegexOption.IGNORE_CASE), "")
             .replace(Regex("\\bground\\s+(?=black pepper\\b)", RegexOption.IGNORE_CASE), "")
-            .replace(Regex("\\bkernels?\\b(?=\\s*$)", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("\\b(?:kernel|kernels|kernal|kernals)\\b(?=\\s*$)", RegexOption.IGNORE_CASE), "")
             .replace(Regex("\\bwhite\\s+(?=cheddar\\b)", RegexOption.IGNORE_CASE), "")
             .replace(Regex("\\s+"), " ")
             .trim()
