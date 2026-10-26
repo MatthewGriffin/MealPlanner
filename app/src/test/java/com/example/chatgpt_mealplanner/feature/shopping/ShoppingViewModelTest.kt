@@ -166,6 +166,34 @@ class ShoppingViewModelTest {
     }
 
     @Test
+    fun sharedCanonicalIngredient_doesNotReuseAnotherRequirementsPriceLine() {
+        val item1 = createItemWithSources("item_1", "Garlic cloves").let {
+            it.copy(item = it.item.copy(canonicalIngredientId = "ING_GARLIC"))
+        }
+        val item2 = createItemWithSources("item_2", "Garlic cloves").let {
+            it.copy(item = it.item.copy(canonicalIngredientId = "ING_GARLIC"))
+        }
+        val asdaLine = createBasketLine("item_1", "Garlic cloves", RetailerId.ASDA, 200L).let { line ->
+            line.copy(productWithOffer = line.productWithOffer.copy(
+                product = line.productWithOffer.product.copy(canonicalIngredientId = "ING_GARLIC")
+            ))
+        }
+        val icelandLine = createBasketLine("item_2", "Garlic cloves", RetailerId.ICELAND, 300L).let { line ->
+            line.copy(productWithOffer = line.productWithOffer.copy(
+                product = line.productWithOffer.product.copy(canonicalIngredientId = "ING_GARLIC")
+            ))
+        }
+        val result = createBasketComparisonResult(listOf(asdaLine, icelandLine))
+
+        val groups = ShoppingViewModel.computeRetailerGroups(listOf(item1, item2), result)
+
+        assertEquals(Money(200L), groups.single { it.retailerId == RetailerId.ASDA }.subtotal)
+        assertEquals(Money(300L), groups.single { it.retailerId == RetailerId.ICELAND }.subtotal)
+        assertEquals(result.selectedPlan.basketSubtotal,
+            groups.mapNotNull { it.subtotal }.fold(Money.zero()) { acc, money -> acc + money })
+    }
+
+    @Test
     fun singleRetailerBasket_displaysSelectedRetailer() {
         val item1 = createItemWithSources("item_1", "Spaghetti")
         val item2 = createItemWithSources("item_2", "Tomato Sauce")
