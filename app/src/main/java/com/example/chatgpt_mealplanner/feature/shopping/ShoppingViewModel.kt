@@ -522,7 +522,7 @@ class ShoppingViewModel @Inject constructor(
                 return listOf(
                     RetailerGroup(
                         retailerId = null,
-                        retailerName = "All Required Items",
+                        retailerName = "Shopping List Items",
                         subtotal = null,
                         items = items
                     )
