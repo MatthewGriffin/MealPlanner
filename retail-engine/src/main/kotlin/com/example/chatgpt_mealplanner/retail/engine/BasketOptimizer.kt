@@ -162,7 +162,7 @@ class BasketOptimizer(
                     MatchConfidence.REQUIRES_CONFIRMATION to 4
                 )
                 val rankedMatches = matchedCandidates.sortedWith(
-                    compareBy<Pair<RetailProductWithOffer, com.example.chatgpt_mealplanner.retail.contract.RetailMatchCandidate>> {
+                    compareBy<Pair<RetailProductWithOffer, RetailMatchCandidate>> {
                         confidenceRank[it.second.confidence] ?: Int.MAX_VALUE
                     }.thenBy { it.first.offer.price.amountMinor }
                 )
