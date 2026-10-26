@@ -424,11 +424,11 @@ class RetailProductMatcherTest {
                 retailerId = RetailerId.ASDA,
                 retailerProductId = "normalized_staple_$index",
                 name = productName,
-                canonicalIngredientId = canonicalId,
+                canonicalIngredientId = null,
                 storageClass = RetailStorageClass.AMBIENT
             )
             assertTrue(
-                matcher.evaluateMatch(canonicalId, requirement, product).isAutoBasketEligible,
+                matcher.evaluateMatch(null, requirement, product).isAutoBasketEligible,
                 "Expected '$productName' to match '$requirement'"
             )
         }
