@@ -68,31 +68,36 @@ class RetailProductMatcher(
         val nameLower = candidateProduct.name.lowercase()
         val normalizedProductName = nameLower.replace(Regex("[^a-z0-9]+"), " ").trim()
 
-        // Diced chicken is a boneless usable-meat requirement, not a request for
-        // an equivalent gross pack weight of a bone-in bird or cut. Apply this
-        // before canonical-ID matching so a broad CHICKEN ID cannot override it.
-        val normalizedRequirementForChicken = requirementDisplayName.lowercase()
-            .replace(Regex("[^a-z0-9]+"), " ")
-            .trim()
-        val wantsDicedChicken = normalizedRequirementForChicken.contains("diced chicken") ||
-            normalizedRequirementForChicken.contains("chicken diced")
-        val normalizedCandidateForChicken = nameLower.replace(Regex("[^a-z0-9]+"), " ").trim()
-        val isBoneInOrWholeChicken = listOf(
-            Regex("\\bwhole chicken\\b"),
-            Regex("\\broasting chicken\\b"),
-            Regex("\\broast chicken\\b"),
-            Regex("\\bchicken carcass\\b"),
-            Regex("\\bcarcass\\b"),
-            Regex("\\bbone in\\b"),
-            Regex("\\bbone-in\\b"),
-            Regex("\\bdrumsticks?\\b"),
-            Regex("\\bchicken wings?\\b"),
-            Regex("\\bleg quarters?\\b")
-        ).any { it.containsMatchIn(normalizedCandidateForChicken) }
-        if (wantsDicedChicken && isBoneInOrWholeChicken) {
+        // Compare generic product-form attributes before canonical-ID matching.
+        // A broad ingredient ID (for example, CHICKEN) must not override a meaningful
+        // physical-form difference such as whole vs prepared portions or bone-in vs boneless.
+        // Keep this ingredient-agnostic so the same rule applies to any meat or cut.
+        fun formAttributes(value: String): Set<String> {
+            val normalized = value.lowercase().replace(Regex("[^a-z0-9]+"), " ").trim()
+            val attributes = mutableSetOf<String>()
+            if (Regex("\\bwhole\\b").containsMatchIn(normalized)) attributes += "whole"
+            if (Regex("\\bcarcass\\b").containsMatchIn(normalized)) attributes += "carcass"
+            if (Regex("\\bboneless\\b").containsMatchIn(normalized)) attributes += "boneless"
+            if (Regex("\\bbone in\\b").containsMatchIn(normalized) ||
+                Regex("\\bbonein\\b").containsMatchIn(normalized) ||
+                Regex("\\bdrumsticks?\\b").containsMatchIn(normalized) ||
+                Regex("\\bwings?\\b").containsMatchIn(normalized) ||
+                Regex("\\bleg quarters?\\b").containsMatchIn(normalized)
+            ) attributes += "bone-in"
+            return attributes
+        }
+        val requirementFormAttributes = formAttributes(requirementDisplayName)
+        val candidateFormAttributes = formAttributes(candidateProduct.name)
+        val incompatiblePhysicalForm =
+            (candidateFormAttributes.contains("whole") && "whole" !in requirementFormAttributes) ||
+            (candidateFormAttributes.contains("carcass") && "carcass" !in requirementFormAttributes) ||
+            (candidateFormAttributes.contains("bone-in") &&
+                "bone-in" !in requirementFormAttributes &&
+                "boneless" !in requirementFormAttributes)
+        if (incompatiblePhysicalForm) {
             return returnMatch(requirementDisplayName, candidateProduct, RetailMatchCandidate(
                 candidateProduct, MatchType.INCOMPATIBLE, MatchConfidence.LOW, false,
-                "Diced chicken requires usable boneless meat; a whole chicken or bone-in cut cannot be matched by gross pack weight."
+                "Product physical form does not satisfy the requested ingredient form; gross pack weight may not represent usable ingredient quantity."
             ))
         }
         // Recipe-generated shopping labels sometimes append a vague optional-choice
