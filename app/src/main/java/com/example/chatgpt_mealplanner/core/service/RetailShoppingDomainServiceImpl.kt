@@ -162,23 +162,27 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
                         matcher.evaluateMatch(req.canonicalIngredientId, req.displayName, c.product).isAutoBasketEligible
                 }
 
-                val freshCandidates = relevantCandidates.filter { c ->
-                    c.offer.calculateFreshness(freshnessPolicy) == PriceFreshness.FRESH
+                // Reuse cached product/price evidence while it is fresh (24h) or
+                // reasonably stale (up to 72h). Only query the retailer again when the
+                // cache has no suitable, usable candidate; this also prepares the matcher
+                // to benefit from larger catalogue imports without needless network calls.
+                val usableCachedCandidates = relevantCandidates.filter { c ->
+                    c.offer.calculateFreshness(freshnessPolicy) in setOf(PriceFreshness.FRESH, PriceFreshness.STALE)
                 }
 
-                // Check eligibility of fresh candidates using matcher independently per retailer
-                val eligibleFreshCandidates = freshCandidates.filter { c ->
+                val eligibleCachedCandidates = usableCachedCandidates.filter { c ->
                     val evaluation = matcher.evaluateMatch(req.canonicalIngredientId, req.displayName, c.product)
-                    safeLog("[RETAIL_CACHE_RELEVANT_CANDIDATE] buildAudit=TOMATO_CACHE_FLOW_20261001_01 requirement=\"${req.displayName}\" retailer=${retailerId.name} product=\"${c.product.name}\" fresh=true autoEligible=${evaluation.isAutoBasketEligible} reason=\"${evaluation.reasoning}\"")
+                    val freshness = c.offer.calculateFreshness(freshnessPolicy)
+                    safeLog("[RETAIL_CACHE_RELEVANT_CANDIDATE] buildAudit=TOMATO_CACHE_FLOW_20261001_01 requirement=\"\${req.displayName}\" retailer=\${retailerId.name} product=\"\${c.product.name}\" freshness=\${freshness.name} autoEligible=\${evaluation.isAutoBasketEligible} reason=\"\${evaluation.reasoning}\"")
                     evaluation.isAutoBasketEligible
                 }
 
-                val useCache = eligibleFreshCandidates.isNotEmpty()
+                val useCache = eligibleCachedCandidates.isNotEmpty()
                 val decisionStr = if (useCache) "USE_CACHE" else "LIVE_SEARCH"
                 val textRelevantCount = relevantCandidates.size
-                val eligibleFreshCount = eligibleFreshCandidates.size
+                val eligibleCachedCount = eligibleCachedCandidates.size
 
-                safeLog("[RETAIL_CACHE_CHECK] buildAudit=TOMATO_CACHE_FLOW_20261001_01 requirement=${req.displayName} retailer=${retailerId.name} textRelevantCount=$textRelevantCount eligibleFreshCount=$eligibleFreshCount decision=$decisionStr")
+                safeLog("[RETAIL_CACHE_CHECK] buildAudit=TOMATO_CACHE_FLOW_20261001_01 requirement=\${req.displayName} retailer=\${retailerId.name} textRelevantCount=$textRelevantCount eligibleCachedCount=$eligibleCachedCount decision=$decisionStr")
 
                 if (!useCache && (!isTestEnv || allowLiveLookupsInTests)) {
                     onLookupProgress("Looking up ${req.displayName} at ${retailerId.name.lowercase().replaceFirstChar { it.uppercase() }}…")
