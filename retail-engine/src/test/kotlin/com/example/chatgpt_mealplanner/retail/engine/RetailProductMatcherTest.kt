@@ -312,7 +312,7 @@ class RetailProductMatcherTest {
     @Test
     fun matcher_allPurposeFlour_matchesUKPlainFlour_butRejectsOtherFlourTypes() {
         val matcher = RetailProductMatcher()
-        listOf("Plain Flour 1.5kg", "ASDA Plain Flour 1.5kg", "All Purpose Flour 1kg").forEachIndexed { index, name ->
+        listOf("Plain Flour 1.5kg", "ASDA Plain Flour 1.5kg", "All Purpose Flour 1kg", "All-Purpose Flour 1kg").forEachIndexed { index, name ->
             val product = RetailProduct(RetailerId.ASDA, "plain_flour_$index", name, storageClass = RetailStorageClass.AMBIENT)
             listOf("All purpose flour", "All-purpose flour").forEach { requirement ->
                 val match = matcher.evaluateMatch(null, requirement, product)
@@ -358,7 +358,8 @@ class RetailProductMatcherTest {
             Triple("CHICKEN", "Diced Chicken", "Bone-In Chicken Thighs 800g"),
             Triple("CHICKEN", "Diced Chicken", "Chicken Wings 1kg"),
             Triple("PORK", "Diced Pork", "Whole Pork Shoulder 1.7kg"),
-            Triple("PORK", "Diced Pork", "Bone-In Pork Chops 800g")
+            Triple("PORK", "Diced Pork", "Bone-In Pork Chops 800g"),
+            Triple("CHICKEN", "Diced Chicken", "Succulent Large Chicken")
         ).forEachIndexed { index, (canonicalId, requirement, name) ->
             val product = RetailProduct(
                 RetailerId.ASDA,
