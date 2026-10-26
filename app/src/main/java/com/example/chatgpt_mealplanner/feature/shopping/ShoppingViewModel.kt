@@ -26,6 +26,7 @@ import com.example.chatgpt_mealplanner.core.service.RetailStorePreferenceStore
 import com.example.chatgpt_mealplanner.retail.contract.BasketComparisonResult
 import com.example.chatgpt_mealplanner.retail.contract.BasketLine
 import com.example.chatgpt_mealplanner.retail.contract.Money
+import com.example.chatgpt_mealplanner.retail.contract.PackAlternative
 import com.example.chatgpt_mealplanner.retail.contract.RetailerId
 import com.example.chatgpt_mealplanner.retail.contract.RetailStoreFormat
 import com.example.chatgpt_mealplanner.retail.contract.UserShoppingPreferences
@@ -55,6 +56,8 @@ class ShoppingViewModel @Inject constructor(
     private val userMessageFlow = MutableStateFlow<String?>(null)
     private val isLoadingFlow = MutableStateFlow(false)
     private val selectedItemDetailFlow = MutableStateFlow<ShoppingListItemWithSources?>(null)
+    private val selectedItemOptionsFlow = MutableStateFlow<List<PackAlternative>>(emptyList())
+    private val isLoadingItemOptionsFlow = MutableStateFlow(false)
     private val showAddManualDialogFlow = MutableStateFlow(false)
     private val manualItemNameFlow = MutableStateFlow("")
     private val manualItemNotesFlow = MutableStateFlow("")
@@ -110,7 +113,9 @@ class ShoppingViewModel @Inject constructor(
         basketOptimizationFlow,
         manualItemNameFlow,
         manualItemNotesFlow,
-        retailLookupMessageFlow
+        retailLookupMessageFlow,
+        selectedItemOptionsFlow,
+        isLoadingItemOptionsFlow
     ) { flows ->
         val listWithItems = flows[0] as ShoppingListWithItems?
         val stapleRules = flows[1] as List<StapleRule>
@@ -123,6 +128,8 @@ class ShoppingViewModel @Inject constructor(
         val manualItemName = flows[8] as String
         val manualItemNotes = flows[9] as String
         val retailLookupMessage = flows[10] as String?
+        val selectedItemOptions = flows[11] as List<PackAlternative>
+        val isLoadingItemOptions = flows[12] as Boolean
 
         val items = listWithItems?.items ?: emptyList()
         val groups = computeRetailerGroups(items, basketResult)
@@ -144,6 +151,8 @@ class ShoppingViewModel @Inject constructor(
             userMessage = userMessage,
             isLoading = isLoading,
             selectedItemForDetail = itemDetail,
+            selectedItemOptions = selectedItemOptions,
+            isLoadingItemOptions = isLoadingItemOptions,
             showAddManualDialog = showAddDialog,
             basketComparisonResult = basketResult,
             retailLookupMessage = retailLookupMessage,
@@ -287,7 +296,25 @@ class ShoppingViewModel @Inject constructor(
             ShoppingUiEvent.ClearCompletedItems -> if (!appRoleResolver.isFollower()) clearCompletedItems()
             is ShoppingUiEvent.ToggleItemChecked -> toggleItemChecked(event.itemId, event.currentStatus)
             is ShoppingUiEvent.RemoveItem -> removeItem(event.itemId)
-            is ShoppingUiEvent.SelectItemDetail -> selectedItemDetailFlow.value = event.itemWithSources
+            is ShoppingUiEvent.SelectItemDetail -> {
+                selectedItemDetailFlow.value = event.itemWithSources
+                selectedItemOptionsFlow.value = emptyList()
+                if (event.itemWithSources == null) {
+                    isLoadingItemOptionsFlow.value = false
+                } else {
+                    val itemId = event.itemWithSources.item.id
+                    isLoadingItemOptionsFlow.value = true
+                    viewModelScope.launch {
+                        val result = withContext(Dispatchers.IO) {
+                            retailShoppingDomainService.getItemOptions(itemId)
+                        }
+                        if (selectedItemDetailFlow.value?.item?.id == itemId) {
+                            selectedItemOptionsFlow.value = (result as? DomainResult.Success)?.value.orEmpty()
+                            isLoadingItemOptionsFlow.value = false
+                        }
+                    }
+                }
+            }
             is ShoppingUiEvent.ReassignItemRetailer -> reassignItemRetailer(event.itemId, event.retailerId)
             ShoppingUiEvent.RequestAddManualItem -> {
                 manualItemNameFlow.value = ""
