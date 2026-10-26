@@ -526,6 +526,7 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
             val safeQuery = q.take(50).replace("\n", " ").trim()
             for (retailerId in retailers) {
                 try {
+                    safeLog("[RETAIL_OPTION_LOOKUP_START] retailer=${retailerId.name} query=\"$safeQuery\"")
                     val result = when (retailerId) {
                         RetailerId.ASDA -> asdaAdapter.searchProducts(safeQuery)
                         RetailerId.ICELAND -> icelandAdapter.searchProducts(safeQuery)
@@ -535,15 +536,29 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
                             additionalRetailerAdapter.searchProducts(retailerId, safeQuery)
                         else -> continue
                     }
-                    when (result) {
-                        is RetailProductSearchResult.Success ->
-                            if (result.productsWithOffers.isNotEmpty()) retailRepository.cacheProductsWithOffers(result.productsWithOffers)
-                        is RetailProductSearchResult.PartialSuccess ->
-                            if (result.productsWithOffers.isNotEmpty()) retailRepository.cacheProductsWithOffers(result.productsWithOffers)
-                        is RetailProductSearchResult.Unavailable -> Unit
+                    val products = when (result) {
+                        is RetailProductSearchResult.Success -> result.productsWithOffers
+                        is RetailProductSearchResult.PartialSuccess -> result.productsWithOffers
+                        is RetailProductSearchResult.Unavailable -> emptyList()
                     }
-                } catch (_: Exception) {
-                    // Live source failures are non-fatal; cached/manual results remain available.
+                    if (products.isNotEmpty()) {
+                        retailRepository.cacheProductsWithOffers(products)
+                    }
+                    val retailerCounts = products.groupingBy { it.product.retailerId.name }
+                        .eachCount()
+                        .entries
+                        .sortedBy { it.key }
+                        .joinToString(",") { "${it.key}:${it.value}" }
+                    safeLog(
+                        "[RETAIL_OPTION_LOOKUP_RESULT] retailer=${retailerId.name} query=\"$safeQuery\" " +
+                            "status=${result::class.simpleName} productCount=${products.size} " +
+                            "returnedRetailers=${retailerCounts.ifBlank { "none" }}"
+                    )
+                } catch (e: Exception) {
+                    safeLog(
+                        "[RETAIL_OPTION_LOOKUP_FAILURE] retailer=${retailerId.name} query=\"$safeQuery\" " +
+                            "exception=${e.javaClass.simpleName} message=\"${e.message.orEmpty().take(160)}\""
+                    )
                 }
             }
         }
