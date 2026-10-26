@@ -382,4 +382,56 @@ class RetailProductMatcherTest {
             assertTrue(matcher.evaluateMatch("CHICKEN", "Diced Chicken", product).isAutoBasketEligible, "Expected '$name' to match plain diced chicken")
         }
     }
+
+    @Test
+    fun matcher_prefersDicedChicken_overUnpreparedBreastFillets() {
+        val matcher = RetailProductMatcher()
+        val diced = RetailProduct(
+            retailerId = RetailerId.ASDA,
+            retailerProductId = "diced_chicken",
+            name = "ASDA Diced Chicken Breast 500g",
+            canonicalIngredientId = "CHICKEN",
+            storageClass = RetailStorageClass.FRESH
+        )
+        val fillets = RetailProduct(
+            retailerId = RetailerId.ASDA,
+            retailerProductId = "chicken_breast_fillets",
+            name = "Tender British Chicken Breast Fillets 600g",
+            canonicalIngredientId = "CHICKEN",
+            storageClass = RetailStorageClass.FRESH
+        )
+
+        val dicedMatch = matcher.evaluateMatch("CHICKEN", "Diced Chicken", diced)
+        val filletMatch = matcher.evaluateMatch("CHICKEN", "Diced Chicken", fillets)
+
+        assertTrue(dicedMatch.isAutoBasketEligible)
+        assertTrue(filletMatch.isAutoBasketEligible)
+        assertEquals(MatchConfidence.EXACT, dicedMatch.confidence)
+        assertEquals(MatchConfidence.MEDIUM, filletMatch.confidence)
+    }
+
+    @Test
+    fun matcher_normalizesUnnecessaryDescriptors_forCommonStaples() {
+        val matcher = RetailProductMatcher()
+        val cases = listOf(
+            Triple("Coarsley ground black pepper", "ASDA Black Pepper 50g", "BLACK_PEPPER"),
+            Triple("Mature White Cheddar", "Mature Cheddar 400g", "CHEDDAR"),
+            Triple("Sweetcorn kernals", "Sweetcorn 340g", "SWEETCORN")
+        )
+
+        cases.forEachIndexed { index, (requirement, productName, canonicalId) ->
+            val product = RetailProduct(
+                retailerId = RetailerId.ASDA,
+                retailerProductId = "normalized_staple_$index",
+                name = productName,
+                canonicalIngredientId = canonicalId,
+                storageClass = RetailStorageClass.AMBIENT
+            )
+            assertTrue(
+                matcher.evaluateMatch(canonicalId, requirement, product).isAutoBasketEligible,
+                "Expected '$productName' to match '$requirement'"
+            )
+        }
+    }
+
 }
