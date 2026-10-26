@@ -263,7 +263,7 @@ class ShoppingViewModelTest {
         val groups = ShoppingViewModel.computeRetailerGroups(listOf(item1, item2), basketResult = null)
 
         assertEquals(1, groups.size)
-        assertEquals("All Required Items", groups.first().retailerName)
+        assertEquals("Shopping List Items", groups.first().retailerName)
         assertNull(groups.first().retailerId)
         assertNull(groups.first().subtotal)
         assertEquals(2, groups.first().items.size)
