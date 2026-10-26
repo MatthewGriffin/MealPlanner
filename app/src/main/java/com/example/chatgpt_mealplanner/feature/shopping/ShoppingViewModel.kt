@@ -194,13 +194,10 @@ class ShoppingViewModel @Inject constructor(
             var lookupProgressCount = 0
             println("[AI_MEALPLANNER] [SHOPPING_ASSIGNMENT_CALL] shoppingItemCount=$count")
             val result = try {
-                // Retailer enablement and branch selection are separate preferences:
-                // compare every enabled retailer even if the user has not saved a branch
-                // for it yet. Known branch IDs still constrain branch-scoped offers.
+                // A retailer is enabled for basket comparison only when the user has
+                // selected one of its branches. Do not let the legacy enabled-retailer
+                // preference independently add retailers without a chosen branch.
                 // Iceland and The Food Warehouse share one catalogue/comparison setting.
-                val enabledRetailerIds = configuredRetailers.map { retailerId ->
-                    if (retailerId == RetailerId.FOOD_WAREHOUSE) RetailerId.ICELAND else retailerId
-                }.toSet()
                 val preferredStores = savedStores
                     .filter { it.isPreferred }
                     .map { store ->
@@ -211,6 +208,7 @@ class ShoppingViewModel @Inject constructor(
                             )
                         } else store
                     }
+                val enabledRetailerIds = preferredStores.map { it.retailerId }.toSet()
                 val preferences = UserShoppingPreferences(
                     enabledRetailers = enabledRetailerIds,
                     preferredStores = preferredStores
