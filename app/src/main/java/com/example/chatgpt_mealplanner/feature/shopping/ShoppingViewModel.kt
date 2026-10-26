@@ -180,9 +180,13 @@ class ShoppingViewModel @Inject constructor(
         }
         val version = ++basketOptimizationVersion
         basketOptimizationJob?.cancel()
-        basketOptimizationFlow.value = null
+        // Keep the last completed comparison visible while new retailer searches run.
+        // Replacing it with intermediate partial plans caused item assignments to flicker.
         retailLookupMessageFlow.value = null
-        if (listWithItems?.items.isNullOrEmpty()) return
+        if (listWithItems?.items.isNullOrEmpty()) {
+            basketOptimizationFlow.value = null
+            return
+        }
 
         retailLookupMessageFlow.value = "0/" + (listWithItems?.items?.size ?: 0) + " · Preparing retailer lookups…"
         basketOptimizationJob = viewModelScope.launch {
@@ -225,9 +229,9 @@ class ShoppingViewModel @Inject constructor(
                                 retailLookupMessageFlow.value = "$lookupProgressCount/$count · $message"
                             }
                         },
-                        { partialResult ->
+                        { completedResult ->
                             if (version == basketOptimizationVersion) {
-                                basketOptimizationFlow.value = partialResult
+                                basketOptimizationFlow.value = completedResult
                             }
                         }
                     )
