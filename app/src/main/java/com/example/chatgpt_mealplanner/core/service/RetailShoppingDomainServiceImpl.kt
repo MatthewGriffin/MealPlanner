@@ -419,14 +419,16 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
         val alternativesByRetailer = matches
             .groupBy { it.product.retailerId }
             .mapNotNull { (retailerId, retailerMatches) ->
-                val rankedMatches = retailerMatches.sortedBy { candidate ->
-                    val match = matcher.evaluateMatch(
-                        requirement.canonicalIngredientId,
-                        requirement.displayName,
-                        candidate.product
-                    )
-                    confidenceRank[match.confidence] ?: Int.MAX_VALUE
-                }
+                val rankedMatches = retailerMatches.sortedWith(
+                    compareBy<RetailProductWithOffer> { candidate ->
+                        val match = matcher.evaluateMatch(
+                            requirement.canonicalIngredientId,
+                            requirement.displayName,
+                            candidate.product
+                        )
+                        confidenceRank[match.confidence] ?: Int.MAX_VALUE
+                    }.thenBy { it.offer.price.amountMinor }
+                )
                 val retailerAlternatives = PackSelectionEngine().generatePackAlternatives(
                     requiredQuantity = requiredQuantity,
                     requiredUnit = requiredUnit,
