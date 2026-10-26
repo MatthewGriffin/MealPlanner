@@ -111,47 +111,6 @@ fun ShoppingItemDetailDialog(
                     )
                 }
 
-                run {
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text("Available products by store", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                    Text(
-                        "Best compatible product found for each retailer. Prices and pack quantities are estimates.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    if (isLoadingRetailerOptions) {
-                        Text("Checking retailer catalogues…", style = MaterialTheme.typography.bodyMedium)
-                    }
-                    retailerOptions.forEach { alternative ->
-                        val product = alternative.productWithOffer.product
-                        val retailer = product.retailerId
-                        val packDescription = buildString {
-                            val packCount = product.packCount
-                            val size = product.packSize ?: product.netQuantity
-                            val unit = product.packSizeUnit ?: product.netQuantityUnit
-                            if (packCount != null && packCount > 1) append("$packCount × ")
-                            if (size != null) append(size.toString()).append(" ").append(unit ?: "")
-                            else append("Pack size unknown")
-                            append(" · ").append(alternative.packCountToBuy)
-                                .append(if (alternative.packCountToBuy == 1) " pack" else " packs")
-                        }
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(retailer.displayNameForShopping(), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                                Text(product.name, style = MaterialTheme.typography.bodySmall)
-                                Text(packDescription, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            Text(alternative.totalCost.toFormattedString(), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                        }
-                    }
-                    if (!isLoadingRetailerOptions && retailerOptions.isEmpty()) {
-                        Text("No suitable products found at the enabled retailers.", style = MaterialTheme.typography.bodyMedium)
-                    }
-                }
-
                 val comparisonPlans = basketComparisonResult?.let { result ->
                     (listOfNotNull(result.selectedPlan, result.bestSingleStorePlan, result.bestMultiStorePlan) + result.alternativePlans)
                         .distinctBy { it.planId }
@@ -166,53 +125,70 @@ fun ShoppingItemDetailDialog(
                     .groupBy { it.retailerId }
                     .mapValues { (_, lines) -> lines.minByOrNull { it.lineTotalCost }!! }
 
-                if (perStoreLines.isNotEmpty()) {
+                val optionByRetailer = retailerOptions.associateBy {
+                    it.productWithOffer.product.retailerId
+                }
+                val retailersToDisplay = (perStoreLines.keys + optionByRetailer.keys).distinct().sortedBy { it.name }
+
+                if (retailersToDisplay.isNotEmpty() || isLoadingRetailerOptions) {
                     Spacer(modifier = Modifier.height(12.dp))
                     Text("Price and pack comparison by store", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                     Text(
-                        "Pack counts and costs are estimates based on the available product data. Choose a different store below if you prefer.",
+                        "Pack counts and costs are estimates. Choose a store to change this item's assignment.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    perStoreLines.entries.sortedBy { it.key.name }.forEach { (retailer, line) ->
-                        val product = line.productWithOffer.product
-                        val packDescription = buildString {
-                            val packCount = product.packCount
-                            val size = product.packSize ?: product.netQuantity
-                            val unit = product.packSizeUnit ?: product.netQuantityUnit
-                            if (packCount != null && packCount > 1) append("$packCount × ")
-                            if (size != null) append(size.toString()).append(" ").append(unit ?: "")
-                            else append("Pack size unknown")
-                            append(" · ").append(line.packCountToBuy).append(if (line.packCountToBuy == 1) " pack" else " packs")
-                        }
+                    if (isLoadingRetailerOptions) {
+                        Text("Checking cached retailer matches…", style = MaterialTheme.typography.bodySmall)
+                    }
+                    retailersToDisplay.forEach { retailer ->
+                        val option = optionByRetailer[retailer]
+                        val line = perStoreLines[retailer]
+                        val product = option?.productWithOffer?.product ?: line?.productWithOffer?.product
+                        val packDescription = if (option != null && product != null) {
+                            buildString {
+                                val packCount = product.packCount
+                                val size = product.packSize ?: product.netQuantity
+                                val unit = product.packSizeUnit ?: product.netQuantityUnit
+                                if (packCount != null && packCount > 1) append("$packCount × ")
+                                if (size != null) append(size.toString()).append(" ").append(unit ?: "")
+                                else append("Pack size unknown")
+                                append(" · ").append(option.packCountToBuy)
+                                    .append(if (option.packCountToBuy == 1) " pack" else " packs")
+                            }
+                        } else if (product != null && line != null) {
+                            buildString {
+                                val size = product.packSize ?: product.netQuantity
+                                val unit = product.packSizeUnit ?: product.netQuantityUnit
+                                if (size != null) append(size.toString()).append(" ").append(unit ?: "")
+                                else append("Pack size unknown")
+                                append(" · ").append(line.packCountToBuy)
+                                    .append(if (line.packCountToBuy == 1) " pack" else " packs")
+                            }
+                        } else "Pack size unknown"
                         Row(modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(retailer.displayNameForShopping(), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                                Text(product.name, style = MaterialTheme.typography.bodySmall)
+                                Text(product?.name ?: "No compatible product found", style = MaterialTheme.typography.bodySmall)
                                 Text(packDescription, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 if (selectedLine?.retailerId == retailer) {
                                     Text("Current assignment", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                                 }
                             }
                             Column(horizontalAlignment = Alignment.End) {
-                                Text(line.lineTotalCost.toFormattedString(), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                                var expanded by remember(item.id, retailer) { mutableStateOf(false) }
-                                androidx.compose.material3.TextButton(onClick = { expanded = true }) {
+                                val price = option?.totalCost?.toFormattedString() ?: line?.lineTotalCost?.toFormattedString()
+                                if (price != null) Text(price, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                                TextButton(
+                                    onClick = { onReassignRetailer(item.id, retailer) },
+                                    enabled = selectedLine?.retailerId != retailer
+                                ) {
                                     Text(if (selectedLine?.retailerId == retailer) "Selected" else "Use store")
-                                }
-                                DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                                    perStoreLines.keys.sortedBy { it.name }.forEach { option ->
-                                        DropdownMenuItem(
-                                            text = { Text(option.displayNameForShopping()) },
-                                            onClick = {
-                                                expanded = false
-                                                onReassignRetailer(item.id, option)
-                                            }
-                                        )
-                                    }
                                 }
                             }
                         }
+                    }
+                    if (retailersToDisplay.isEmpty() && !isLoadingRetailerOptions) {
+                        Text("No compatible products found in the retailer cache.", style = MaterialTheme.typography.bodyMedium)
                     }
                 }
 
