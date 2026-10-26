@@ -152,7 +152,15 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
             val queryLower = req.displayName.lowercase()
             val canonicalLower = req.canonicalIngredientId?.lowercase()
 
-            preferences.enabledRetailers.forEach { retailerId ->
+            // Populate the shared product/offer cache for every supported retailer
+            // during the basket lookup. The optimiser remains branch-scoped below, but
+            // item detail comparisons can reuse these results without triggering a
+            // second round of live searches when a user opens an item.
+            val retailersForLookup = listOf(
+                RetailerId.ASDA, RetailerId.ICELAND, RetailerId.ALDI, RetailerId.TESCO,
+                RetailerId.MORRISONS, RetailerId.SAINSBURYS, RetailerId.LIDL
+            )
+            retailersForLookup.forEach { retailerId ->
                 val retailerCandidates = allCandidates.filter { c -> c.product.retailerId == retailerId }
                 val relevantCandidates = retailerCandidates.filter { c ->
                     val pName = c.product.name.lowercase()
