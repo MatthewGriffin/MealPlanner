@@ -274,6 +274,9 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
                             safeLog("[RETAIL_LIVE_SEARCH] requirement=${req.displayName} retailer=${retailerId.name} query=\"$safeQuery\" resultCount=0 success=false")
                         }
                     }
+                    onLookupProgress(
+                        "Completed retailer lookup for ${req.displayName} at ${retailerId.name.lowercase().replaceFirstChar { it.uppercase() }}."
+                    )
                 }
             }
 
