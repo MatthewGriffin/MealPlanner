@@ -134,8 +134,8 @@ fun ShoppingItemDetailDialog(
                         val product = line.productWithOffer.product
                         val packDescription = buildString {
                             val packCount = product.packCount
-                            val size = product.netQuantity ?: product.packSize
-                            val unit = product.netQuantityUnit ?: product.packSizeUnit
+                            val size = product.packSize ?: product.netQuantity
+                            val unit = product.packSizeUnit ?: product.netQuantityUnit
                             if (packCount != null && packCount > 1) append("$packCount × ")
                             if (size != null) append(size.toString()).append(" ").append(unit ?: "")
                             else append("Pack size unknown")
