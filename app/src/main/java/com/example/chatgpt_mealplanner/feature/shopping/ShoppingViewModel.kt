@@ -334,9 +334,17 @@ class ShoppingViewModel @Inject constructor(
             stores = updatedLines.map { it.retailerId }.toSet(),
             lines = updatedLines,
             basketSubtotal = subtotal,
+            unmatchedRequirements = currentPlan.unmatchedRequirements.filterNot {
+                it == itemId || it == replacement.requirementDisplayName
+            },
             explanationText = currentPlan.explanationText + " User-selected retailer override applied for ${replacement.requirementDisplayName}."
         )
-        basketOptimizationFlow.value = comparison.copy(selectedPlan = updatedPlan)
+        basketOptimizationFlow.value = comparison.copy(
+            selectedPlan = updatedPlan,
+            unmatchedRequirements = comparison.unmatchedRequirements.filterNot {
+                it == itemId || it == replacement.requirementDisplayName
+            }
+        )
         userMessageFlow.value = "${replacement.requirementDisplayName} reassigned to ${retailerId.name.lowercase().replaceFirstChar { it.uppercase() }}"
     }
 
