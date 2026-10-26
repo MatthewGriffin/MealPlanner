@@ -184,12 +184,16 @@ fun ShoppingScreen(
                         }
                     }
                     val plan = uiState.basketComparisonResult?.selectedPlan
-                    if (plan != null) {
-                        val matchedCount = plan.lines.size
-                        val unmatchedCount = plan.unmatchedRequirements.size
+                    val lookupInProgress = uiState.retailLookupMessage != null
+                    if (plan != null || lookupInProgress) {
+                        val matchedCount = plan?.lines?.size ?: 0
+                        val unmatchedCount = plan?.unmatchedRequirements?.size
+                            ?: (uiState.activeListWithItems?.items?.size ?: 0)
                         val totalReqs = uiState.activeListWithItems?.items?.size ?: 0
 
                         val totalFormatted = when {
+                            plan == null -> "Calculating…"
+                            lookupInProgress && matchedCount == 0 -> "Searching…"
                             matchedCount == 0 && totalReqs > 0 -> "Unavailable"
                             unmatchedCount > 0 && matchedCount > 0 -> "${plan.basketSubtotal.toFormattedString()} ($unmatchedCount unpriced)"
                             else -> plan.basketSubtotal.toFormattedString()
@@ -217,7 +221,9 @@ fun ShoppingScreen(
                                     fontWeight = FontWeight.SemiBold
                                 )
                                 Text(
-                                    text = totalFormatted,
+                                    text = if (lookupInProgress && plan != null && matchedCount > 0) {
+                                        "$totalFormatted · updating"
+                                    } else totalFormatted,
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onPrimaryContainer
