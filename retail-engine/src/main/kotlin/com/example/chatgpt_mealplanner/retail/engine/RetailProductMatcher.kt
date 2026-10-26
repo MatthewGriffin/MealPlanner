@@ -67,6 +67,34 @@ class RetailProductMatcher(
 
         val nameLower = candidateProduct.name.lowercase()
         val normalizedProductName = nameLower.replace(Regex("[^a-z0-9]+"), " ").trim()
+
+        // Diced chicken is a boneless usable-meat requirement, not a request for
+        // an equivalent gross pack weight of a bone-in bird or cut. Apply this
+        // before canonical-ID matching so a broad CHICKEN ID cannot override it.
+        val normalizedRequirementForChicken = requirementDisplayName.lowercase()
+            .replace(Regex("[^a-z0-9]+"), " ")
+            .trim()
+        val wantsDicedChicken = normalizedRequirementForChicken.contains("diced chicken") ||
+            normalizedRequirementForChicken.contains("chicken diced")
+        val normalizedCandidateForChicken = nameLower.replace(Regex("[^a-z0-9]+"), " ").trim()
+        val isBoneInOrWholeChicken = listOf(
+            Regex("\\bwhole chicken\\b"),
+            Regex("\\broasting chicken\\b"),
+            Regex("\\broast chicken\\b"),
+            Regex("\\bchicken carcass\\b"),
+            Regex("\\bcarcass\\b"),
+            Regex("\\bbone in\\b"),
+            Regex("\\bbone-in\\b"),
+            Regex("\\bdrumsticks?\\b"),
+            Regex("\\bchicken wings?\\b"),
+            Regex("\\bleg quarters?\\b")
+        ).any { it.containsMatchIn(normalizedCandidateForChicken) }
+        if (wantsDicedChicken && isBoneInOrWholeChicken) {
+            return returnMatch(requirementDisplayName, candidateProduct, RetailMatchCandidate(
+                candidateProduct, MatchType.INCOMPATIBLE, MatchConfidence.LOW, false,
+                "Diced chicken requires usable boneless meat; a whole chicken or bone-in cut cannot be matched by gross pack weight."
+            ))
+        }
         // Recipe-generated shopping labels sometimes append a vague optional-choice
         // phrase to a real ingredient (for example, "Heavy cream, toppings of choice").
         // Match the actual ingredient identity without treating the choice phrase as food.
