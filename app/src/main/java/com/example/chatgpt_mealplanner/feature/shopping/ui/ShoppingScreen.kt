@@ -83,6 +83,8 @@ fun ShoppingScreen(
         ShoppingItemDetailDialog(
             itemWithSources = uiState.selectedItemForDetail,
             basketComparisonResult = uiState.basketComparisonResult,
+            retailerOptions = uiState.selectedItemOptions,
+            isLoadingRetailerOptions = uiState.isLoadingItemOptions,
             onOpenMeal = { mealId, mealDate -> onOpenMeal(mealId, mealDate) },
             onReassignRetailer = { itemId, retailerId -> onEvent(ShoppingUiEvent.ReassignItemRetailer(itemId, retailerId)) },
             onDismiss = { onEvent(ShoppingUiEvent.SelectItemDetail(null)) }
