@@ -456,17 +456,13 @@ class ShoppingViewModel @Inject constructor(
             }
 
             val selectedPlan = basketResult.selectedPlan
+            // Basket lines are keyed by shopping-requirement ID. Do not fall back to
+            // canonical ingredient IDs or names: several distinct list rows can share
+            // either value, and mapping one line to multiple rows inflates retailer totals.
             val lineByReqId = selectedPlan.lines.associateBy { it.shoppingRequirementId }
-            val lineByCanonicalId = selectedPlan.lines
-                .filter { it.productWithOffer.product.canonicalIngredientId != null }
-                .associateBy { it.productWithOffer.product.canonicalIngredientId!! }
-            val lineByDisplayName = selectedPlan.lines.associateBy { it.requirementDisplayName.lowercase() }
 
-            fun findLineForItem(item: ShoppingListItemWithSources): BasketLine? {
-                return lineByReqId[item.item.id]
-                    ?: item.item.canonicalIngredientId?.let { lineByCanonicalId[it] }
-                    ?: lineByDisplayName[item.item.displayName.lowercase()]
-            }
+            fun findLineForItem(item: ShoppingListItemWithSources): BasketLine? =
+                lineByReqId[item.item.id]
 
             val itemMapByRetailer = items.groupBy { item ->
                 findLineForItem(item)?.retailerId
