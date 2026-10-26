@@ -189,9 +189,15 @@ class ShoppingViewModel @Inject constructor(
             return
         }
 
-        retailLookupMessageFlow.value = "0/" + (listWithItems?.items?.size ?: 0) + " · Preparing retailer lookups…"
+        val count = listWithItems?.items?.size ?: 0
+        val preferredRetailerCount = savedStores
+            .filter { it.isPreferred }
+            .map { if (it.retailerId == RetailerId.FOOD_WAREHOUSE) RetailerId.ICELAND else it.retailerId }
+            .distinct()
+            .size
+        val lookupTotal = count * preferredRetailerCount
+        retailLookupMessageFlow.value = "0/$lookupTotal · Preparing retailer lookups…"
         basketOptimizationJob = viewModelScope.launch {
-            val count = listWithItems?.items?.size ?: 0
             var lookupProgressCount = 0
             println("[AI_MEALPLANNER] [SHOPPING_ASSIGNMENT_CALL] shoppingItemCount=$count")
             val result = try {
@@ -222,10 +228,10 @@ class ShoppingViewModel @Inject constructor(
                         preferences,
                         { message ->
                             if (version == basketOptimizationVersion) {
-                                if (message.startsWith("Checking ")) {
-                                    lookupProgressCount = (lookupProgressCount + 1).coerceAtMost(count)
+                                if (message.startsWith("Completed retailer lookup for ")) {
+                                    lookupProgressCount = (lookupProgressCount + 1).coerceAtMost(lookupTotal)
                                 }
-                                retailLookupMessageFlow.value = "$lookupProgressCount/$count · $message"
+                                retailLookupMessageFlow.value = "$lookupProgressCount/$lookupTotal · $message"
                             }
                         },
                         { completedResult ->
