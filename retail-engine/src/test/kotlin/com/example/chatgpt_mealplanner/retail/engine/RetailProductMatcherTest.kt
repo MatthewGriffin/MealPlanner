@@ -312,10 +312,12 @@ class RetailProductMatcherTest {
     @Test
     fun matcher_allPurposeFlour_matchesUKPlainFlour_butRejectsOtherFlourTypes() {
         val matcher = RetailProductMatcher()
-        listOf("Plain Flour 1.5kg", "ASDA Plain Flour 1.5kg").forEachIndexed { index, name ->
+        listOf("Plain Flour 1.5kg", "ASDA Plain Flour 1.5kg", "All Purpose Flour 1kg").forEachIndexed { index, name ->
             val product = RetailProduct(RetailerId.ASDA, "plain_flour_$index", name, storageClass = RetailStorageClass.AMBIENT)
-            val match = matcher.evaluateMatch(null, "All purpose flour", product)
-            assertTrue(match.isAutoBasketEligible, "Expected '$name' to satisfy all-purpose flour")
+            listOf("All purpose flour", "All-purpose flour").forEach { requirement ->
+                val match = matcher.evaluateMatch(null, requirement, product)
+                assertTrue(match.isAutoBasketEligible, "Expected '$name' to satisfy '$requirement'")
+            }
         }
         listOf(
             "Self Raising Flour 1.5kg",
