@@ -396,12 +396,14 @@ class RetailProductMatcher(
             return returnMatch(requirementDisplayName, candidateProduct, match)
         }
 
-        // Prefer the requested prepared form over an unprepared cut when both
-        // share a broad canonical ingredient ID (e.g. diced chicken vs breast fillets).
+        // A breast/fillet/thigh is not diced/chopped/cubed meat. Do not auto-basket
+        // it as the requested prepared form: if no prepared product is available, leave
+        // the requirement unmatched rather than silently substituting work for the user.
+        // This also makes cached fillets ineligible, triggering a live search for pieces.
         if (candidateIsUnpreparedCut) {
             return returnMatch(requirementDisplayName, candidateProduct, RetailMatchCandidate(
-                candidateProduct, MatchType.CATEGORY_MATCH, MatchConfidence.MEDIUM, true,
-                "Suitable ingredient, but the retailer product is an unprepared cut rather than the requested prepared pieces."
+                candidateProduct, MatchType.INCOMPATIBLE, MatchConfidence.LOW, false,
+                "Requested prepared pieces, but retailer product is an unprepared cut."
             ))
         }
 
