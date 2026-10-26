@@ -250,6 +250,32 @@ class RetailProductMatcher(
             }
         }
 
+        // "All-purpose flour" is commonly sold as "plain flour" in UK stores.
+        // Flour subtype is a meaningful product attribute: don't silently substitute
+        // self-raising, bread/strong, wholemeal, or gluten-free flour for plain flour.
+        val wantsPlainFlour = normalizeFoodTerms(reqLower).toSet() == setOf("plain", "flour")
+        if (wantsPlainFlour) {
+            val candidateFlourTerms = normalizeFoodTerms(nameLower).toSet()
+            val incompatibleFlourType = listOf(
+                "self raising", "self raising flour", "strong", "bread", "wholemeal",
+                "whole wheat", "gluten free", "gluten-free", "raising", "cake"
+            ).any { phrase ->
+                nameLower.replace(Regex("[^a-z0-9]+"), " ").contains(phrase)
+            }
+            val isPlainFlour = "flour" in candidateFlourTerms &&
+                ("plain" in candidateFlourTerms || "all purpose" in nameLower || "all-purpose" in nameLower)
+            if (incompatibleFlourType || !isPlainFlour) {
+                return returnMatch(requirementDisplayName, candidateProduct, RetailMatchCandidate(
+                    candidateProduct, MatchType.INCOMPATIBLE, MatchConfidence.LOW, false,
+                    "Requested all-purpose/plain flour; candidate is a different flour type or does not identify plain flour."
+                ))
+            }
+            return returnMatch(requirementDisplayName, candidateProduct, RetailMatchCandidate(
+                candidateProduct, MatchType.CATEGORY_MATCH, MatchConfidence.HIGH, true,
+                "US all-purpose flour matched to UK plain flour."
+            ))
+        }
+
         // Primary Product Identity & Composite Product Guard
         val isCompositeCandidate = nameLower.contains(" in $reqLower") ||
                 nameLower.contains(" with $reqLower") ||
