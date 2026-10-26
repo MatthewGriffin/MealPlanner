@@ -18,7 +18,7 @@ interface RetailShoppingDomainService {
         onLookupProgress: (String) -> Unit
     ): DomainResult<BasketComparisonResult> = optimizeShoppingBasket(preferences)
 
-    /** Emits an updated basket plan as each shopping-list item has been searched. */
+    /** Emits the completed basket comparison after the retailer lookup and optimization finish. */
     suspend fun optimizeShoppingBasket(
         preferences: UserShoppingPreferences,
         onLookupProgress: (String) -> Unit,
