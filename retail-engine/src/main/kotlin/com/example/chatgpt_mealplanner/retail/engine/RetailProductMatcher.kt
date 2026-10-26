@@ -105,6 +105,12 @@ class RetailProductMatcher(
                 .containsMatchIn(normalizedProductName) &&
             !Regex("\\b(breast|fillet|thigh|steak|chop|mince|strips|pieces|chunks|portion|boneless)\\b")
                 .containsMatchIn(normalizedProductName)
+        val candidateIsUnpreparedCut =
+            wantsPreparedPieces &&
+            !Regex("\\b(diced|chopped|cubed|cut into pieces|strips|pieces|chunks)\\b")
+                .containsMatchIn(candidateDescription.lowercase()) &&
+            Regex("\\b(breast|fillets?|thighs?)\\b")
+                .containsMatchIn(candidateDescription.lowercase())
         val incompatiblePhysicalForm =
             (candidateFormAttributes.contains("whole") && "whole" !in requirementFormAttributes) ||
             (candidateFormAttributes.contains("carcass") && "carcass" !in requirementFormAttributes) ||
@@ -124,6 +130,13 @@ class RetailProductMatcher(
         val reqLower = requirementDisplayName.lowercase()
             .replace(Regex("[,;]?\\s*(?:optional )?(?:toppings?|garnishes?) of choice.*$"), "")
             .replace(Regex("\\s*\\(optional\\)\\s*$"), "")
+            // Remove unnecessary preparation wording from common grocery staples.
+            // These are naming normalizations, not product-specific exceptions.
+            .replace(Regex("\\b(?:coarsely|finely)\\s+ground\\s+(?=black pepper\\b)"), "")
+            .replace(Regex("\\bground\\s+(?=black pepper\\b)"), "")
+            .replace(Regex("\\bkernels?\\b(?=\\s*$)"), "")
+            .replace(Regex("\\bwhite\\s+(?=cheddar\\b)"), "")
+            .replace(Regex("\\s+"), " ")
             .trim()
 
         // General product-title compatibility check. Canonical IDs are useful evidence,
@@ -381,6 +394,15 @@ class RetailProductMatcher(
             )
             safeLog("[RETAIL_MATCH_REJECT] requirement=\"$requirementDisplayName\" candidate=\"${candidateProduct.name}\" reason=MULTI_INGREDIENT_PRODUCT")
             return returnMatch(requirementDisplayName, candidateProduct, match)
+        }
+
+        // Prefer the requested prepared form over an unprepared cut when both
+        // share a broad canonical ingredient ID (e.g. diced chicken vs breast fillets).
+        if (candidateIsUnpreparedCut) {
+            return returnMatch(requirementDisplayName, candidateProduct, RetailMatchCandidate(
+                candidateProduct, MatchType.CATEGORY_MATCH, MatchConfidence.MEDIUM, true,
+                "Suitable ingredient, but the retailer product is an unprepared cut rather than the requested prepared pieces."
+            ))
         }
 
         // 2. Exact canonical match
