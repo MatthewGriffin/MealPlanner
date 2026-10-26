@@ -274,22 +274,10 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
 
             safeLog("[RETAIL_REQUIREMENT_READY_FOR_OPTIMIZER] buildAudit=TOMATO_CACHE_FLOW_20261001_01 requirement=\"${req.displayName}\"")
 
-            // Publish a partial basket now, so the chosen store and matched product
-            // appear item-by-item rather than waiting for every retailer search.
-            val partialCandidates = retailRepository.getCandidateProductsWithOffers()
-            // Publish a fresh partial result even when no products have matched yet.
-            // Otherwise the UI can keep showing an old estimate (or no estimate) for
-            // the entire duration of a slow lookup. The UI labels it as updating until
-            // the final complete basket result arrives.
-            val partialPlan = BasketOptimizer(matcher).optimizeBasket(
-                requirements = requirementSpecs.take(requirementIndex + 1),
-                availableProductsWithOffers = PreferredBranchOfferSelector.select(
-                    partialCandidates,
-                    preferences.preferredStores
-                ),
-                preferences = preferences
-            )
-            onBasketUpdate(partialPlan)
+            // Keep the currently displayed assignments stable during the search.
+            // Re-optimizing a partial basket here can move an already displayed item
+            // between retailers as each subsequent item's offers enter the cache.
+            // Publish the comparison once all retailer lookups have completed.
         }
 
         var candidateProducts = retailRepository.getCandidateProductsWithOffers()
@@ -330,6 +318,7 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
                 safeLog("[RETAIL_BASKET_CACHE] save_failed type=${e.javaClass.simpleName}")
             }
         }
+        onBasketUpdate(comparison)
         return DomainResult.Success(comparison)
     }
 
