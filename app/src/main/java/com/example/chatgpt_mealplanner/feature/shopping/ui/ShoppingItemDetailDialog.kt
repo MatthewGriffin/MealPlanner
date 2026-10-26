@@ -29,12 +29,15 @@ import androidx.compose.ui.unit.dp
 import com.example.chatgpt_mealplanner.core.model.ShoppingListItemWithSources
 import com.example.chatgpt_mealplanner.retail.contract.BasketComparisonResult
 import com.example.chatgpt_mealplanner.retail.contract.BasketLine
+import com.example.chatgpt_mealplanner.retail.contract.PackAlternative
 import com.example.chatgpt_mealplanner.retail.contract.RetailerId
 
 @Composable
 fun ShoppingItemDetailDialog(
     itemWithSources: ShoppingListItemWithSources,
     basketComparisonResult: BasketComparisonResult? = null,
+    retailerOptions: List<PackAlternative> = emptyList(),
+    isLoadingRetailerOptions: Boolean = false,
     onOpenMeal: (mealId: String, mealDate: String) -> Unit = { _, _ -> },
     onReassignRetailer: (itemId: String, retailerId: RetailerId) -> Unit = { _, _ -> },
     onDismiss: () -> Unit
@@ -106,6 +109,47 @@ fun ShoppingItemDetailDialog(
                         color = MaterialTheme.colorScheme.error,
                         fontWeight = FontWeight.Bold
                     )
+                }
+
+                if (isLoadingRetailerOptions || retailerOptions.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text("Available products by store", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                    Text(
+                        "Best compatible product found for each retailer. Prices and pack quantities are estimates.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (isLoadingRetailerOptions) {
+                        Text("Checking retailer catalogues…", style = MaterialTheme.typography.bodyMedium)
+                    }
+                    retailerOptions.forEach { alternative ->
+                        val product = alternative.productWithOffer.product
+                        val retailer = product.retailerId
+                        val packDescription = buildString {
+                            val packCount = product.packCount
+                            val size = product.packSize ?: product.netQuantity
+                            val unit = product.packSizeUnit ?: product.netQuantityUnit
+                            if (packCount != null && packCount > 1) append("$packCount × ")
+                            if (size != null) append(size.toString()).append(" ").append(unit ?: "")
+                            else append("Pack size unknown")
+                            append(" · ").append(alternative.packCountToBuy)
+                                .append(if (alternative.packCountToBuy == 1) " pack" else " packs")
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(retailer.displayNameForShopping(), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                                Text(product.name, style = MaterialTheme.typography.bodySmall)
+                                Text(packDescription, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Text(alternative.totalCost.toFormattedString(), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                    if (!isLoadingRetailerOptions && retailerOptions.isEmpty()) {
+                        Text("No suitable products found at the enabled retailers.", style = MaterialTheme.typography.bodyMedium)
+                    }
                 }
 
                 val comparisonPlans = basketComparisonResult?.let { result ->
