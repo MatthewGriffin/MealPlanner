@@ -63,6 +63,7 @@ class ShoppingViewModel @Inject constructor(
     private var basketOptimizationJob: kotlinx.coroutines.Job? = null
     private var basketOptimizationVersion = 0L
     private var lastBasketOptimizationSignature: String? = null
+    private val manualRetailerOverrides = mutableMapOf<String, RetailerId>()
 
     private val activeShoppingListFlow = combine(
         shoppingRepository.observeActiveShoppingListWithItems(),
@@ -229,7 +230,7 @@ class ShoppingViewModel @Inject constructor(
                         },
                         { completedResult ->
                             if (version == basketOptimizationVersion) {
-                                basketOptimizationFlow.value = completedResult
+                                basketOptimizationFlow.value = applyRetailerOverrides(completedResult)
                             }
                         }
                     )
@@ -250,7 +251,7 @@ class ShoppingViewModel @Inject constructor(
                 null
             }
             if (version == basketOptimizationVersion) {
-                basketOptimizationFlow.value = if (result is DomainResult.Success) result.value else null
+                basketOptimizationFlow.value = if (result is DomainResult.Success) applyRetailerOverrides(result.value) else null
                 retailLookupMessageFlow.value = null
             }
         }
@@ -311,6 +312,28 @@ class ShoppingViewModel @Inject constructor(
             userMessageFlow.value = "No completed retailer comparison is available yet"
             return
         }
+        manualRetailerOverrides[itemId] = retailerId
+        val updated = applySingleRetailerOverride(comparison, itemId, retailerId)
+        if (updated == null) {
+            manualRetailerOverrides.remove(itemId)
+            userMessageFlow.value = "No suitable priced product is available for that store"
+            return
+        }
+        basketOptimizationFlow.value = updated
+        userMessageFlow.value = "${updated.selectedPlan.lines.firstOrNull { it.shoppingRequirementId == itemId }?.requirementDisplayName ?: "Item"} reassigned to ${retailerId.name.lowercase().replaceFirstChar { it.uppercase() }}"
+    }
+
+    private fun applyRetailerOverrides(comparison: BasketComparisonResult): BasketComparisonResult {
+        return manualRetailerOverrides.toMap().entries.fold(comparison) { current, (itemId, retailerId) ->
+            applySingleRetailerOverride(current, itemId, retailerId) ?: current
+        }
+    }
+
+    private fun applySingleRetailerOverride(
+        comparison: BasketComparisonResult,
+        itemId: String,
+        retailerId: RetailerId
+    ): BasketComparisonResult? {
         val availablePlans = listOfNotNull(
             comparison.selectedPlan,
             comparison.bestSingleStorePlan,
@@ -319,11 +342,7 @@ class ShoppingViewModel @Inject constructor(
         val replacement = availablePlans
             .flatMap { it.lines }
             .filter { it.shoppingRequirementId == itemId && it.retailerId == retailerId }
-            .minByOrNull { it.lineTotalCost }
-        if (replacement == null) {
-            userMessageFlow.value = "No suitable priced product is available for that store"
-            return
-        }
+            .minByOrNull { it.lineTotalCost } ?: return null
 
         val currentPlan = comparison.selectedPlan
         val updatedLines = currentPlan.lines
@@ -339,13 +358,12 @@ class ShoppingViewModel @Inject constructor(
             },
             explanationText = currentPlan.explanationText + " User-selected retailer override applied for ${replacement.requirementDisplayName}."
         )
-        basketOptimizationFlow.value = comparison.copy(
+        return comparison.copy(
             selectedPlan = updatedPlan,
             unmatchedRequirements = comparison.unmatchedRequirements.filterNot {
                 it == itemId || it == replacement.requirementDisplayName
             }
         )
-        userMessageFlow.value = "${replacement.requirementDisplayName} reassigned to ${retailerId.name.lowercase().replaceFirstChar { it.uppercase() }}"
     }
 
     private fun regenerateShoppingList() {
