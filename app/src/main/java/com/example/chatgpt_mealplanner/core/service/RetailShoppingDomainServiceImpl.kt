@@ -400,9 +400,22 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
             RetailerId.ASDA, RetailerId.ICELAND, RetailerId.ALDI, RetailerId.TESCO,
             RetailerId.MORRISONS, RetailerId.SAINSBURYS, RetailerId.LIDL
         )
-        val retailersAlreadyMatched = matches.map { it.product.retailerId }.toSet()
-        for (store in retailersToCheck.filter { it !in retailersAlreadyMatched }) {
-            fetchAndCacheLiveProducts(listOf(requirement.displayName), store)
+        // Search each eligible retailer even when its cache already contains a
+        // broad match. A cached breast fillet must not prevent a live search for the
+        // explicitly requested diced chicken, and stale generic results must not hide
+        // better store-specific wording.
+        val normalizedSearchTerm = requirement.displayName
+            .replace(Regex("\\b(?:coarsely|coarsley|finely)\\s+ground\\s+(?=black pepper\\b)", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("\\bground\\s+(?=black pepper\\b)", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("\\bkernels?\\b(?=\\s*$)", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("\\bwhite\\s+(?=cheddar\\b)", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+        val liveSearchTerms = listOf(normalizedSearchTerm, requirement.displayName)
+            .filter { it.isNotBlank() }
+            .distinct()
+        for (store in retailersToCheck) {
+            fetchAndCacheLiveProducts(liveSearchTerms, store)
         }
         candidateProducts = retailRepository.getCandidateProductsWithOffers()
         matches = matchingCandidates(candidateProducts)
