@@ -281,6 +281,7 @@ class ShoppingViewModel @Inject constructor(
             is ShoppingUiEvent.ToggleItemChecked -> toggleItemChecked(event.itemId, event.currentStatus)
             is ShoppingUiEvent.RemoveItem -> removeItem(event.itemId)
             is ShoppingUiEvent.SelectItemDetail -> selectedItemDetailFlow.value = event.itemWithSources
+            is ShoppingUiEvent.ReassignItemRetailer -> reassignItemRetailer(event.itemId, event.retailerId)
             ShoppingUiEvent.RequestAddManualItem -> {
                 manualItemNameFlow.value = ""
                 manualItemNotesFlow.value = ""
@@ -303,6 +304,40 @@ class ShoppingViewModel @Inject constructor(
             is ShoppingUiEvent.DeleteStapleRule -> deleteStapleRule(event.ruleId)
             ShoppingUiEvent.ClearUserMessage -> userMessageFlow.value = null
         }
+    }
+
+    private fun reassignItemRetailer(itemId: String, retailerId: RetailerId) {
+        val comparison = basketOptimizationFlow.value ?: run {
+            userMessageFlow.value = "No completed retailer comparison is available yet"
+            return
+        }
+        val availablePlans = listOfNotNull(
+            comparison.selectedPlan,
+            comparison.bestSingleStorePlan,
+            comparison.bestMultiStorePlan
+        ) + comparison.alternativePlans
+        val replacement = availablePlans
+            .flatMap { it.lines }
+            .filter { it.shoppingRequirementId == itemId && it.retailerId == retailerId }
+            .minByOrNull { it.lineTotalCost }
+        if (replacement == null) {
+            userMessageFlow.value = "No suitable priced product is available for that store"
+            return
+        }
+
+        val currentPlan = comparison.selectedPlan
+        val updatedLines = currentPlan.lines
+            .filterNot { it.shoppingRequirementId == itemId } + replacement
+        val subtotal = updatedLines.fold(Money.zero()) { total, line -> total + line.lineTotalCost }
+        val updatedPlan = currentPlan.copy(
+            planId = "${currentPlan.planId}-manual-choice",
+            stores = updatedLines.map { it.retailerId }.toSet(),
+            lines = updatedLines,
+            basketSubtotal = subtotal,
+            explanationText = currentPlan.explanationText + " User-selected retailer override applied for ${replacement.requirementDisplayName}."
+        )
+        basketOptimizationFlow.value = comparison.copy(selectedPlan = updatedPlan)
+        userMessageFlow.value = "${replacement.requirementDisplayName} reassigned to ${retailerId.name.lowercase().replaceFirstChar { it.uppercase() }}"
     }
 
     private fun regenerateShoppingList() {
