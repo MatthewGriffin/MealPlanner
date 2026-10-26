@@ -143,7 +143,7 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
         val userMappings = retailRepository.getProductMappings()
         val matcher = RetailProductMatcher(userMappings)
 
-        requirementSpecs.forEachIndexed { requirementIndex, req ->
+        requirementSpecs.forEach { req ->
             safeLog("[RETAIL_REQUIREMENT_START] requirement=${req.displayName} quantity=${req.requiredQuantity} unit=${req.requiredUnit}")
             onLookupProgress("Checking ${req.displayName}…")
 
