@@ -49,6 +49,7 @@ sealed interface ShoppingUiEvent {
     data class ToggleItemChecked(val itemId: String, val currentStatus: ShoppingItemStatus) : ShoppingUiEvent
     data class RemoveItem(val itemId: String) : ShoppingUiEvent
     data class SelectItemDetail(val itemWithSources: ShoppingListItemWithSources?) : ShoppingUiEvent
+    data class ReassignItemRetailer(val itemId: String, val retailerId: RetailerId) : ShoppingUiEvent
     object RequestAddManualItem : ShoppingUiEvent
     data class RequestLowStockShortcut(val item: InventoryItem) : ShoppingUiEvent
     object DismissAddManualDialog : ShoppingUiEvent
