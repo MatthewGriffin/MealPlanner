@@ -412,7 +412,26 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
             requiredUnit = requiredUnit,
             candidateMatches = matches
         )
-        return DomainResult.Success(alternatives.take(10))
+
+        // Keep the comparison representative across retailers. A global take(10)
+        // lets one retailer with many pack variants (often ASDA) crowd every other
+        // store out of the result. The contract promises up to five options per retailer.
+        val alternativesPerRetailer = alternatives
+            .groupBy { it.productWithOffer.product.retailerId }
+            .values
+            .flatMap { retailerAlternatives ->
+                retailerAlternatives
+                    .sortedBy { it.totalCost.amountMinor }
+                    .take(5)
+            }
+            .sortedBy { it.totalCost.amountMinor }
+
+        safeLog(
+            "[RETAIL_ITEM_OPTIONS_SUMMARY] requirement=${requirement.displayName} " +
+                "candidateCount=${candidateProducts.size} matchedCount=${matches.size} " +
+                "alternativeCount=${alternatives.size} byRetailer=${alternativesPerRetailer.groupingBy { it.productWithOffer.product.retailerId.name }.eachCount()}"
+        )
+        return DomainResult.Success(alternativesPerRetailer)
     }
 
     override suspend fun searchProducts(
