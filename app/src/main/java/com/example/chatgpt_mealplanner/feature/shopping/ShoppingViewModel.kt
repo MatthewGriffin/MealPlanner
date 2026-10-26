@@ -349,7 +349,7 @@ class ShoppingViewModel @Inject constructor(
             .filterNot { it.shoppingRequirementId == itemId } + replacement
         val subtotal = updatedLines.fold(Money.zero()) { total, line -> total + line.lineTotalCost }
         val updatedPlan = currentPlan.copy(
-            planId = "${currentPlan.planId}-manual-choice",
+            planId = "${currentPlan.planId.removeSuffix("-manual-choice")}-manual-choice",
             stores = updatedLines.map { it.retailerId }.toSet(),
             lines = updatedLines,
             basketSubtotal = subtotal,
