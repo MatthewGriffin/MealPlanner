@@ -375,11 +375,19 @@ class RetailProductMatcherTest {
     }
 
     @Test
-    fun matcher_dicedChicken_acceptsPlainChickenProducts() {
+    fun matcher_dicedChicken_acceptsDicedProducts_butRejectsUnpreparedBreastCuts() {
         val matcher = RetailProductMatcher()
-        listOf("Diced Chicken Breast 500g", "Chicken Breast Fillets 600g", "Fresh Chicken Breast").forEachIndexed { index, name ->
-            val product = RetailProduct(RetailerId.ASDA, "plain_chicken_$index", name, canonicalIngredientId = "CHICKEN", storageClass = RetailStorageClass.FRESH)
-            assertTrue(matcher.evaluateMatch("CHICKEN", "Diced Chicken", product).isAutoBasketEligible, "Expected '$name' to match plain diced chicken")
+        val diced = RetailProduct(
+            RetailerId.ASDA, "diced_chicken", "Diced Chicken Breast 500g",
+            canonicalIngredientId = "CHICKEN", storageClass = RetailStorageClass.FRESH
+        )
+        assertTrue(matcher.evaluateMatch("CHICKEN", "Diced Chicken", diced).isAutoBasketEligible)
+
+        listOf("Chicken Breast Fillets 600g", "Fresh Chicken Breast").forEachIndexed { index, name ->
+            val product = RetailProduct(RetailerId.ASDA, "unprepared_chicken_$index", name, canonicalIngredientId = "CHICKEN", storageClass = RetailStorageClass.FRESH)
+            val match = matcher.evaluateMatch("CHICKEN", "Diced Chicken", product)
+            assertFalse(match.isAutoBasketEligible, "Expected '$name' not to satisfy diced chicken")
+            assertEquals(MatchType.INCOMPATIBLE, match.matchType)
         }
     }
 
@@ -405,9 +413,9 @@ class RetailProductMatcherTest {
         val filletMatch = matcher.evaluateMatch("CHICKEN", "Diced Chicken", fillets)
 
         assertTrue(dicedMatch.isAutoBasketEligible)
-        assertTrue(filletMatch.isAutoBasketEligible)
+        assertFalse(filletMatch.isAutoBasketEligible)
         assertEquals(MatchConfidence.EXACT, dicedMatch.confidence)
-        assertEquals(MatchConfidence.MEDIUM, filletMatch.confidence)
+        assertEquals(MatchType.INCOMPATIBLE, filletMatch.matchType)
     }
 
     @Test
