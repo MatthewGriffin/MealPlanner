@@ -173,7 +173,7 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
                 val eligibleCachedCandidates = usableCachedCandidates.filter { c ->
                     val evaluation = matcher.evaluateMatch(req.canonicalIngredientId, req.displayName, c.product)
                     val freshness = c.offer.calculateFreshness(freshnessPolicy)
-                    safeLog("[RETAIL_CACHE_RELEVANT_CANDIDATE] buildAudit=TOMATO_CACHE_FLOW_20261001_01 requirement=\"\${req.displayName}\" retailer=\${retailerId.name} product=\"\${c.product.name}\" freshness=\${freshness.name} autoEligible=\${evaluation.isAutoBasketEligible} reason=\"\${evaluation.reasoning}\"")
+                    safeLog("[RETAIL_CACHE_RELEVANT_CANDIDATE] buildAudit=TOMATO_CACHE_FLOW_20261001_01 requirement=\"${req.displayName}\" retailer=${retailerId.name} product=\"${c.product.name}\" freshness=${freshness.name} autoEligible=${evaluation.isAutoBasketEligible} reason=\"${evaluation.reasoning}\"")
                     evaluation.isAutoBasketEligible
                 }
 
@@ -182,7 +182,7 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
                 val textRelevantCount = relevantCandidates.size
                 val eligibleCachedCount = eligibleCachedCandidates.size
 
-                safeLog("[RETAIL_CACHE_CHECK] buildAudit=TOMATO_CACHE_FLOW_20261001_01 requirement=\${req.displayName} retailer=\${retailerId.name} textRelevantCount=$textRelevantCount eligibleCachedCount=$eligibleCachedCount decision=$decisionStr")
+                safeLog("[RETAIL_CACHE_CHECK] buildAudit=TOMATO_CACHE_FLOW_20261001_01 requirement=${req.displayName} retailer=${retailerId.name} textRelevantCount=$textRelevantCount eligibleCachedCount=$eligibleCachedCount decision=$decisionStr")
 
                 if (!useCache && (!isTestEnv || allowLiveLookupsInTests)) {
                     onLookupProgress("Looking up ${req.displayName} at ${retailerId.name.lowercase().replaceFirstChar { it.uppercase() }}…")
