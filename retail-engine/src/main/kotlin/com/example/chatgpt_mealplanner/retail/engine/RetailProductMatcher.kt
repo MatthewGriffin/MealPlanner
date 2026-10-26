@@ -134,7 +134,7 @@ class RetailProductMatcher(
             // These are naming normalizations, not product-specific exceptions.
             .replace(Regex("\\b(?:coarsely|coarsley|finely)\\s+ground\\s+(?=black pepper\\b)"), "")
             .replace(Regex("\\bground\\s+(?=black pepper\\b)"), "")
-            .replace(Regex("\\bkernel(?:s)?|kernal(?:s)?\\b(?=\\s*$)"), "")
+            .replace(Regex("\\b(?:kernels?|kernals?)\\b(?=\\s*$)"), "")
             .replace(Regex("\\bwhite\\s+(?=cheddar\\b)"), "")
             .replace(Regex("\\s+"), " ")
             .trim()
