@@ -132,6 +132,7 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
                 try {
                     val cachedResult = cacheJson.decodeFromString<BasketComparisonResult>(cached.payloadJson)
                     safeLog("[RETAIL_BASKET_CACHE] hit fingerprint=${cacheFingerprint.take(12)} generatedAt=${cached.generatedAt}")
+                    onBasketUpdate(cachedResult)
                     return DomainResult.Success(cachedResult)
                 } catch (_: Exception) {
                     safeLog("[RETAIL_BASKET_CACHE] invalid_payload action=recompute")
