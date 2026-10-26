@@ -79,6 +79,9 @@ class RetailProductMatcher(
         // but can be too broad in retailer feeds; reject a title that adds many meaningful
         // concepts absent from the requirement instead of allowing the ID to force a match.
         val normalizedRequirementName = reqLower
+            // Treat US/UK spelling punctuation variants identically: "all-purpose",
+            // "all purpose", and "allpurpose" should reach the same flour alias rule.
+            .replace(Regex("\\ball[- ]?purpose\\b"), "all purpose")
             .replace(Regex("[^a-z0-9]+"), " ")
             .trim()
         val normalizedCandidateName = normalizedProductName
@@ -253,7 +256,11 @@ class RetailProductMatcher(
         // "All-purpose flour" is commonly sold as "plain flour" in UK stores.
         // Flour subtype is a meaningful product attribute: don't silently substitute
         // self-raising, bread/strong, wholemeal, or gluten-free flour for plain flour.
-        val wantsPlainFlour = normalizeFoodTerms(reqLower).toSet() == setOf("plain", "flour")
+        val normalizedFlourRequirement = normalizeFoodTerms(
+            reqLower.replace(Regex("\\ball[- ]?purpose\\b"), "all purpose")
+        ).toSet()
+        val wantsPlainFlour = normalizedFlourRequirement == setOf("plain", "flour") ||
+            normalizedFlourRequirement == setOf("all", "purpose", "flour")
         if (wantsPlainFlour) {
             val candidateFlourTerms = normalizeFoodTerms(nameLower).toSet()
             val incompatibleFlourType = listOf(
