@@ -36,6 +36,21 @@ class RetailProductMatcherTest {
     }
 
     @Test
+    fun matcher_acceptsDescriptiveRetailerTitleForGenericEggsRequirement() {
+        val matcher = RetailProductMatcher()
+        val product = RetailProduct(
+            retailerId = RetailerId.ICELAND,
+            retailerProductId = "iceland_eggs_6",
+            name = "British Lion Free Range Eggs 6 Pack",
+            storageClass = RetailStorageClass.FRESH
+        )
+
+        val match = matcher.evaluateMatch(null, "Eggs", product)
+
+        assertTrue(match.isAutoBasketEligible, "Descriptive packaging text should not hide an ordinary eggs match")
+    }
+
+    @Test
     fun matcher_mincedBeef_matchesRetailerBeefMinceNames_butRejectsPreparedDishes() {
         val matcher = RetailProductMatcher()
         listOf("Beef Mince 500g", "Lean Beef Mince 5% Fat", "Minced Beef 500g").forEachIndexed { index, name ->
