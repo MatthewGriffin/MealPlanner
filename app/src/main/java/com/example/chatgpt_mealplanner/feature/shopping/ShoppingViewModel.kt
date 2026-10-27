@@ -199,12 +199,12 @@ class ShoppingViewModel @Inject constructor(
         }
 
         val count = listWithItems?.items?.size ?: 0
-        val preferredRetailerCount = savedStores
-            .filter { it.isPreferred }
-            .map { if (it.retailerId == RetailerId.FOOD_WAREHOUSE) RetailerId.ICELAND else it.retailerId }
-            .distinct()
-            .size
-        val lookupTotal = count * preferredRetailerCount
+        // Basket optimisation now looks up every supported catalogue so item
+        // details can show alternatives outside the user's preferred stores.
+        // Keep this count aligned with retailersForLookup in
+        // RetailShoppingDomainServiceImpl (Food Warehouse shares Iceland's catalogue).
+        val retailerLookupCount = 7
+        val lookupTotal = count * retailerLookupCount
         retailLookupMessageFlow.value = "0/$lookupTotal · Preparing retailer lookups…"
         basketOptimizationJob = viewModelScope.launch {
             var lookupProgressCount = 0
