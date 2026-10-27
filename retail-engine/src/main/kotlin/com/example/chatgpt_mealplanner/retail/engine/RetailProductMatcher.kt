@@ -178,7 +178,13 @@ class RetailProductMatcher(
         val sharedRequirementTokens = requirementTokens.count { it in candidateTokens }
         // Long titles can include branding and merchandising text; reject only when
         // they introduce substantially more unmatched semantic content than they share.
-        val excessiveUnmatchedContent = candidateOnlyTokens.size >= 3 &&
+        // A single-token staple such as "eggs" often appears at the end of a
+        // descriptive retailer title ("British Lion Free Range Eggs 6 Pack").
+        // For one-token requirements, the extra words are commonly provenance,
+        // welfare, size, or pack descriptors rather than a different product.
+        // Keep the stricter unmatched-content guard for multi-token requirements.
+        val excessiveUnmatchedContent = meaningfulRequirementTokens.size >= 2 &&
+            candidateOnlyTokens.size >= 3 &&
             candidateOnlyTokens.size > sharedRequirementTokens * 2
         val hasSomeIdentityEvidence = sharedRequirementTokens > 0
 
