@@ -22,68 +22,17 @@ Recipe planning and stock checks query aggregated usable inventory balances by s
 
 ```kotlin
 enum class FoodCategory {
-    CUPBOARD,
-    FRIDGE,
-    FREEZER,
-    FRESH_PANTRY,
-    BREAD_BAKERY,
-    SAUCES_SEASONINGS,
-    SNACKS,
-    MEAL_KITS,
-    OTHER
+    PRODUCE, MEAT_SEAFOOD, DAIRY_EGGS, BAKERY, DRY_GOODS, TINS_CANS,
+    FROZEN_FOOD, SAUCES_CONDIMENTS, SNACKS, DRINKS, READY_MEALS,
+    HOUSEHOLD, OTHER
 }
 
 enum class StorageLocation {
-    CUPBOARD,
-    FRIDGE,
-    FREEZER,
-    FRESH_PANTRY,
-    BREAD_BAKERY,
-    SAUCES_SEASONINGS,
-    SNACKS,
-    MEAL_KITS,
-    OTHER
-}
-
-enum class QuantityUnit {
-    GRAM,
-    KILOGRAM,
-    MILLILITRE,
-    LITRE,
-    UNIT,
-    PACK,
-    TIN,
-    BOTTLE,
-    BAG,
-    SLICE,
-    PORTION
-}
-
-enum class QuantityConfidence {
-    EXACT,
-    APPROXIMATE,
-    UNKNOWN
-}
-
-enum class ItemStatus {
-    AVAILABLE,
-    LOW,
-    USE_SOON,
-    OUT,
-    DISCARDED,
-    NEEDS_CONFIRMATION
-}
-
-enum class TransactionType {
-    PURCHASE,
-    CONSUMED,
-    COOKED,
-    DISCARDED,
-    RESTOCK,
-    USER_CORRECTION,
-    ADJUSTMENT
+    CUPBOARD, FRIDGE, FREEZER, PANTRY, OTHER
 }
 ```
+
+`FoodCategory` describes what the item is; `StorageLocation` describes where it is physically kept. Category values such as cupboard, fridge, and freezer must not be used as product categories. The v20 migration preserves existing inventory records, translates the few legacy category values that clearly describe product types, and sets ambiguous location-based categories to `OTHER` rather than guessing. Legacy storage values that were not physical places are migrated to `CUPBOARD`, while `FRESH_PANTRY` becomes `PANTRY`.
 
 ---
 
@@ -164,6 +113,6 @@ Audit log of all inventory movements and deductions.
 
 ## Room Migration Policy & Schema Export
 
-- Database version is explicitly set (`version = 1`).
+- Database version is explicitly set and migrations are versioned; current schema version is 20.
 - KSP Room schema export is configured to `$projectDir/schemas`.
 - Destructive migration fallback is disallowed in release production builds.
