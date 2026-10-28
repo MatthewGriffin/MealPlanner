@@ -189,7 +189,7 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
 
                 safeLog("[RETAIL_CACHE_CHECK] buildAudit=TOMATO_CACHE_FLOW_20261001_01 requirement=${req.displayName} retailer=${retailerId.name} textRelevantCount=$textRelevantCount eligibleCachedCount=$eligibleCachedCount decision=$decisionStr")
 
-                if (!useCache && (!isTestEnv || allowLiveLookupsInTests)) {
+                if (!useCache && isTestEnv && allowLiveLookupsInTests) {
                     onLookupProgress("Looking up ${req.displayName} at ${retailerId.name.lowercase().replaceFirstChar { it.uppercase() }}…")
                     val safeQuery = (if (req.displayName.contains("heavy cream", ignoreCase = true)) "double cream" else req.displayName).take(50).replace("\n", " ").trim()
                     if (retailerId == RetailerId.ICELAND) {
