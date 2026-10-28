@@ -24,7 +24,6 @@ data class RetailerGroup(
     val retailerName: String,
     val subtotal: Money?,
     val items: List<ShoppingListItemWithSources>,
-    val priceScopeNotice: String = "No live retailer quote · recorded purchase prices only",
     val lineByItemId: Map<String, BasketLine> = emptyMap()
 )
 
