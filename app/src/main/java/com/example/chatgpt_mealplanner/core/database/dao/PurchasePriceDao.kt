@@ -6,6 +6,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
 import com.example.chatgpt_mealplanner.core.database.entity.PurchasePriceObservationEntity
+import com.example.chatgpt_mealplanner.core.database.entity.PurchasePriceWithStore
 import com.example.chatgpt_mealplanner.core.database.entity.UserStoreEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -49,6 +50,9 @@ interface PurchasePriceDao {
 
     @Query("SELECT * FROM purchase_price_observations WHERE storeId = :storeId AND productName = :productName COLLATE NOCASE ORDER BY purchasedAt DESC LIMIT 1")
     suspend fun getLatestPriceByNameAtStore(storeId: String, productName: String): PurchasePriceObservationEntity?
+
+    @Query("SELECT purchase_price_observations.*, user_stores.name AS storeName FROM purchase_price_observations INNER JOIN user_stores ON user_stores.id = purchase_price_observations.storeId ORDER BY purchasedAt DESC LIMIT 100")
+    fun observeRecentPriceHistory(): Flow<List<PurchasePriceWithStore>>
 
     @Query("SELECT * FROM purchase_price_observations ORDER BY purchasedAt DESC")
     suspend fun getAllPriceObservations(): List<PurchasePriceObservationEntity>
