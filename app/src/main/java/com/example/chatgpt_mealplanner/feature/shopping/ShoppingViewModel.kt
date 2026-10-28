@@ -73,14 +73,8 @@ class ShoppingViewModel @Inject constructor(
     private var lastBasketOptimizationSignature: String? = null
     private val manualRetailerOverrides = mutableMapOf<String, RetailerId>()
 
-    private val activeShoppingListFlow = combine(
-        shoppingRepository.observeActiveShoppingListWithItems(),
-        retailerPreferenceStore.observeEnabledRetailers(),
-        retailStorePreferenceStore.observePreferredStores()
-    ) { listWithItems, enabledRetailers, preferredStores ->
-        Triple(listWithItems, enabledRetailers, preferredStores)
-    }
-        .onEach { (listWithItems, enabledRetailers, preferredStores) ->
+    private val activeShoppingListFlow = shoppingRepository.observeActiveShoppingListWithItems()
+        .onEach { listWithItems ->
             val requirementSignature = listWithItems?.let { list ->
                 list.shoppingList.id + "|" + list.items.joinToString("|") { entry ->
                     val item = entry.item
@@ -95,16 +89,12 @@ class ShoppingViewModel @Inject constructor(
                     ).joinToString(":")
                 }
             } ?: "empty"
-            // Checking an item changes its status, not the basket requirements.
-            // Keep the current retailer lookup running instead of cancelling and restarting it.
-            val signature = "$requirementSignature|$enabledRetailers|$preferredStores"
-            if (signature != lastBasketOptimizationSignature) {
-                lastBasketOptimizationSignature = signature
-                runBasketOptimization(listWithItems, enabledRetailers, preferredStores)
+            if (requirementSignature != lastBasketOptimizationSignature) {
+                lastBasketOptimizationSignature = requirementSignature
+                runBasketOptimization(listWithItems, emptySet(), emptyList())
                 runLocalPriceLookup(listWithItems)
             }
         }
-        .map { it.first }
     private val stapleRulesFlow = stapleRuleRepository.observeAllStapleRules()
 
     @Suppress("UNCHECKED_CAST")
