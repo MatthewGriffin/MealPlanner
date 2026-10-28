@@ -42,8 +42,6 @@ import java.util.Date
 import java.util.Locale
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.chatgpt_mealplanner.core.ai.provider.GEMINI_MODEL_ID
-import com.example.chatgpt_mealplanner.retail.contract.RetailerId
-import com.example.chatgpt_mealplanner.retail.contract.RetailStoreFormat
 
 @Composable
 fun SettingsScreen(
@@ -65,7 +63,6 @@ fun SettingsScreen(
 
     val uiState by viewModel.uiState.collectAsState()
     var apiKeyInput by remember { mutableStateOf("") }
-    var storeNameInput by remember { mutableStateOf("") }
     var userShopNameInput by remember { mutableStateOf("") }
     var selectedUserStoreId by remember { mutableStateOf("") }
     var userShopMenuExpanded by remember { mutableStateOf(false) }
@@ -76,44 +73,7 @@ fun SettingsScreen(
     var pricePackUnit by remember { mutableStateOf("") }
     var pricePackCount by remember { mutableStateOf("") }
     var pricePaid by remember { mutableStateOf("") }
-    var storePostcodeInput by remember { mutableStateOf("") }
-    var storeSearchPostcodeInput by remember { mutableStateOf("") }
-    var storeDirectoryApiKeyInput by remember { mutableStateOf("") }
-    var selectedStoreRetailer by remember { mutableStateOf(RetailerId.ASDA) }
-    var selectedStoreFormat by remember { mutableStateOf(RetailStoreFormat.ASDA_SUPERMARKET) }
-    var retailerMenuExpanded by remember { mutableStateOf(false) }
-    var formatMenuExpanded by remember { mutableStateOf(false) }
-    var branchRadiusMenuExpanded by remember { mutableStateOf(false) }
     var showClearChatHistoryDialog by remember { mutableStateOf(false) }
-    var showStoreDataSourcesDialog by remember { mutableStateOf(false) }
-
-    if (showStoreDataSourcesDialog) {
-        AlertDialog(
-            onDismissRequest = { showStoreDataSourcesDialog = false },
-            title = { Text("Store search data sources") },
-            text = {
-                Text("Postcodes are resolved with Nominatim. Branch listings come from OpenStreetMap. OpenStreetMap data is © OpenStreetMap contributors and is available under the Open Database License.")
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showStoreDataSourcesDialog = false
-                        runCatching {
-                            context.startActivity(
-                                android.content.Intent(
-                                    android.content.Intent.ACTION_VIEW,
-                                    android.net.Uri.parse("https://www.openstreetmap.org/copyright")
-                                )
-                            )
-                        }
-                    }
-                ) { Text("View attribution and licence") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showStoreDataSourcesDialog = false }) { Text("Close") }
-            }
-        )
-    }
 
     if (showClearChatHistoryDialog) {
         AlertDialog(
