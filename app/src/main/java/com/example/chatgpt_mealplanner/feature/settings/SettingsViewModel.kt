@@ -72,14 +72,14 @@ class SettingsViewModel @Inject constructor(
     private val credentialStore: CredentialStore,
     private val provider: MealPlannerAiProvider,
     private val chatDao: ChatDao,
-    private val purchasePriceDao: PurchasePriceDao,
     private val backupManager: BackupManager,
     private val followerSyncScheduler: FollowerSyncScheduler,
     private val appRoleResolver: AppRoleResolver,
     private val mainBackupSaveCoordinator: MainEncryptedBackupSaveCoordinator,
     private val retailerPreferenceStore: RetailerPreferenceStore = RetailerPreferenceStore(null),
     private val retailStorePreferenceStore: RetailStorePreferenceStore = RetailStorePreferenceStore(null),
-    private val storeDirectoryProvider: StoreDirectoryProvider = OpenStreetMapStoreDirectory()
+    private val storeDirectoryProvider: StoreDirectoryProvider = OpenStreetMapStoreDirectory(),
+    private val purchasePriceDao: PurchasePriceDao? = null
 ) : ViewModel() {
 
     private val storeDirectoryCredentialStore = context?.let { StoreDirectoryCredentialStore(it) }
@@ -96,9 +96,11 @@ class SettingsViewModel @Inject constructor(
                 isStoreDirectoryApiKeyConfigured = !savedDirectoryKey.isNullOrBlank()
             )
         }
-        viewModelScope.launch {
-            purchasePriceDao.observeActiveStores().collect { stores ->
-                _uiState.update { it.copy(userStores = stores) }
+        purchasePriceDao?.let { dao ->
+            viewModelScope.launch {
+                dao.observeActiveStores().collect { stores ->
+                    _uiState.update { it.copy(userStores = stores) }
+                }
             }
         }
         checkCredentialStatus()
@@ -114,7 +116,8 @@ class SettingsViewModel @Inject constructor(
         }
         viewModelScope.launch {
             try {
-                val duplicate = purchasePriceDao.getAllStores().any {
+                val dao = purchasePriceDao ?: throw IllegalStateException("Local purchase storage is unavailable.")
+                val duplicate = dao.getAllStores().any {
                     !it.isArchived && it.name.equals(cleanName, ignoreCase = true)
                 }
                 if (duplicate) {
@@ -122,7 +125,7 @@ class SettingsViewModel @Inject constructor(
                     return@launch
                 }
                 val now = System.currentTimeMillis()
-                purchasePriceDao.insertStore(
+                dao.insertStore(
                     UserStoreEntity(
                         id = UUID.randomUUID().toString(),
                         name = cleanName,
@@ -142,15 +145,16 @@ class SettingsViewModel @Inject constructor(
         if (cleanName.isBlank()) return
         viewModelScope.launch {
             try {
-                val store = purchasePriceDao.getStore(storeId) ?: return@launch
-                val duplicate = purchasePriceDao.getAllStores().any {
+                val dao = purchasePriceDao ?: throw IllegalStateException("Local purchase storage is unavailable.")
+                val store = dao.getStore(storeId) ?: return@launch
+                val duplicate = dao.getAllStores().any {
                     it.id != storeId && !it.isArchived && it.name.equals(cleanName, ignoreCase = true)
                 }
                 if (duplicate) {
                     _uiState.update { it.copy(syncStatusMessage = "Another shop already has that name.") }
                     return@launch
                 }
-                purchasePriceDao.updateStore(store.copy(name = cleanName, updatedAt = System.currentTimeMillis()))
+                dao.updateStore(store.copy(name = cleanName, updatedAt = System.currentTimeMillis()))
                 _uiState.update { it.copy(syncStatusMessage = "Shop renamed to $cleanName") }
             } catch (e: Exception) {
                 _uiState.update { it.copy(syncStatusMessage = "Could not rename shop: ${e.message ?: "unknown error"}") }
@@ -186,13 +190,14 @@ class SettingsViewModel @Inject constructor(
         }
         viewModelScope.launch {
             try {
-                val store = purchasePriceDao.getStore(storeId)
+                val dao = purchasePriceDao ?: throw IllegalStateException("Local purchase storage is unavailable.")
+                val store = dao.getStore(storeId)
                 if (store == null || store.isArchived) {
                     _uiState.update { it.copy(syncStatusMessage = "Choose an active shop.") }
                     return@launch
                 }
                 val priceMinorUnits = (pricePounds * 100.0).toLong()
-                purchasePriceDao.insertPriceObservation(
+                dao.insertPriceObservation(
                     PurchasePriceObservationEntity(
                         id = UUID.randomUUID().toString(),
                         storeId = storeId,
@@ -218,7 +223,8 @@ class SettingsViewModel @Inject constructor(
     fun archiveUserStore(storeId: String) {
         viewModelScope.launch {
             try {
-                purchasePriceDao.archiveStore(storeId)
+                val dao = purchasePriceDao ?: throw IllegalStateException("Local purchase storage is unavailable.")
+                dao.archiveStore(storeId)
                 _uiState.update { it.copy(syncStatusMessage = "Shop archived. Its purchase history is retained.") }
             } catch (e: Exception) {
                 _uiState.update { it.copy(syncStatusMessage = "Could not archive shop: ${e.message ?: "unknown error"}") }
