@@ -213,7 +213,7 @@ class SettingsViewModel @Inject constructor(
                         productName = cleanName,
                         brand = brand?.trim()?.takeIf { it.isNotEmpty() },
                         packQuantity = packQuantity,
-                        packUnit = packUnit?.trim()?.takeIf { it.isNotEmpty() },
+                        packUnit = normalizePurchaseUnit(packUnit),
                         packCount = packCount,
                         priceMinorUnits = priceMinorUnits,
                         purchasedAt = System.currentTimeMillis(),
@@ -225,6 +225,18 @@ class SettingsViewModel @Inject constructor(
             } catch (e: Exception) {
                 _uiState.update { it.copy(syncStatusMessage = "Could not save price: ${e.message ?: "unknown error"}") }
             }
+        }
+    }
+
+    private fun normalizePurchaseUnit(raw: String?): String? {
+        val unit = raw?.trim()?.uppercase()?.takeIf { it.isNotEmpty() } ?: return null
+        return when (unit) {
+            "G", "GRAM", "GRAMS" -> "GRAM"
+            "KG", "KILOGRAM", "KILOGRAMS" -> "KILOGRAM"
+            "ML", "MILLILITRE", "MILLILITRES", "MILLILITER", "MILLILITERS" -> "MILLILITRE"
+            "L", "LITRE", "LITRES", "LITER", "LITERS" -> "LITRE"
+            "EACH", "UNIT", "UNITS", "PIECE", "PIECES" -> "UNIT"
+            else -> unit
         }
     }
 
