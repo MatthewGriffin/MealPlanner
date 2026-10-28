@@ -766,6 +766,48 @@ val MIGRATION_17_18 = object : Migration(17, 18) {
         """.trimIndent())
     }
 }
+
+val MIGRATION_18_19 = object : Migration(18, 19) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("""
+            CREATE TABLE IF NOT EXISTS `user_stores` (
+                `id` TEXT NOT NULL,
+                `name` TEXT NOT NULL,
+                `isArchived` INTEGER NOT NULL,
+                `createdAt` INTEGER NOT NULL,
+                `updatedAt` INTEGER NOT NULL,
+                PRIMARY KEY(`id`)
+            )
+        """.trimIndent())
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_user_stores_name` ON `user_stores` (`name`)")
+
+        db.execSQL("""
+            CREATE TABLE IF NOT EXISTS `purchase_price_observations` (
+                `id` TEXT NOT NULL,
+                `storeId` TEXT NOT NULL,
+                `barcode` TEXT,
+                `productName` TEXT NOT NULL,
+                `brand` TEXT,
+                `packQuantity` REAL,
+                `packUnit` TEXT,
+                `packCount` INTEGER,
+                `priceMinorUnits` INTEGER NOT NULL,
+                `currencyCode` TEXT NOT NULL,
+                `purchasedAt` INTEGER NOT NULL,
+                `createdAt` INTEGER NOT NULL,
+                `source` TEXT NOT NULL,
+                PRIMARY KEY(`id`),
+                FOREIGN KEY(`storeId`) REFERENCES `user_stores`(`id`) ON UPDATE NO ACTION ON DELETE RESTRICT
+            )
+        """.trimIndent())
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_purchase_price_observations_storeId` ON `purchase_price_observations` (`storeId`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_purchase_price_observations_barcode` ON `purchase_price_observations` (`barcode`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_purchase_price_observations_productName` ON `purchase_price_observations` (`productName`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_purchase_price_observations_purchasedAt` ON `purchase_price_observations` (`purchasedAt`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_purchase_price_observations_storeId_barcode_purchasedAt` ON `purchase_price_observations` (`storeId`, `barcode`, `purchasedAt`)")
+    }
+}
+
 val ALL_MIGRATIONS = arrayOf(
     MIGRATION_1_2,
     MIGRATION_2_3,
@@ -783,7 +825,8 @@ val ALL_MIGRATIONS = arrayOf(
     MIGRATION_14_15,
     MIGRATION_15_16,
     MIGRATION_16_17,
-    MIGRATION_17_18
+    MIGRATION_17_18,
+    MIGRATION_18_19
 )
 
 @Database(
@@ -823,9 +866,11 @@ val ALL_MIGRATIONS = arrayOf(
         com.example.chatgpt_mealplanner.core.database.entity.CanonicalSyncOperationEntity::class,
         com.example.chatgpt_mealplanner.core.database.entity.SyncConflictEntity::class,
         com.example.chatgpt_mealplanner.core.database.entity.SyncPendingApprovalEntity::class,
-        com.example.chatgpt_mealplanner.core.database.entity.MealChangeRequestEntity::class
+        com.example.chatgpt_mealplanner.core.database.entity.MealChangeRequestEntity::class,
+        UserStoreEntity::class,
+        PurchasePriceObservationEntity::class
     ],
-    version = 18,
+    version = 19,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -840,6 +885,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun stapleRuleDao(): StapleRuleDao
     abstract fun chatDao(): ChatDao
     abstract fun retailDao(): RetailDao
+    abstract fun purchasePriceDao(): com.example.chatgpt_mealplanner.core.database.dao.PurchasePriceDao
     abstract fun receiptDao(): ReceiptDao
     abstract fun receiptSpendDao(): ReceiptSpendDao
     abstract fun householdIdentityDao(): com.example.chatgpt_mealplanner.core.database.dao.HouseholdIdentityDao
