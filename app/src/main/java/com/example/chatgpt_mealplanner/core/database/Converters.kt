@@ -48,7 +48,11 @@ class Converters {
 
     @TypeConverter
     fun toStorageLocation(value: String?): StorageLocation? = value?.let {
-        runCatching { enumValueOf<StorageLocation>(it) }.getOrDefault(StorageLocation.OTHER)
+        when (it.trim().uppercase()) {
+            "FRESH_PANTRY", "PANTRY" -> StorageLocation.PANTRY
+            "BREAD_BAKERY", "SAUCES_SEASONINGS", "SNACKS", "MEAL_KITS" -> StorageLocation.CUPBOARD
+            else -> runCatching { enumValueOf<StorageLocation>(it.trim().uppercase()) }.getOrDefault(StorageLocation.OTHER)
+        }
     }
 
     @TypeConverter
