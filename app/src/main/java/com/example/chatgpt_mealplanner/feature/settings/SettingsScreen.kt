@@ -63,6 +63,7 @@ fun SettingsScreen(
     val uiState by viewModel.uiState.collectAsState()
     var apiKeyInput by remember { mutableStateOf("") }
     var storeNameInput by remember { mutableStateOf("") }
+    var userShopNameInput by remember { mutableStateOf("") }
     var storePostcodeInput by remember { mutableStateOf("") }
     var storeSearchPostcodeInput by remember { mutableStateOf("") }
     var storeDirectoryApiKeyInput by remember { mutableStateOf("") }
@@ -267,6 +268,72 @@ fun SettingsScreen(
         )
         Spacer(modifier = Modifier.height(8.dp))
 
+
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("My Shops & Purchase Prices", fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    "Add any shop you buy from, including independent and convenience stores. These names are yours to manage; no address is required. Purchase prices will be recorded locally and kept as history.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = userShopNameInput,
+                    onValueChange = { userShopNameInput = it },
+                    label = { Text("Shop name") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Button(
+                    onClick = {
+                        viewModel.addUserStore(userShopNameInput)
+                        userShopNameInput = ""
+                    },
+                    enabled = userShopNameInput.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Add Shop") }
+
+                if (uiState.userStores.isEmpty()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("No shops added yet.", style = MaterialTheme.typography.bodySmall)
+                } else {
+                    uiState.userStores.forEach { store ->
+                        var editedStoreName by remember(store.id, store.name) { mutableStateOf(store.name) }
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedTextField(
+                                value = editedStoreName,
+                                onValueChange = { editedStoreName = it },
+                                label = { Text("Shop name") },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                TextButton(
+                                    onClick = { viewModel.renameUserStore(store.id, editedStoreName) },
+                                    enabled = editedStoreName.isNotBlank() && editedStoreName.trim() != store.name
+                                ) { Text("Rename") }
+                                TextButton(
+                                    onClick = { viewModel.archiveUserStore(store.id) }
+                                ) { Text("Remove") }
+                            }
+                        }
+                    }
+                }
+                if (uiState.syncStatusMessage != null) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        uiState.syncStatusMessage!!,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
 
         Spacer(modifier = Modifier.height(12.dp))
         Card(modifier = Modifier.fillMaxWidth()) {
