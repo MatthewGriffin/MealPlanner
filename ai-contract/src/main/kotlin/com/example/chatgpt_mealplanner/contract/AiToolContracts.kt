@@ -29,9 +29,9 @@ enum class AiToolId(
     GET_AVAILABLE_LEFTOVERS("get_available_leftovers", AiToolClass.READ, "Returns active leftover items with remaining portions."),
     GET_ACTIVE_SHOPPING_LIST("get_active_shopping_list", AiToolClass.READ, "Returns active shopping list items."),
     CALCULATE_SHOPPING_REQUIREMENTS("calculate_shopping_requirements", AiToolClass.READ, "Calculates deterministic shopping requirements for planned meals."),
-    GET_RETAIL_BASKET_COMPARISON("get_retail_basket_comparison", AiToolClass.READ, "Returns deterministic store basket optimization comparison across enabled retailers."),
-    GET_RETAIL_ITEM_OPTIONS("get_retail_item_options", AiToolClass.READ, "Returns normalized retailer product options for a specific shopping requirement ID."),
-    SEARCH_RETAIL_PRODUCTS("search_retail_products", AiToolClass.READ, "Searches live UK retailer catalogues for products, current online prices, and available promotions, refreshing live retailer sources when cached evidence is missing. Use for direct product/price/promotion requests. Args: query (product term), optional retailerFilter (retailer ID such as ASDA). Prices and promotions are only as current and complete as the retailer source; product-level stock is not guaranteed. For meal plans, use selectively for a few ambiguous, niche, or retailer-sensitive ingredients."),
+    GET_RETAIL_BASKET_COMPARISON("get_retail_basket_comparison", AiToolClass.READ, "Deprecated: live retailer catalogue comparison is disabled. Do not use to claim current prices."),
+    GET_RETAIL_ITEM_OPTIONS("get_retail_item_options", AiToolClass.READ, "Deprecated: live retailer catalogue options are disabled. Do not claim current retailer prices."),
+    SEARCH_RETAIL_PRODUCTS("search_retail_products", AiToolClass.READ, "Deprecated: live retailer catalogue scraping is disabled. Current prices and promotions are not available through this tool; users can record actual purchase prices in their private local history."),
     OFFER_ADD_PLANNED_MEAL("offer_add_planned_meal", AiToolClass.READ, "Prepares a structured offer to add a meal to the planner without modifying the database, placing the offer in AWAITING_CONFIRMATION state. Args: title, date (optional YYYY-MM-DD), mealType (optional BREAKFAST, LUNCH, DINNER, SNACK), servings (number), ingredients (JSON array of {displayName, quantity, unit, canonicalIngredientId?}), instructions (string - complete step-by-step cooking method). An offer is invalid without both complete ingredients and complete instructions."),
 
     // WRITE Tools (14)
