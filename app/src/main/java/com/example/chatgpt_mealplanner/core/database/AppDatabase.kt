@@ -14,6 +14,7 @@ import com.example.chatgpt_mealplanner.core.database.dao.MealDao
 import com.example.chatgpt_mealplanner.core.database.dao.ReceiptDao
 import com.example.chatgpt_mealplanner.core.database.dao.ReceiptSpendDao
 import com.example.chatgpt_mealplanner.core.database.dao.RetailDao
+import com.example.chatgpt_mealplanner.core.database.dao.PurchasePriceDao
 import com.example.chatgpt_mealplanner.core.database.dao.ShoppingDao
 import com.example.chatgpt_mealplanner.core.database.dao.StapleRuleDao
 import com.example.chatgpt_mealplanner.core.database.dao.TransactionDao
@@ -33,6 +34,8 @@ import com.example.chatgpt_mealplanner.core.database.entity.LeftoverEntity
 import com.example.chatgpt_mealplanner.core.database.entity.MealEntity
 import com.example.chatgpt_mealplanner.core.database.entity.MealIngredientEntity
 import com.example.chatgpt_mealplanner.core.database.entity.ProductBarcodeMappingEntity
+import com.example.chatgpt_mealplanner.core.database.entity.UserStoreEntity
+import com.example.chatgpt_mealplanner.core.database.entity.PurchasePriceObservationEntity
 import com.example.chatgpt_mealplanner.core.database.entity.ReceiptCategoryMappingEntity
 import com.example.chatgpt_mealplanner.core.database.entity.ReceiptImportEntity
 import com.example.chatgpt_mealplanner.core.database.entity.ReceiptImportLineEntity
@@ -885,7 +888,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun stapleRuleDao(): StapleRuleDao
     abstract fun chatDao(): ChatDao
     abstract fun retailDao(): RetailDao
-    abstract fun purchasePriceDao(): com.example.chatgpt_mealplanner.core.database.dao.PurchasePriceDao
+    abstract fun purchasePriceDao(): PurchasePriceDao
     abstract fun receiptDao(): ReceiptDao
     abstract fun receiptSpendDao(): ReceiptSpendDao
     abstract fun householdIdentityDao(): com.example.chatgpt_mealplanner.core.database.dao.HouseholdIdentityDao
