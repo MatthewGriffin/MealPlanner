@@ -5,7 +5,7 @@ Live retailer catalogue scraping, online price lookup, branch discovery for pric
 ## Current behaviour
 
 - Users add their own shop names; no retailer presets or store addresses are required.
-- Actual prices can be recorded manually or during barcode product confirmation.
+- Actual prices are entered on the barcode product confirmation screen, where the scanned barcode and the user-confirmed product name are saved together with the shop, pack details, price paid, and purchase date. Settings is for managing shop names and viewing recent recorded prices; it is not a price-entry form.
 - Price observations are stored locally in Room and retain the purchase date, product identity, pack details, and price paid.
 - The shopping screen only surfaces recorded prices when the product name matches exactly. These are historical observations, not live quotes.
 - Missing prices remain unknown. The app must not invent a price, availability, promotion, or saving.
