@@ -148,19 +148,18 @@ class GeminiMealPlannerAiProvider @Inject constructor(
             }
         }
 
-        val toolsArray = if (request.availableTools.isNotEmpty()) {
+        val declaredTools = request.availableTools.filterNot { tool ->
+            tool == AiToolId.GET_RETAIL_BASKET_COMPARISON ||
+                tool == AiToolId.GET_RETAIL_ITEM_OPTIONS ||
+                tool == AiToolId.SEARCH_RETAIL_PRODUCTS
+        }
+        val toolsArray = if (declaredTools.isNotEmpty()) {
             buildJsonArray {
                 add(buildJsonObject {
                     putJsonArray("functionDeclarations") {
-                        request.availableTools
-                            .filterNot { tool ->
-                                tool == AiToolId.GET_RETAIL_BASKET_COMPARISON ||
-                                    tool == AiToolId.GET_RETAIL_ITEM_OPTIONS ||
-                                    tool == AiToolId.SEARCH_RETAIL_PRODUCTS
-                            }
-                            .forEach { tool ->
-                                add(buildToolDeclarationJson(tool))
-                            }
+                        declaredTools.forEach { tool ->
+                            add(buildToolDeclarationJson(tool))
+                        }
                     }
                 })
             }
