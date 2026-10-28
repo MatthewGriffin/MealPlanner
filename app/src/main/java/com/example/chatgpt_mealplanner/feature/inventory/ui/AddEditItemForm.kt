@@ -64,7 +64,7 @@ data class AddEditItemFormState(
     val barcode: String = "",
     val quantityText: String = "1.0",
     val selectedUnit: QuantityUnit = QuantityUnit.UNIT,
-    val category: FoodCategory = FoodCategory.CUPBOARD,
+    val category: FoodCategory = FoodCategory.DRY_GOODS,
     val storageLocation: StorageLocation = StorageLocation.CUPBOARD,
     val packCountText: String = "1",
     val packSizeText: String = "",
@@ -132,7 +132,7 @@ data class AddEditItemFormState(
         displayName: String,
         brand: String? = null,
         barcode: String? = null,
-        category: FoodCategory = FoodCategory.CUPBOARD,
+        category: FoodCategory = FoodCategory.DRY_GOODS,
         storageLocation: StorageLocation = StorageLocation.CUPBOARD,
         packCount: Int? = null,
         packSize: Double? = null,
@@ -456,7 +456,7 @@ fun AddEditItemForm(
                 selectedOption = formState.category,
                 onOptionSelected = { onFormStateChange(formState.copy(category = it)) },
                 modifier = Modifier.weight(1f),
-                optionLabel = { it.name.lowercase().replaceFirstChar { c -> c.titlecase() } }
+                optionLabel = { it.displayName }
             )
 
             EnumDropdownSelector(
@@ -465,7 +465,7 @@ fun AddEditItemForm(
                 selectedOption = formState.storageLocation,
                 onOptionSelected = { onFormStateChange(formState.copy(storageLocation = it)) },
                 modifier = Modifier.weight(1f),
-                optionLabel = { it.name.lowercase().replaceFirstChar { c -> c.titlecase() } }
+                optionLabel = { it.displayName }
             )
         }
 
