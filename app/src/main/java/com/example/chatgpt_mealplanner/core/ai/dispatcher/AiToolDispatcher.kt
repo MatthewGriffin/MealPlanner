@@ -38,10 +38,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import com.example.chatgpt_mealplanner.core.service.InventoryDomainService
 import com.example.chatgpt_mealplanner.core.service.MealDomainService
-import com.example.chatgpt_mealplanner.core.service.RetailShoppingDomainService
-import com.example.chatgpt_mealplanner.core.service.RetailerPreferenceStore
 import com.example.chatgpt_mealplanner.core.service.ShoppingDomainService
-import com.example.chatgpt_mealplanner.retail.contract.RetailerId
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -58,11 +55,9 @@ class AiToolDispatcher @Inject constructor(
     private val inventoryDomainService: InventoryDomainService,
     private val mealDomainService: MealDomainService,
     private val shoppingDomainService: ShoppingDomainService,
-    private val retailShoppingDomainService: RetailShoppingDomainService,
     private val chatDao: ChatDao,
     private val pendingMutationStore: com.example.chatgpt_mealplanner.core.ai.pending.PendingMutationStore,
     private val activeProposalStore: com.example.chatgpt_mealplanner.core.ai.proposal.ActiveProposalStore,
-    private val retailerPreferenceStore: RetailerPreferenceStore = RetailerPreferenceStore(null)
 ) {
     private val json = Json { ignoreUnknownKeys = true }
 
