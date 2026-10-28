@@ -3,6 +3,8 @@ package com.example.chatgpt_mealplanner.feature.shopping
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.chatgpt_mealplanner.core.model.DomainError
+import com.example.chatgpt_mealplanner.core.database.dao.PurchasePriceDao
+import com.example.chatgpt_mealplanner.core.database.entity.PurchasePriceWithStore
 import com.example.chatgpt_mealplanner.core.model.DomainResult
 import com.example.chatgpt_mealplanner.core.model.InventoryItem
 import com.example.chatgpt_mealplanner.core.model.QuantityConfidence
@@ -49,7 +51,8 @@ class ShoppingViewModel @Inject constructor(
     private val appRoleResolver: AppRoleResolver,
     private val retailerPreferenceStore: RetailerPreferenceStore = RetailerPreferenceStore(null),
     private val retailStorePreferenceStore: RetailStorePreferenceStore = RetailStorePreferenceStore(null),
-    private val followerBasketComparisonCacheStore: FollowerBasketComparisonCacheStore = FollowerBasketComparisonCacheStore(null)
+    private val followerBasketComparisonCacheStore: FollowerBasketComparisonCacheStore = FollowerBasketComparisonCacheStore(null),
+    private val purchasePriceDao: PurchasePriceDao? = null
 ) : ViewModel() {
 
     private val activeTabFlow = MutableStateFlow(ShoppingTab.SHOPPING_LIST)
@@ -63,6 +66,8 @@ class ShoppingViewModel @Inject constructor(
     private val manualItemNotesFlow = MutableStateFlow("")
     private val basketOptimizationFlow = MutableStateFlow<BasketComparisonResult?>(null)
     private val retailLookupMessageFlow = MutableStateFlow<String?>(null)
+    private val localPriceMatchesFlow = MutableStateFlow<Map<String, List<PurchasePriceWithStore>>>(emptyMap())
+    private var localPriceLookupJob: kotlinx.coroutines.Job? = null
     private var basketOptimizationJob: kotlinx.coroutines.Job? = null
     private var basketOptimizationVersion = 0L
     private var lastBasketOptimizationSignature: String? = null
@@ -96,6 +101,7 @@ class ShoppingViewModel @Inject constructor(
             if (signature != lastBasketOptimizationSignature) {
                 lastBasketOptimizationSignature = signature
                 runBasketOptimization(listWithItems, enabledRetailers, preferredStores)
+                runLocalPriceLookup(listWithItems)
             }
         }
         .map { it.first }
@@ -115,7 +121,8 @@ class ShoppingViewModel @Inject constructor(
         manualItemNotesFlow,
         retailLookupMessageFlow,
         selectedItemOptionsFlow,
-        isLoadingItemOptionsFlow
+        isLoadingItemOptionsFlow,
+        localPriceMatchesFlow
     ) { flows ->
         val listWithItems = flows[0] as ShoppingListWithItems?
         val stapleRules = flows[1] as List<StapleRule>
@@ -130,6 +137,7 @@ class ShoppingViewModel @Inject constructor(
         val retailLookupMessage = flows[10] as String?
         val selectedItemOptions = flows[11] as List<PackAlternative>
         val isLoadingItemOptions = flows[12] as Boolean
+        val localPriceMatches = flows[13] as Map<String, List<PurchasePriceWithStore>>
 
         val items = listWithItems?.items ?: emptyList()
         val groups = computeRetailerGroups(items, basketResult)
@@ -156,6 +164,7 @@ class ShoppingViewModel @Inject constructor(
             showAddManualDialog = showAddDialog,
             basketComparisonResult = basketResult,
             retailLookupMessage = retailLookupMessage,
+            localPriceMatches = localPriceMatches,
             retailerGroups = groups,
             manualItemName = manualItemName,
             manualItemNotes = manualItemNotes
@@ -166,111 +175,47 @@ class ShoppingViewModel @Inject constructor(
         initialValue = ShoppingUiState()
     )
 
+    /**
+     * Live retailer catalogue scraping is intentionally disabled. Shopping prices now come
+     * only from locally recorded purchase observations; unknown prices remain unknown.
+     */
     private fun runBasketOptimization(
         listWithItems: ShoppingListWithItems?,
         configuredRetailers: Set<RetailerId>,
         savedStores: List<com.example.chatgpt_mealplanner.retail.contract.RetailStoreLocation>
     ) {
-        if (appRoleResolver.isFollower()) {
-            val version = ++basketOptimizationVersion
-            basketOptimizationJob?.cancel()
-            basketOptimizationFlow.value = null
-            if (listWithItems?.items.isNullOrEmpty()) return
-            basketOptimizationJob = viewModelScope.launch {
-                val cached = followerBasketComparisonCacheStore.getCachedComparison()
-                val expectedIds = listWithItems?.items?.map { it.item.id }?.toSet().orEmpty()
-                val cachedIds = cached?.let { result ->
-                    (result.selectedPlan.lines.map { it.shoppingRequirementId } + result.unmatchedRequirements).toSet()
-                }.orEmpty()
-                if (version == basketOptimizationVersion) {
-                    basketOptimizationFlow.value = cached?.takeIf { expectedIds == cachedIds }
-                }
-            }
-            return
-        }
-        val version = ++basketOptimizationVersion
         basketOptimizationJob?.cancel()
-        // Keep the last completed comparison visible while new retailer searches run.
-        // Replacing it with intermediate partial plans caused item assignments to flicker.
-        retailLookupMessageFlow.value = null
-        if (listWithItems?.items.isNullOrEmpty()) {
-            basketOptimizationFlow.value = null
+        basketOptimizationVersion++
+        basketOptimizationFlow.value = null
+        retailLookupMessageFlow.value = if (listWithItems?.items.isNullOrEmpty()) null else
+            "Live retailer lookups are disabled. Recorded purchase prices are shown only for exact product-name matches."
+    }
+
+    private fun runLocalPriceLookup(listWithItems: ShoppingListWithItems?) {
+        localPriceLookupJob?.cancel()
+        val dao = purchasePriceDao
+        val items = listWithItems?.items.orEmpty()
+        if (dao == null || items.isEmpty()) {
+            localPriceMatchesFlow.value = emptyMap()
             return
         }
-
-        val count = listWithItems?.items?.size ?: 0
-        // The domain service looks up only configured/preferred retailer
-        // catalogues. Food Warehouse shares Iceland's catalogue, so count that
-        // retailer once when calculating the progress total.
-        val retailerLookupCount = savedStores
-            .filter { it.isPreferred }
-            .map { if (it.retailerId == RetailerId.FOOD_WAREHOUSE) RetailerId.ICELAND else it.retailerId }
-            .distinct()
-            .size
-        val lookupTotal = count * retailerLookupCount
-        retailLookupMessageFlow.value = "0/$lookupTotal · Preparing retailer lookups…"
-        basketOptimizationJob = viewModelScope.launch {
-            var lookupProgressCount = 0
-            println("[AI_MEALPLANNER] [SHOPPING_ASSIGNMENT_CALL] shoppingItemCount=$count")
-            val result = try {
-                // A retailer is enabled for basket comparison only when the user has
-                // selected one of its branches. Do not let the legacy enabled-retailer
-                // preference independently add retailers without a chosen branch.
-                // Iceland and The Food Warehouse share one catalogue/comparison setting.
-                val preferredStores = savedStores
-                    .filter { it.isPreferred }
-                    .map { store ->
-                        if (store.retailerId == RetailerId.FOOD_WAREHOUSE) {
-                            store.copy(
-                                retailerId = RetailerId.ICELAND,
-                                format = RetailStoreFormat.ICELAND
-                            )
-                        } else store
-                    }
-                val enabledRetailerIds = preferredStores.map { it.retailerId }.toSet()
-                val preferences = UserShoppingPreferences(
-                    enabledRetailers = enabledRetailerIds,
-                    preferredStores = preferredStores
-                )
-                // Retail adapters can perform synchronous network and parsing work.
-                // Keep the complete lookup/optimization pipeline off the main thread;
-                // StateFlow updates from the callbacks are thread-safe.
-                val res = withContext(Dispatchers.IO) {
-                    retailShoppingDomainService.optimizeShoppingBasket(
-                        preferences,
-                        { message ->
-                            if (version == basketOptimizationVersion) {
-                                if (message.startsWith("Completed retailer lookup for ")) {
-                                    lookupProgressCount = (lookupProgressCount + 1).coerceAtMost(lookupTotal)
-                                }
-                                retailLookupMessageFlow.value = "$lookupProgressCount/$lookupTotal · $message"
-                            }
-                        },
-                        { completedResult ->
-                            if (version == basketOptimizationVersion) {
-                                basketOptimizationFlow.value = applyRetailerOverrides(completedResult)
-                            }
-                        }
-                    )
+        localPriceLookupJob = viewModelScope.launch {
+            try {
+                val matches = withContext(Dispatchers.IO) {
+                    items.associate { entry ->
+                        val history = dao.getPriceHistoryByExactProductName(entry.item.displayName)
+                        val latestPerStore = history
+                            .distinctBy { it.observation.storeId }
+                            .sortedWith(compareBy<PurchasePriceWithStore> { it.observation.priceMinorUnits }
+                                .thenByDescending { it.observation.purchasedAt })
+                        entry.item.id to latestPerStore
+                    }.filterValues { it.isNotEmpty() }
                 }
-                if (res is DomainResult.Success) {
-                    res.value.selectedPlan.lines.forEach { line ->
-                        println("[AI_MEALPLANNER] [SHOPPING_ASSIGNMENT_RESULT] requirementId=${line.shoppingRequirementId} assigned=true retailer=${line.retailerId.name}")
-                    }
-                    res.value.selectedPlan.unmatchedRequirements.forEach { reqId ->
-                        println("[AI_MEALPLANNER] [SHOPPING_ASSIGNMENT_RESULT] requirementId=$reqId assigned=false")
-                    }
-                }
-                res
+                localPriceMatchesFlow.value = matches
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
-            } catch (e: Exception) {
-                println("[AI_MEALPLANNER] [SHOPPING_OPTIMIZE_EXCEPTION] exceptionType=${e.javaClass.simpleName}")
-                null
-            }
-            if (version == basketOptimizationVersion) {
-                basketOptimizationFlow.value = if (result is DomainResult.Success) applyRetailerOverrides(result.value) else null
-                retailLookupMessageFlow.value = null
+            } catch (_: Exception) {
+                localPriceMatchesFlow.value = emptyMap()
             }
         }
     }
