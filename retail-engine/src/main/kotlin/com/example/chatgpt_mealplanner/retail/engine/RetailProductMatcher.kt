@@ -299,7 +299,7 @@ class RetailProductMatcher(
         // generic "roasting potatoes" requirement; exclude prepared potato products.
         val wantsRoastingPotatoes = reqLower in setOf("roasting potatoes", "potatoes for roasting", "roast potatoes")
         if (wantsRoastingPotatoes) {
-            val isPotato = Regex("\\\\bpotatoes?\\\\b").containsMatchIn(nameLower) ||
+            val isPotato = Regex("\\bpotatoes?\\b").containsMatchIn(nameLower) ||
                 listOf("maris piper", "king edward", "desiree", "rooster potatoes").any { nameLower.contains(it) }
             val isPrepared = listOf("crisps", "chips", "wedges", "mash", "mashed", "potato salad", "croquette", "waffles", "ready meal", "roast potatoes ready").any { nameLower.contains(it) }
             if (isPotato && !isPrepared) {
