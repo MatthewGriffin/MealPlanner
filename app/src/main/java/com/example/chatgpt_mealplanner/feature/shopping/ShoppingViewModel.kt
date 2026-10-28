@@ -220,16 +220,6 @@ class ShoppingViewModel @Inject constructor(
         println("[AI_MEALPLANNER] [SHOPPING_VM_INIT] buildAudit=SHOPPING_AUDIT_20261001_02")
         if (!appRoleResolver.isFollower()) {
             regenerateShoppingList()
-        } else {
-            viewModelScope.launch {
-                followerBasketComparisonCacheStore.observeCachedComparison().collect { cached ->
-                    val expectedIds = uiState.value.activeListWithItems?.items?.map { it.item.id }?.toSet().orEmpty()
-                    val cachedIds = cached?.let { result ->
-                        (result.selectedPlan.lines.map { it.shoppingRequirementId } + result.unmatchedRequirements).toSet()
-                    }.orEmpty()
-                    basketOptimizationFlow.value = cached?.takeIf { expectedIds.isNotEmpty() && expectedIds == cachedIds }
-                }
-            }
         }
     }
 
