@@ -8,6 +8,9 @@ import com.example.chatgpt_mealplanner.core.barcode.model.ProductLookupResult
 import com.example.chatgpt_mealplanner.core.barcode.model.ProductMetadata
 import com.example.chatgpt_mealplanner.core.barcode.repository.ProductLookupRepository
 import com.example.chatgpt_mealplanner.core.model.DomainResult
+import com.example.chatgpt_mealplanner.core.database.dao.PurchasePriceDao
+import com.example.chatgpt_mealplanner.core.database.entity.PurchasePriceObservationEntity
+import com.example.chatgpt_mealplanner.core.database.entity.UserStoreEntity
 import com.example.chatgpt_mealplanner.core.model.QuantityConfidence
 import com.example.chatgpt_mealplanner.core.model.StorageLocation
 import com.example.chatgpt_mealplanner.core.service.InventoryDomainService
@@ -17,15 +20,28 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import java.util.UUID
+import kotlin.math.roundToLong
 
 @HiltViewModel
 class ScannerViewModel @Inject constructor(
     private val productLookupRepository: ProductLookupRepository,
-    private val inventoryDomainService: InventoryDomainService
+    private val inventoryDomainService: InventoryDomainService,
+    private val purchasePriceDao: PurchasePriceDao? = null
 ) : ViewModel() {
 
     private val _state = MutableStateFlow<ScannerState>(ScannerState.RequestingPermission)
     val state: StateFlow<ScannerState> = _state.asStateFlow()
+    private val _userStores = MutableStateFlow<List<UserStoreEntity>>(emptyList())
+    val userStores: StateFlow<List<UserStoreEntity>> = _userStores.asStateFlow()
+
+    init {
+        purchasePriceDao?.let { dao ->
+            viewModelScope.launch {
+                dao.observeActiveStores().collect { stores -> _userStores.value = stores }
+            }
+        }
+    }
 
     private var lastScannedBarcode: String? = null
     private var lastScannedTimestamp: Long = 0L
@@ -125,6 +141,7 @@ class ScannerViewModel @Inject constructor(
                         productLookupRepository.saveBarcodeMapping(mappingToCache)
                     }
 
+                    recordPurchasePriceIfProvided(input)
                     _state.value = ScannerState.Saved(lotResult.value)
                 }
                 is DomainResult.Failure -> {
@@ -134,6 +151,37 @@ class ScannerViewModel @Inject constructor(
                     )
                 }
             }
+        }
+    }
+
+    private suspend fun recordPurchasePriceIfProvided(input: ConfirmedProductInput) {
+        val storeId = input.purchaseStoreId?.takeIf { it.isNotBlank() } ?: return
+        val priceText = input.purchasePriceText?.trim()?.takeIf { it.isNotEmpty() } ?: return
+        val pricePounds = priceText.replace(",", ".").toDoubleOrNull()
+            ?.takeIf { it >= 0.0 } ?: return
+        val dao = purchasePriceDao ?: return
+        try {
+            val store = dao.getStore(storeId) ?: return
+            if (store.isArchived) return
+            val priceMinorUnits = (pricePounds * 100.0).roundToLong()
+            dao.insertPriceObservation(
+                PurchasePriceObservationEntity(
+                    id = UUID.randomUUID().toString(),
+                    storeId = storeId,
+                    barcode = input.barcode?.trim()?.takeIf { it.isNotEmpty() },
+                    productName = input.displayName.trim(),
+                    brand = input.brand?.trim()?.takeIf { it.isNotEmpty() },
+                    packQuantity = input.netQuantity,
+                    packUnit = input.netQuantityUnit?.name,
+                    packCount = input.packCount,
+                    priceMinorUnits = priceMinorUnits,
+                    purchasedAt = System.currentTimeMillis(),
+                    createdAt = System.currentTimeMillis(),
+                    source = "SCANNER"
+                )
+            )
+        } catch (_: Exception) {
+            // Inventory save must not fail because an optional price-history write failed.
         }
     }
 
