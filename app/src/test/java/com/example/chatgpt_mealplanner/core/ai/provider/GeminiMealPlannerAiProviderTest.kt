@@ -651,12 +651,24 @@ class GeminiMealPlannerAiProviderTest {
             contextPayloadJson = "{}",
             contextPayload = emptyPayload,
             messages = listOf(AiChatMessage("user", "Hello")),
-            availableTools = listOf(AiToolId.OFFER_ADD_PLANNED_MEAL),
+            availableTools = listOf(
+                AiToolId.OFFER_ADD_PLANNED_MEAL,
+                AiToolId.GET_RETAIL_BASKET_COMPARISON,
+                AiToolId.GET_RETAIL_ITEM_OPTIONS,
+                AiToolId.SEARCH_RETAIL_PRODUCTS
+            ),
             forcedToolName = null
         )
         provider.send(req)
 
         assertFalse("Normal provider request MUST NOT contain toolConfig", capturedPayload!!.containsKey("toolConfig"))
+        val declarations = capturedPayload!!["tools"]!!.jsonArray
+            .first().jsonObject["functionDeclarations"]!!.jsonArray
+        val declaredNames = declarations.map { it.jsonObject["name"]!!.jsonPrimitive.content }
+        assertTrue("Active tools should still be declared", declaredNames.contains("offer_add_planned_meal"))
+        assertFalse("Retired retailer comparison must not be exposed", declaredNames.contains("get_retail_basket_comparison"))
+        assertFalse("Retired retailer options must not be exposed", declaredNames.contains("get_retail_item_options"))
+        assertFalse("Retired retailer search must not be exposed", declaredNames.contains("search_retail_products"))
     }
 
     @Test
