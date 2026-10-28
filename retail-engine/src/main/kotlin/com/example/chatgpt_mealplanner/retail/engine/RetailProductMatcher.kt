@@ -111,13 +111,18 @@ class RetailProductMatcher(
                 .containsMatchIn(candidateDescription.lowercase()) &&
             Regex("\\b(breast|fillets?|thighs?)\\b")
                 .containsMatchIn(candidateDescription.lowercase())
+        val candidateIsSeasonedOrCoatedPreparedMeat =
+            wantsPreparedPieces &&
+            Regex("\\b(southern fried|breaded|battered|coated|crispy|bbq|barbecue|marinated|seasoned|flavoured|flavored)\\b")
+                .containsMatchIn(candidateDescription.lowercase())
         val incompatiblePhysicalForm =
             (candidateFormAttributes.contains("whole") && "whole" !in requirementFormAttributes) ||
             (candidateFormAttributes.contains("carcass") && "carcass" !in requirementFormAttributes) ||
             (candidateFormAttributes.contains("bone-in") &&
                 "bone-in" !in requirementFormAttributes &&
                 "boneless" !in requirementFormAttributes) ||
-            candidateIsOnlyGenericWholeItem
+            candidateIsOnlyGenericWholeItem ||
+            candidateIsSeasonedOrCoatedPreparedMeat
         if (incompatiblePhysicalForm) {
             return returnMatch(requirementDisplayName, candidateProduct, RetailMatchCandidate(
                 candidateProduct, MatchType.INCOMPATIBLE, MatchConfidence.LOW, false,
