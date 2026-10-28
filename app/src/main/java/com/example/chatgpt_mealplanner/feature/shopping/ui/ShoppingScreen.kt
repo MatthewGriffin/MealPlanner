@@ -56,6 +56,9 @@ import com.example.chatgpt_mealplanner.feature.shopping.ShoppingUiState
 import com.example.chatgpt_mealplanner.retail.contract.BasketLine
 import com.example.chatgpt_mealplanner.retail.contract.PriceFreshness
 import com.example.chatgpt_mealplanner.retail.contract.RetailFreshnessPolicy
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun ShoppingScreen(
@@ -167,6 +170,55 @@ fun ShoppingScreen(
 
                     val shoppingItems = uiState.activeListWithItems?.items.orEmpty()
                     if (shoppingItems.isNotEmpty()) {
+                        val itemsWithKnownPrices = uiState.activeListWithItems?.items.orEmpty()
+                            .filter { !uiState.localPriceMatches[it.item.id].isNullOrEmpty() }
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 4.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text("Recorded purchase prices", fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    "Local history only · exact product-name matches · prices may be out of date",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                if (itemsWithKnownPrices.isEmpty()) {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        "No matching purchase prices recorded yet. Add shops and record purchases in Settings.",
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                } else {
+                                    itemsWithKnownPrices.forEach { entry ->
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Text(entry.item.displayName, fontWeight = FontWeight.Medium)
+                                        uiState.localPriceMatches[entry.item.id].orEmpty().forEach { price ->
+                                            val observation = price.observation
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(price.storeName, style = MaterialTheme.typography.bodyMedium)
+                                                    Text(
+                                                        "Last recorded ${SimpleDateFormat("dd MMM yyyy", Locale.UK).format(Date(observation.purchasedAt))}",
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                }
+                                                Text(
+                                                    "${observation.currencyCode} ${"%.2f".format(observation.priceMinorUnits / 100.0)}",
+                                                    fontWeight = FontWeight.SemiBold
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         val lookupProgress = uiState.retailLookupMessage
                             ?.let { Regex("^(\\d+)/(\\d+)").find(it) }
                         val lookupDone = lookupProgress?.groupValues?.get(1)?.toIntOrNull() ?: 0
