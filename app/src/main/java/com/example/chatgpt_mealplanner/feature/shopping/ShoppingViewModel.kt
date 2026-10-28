@@ -245,22 +245,10 @@ class ShoppingViewModel @Inject constructor(
             is ShoppingUiEvent.RemoveItem -> removeItem(event.itemId)
             is ShoppingUiEvent.SelectItemDetail -> {
                 selectedItemDetailFlow.value = event.itemWithSources
+                // Retailer catalogue alternatives are intentionally disabled. Local purchase
+                // history is surfaced separately and never presented as a live quote.
                 selectedItemOptionsFlow.value = emptyList()
-                if (event.itemWithSources == null) {
-                    isLoadingItemOptionsFlow.value = false
-                } else {
-                    val itemId = event.itemWithSources.item.id
-                    isLoadingItemOptionsFlow.value = true
-                    viewModelScope.launch {
-                        val result = withContext(Dispatchers.IO) {
-                            retailShoppingDomainService.getItemOptions(itemId)
-                        }
-                        if (selectedItemDetailFlow.value?.item?.id == itemId) {
-                            selectedItemOptionsFlow.value = (result as? DomainResult.Success)?.value.orEmpty()
-                            isLoadingItemOptionsFlow.value = false
-                        }
-                    }
-                }
+                isLoadingItemOptionsFlow.value = false
             }
             is ShoppingUiEvent.ReassignItemRetailer -> reassignItemRetailer(event.itemId, event.retailerId)
             ShoppingUiEvent.RequestAddManualItem -> {
