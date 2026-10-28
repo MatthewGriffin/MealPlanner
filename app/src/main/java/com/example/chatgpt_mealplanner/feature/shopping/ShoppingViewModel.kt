@@ -210,6 +210,13 @@ class ShoppingViewModel @Inject constructor(
     }
 
     init {
+        purchasePriceDao?.let { dao ->
+            viewModelScope.launch {
+                dao.observeRecentPriceHistory().collect {
+                    runLocalPriceLookup(uiState.value.activeListWithItems)
+                }
+            }
+        }
         println("[AI_MEALPLANNER] [SHOPPING_VM_INIT] buildAudit=SHOPPING_AUDIT_20261001_02")
         if (!appRoleResolver.isFollower()) {
             regenerateShoppingList()
