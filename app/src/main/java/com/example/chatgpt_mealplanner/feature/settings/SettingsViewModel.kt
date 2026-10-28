@@ -65,10 +65,6 @@ class SettingsViewModel @Inject constructor(
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
     init {
-        _uiState.update {
-            it.copy(
-            )
-        }
         purchasePriceDao?.let { dao ->
             viewModelScope.launch {
                 dao.observeActiveStores().collect { stores ->
