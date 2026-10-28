@@ -873,6 +873,7 @@ open class FakeAppDatabase : AppDatabase() {
     override fun shoppingDao(): com.example.chatgpt_mealplanner.core.database.dao.ShoppingDao = error("")
     override fun stapleRuleDao(): com.example.chatgpt_mealplanner.core.database.dao.StapleRuleDao = error("")
     override fun retailDao(): com.example.chatgpt_mealplanner.core.database.dao.RetailDao = error("")
+    override fun purchasePriceDao(): com.example.chatgpt_mealplanner.core.database.dao.PurchasePriceDao = error("")
     override fun receiptDao(): com.example.chatgpt_mealplanner.core.database.dao.ReceiptDao = error("")
     override fun receiptSpendDao(): com.example.chatgpt_mealplanner.core.database.dao.ReceiptSpendDao = error("")
     override fun householdIdentityDao(): com.example.chatgpt_mealplanner.core.database.dao.HouseholdIdentityDao = error("")
