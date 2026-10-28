@@ -16,6 +16,7 @@ import com.example.chatgpt_mealplanner.core.backup.SafBackupOutcome
 import com.example.chatgpt_mealplanner.core.database.dao.ChatDao
 import com.example.chatgpt_mealplanner.core.database.dao.PurchasePriceDao
 import com.example.chatgpt_mealplanner.core.database.entity.UserStoreEntity
+import com.example.chatgpt_mealplanner.core.database.entity.PurchasePriceObservationEntity
 import com.example.chatgpt_mealplanner.core.security.CredentialStore
 import com.example.chatgpt_mealplanner.core.security.StoreDirectoryCredentialStore
 import com.example.chatgpt_mealplanner.core.sync.AppRoleResolver
@@ -153,6 +154,63 @@ class SettingsViewModel @Inject constructor(
                 _uiState.update { it.copy(syncStatusMessage = "Shop renamed to $cleanName") }
             } catch (e: Exception) {
                 _uiState.update { it.copy(syncStatusMessage = "Could not rename shop: ${e.message ?: "unknown error"}") }
+            }
+        }
+    }
+
+    fun recordPurchasePrice(
+        storeId: String,
+        productName: String,
+        barcode: String?,
+        brand: String?,
+        packQuantityText: String?,
+        packUnit: String?,
+        packCountText: String?,
+        priceText: String
+    ) {
+        val cleanName = productName.trim()
+        val pricePounds = priceText.trim().replace(",", ".").toDoubleOrNull()
+        val packQuantity = packQuantityText?.trim()?.takeIf { it.isNotEmpty() }?.replace(",", ".")?.toDoubleOrNull()
+        val packCount = packCountText?.trim()?.takeIf { it.isNotEmpty() }?.toIntOrNull()
+        if (storeId.isBlank() || cleanName.isBlank() || pricePounds == null || pricePounds < 0.0) {
+            _uiState.update { it.copy(syncStatusMessage = "Choose a shop, enter a product name and enter a valid price.") }
+            return
+        }
+        if (packQuantityText?.isNotBlank() == true && (packQuantity == null || packQuantity <= 0.0)) {
+            _uiState.update { it.copy(syncStatusMessage = "Pack quantity must be a positive number.") }
+            return
+        }
+        if (packCountText?.isNotBlank() == true && (packCount == null || packCount <= 0)) {
+            _uiState.update { it.copy(syncStatusMessage = "Pack count must be a positive whole number.") }
+            return
+        }
+        viewModelScope.launch {
+            try {
+                val store = purchasePriceDao.getStore(storeId)
+                if (store == null || store.isArchived) {
+                    _uiState.update { it.copy(syncStatusMessage = "Choose an active shop.") }
+                    return@launch
+                }
+                val priceMinorUnits = (pricePounds * 100.0).toLong()
+                purchasePriceDao.insertPriceObservation(
+                    PurchasePriceObservationEntity(
+                        id = UUID.randomUUID().toString(),
+                        storeId = storeId,
+                        barcode = barcode?.trim()?.takeIf { it.isNotEmpty() },
+                        productName = cleanName,
+                        brand = brand?.trim()?.takeIf { it.isNotEmpty() },
+                        packQuantity = packQuantity,
+                        packUnit = packUnit?.trim()?.takeIf { it.isNotEmpty() },
+                        packCount = packCount,
+                        priceMinorUnits = priceMinorUnits,
+                        purchasedAt = System.currentTimeMillis(),
+                        createdAt = System.currentTimeMillis(),
+                        source = "MANUAL"
+                    )
+                )
+                _uiState.update { it.copy(syncStatusMessage = "Saved £${"%.2f".format(priceMinorUnits / 100.0)} for $cleanName at ${store.name}.") }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(syncStatusMessage = "Could not save price: ${e.message ?: "unknown error"}") }
             }
         }
     }
