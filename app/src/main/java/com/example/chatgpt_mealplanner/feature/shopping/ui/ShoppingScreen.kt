@@ -208,6 +208,13 @@ fun ShoppingScreen(
                                                         style = MaterialTheme.typography.bodySmall,
                                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                                     )
+                                                    val packDescription = listOfNotNull(
+                                                        observation.packCount?.let { "${it} pack" },
+                                                        observation.packQuantity?.let { qty -> "${qty} ${observation.packUnit.orEmpty()}".trim() }
+                                                    ).joinToString(" · ")
+                                                    if (packDescription.isNotBlank()) {
+                                                        Text(packDescription, style = MaterialTheme.typography.bodySmall)
+                                                    }
                                                 }
                                                 Text(
                                                     "${observation.currencyCode} ${"%.2f".format(observation.priceMinorUnits / 100.0)}",
