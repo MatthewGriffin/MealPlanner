@@ -45,6 +45,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import com.example.chatgpt_mealplanner.feature.scanner.ScannerState
 import com.example.chatgpt_mealplanner.feature.scanner.ScannerUiEvent
+import com.example.chatgpt_mealplanner.core.database.entity.UserStoreEntity
 import com.example.chatgpt_mealplanner.feature.scanner.analyzer.BarcodeAnalyzer
 import java.util.concurrent.Executors
 
@@ -52,6 +53,7 @@ import java.util.concurrent.Executors
 @Composable
 fun ScannerScreen(
     state: ScannerState,
+    userStores: List<UserStoreEntity> = emptyList(),
     onEvent: (ScannerUiEvent) -> Unit,
     onNavigateBack: () -> Unit,
     modifier: Modifier = Modifier
@@ -132,6 +134,7 @@ fun ScannerScreen(
                     ProductConfirmationScreen(
                         barcode = state.barcode,
                         metadata = state.editableMetadata,
+                        stores = userStores,
                         onBack = { onEvent(ScannerUiEvent.ScanAnother) },
                         onConfirm = { confirmedInput ->
                             onEvent(ScannerUiEvent.ConfirmProduct(confirmedInput))
