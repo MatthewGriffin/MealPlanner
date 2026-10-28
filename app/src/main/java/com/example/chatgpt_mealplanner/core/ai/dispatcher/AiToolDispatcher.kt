@@ -508,52 +508,26 @@ class AiToolDispatcher @Inject constructor(
         }
     }
 
-    private suspend fun handleGetRetailBasketComparison(): DomainResult<AiToolPayload> {
-        val userPrefs = com.example.chatgpt_mealplanner.retail.contract.UserShoppingPreferences(
-            enabledRetailers = setOf(RetailerId.ASDA, RetailerId.ICELAND)
+    private suspend fun handleGetRetailBasketComparison(): DomainResult<AiToolPayload> =
+        DomainResult.Success(
+            AiToolPayload.TextPayload(
+                "Live retailer catalogue comparison is disabled. Use the locally recorded purchase-price history; unknown prices are not estimated."
+            )
         )
-        val result = retailShoppingDomainService.optimizeShoppingBasket(userPrefs)
 
-        return when (result) {
-            is DomainResult.Success -> {
-                val jsonStr = json.encodeToString(result.value)
-                DomainResult.Success(AiToolPayload.TextPayload(jsonStr))
-            }
-            is DomainResult.Failure -> DomainResult.Failure(result.error)
-        }
-    }
+    private suspend fun handleGetRetailItemOptions(argsJson: String): DomainResult<AiToolPayload> =
+        DomainResult.Success(
+            AiToolPayload.TextPayload(
+                "Live retailer catalogue options are disabled. Product options from external retailer catalogues are not available."
+            )
+        )
 
-    private suspend fun handleGetRetailItemOptions(argsJson: String): DomainResult<AiToolPayload> {
-        val requirementId = extractStringArg(argsJson, "requirementId")
-            ?: return DomainResult.Failure(DomainError.InvalidQuantity(0.0))
-
-        val result = retailShoppingDomainService.getItemOptions(requirementId)
-
-        return when (result) {
-            is DomainResult.Success -> {
-                val jsonStr = json.encodeToString(result.value)
-                DomainResult.Success(AiToolPayload.TextPayload(jsonStr))
-            }
-            is DomainResult.Failure -> DomainResult.Failure(result.error)
-        }
-    }
-
-    private suspend fun handleSearchRetailProducts(argsJson: String): DomainResult<AiToolPayload> {
-        val query = extractStringArg(argsJson, "query")
-            ?: return DomainResult.Failure(DomainError.InvalidQuantity(0.0))
-        val retailerFilter = extractStringArg(argsJson, "retailerFilter")
-            ?.let { value -> runCatching { RetailerId.valueOf(value.trim().uppercase()) }.getOrNull() }
-
-        val result = retailShoppingDomainService.searchProducts(query, retailerFilter)
-
-        return when (result) {
-            is DomainResult.Success -> {
-                val jsonStr = json.encodeToString(result.value)
-                DomainResult.Success(AiToolPayload.TextPayload(jsonStr))
-            }
-            is DomainResult.Failure -> DomainResult.Failure(result.error)
-        }
-    }
+    private suspend fun handleSearchRetailProducts(argsJson: String): DomainResult<AiToolPayload> =
+        DomainResult.Success(
+            AiToolPayload.TextPayload(
+                "Live retailer product search is disabled. Record prices from purchases to build local price history."
+            )
+        )
 
     private suspend fun handleOfferAddPlannedMeal(conversationId: String, argsJson: String): DomainResult<AiToolPayload> {
         val extractedTitle = extractStringArg(argsJson, "title")?.trim()
