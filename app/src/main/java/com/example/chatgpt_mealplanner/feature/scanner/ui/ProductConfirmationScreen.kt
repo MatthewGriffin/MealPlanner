@@ -22,6 +22,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -30,6 +32,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -43,6 +46,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.example.chatgpt_mealplanner.core.barcode.model.ConfirmedProductInput
 import com.example.chatgpt_mealplanner.core.barcode.model.ProductMetadata
+import com.example.chatgpt_mealplanner.core.database.entity.UserStoreEntity
 import com.example.chatgpt_mealplanner.core.model.FoodCategory
 import com.example.chatgpt_mealplanner.core.model.QuantityConfidence
 import com.example.chatgpt_mealplanner.core.model.QuantityUnit
@@ -53,6 +57,7 @@ import com.example.chatgpt_mealplanner.core.model.StorageLocation
 fun ProductConfirmationScreen(
     barcode: String?,
     metadata: ProductMetadata,
+    stores: List<UserStoreEntity> = emptyList(),
     onBack: () -> Unit,
     onConfirm: (ConfirmedProductInput) -> Unit,
     modifier: Modifier = Modifier
@@ -84,6 +89,9 @@ fun ProductConfirmationScreen(
     var isOpened by remember { mutableStateOf(false) }
     var useByDateText by remember { mutableStateOf("") }
     var notesText by remember { mutableStateOf("") }
+    var selectedPurchaseStoreId by remember(stores) { mutableStateOf(stores.firstOrNull()?.id.orEmpty()) }
+    var purchasePriceText by remember(metadata.barcode) { mutableStateOf("") }
+    var purchaseStoreMenuExpanded by remember { mutableStateOf(false) }
 
     val confirmLog = "[BARCODE_METADATA] stage=CONFIRMATION barcode=$barcode displayName=\"${metadata.displayName ?: ""}\" canonicalName=\"${metadata.canonicalName ?: ""}\" initialProductName=\"$displayName\" netQuantity=${metadata.netQuantity} netQuantityUnit=${metadata.netQuantityUnit}"
     println(confirmLog)
@@ -265,11 +273,58 @@ fun ProductConfirmationScreen(
             )
 
             Spacer(modifier = Modifier.height(16.dp))
+            Text("Purchase price (optional)", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+            Text(
+                "If this scan is for something you just bought, record the price to build your private shop price history.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            TextButton(
+                onClick = { purchaseStoreMenuExpanded = true },
+                enabled = stores.isNotEmpty()
+            ) {
+                Text(stores.firstOrNull { it.id == selectedPurchaseStoreId }?.name ?: "Choose a shop in Settings first")
+            }
+            DropdownMenu(
+                expanded = purchaseStoreMenuExpanded,
+                onDismissRequest = { purchaseStoreMenuExpanded = false }
+            ) {
+                stores.forEach { store ->
+                    DropdownMenuItem(
+                        text = { Text(store.name) },
+                        onClick = {
+                            selectedPurchaseStoreId = store.id
+                            purchaseStoreMenuExpanded = false
+                        }
+                    )
+                }
+            }
+            OutlinedTextField(
+                value = purchasePriceText,
+                onValueChange = { purchasePriceText = it },
+                label = { Text("Price paid (£)") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
+            )
+            val parsedPurchasePrice = purchasePriceText.trim().replace(",", ".").toDoubleOrNull()
+            if (purchasePriceText.isNotBlank() &&
+                (selectedPurchaseStoreId.isBlank() || parsedPurchasePrice == null || parsedPurchasePrice < 0.0)
+            ) {
+                Text(
+                    "Choose a shop and enter a valid price, or leave the price blank.",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
 
             Button(
                 onClick = {
                     val netQty = quantityText.toDoubleOrNull()
                     if (displayName.isBlank() || (netQty != null && selectedUnit == null)) return@Button
+                    if (purchasePriceText.isNotBlank() && (selectedPurchaseStoreId.isBlank() || parsedPurchasePrice == null || parsedPurchasePrice < 0.0)) return@Button
 
                     val packCount = packCountText.toIntOrNull()
                     val packSize = packSizeText.toDoubleOrNull()
@@ -296,7 +351,9 @@ fun ProductConfirmationScreen(
                         quantityConfidence = confidence,
                         opened = isOpened,
                         useByDate = useByDateText.ifBlank { null },
-                        notes = notesText.ifBlank { null }
+                        notes = notesText.ifBlank { null },
+                        purchaseStoreId = selectedPurchaseStoreId.takeIf { purchasePriceText.isNotBlank() },
+                        purchasePriceText = purchasePriceText.trim().takeIf { it.isNotEmpty() }
                     )
                     onConfirm(input)
                 },
