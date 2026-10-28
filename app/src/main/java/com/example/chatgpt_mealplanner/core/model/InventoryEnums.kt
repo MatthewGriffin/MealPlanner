@@ -1,15 +1,42 @@
 package com.example.chatgpt_mealplanner.core.model
 
+/**
+ * Describes what an inventory item is, not where it is stored.
+ * StorageLocation is responsible for physical placement.
+ */
 enum class FoodCategory {
-    CUPBOARD,
-    FRIDGE,
-    FREEZER,
-    FRESH_PANTRY,
-    BREAD_BAKERY,
-    SAUCES_SEASONINGS,
+    PRODUCE,
+    MEAT_SEAFOOD,
+    DAIRY_EGGS,
+    BAKERY,
+    DRY_GOODS,
+    TINS_CANS,
+    FROZEN_FOOD,
+    SAUCES_CONDIMENTS,
     SNACKS,
-    MEAL_KITS,
-    OTHER
+    DRINKS,
+    READY_MEALS,
+    HOUSEHOLD,
+    OTHER;
+
+    companion object {
+        // Source compatibility for older callers and imported sync/backup data.
+        // These are aliases, not selectable enum entries.
+        @Deprecated("Use a product-type category; storage is represented by StorageLocation.")
+        val CUPBOARD: FoodCategory get() = OTHER
+        @Deprecated("Use a product-type category; storage is represented by StorageLocation.")
+        val FRIDGE: FoodCategory get() = OTHER
+        @Deprecated("Use a product-type category; storage is represented by StorageLocation.")
+        val FREEZER: FoodCategory get() = OTHER
+        @Deprecated("Use a product-type category; storage is represented by StorageLocation.")
+        val FRESH_PANTRY: FoodCategory get() = PRODUCE
+        @Deprecated("Use BAKERY.")
+        val BREAD_BAKERY: FoodCategory get() = BAKERY
+        @Deprecated("Use SAUCES_CONDIMENTS.")
+        val SAUCES_SEASONINGS: FoodCategory get() = SAUCES_CONDIMENTS
+        @Deprecated("Use READY_MEALS.")
+        val MEAL_KITS: FoodCategory get() = READY_MEALS
+    }
 }
 
 enum class StorageLocation {
