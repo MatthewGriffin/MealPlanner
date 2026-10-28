@@ -39,7 +39,7 @@ data class ConfirmedProductInput(
     val brand: String? = null,
     val canonicalIngredientId: String? = null,
     val canonicalName: String? = null,
-    val category: FoodCategory = FoodCategory.CUPBOARD,
+    val category: FoodCategory = FoodCategory.DRY_GOODS,
     val storageLocation: StorageLocation = StorageLocation.CUPBOARD,
     val netQuantity: Double? = null,
     val netQuantityUnit: QuantityUnit? = null,
