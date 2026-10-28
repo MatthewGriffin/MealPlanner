@@ -14,6 +14,8 @@ import com.example.chatgpt_mealplanner.core.backup.BackupManager
 import com.example.chatgpt_mealplanner.core.backup.MainEncryptedBackupSaveCoordinator
 import com.example.chatgpt_mealplanner.core.backup.SafBackupOutcome
 import com.example.chatgpt_mealplanner.core.database.dao.ChatDao
+import com.example.chatgpt_mealplanner.core.database.dao.PurchasePriceDao
+import com.example.chatgpt_mealplanner.core.database.entity.UserStoreEntity
 import com.example.chatgpt_mealplanner.core.security.CredentialStore
 import com.example.chatgpt_mealplanner.core.security.StoreDirectoryCredentialStore
 import com.example.chatgpt_mealplanner.core.sync.AppRoleResolver
@@ -53,6 +55,7 @@ data class SettingsUiState(
     val isPassphraseDialogVisible: Boolean = false,
     val pendingBackupUri: android.net.Uri? = null,
     val enabledRetailers: Set<RetailerId> = RetailerPreferenceStore.DEFAULT_ENABLED_RETAILERS,
+    val userStores: List<UserStoreEntity> = emptyList(),
     val preferredStores: List<RetailStoreLocation> = emptyList(),
     val isStoreSearchInProgress: Boolean = false,
     val storeSearchMessage: String? = null,
@@ -68,6 +71,7 @@ class SettingsViewModel @Inject constructor(
     private val credentialStore: CredentialStore,
     private val provider: MealPlannerAiProvider,
     private val chatDao: ChatDao,
+    private val purchasePriceDao: PurchasePriceDao,
     private val backupManager: BackupManager,
     private val followerSyncScheduler: FollowerSyncScheduler,
     private val appRoleResolver: AppRoleResolver,
@@ -91,9 +95,77 @@ class SettingsViewModel @Inject constructor(
                 isStoreDirectoryApiKeyConfigured = !savedDirectoryKey.isNullOrBlank()
             )
         }
+        viewModelScope.launch {
+            purchasePriceDao.observeActiveStores().collect { stores ->
+                _uiState.update { it.copy(userStores = stores) }
+            }
+        }
         checkCredentialStatus()
         resolveAppRole()
         _uiState.update { it.copy(preferredStores = retailStorePreferenceStore.getPreferredStores()) }
+    }
+
+    fun addUserStore(name: String) {
+        val cleanName = name.trim()
+        if (cleanName.isBlank()) {
+            _uiState.update { it.copy(syncStatusMessage = "Enter a shop name.") }
+            return
+        }
+        viewModelScope.launch {
+            try {
+                val duplicate = purchasePriceDao.getAllStores().any {
+                    !it.isArchived && it.name.equals(cleanName, ignoreCase = true)
+                }
+                if (duplicate) {
+                    _uiState.update { it.copy(syncStatusMessage = "That shop is already in your list.") }
+                    return@launch
+                }
+                val now = System.currentTimeMillis()
+                purchasePriceDao.insertStore(
+                    UserStoreEntity(
+                        id = UUID.randomUUID().toString(),
+                        name = cleanName,
+                        createdAt = now,
+                        updatedAt = now
+                    )
+                )
+                _uiState.update { it.copy(syncStatusMessage = "Added shop: $cleanName") }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(syncStatusMessage = "Could not add shop: ${e.message ?: "unknown error"}") }
+            }
+        }
+    }
+
+    fun renameUserStore(storeId: String, name: String) {
+        val cleanName = name.trim()
+        if (cleanName.isBlank()) return
+        viewModelScope.launch {
+            try {
+                val store = purchasePriceDao.getStore(storeId) ?: return@launch
+                val duplicate = purchasePriceDao.getAllStores().any {
+                    it.id != storeId && !it.isArchived && it.name.equals(cleanName, ignoreCase = true)
+                }
+                if (duplicate) {
+                    _uiState.update { it.copy(syncStatusMessage = "Another shop already has that name.") }
+                    return@launch
+                }
+                purchasePriceDao.updateStore(store.copy(name = cleanName, updatedAt = System.currentTimeMillis()))
+                _uiState.update { it.copy(syncStatusMessage = "Shop renamed to $cleanName") }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(syncStatusMessage = "Could not rename shop: ${e.message ?: "unknown error"}") }
+            }
+        }
+    }
+
+    fun archiveUserStore(storeId: String) {
+        viewModelScope.launch {
+            try {
+                purchasePriceDao.archiveStore(storeId)
+                _uiState.update { it.copy(syncStatusMessage = "Shop archived. Its purchase history is retained.") }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(syncStatusMessage = "Could not archive shop: ${e.message ?: "unknown error"}") }
+            }
+        }
     }
 
     fun setRetailerEnabled(retailer: RetailerId, enabled: Boolean) {
