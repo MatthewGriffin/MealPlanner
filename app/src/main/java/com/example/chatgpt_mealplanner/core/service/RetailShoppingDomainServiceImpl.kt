@@ -21,7 +21,6 @@ import com.example.chatgpt_mealplanner.retail.contract.RetailAvailability
 import com.example.chatgpt_mealplanner.retail.contract.RetailerId
 import com.example.chatgpt_mealplanner.retail.contract.UserShoppingPreferences
 import com.example.chatgpt_mealplanner.retail.engine.BasketOptimizer
-import com.example.chatgpt_mealplanner.retail.engine.FakeRetailerFixtures
 import com.example.chatgpt_mealplanner.retail.engine.PackSelectionEngine
 import com.example.chatgpt_mealplanner.retail.engine.RetailProductMatcher
 import com.example.chatgpt_mealplanner.retail.engine.ShoppingRequirementSpec
