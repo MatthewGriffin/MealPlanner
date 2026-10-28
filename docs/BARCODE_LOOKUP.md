@@ -15,7 +15,7 @@ This document defines the barcode scanning pipeline, local cache, and external p
 
 ---
 
-## 2. Product Lookup Pipeline (4-Tier Architecture)
+## 2. Product Metadata Lookup Pipeline (3-Tier Architecture)
 
 ```
 Barcode Decoded
@@ -28,17 +28,21 @@ Barcode Decoded
        │      │ Found? Save to ProductBarcodeMapping cache -> Return metadata.
        │      └─► Not Found
        │
-       ├──► Tier 3: Retailer Product Database Search (Asda / Food Warehouse APIs)
-       │      │ Found? Save to ProductBarcodeMapping cache -> Return metadata.
-       │      └─► Not Found
-       │
-       └──► Tier 4: Manual Fallback
+       └──► Tier 3: Manual Fallback
               User inputs display name, storage location, category, and quantity.
 ```
 
 ---
 
-## 3. Product Normalization vs. Retail Product Distinction
+## 3. Purchase Price History (Separate from Product Metadata)
+- Barcode lookup identifies a product; it does not fetch a retailer catalogue or claim a current store price.
+- Users maintain their own shop list. Shops are user-named and do not require addresses or retailer presets.
+- Prices are recorded locally from actual purchases, including the shop, barcode when available, pack details, amount paid, and purchase date. Observations are historical and append-only so older prices remain available.
+- The initial implementation uses the local Room database only; sharing or cloud synchronization can be added separately later.
+
+---
+
+## 4. Product Normalization vs. Retail Product Distinction
 - **Retail Product**: Represents the specific branded product bought at a store (e.g. "ASDA Mature Cheddar 400g" or "Cathedral City Mature Cheddar 350g").
 - **Canonical Ingredient**: Maps to a standardized domain ingredient ID (e.g. `CHEDDAR_MATURE`).
 - **Distinct Products Requirement**: Distinct canned goods (e.g. `BAKED_BEANS`, `BAKED_BEANS_WITH_SAUSAGES`, `CHILLI_BEANS`, `BBQ_BAKED_BEANS`) MUST map to separate canonical ingredients and NEVER be merged into a single generic "beans" category.
