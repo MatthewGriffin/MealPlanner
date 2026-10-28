@@ -184,11 +184,11 @@ class SettingsViewModel @Inject constructor(
         val pricePounds = priceText.trim().replace(",", ".").toDoubleOrNull()
         val packQuantity = packQuantityText?.trim()?.takeIf { it.isNotEmpty() }?.replace(",", ".")?.toDoubleOrNull()
         val packCount = packCountText?.trim()?.takeIf { it.isNotEmpty() }?.toIntOrNull()
-        if (storeId.isBlank() || cleanName.isBlank() || pricePounds == null || pricePounds < 0.0) {
+        if (storeId.isBlank() || cleanName.isBlank() || pricePounds == null || !pricePounds.isFinite() || pricePounds < 0.0) {
             _uiState.update { it.copy(syncStatusMessage = "Choose a shop, enter a product name and enter a valid price.") }
             return
         }
-        if (packQuantityText?.isNotBlank() == true && (packQuantity == null || packQuantity <= 0.0)) {
+        if (packQuantityText?.isNotBlank() == true && (packQuantity == null || !packQuantity.isFinite() || packQuantity <= 0.0)) {
             _uiState.update { it.copy(syncStatusMessage = "Pack quantity must be a positive number.") }
             return
         }
