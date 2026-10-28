@@ -187,7 +187,7 @@ fun ShoppingScreen(
                                 if (itemsWithKnownPrices.isEmpty()) {
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(
-                                        "No matching purchase prices recorded yet. Add shops and record purchases in Settings.",
+                                        "No matching purchase prices recorded yet. Scan a product barcode to record its purchase price.",
                                         style = MaterialTheme.typography.bodySmall
                                     )
                                 } else {
@@ -395,14 +395,6 @@ fun ShoppingScreen(
                                                     color = MaterialTheme.colorScheme.onSecondaryContainer
                                                 )
                                             }
-                                        }
-                                        if (isExpanded) {
-                                            Text(
-                                                text = group.priceScopeNotice,
-                                                modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 8.dp),
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSecondaryContainer
-                                            )
                                         }
                                     }
                                 }
