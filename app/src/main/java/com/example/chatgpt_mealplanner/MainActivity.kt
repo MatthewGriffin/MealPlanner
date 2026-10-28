@@ -135,6 +135,7 @@ class MainActivity : ComponentActivity() {
                 }
                 val scannerViewModel: ScannerViewModel = hiltViewModel()
                 val scannerState by scannerViewModel.state.collectAsState()
+                val scannerUserStores by scannerViewModel.userStores.collectAsState()
                 val isConfirming = scannerState is ScannerState.Confirming
 
                 val topBarTitle = when {
@@ -310,6 +311,7 @@ class MainActivity : ComponentActivity() {
                         Screen.SCANNER -> {
                             ScannerScreen(
                                 state = scannerState,
+                                userStores = scannerUserStores,
                                 onEvent = scannerViewModel::onEvent,
                                 onNavigateBack = { currentScreen = Screen.INVENTORY },
                                 modifier = Modifier.padding(innerPadding)
