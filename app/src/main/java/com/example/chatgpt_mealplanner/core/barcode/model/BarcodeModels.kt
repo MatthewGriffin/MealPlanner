@@ -53,7 +53,10 @@ data class ConfirmedProductInput(
     val useByDate: String? = null,
     val bestBeforeDate: String? = null,
     val notes: String? = null,
-    val staple: Boolean = false
+    val staple: Boolean = false,
+    /** Optional price-history entry recorded during scanning. */
+    val purchaseStoreId: String? = null,
+    val purchasePriceText: String? = null
 )
 
 sealed interface ProductLookupResult {
