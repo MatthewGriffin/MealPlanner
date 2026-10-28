@@ -64,6 +64,15 @@ fun SettingsScreen(
     var apiKeyInput by remember { mutableStateOf("") }
     var storeNameInput by remember { mutableStateOf("") }
     var userShopNameInput by remember { mutableStateOf("") }
+    var selectedUserStoreId by remember { mutableStateOf("") }
+    var userShopMenuExpanded by remember { mutableStateOf(false) }
+    var priceProductName by remember { mutableStateOf("") }
+    var priceBarcode by remember { mutableStateOf("") }
+    var priceBrand by remember { mutableStateOf("") }
+    var pricePackQuantity by remember { mutableStateOf("") }
+    var pricePackUnit by remember { mutableStateOf("") }
+    var pricePackCount by remember { mutableStateOf("") }
+    var pricePaid by remember { mutableStateOf("") }
     var storePostcodeInput by remember { mutableStateOf("") }
     var storeSearchPostcodeInput by remember { mutableStateOf("") }
     var storeDirectoryApiKeyInput by remember { mutableStateOf("") }
@@ -332,6 +341,119 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("Record a Purchase Price", fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    "Record the price actually paid. Barcode and pack details are optional; this saves a dated observation and does not overwrite older prices.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                TextButton(onClick = { userShopMenuExpanded = true }, enabled = uiState.userStores.isNotEmpty()) {
+                    Text(uiState.userStores.firstOrNull { it.id == selectedUserStoreId }?.name
+                        ?: uiState.userStores.firstOrNull()?.name
+                        ?: "Add a shop first")
+                }
+                DropdownMenu(
+                    expanded = userShopMenuExpanded,
+                    onDismissRequest = { userShopMenuExpanded = false }
+                ) {
+                    uiState.userStores.forEach { store ->
+                        DropdownMenuItem(
+                            text = { Text(store.name) },
+                            onClick = {
+                                selectedUserStoreId = store.id
+                                userShopMenuExpanded = false
+                            }
+                        )
+                    }
+                }
+                OutlinedTextField(
+                    value = priceProductName,
+                    onValueChange = { priceProductName = it },
+                    label = { Text("Product name") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                OutlinedTextField(
+                    value = priceBarcode,
+                    onValueChange = { priceBarcode = it },
+                    label = { Text("Barcode (optional)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                OutlinedTextField(
+                    value = priceBrand,
+                    onValueChange = { priceBrand = it },
+                    label = { Text("Brand (optional)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = pricePackQuantity,
+                        onValueChange = { pricePackQuantity = it },
+                        label = { Text("Pack size") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    OutlinedTextField(
+                        value = pricePackUnit,
+                        onValueChange = { pricePackUnit = it },
+                        label = { Text("Unit (g, ml, each)") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true
+                    )
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = pricePackCount,
+                        onValueChange = { pricePackCount = it },
+                        label = { Text("Pack count") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    OutlinedTextField(
+                        value = pricePaid,
+                        onValueChange = { pricePaid = it },
+                        label = { Text("Price paid (£)") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Button(
+                    onClick = {
+                        val chosenStoreId = selectedUserStoreId.ifBlank { uiState.userStores.firstOrNull()?.id.orEmpty() }
+                        viewModel.recordPurchasePrice(
+                            storeId = chosenStoreId,
+                            productName = priceProductName,
+                            barcode = priceBarcode,
+                            brand = priceBrand,
+                            packQuantityText = pricePackQuantity,
+                            packUnit = pricePackUnit,
+                            packCountText = pricePackCount,
+                            priceText = pricePaid
+                        )
+                        priceProductName = ""
+                        priceBarcode = ""
+                        priceBrand = ""
+                        pricePackQuantity = ""
+                        pricePackUnit = ""
+                        pricePackCount = ""
+                        pricePaid = ""
+                    },
+                    enabled = uiState.userStores.isNotEmpty() && priceProductName.isNotBlank() && pricePaid.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Save Price Observation") }
             }
         }
 
