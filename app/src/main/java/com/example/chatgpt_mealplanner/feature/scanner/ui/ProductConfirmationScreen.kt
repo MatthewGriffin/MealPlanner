@@ -78,7 +78,7 @@ fun ProductConfirmationScreen(
         mutableStateOf(metadata.packSize?.toString() ?: "")
     }
     var selectedCategory by remember(metadata.barcode, metadata.category) {
-        mutableStateOf(metadata.category ?: FoodCategory.CUPBOARD)
+        mutableStateOf(metadata.category ?: FoodCategory.DRY_GOODS)
     }
     var selectedLocation by remember(metadata.barcode, metadata.suggestedStorageLocation) {
         mutableStateOf(metadata.suggestedStorageLocation ?: StorageLocation.CUPBOARD)
