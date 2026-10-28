@@ -481,52 +481,6 @@ fun SettingsScreen(
     }
 }
 
-private fun retailerLabel(retailerId: RetailerId): String = when (retailerId) {
-    RetailerId.ASDA -> "ASDA"
-    RetailerId.ICELAND -> "Iceland"
-    RetailerId.FOOD_WAREHOUSE -> "Iceland"
-    RetailerId.TESCO -> "Tesco"
-    RetailerId.MORRISONS -> "Morrisons"
-    RetailerId.SAINSBURYS -> "Sainsbury's"
-    RetailerId.ALDI -> "Aldi"
-    RetailerId.LIDL -> "Lidl"
-}
-
-private fun storeDistanceLabel(meters: Int?): String = when {
-    meters == null -> "Distance unavailable"
-    meters < 1000 -> "$meters m away"
-    else -> String.format(java.util.Locale.US, "%.1f km away", meters / 1000.0)
-}
-
-private fun formatLabel(format: RetailStoreFormat): String = when (format) {
-    RetailStoreFormat.ASDA_EXPRESS -> "Asda Express"
-    RetailStoreFormat.ASDA_SUPERMARKET -> "ASDA Supermarket"
-    RetailStoreFormat.ASDA_SUPERSTORE -> "ASDA Superstore"
-    RetailStoreFormat.ASDA_SUPERCENTRE -> "ASDA Supercentre"
-    RetailStoreFormat.TESCO_EXPRESS -> "Tesco Express"
-    RetailStoreFormat.TESCO_METRO -> "Tesco Metro"
-    RetailStoreFormat.TESCO_SUPERMARKET -> "Tesco Supermarket"
-    RetailStoreFormat.TESCO_SUPERSTORE -> "Tesco Superstore"
-    RetailStoreFormat.TESCO_EXTRA -> "Tesco Extra"
-    RetailStoreFormat.MORRISONS_DAILY -> "Morrisons Daily"
-    RetailStoreFormat.MORRISONS_SUPERMARKET -> "Morrisons supermarket"
-    RetailStoreFormat.SAINSBURYS_LOCAL -> "Sainsbury's Local"
-    RetailStoreFormat.SAINSBURYS_SUPERMARKET -> "Sainsbury's supermarket"
-    RetailStoreFormat.SAINSBURYS_SUPERSTORE -> "Sainsbury's superstore"
-    RetailStoreFormat.ICELAND -> "Iceland"
-    RetailStoreFormat.FOOD_WAREHOUSE -> "The Food Warehouse"
-    RetailStoreFormat.UNKNOWN -> "Unknown format"
-}
-
-private fun storeFormatsFor(retailerId: RetailerId): List<RetailStoreFormat> = when (retailerId) {
-    RetailerId.ASDA -> listOf(RetailStoreFormat.ASDA_EXPRESS, RetailStoreFormat.ASDA_SUPERMARKET, RetailStoreFormat.ASDA_SUPERSTORE, RetailStoreFormat.ASDA_SUPERCENTRE)
-    RetailerId.ICELAND -> listOf(RetailStoreFormat.ICELAND)
-    RetailerId.FOOD_WAREHOUSE -> listOf(RetailStoreFormat.FOOD_WAREHOUSE)
-    RetailerId.TESCO -> listOf(RetailStoreFormat.TESCO_EXPRESS, RetailStoreFormat.TESCO_METRO, RetailStoreFormat.TESCO_SUPERMARKET, RetailStoreFormat.TESCO_SUPERSTORE, RetailStoreFormat.TESCO_EXTRA)
-    RetailerId.MORRISONS -> listOf(RetailStoreFormat.MORRISONS_DAILY, RetailStoreFormat.MORRISONS_SUPERMARKET)
-    RetailerId.SAINSBURYS -> listOf(RetailStoreFormat.SAINSBURYS_LOCAL, RetailStoreFormat.SAINSBURYS_SUPERMARKET, RetailStoreFormat.SAINSBURYS_SUPERSTORE)
-    RetailerId.ALDI, RetailerId.LIDL -> listOf(RetailStoreFormat.UNKNOWN)
-}
 
 @Composable
 fun EncryptedBackupPassphraseDialog(
