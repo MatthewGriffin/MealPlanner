@@ -309,7 +309,7 @@ fun ProductConfirmationScreen(
             )
             val parsedPurchasePrice = purchasePriceText.trim().replace(",", ".").toDoubleOrNull()
             if (purchasePriceText.isNotBlank() &&
-                (selectedPurchaseStoreId.isBlank() || parsedPurchasePrice == null || parsedPurchasePrice < 0.0)
+                (selectedPurchaseStoreId.isBlank() || parsedPurchasePrice == null || !parsedPurchasePrice.isFinite() || parsedPurchasePrice < 0.0)
             ) {
                 Text(
                     "Choose a shop and enter a valid price, or leave the price blank.",
