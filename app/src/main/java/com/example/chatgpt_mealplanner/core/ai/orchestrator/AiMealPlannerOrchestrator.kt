@@ -200,13 +200,12 @@ class AiMealPlannerOrchestrator @Inject constructor(
                     )
                 }
             },
-            // Direct retailer product searches must invoke the live lookup tool rather than
-            // letting the model answer from general knowledge or claim it lacks live access.
-            forcedToolName = if (isRetailProductSearchOnlyRequest(userMessageText)) AiToolId.SEARCH_RETAIL_PRODUCTS.toolName else null
+            // Live retailer catalogue scraping has been retired; never force the deprecated lookup tool.
+            forcedToolName = null
         )
 
         val mealPlanRequest = isMealPlanRequest(userMessageText)
-        safeLog("[AI_PLAN_MODE] enabled=$mealPlanRequest retailerLookups=" + if (mealPlanRequest) "DISABLED" else "AVAILABLE")
+        safeLog("[AI_PLAN_MODE] enabled=$mealPlanRequest retailerLookups=DISABLED")
         var providerResponse = provider.send(request)
         var roundCount = 0
         var readSucceeded = false
@@ -1037,11 +1036,10 @@ class AiMealPlannerOrchestrator @Inject constructor(
         Database is authoritative. Use tools for dynamic queries. Household size default is 2.
 
         INTENT SEPARATION — IMPORTANT:
-        1. If the user asks to search, find, compare, or check supermarket products, prices, pack sizes, or promotions, ALWAYS call 'search_retail_products' before answering. This tool triggers live retailer catalogue lookups when cached evidence is missing; it can return current online prices and promotion data when the retailer supplies them.
-        2. For a retailer-specific request, pass the product term in 'query' and the retailer ID in 'retailerFilter' (for example, query='milk', retailerFilter='ASDA'). Do not include the retailer name in the product query when a separate filter is available.
-        3. Never say the app lacks tools for real-time prices or promotions when 'search_retail_products' is available. If the tool returns no results or an unavailable-source error, explain that specific lookup failure and do not invent prices or promotions.
-        4. A product lookup is NOT a request for a recipe or meal plan. Do not add a recipe, menu, or structured MEAL_PLAN_JSON unless the user explicitly asks for meal ideas, a recipe, or meal planning in the same message.
-        5. Only return a structured multi-meal plan when the user explicitly requests a plan or multiple meals. Do not infer that request from prior conversation context.
+        1. Live retailer product searches, current online price lookups, and promotion checks are disabled. Do not call deprecated retailer catalogue tools to imply that a current price was checked.
+        2. The app can record actual purchase prices locally, but only discuss a specific historical price when that observation is available in the current context. Otherwise say the price is unknown.
+        3. A product lookup is NOT a request for a recipe or meal plan. Do not add a recipe, menu, or structured MEAL_PLAN_JSON unless the user explicitly asks for meal ideas, a recipe, or meal planning in the same message.
+        4. Only return a structured multi-meal plan when the user explicitly requests a plan or multiple meals. Do not infer that request from prior conversation context.
 
         HOME-COUNTRY LOCALISATION MANDATE:
         The user's device locale indicates their home country is {{HOME_COUNTRY}}. Use that country's ordinary grocery names, spelling, ingredient terminology, and customary recipe units by default. Prefer ingredients and units that a typical shopper in that country can understand and buy (for example, distinguish plain/all-purpose flour, use locally standard names for vegetables and dairy, and use the country's normal volume/weight measures). Do not default to US or UK terminology unless that is the user's locale.
