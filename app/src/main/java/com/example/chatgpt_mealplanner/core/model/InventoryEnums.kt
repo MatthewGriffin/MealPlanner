@@ -4,20 +4,20 @@ package com.example.chatgpt_mealplanner.core.model
  * Describes what an inventory item is, not where it is stored.
  * StorageLocation is responsible for physical placement.
  */
-enum class FoodCategory {
-    PRODUCE,
-    MEAT_SEAFOOD,
-    DAIRY_EGGS,
-    BAKERY,
-    DRY_GOODS,
-    TINS_CANS,
-    FROZEN_FOOD,
-    SAUCES_CONDIMENTS,
-    SNACKS,
-    DRINKS,
-    READY_MEALS,
-    HOUSEHOLD,
-    OTHER;
+enum class FoodCategory(val displayName: String) {
+    PRODUCE("Fruit & Vegetables"),
+    MEAT_SEAFOOD("Meat & Seafood"),
+    DAIRY_EGGS("Dairy & Eggs"),
+    BAKERY("Bakery"),
+    DRY_GOODS("Dry Goods"),
+    TINS_CANS("Tins & Cans"),
+    FROZEN_FOOD("Frozen Food"),
+    SAUCES_CONDIMENTS("Sauces & Seasonings"),
+    SNACKS("Snacks"),
+    DRINKS("Drinks"),
+    READY_MEALS("Ready Meals"),
+    HOUSEHOLD("Household"),
+    OTHER("Other");
 
     companion object {
         // Source compatibility for older callers and imported sync/backup data.
@@ -39,16 +39,26 @@ enum class FoodCategory {
     }
 }
 
-enum class StorageLocation {
-    CUPBOARD,
-    FRIDGE,
-    FREEZER,
-    FRESH_PANTRY,
-    BREAD_BAKERY,
-    SAUCES_SEASONINGS,
-    SNACKS,
-    MEAL_KITS,
-    OTHER
+enum class StorageLocation(val displayName: String) {
+    CUPBOARD("Cupboard"),
+    FRIDGE("Fridge"),
+    FREEZER("Freezer"),
+    PANTRY("Pantry"),
+    OTHER("Other");
+
+    companion object {
+        // Legacy source aliases; these are no longer selectable locations.
+        @Deprecated("Use PANTRY.")
+        val FRESH_PANTRY: StorageLocation get() = PANTRY
+        @Deprecated("Use CUPBOARD.")
+        val BREAD_BAKERY: StorageLocation get() = CUPBOARD
+        @Deprecated("Use CUPBOARD.")
+        val SAUCES_SEASONINGS: StorageLocation get() = CUPBOARD
+        @Deprecated("Use CUPBOARD.")
+        val SNACKS: StorageLocation get() = CUPBOARD
+        @Deprecated("Use CUPBOARD.")
+        val MEAL_KITS: StorageLocation get() = CUPBOARD
+    }
 }
 
 enum class QuantityUnit {
