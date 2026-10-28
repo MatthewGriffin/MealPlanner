@@ -215,54 +215,6 @@ fun SettingsScreen(
             Text("Result: ${uiState.connectionTestResult}", color = MaterialTheme.colorScheme.primary)
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text("Overpass.ch API Key", fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    "Used for nearby store branch searches. The key is stored encrypted on this device. Postcode lookup still uses OpenStreetMap search.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                if (uiState.isStoreDirectoryApiKeyConfigured) {
-                    Text("Status: Configured securely.", color = MaterialTheme.colorScheme.primary)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Button(onClick = { viewModel.deleteStoreDirectoryApiKey() }) {
-                        Text("Delete API Key")
-                    }
-                } else {
-                    OutlinedTextField(
-                        value = storeDirectoryApiKeyInput,
-                        onValueChange = { storeDirectoryApiKeyInput = it },
-                        label = { Text("Overpass.ch API key") },
-                        visualTransformation = PasswordVisualTransformation(),
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Button(
-                        onClick = {
-                            viewModel.saveStoreDirectoryApiKey(storeDirectoryApiKeyInput)
-                            storeDirectoryApiKeyInput = ""
-                        },
-                        enabled = storeDirectoryApiKeyInput.isNotBlank()
-                    ) {
-                        Text("Save Key")
-                    }
-                }
-                if (uiState.storeDirectoryApiKeyMessage != null) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        uiState.storeDirectoryApiKeyMessage!!,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        }
-
         Spacer(modifier = Modifier.height(24.dp))
         HorizontalDivider()
         Spacer(modifier = Modifier.height(24.dp))
