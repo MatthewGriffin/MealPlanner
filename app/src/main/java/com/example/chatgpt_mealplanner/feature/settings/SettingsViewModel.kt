@@ -42,6 +42,7 @@ import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.util.Arrays
 import java.util.UUID
+import kotlin.math.roundToLong
 import javax.inject.Inject
 
 data class SettingsUiState(
@@ -196,7 +197,7 @@ class SettingsViewModel @Inject constructor(
                     _uiState.update { it.copy(syncStatusMessage = "Choose an active shop.") }
                     return@launch
                 }
-                val priceMinorUnits = (pricePounds * 100.0).toLong()
+                val priceMinorUnits = (pricePounds * 100.0).roundToLong()
                 dao.insertPriceObservation(
                     PurchasePriceObservationEntity(
                         id = UUID.randomUUID().toString(),
