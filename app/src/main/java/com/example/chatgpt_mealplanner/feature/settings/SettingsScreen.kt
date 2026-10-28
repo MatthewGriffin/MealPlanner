@@ -37,6 +37,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.chatgpt_mealplanner.core.ai.provider.GEMINI_MODEL_ID
 import com.example.chatgpt_mealplanner.retail.contract.RetailerId
@@ -406,6 +409,38 @@ fun SettingsScreen(
                     enabled = uiState.userStores.isNotEmpty() && priceProductName.isNotBlank() && pricePaid.isNotBlank(),
                     modifier = Modifier.fillMaxWidth()
                 ) { Text("Save Price Observation") }
+
+                if (uiState.recentPriceHistory.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    HorizontalDivider()
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Recent recorded prices", fontWeight = FontWeight.SemiBold)
+                    uiState.recentPriceHistory.take(10).forEach { entry ->
+                        val observation = entry.observation
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(observation.productName, fontWeight = FontWeight.Medium)
+                                Text(
+                                    "${entry.storeName} · ${SimpleDateFormat("dd MMM yyyy", Locale.UK).format(Date(observation.purchasedAt))}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                val packDescription = listOfNotNull(
+                                    observation.packCount?.let { "${it} pack" },
+                                    observation.packQuantity?.let { qty -> "${qty} ${observation.packUnit.orEmpty()}".trim() }
+                                ).joinToString(" · ")
+                                if (packDescription.isNotBlank()) {
+                                    Text(packDescription, style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
+                            Text(
+                                "${observation.currencyCode} ${"%.2f".format(observation.priceMinorUnits / 100.0)}",
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                }
             }
         }
 
