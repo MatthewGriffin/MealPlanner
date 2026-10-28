@@ -179,7 +179,7 @@ class GeminiMealPlannerAiProvider @Inject constructor(
                     put("tools", toolsArray)
                 }
                 if (!request.forcedToolName.isNullOrBlank()) {
-                    val isDeclared = request.availableTools.any { it.toolName == request.forcedToolName }
+                    val isDeclared = declaredTools.any { it.toolName == request.forcedToolName }
                     if (isDeclared) {
                         safeLog("[AI_FORCED_TOOL] tool=${request.forcedToolName} reason=STRUCTURED_OFFER_REPAIR")
                         putJsonObject("toolConfig") {
