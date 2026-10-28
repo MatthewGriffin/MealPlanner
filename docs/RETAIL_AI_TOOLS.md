@@ -1,23 +1,21 @@
-# Phase 7C: Retail AI Tools & Provenance Specification
+# Retail AI Tools and Local Purchase Price History
 
-This document defines the ai-contract-v2 READ-only retail tools, payload DTOs, system prompt v2 rules, and provenance qualification.
+Live retailer catalogue scraping, online price lookup, branch discovery for price comparison, and retailer-specific stock lookup have been retired from the active shopping flow.
 
----
+## Current behaviour
 
-## 1. Canonical Retail AI Tools (`ai-contract-v2`)
+- Users add their own shop names; no retailer presets or store addresses are required.
+- Actual prices can be recorded manually or during barcode product confirmation.
+- Price observations are stored locally in Room and retain the purchase date, product identity, pack details, and price paid.
+- The shopping screen only surfaces recorded prices when the product name matches exactly. These are historical observations, not live quotes.
+- Missing prices remain unknown. The app must not invent a price, availability, promotion, or saving.
+- Shop IDs are stable when a shop is renamed. Removing a shop archives it so historical price records remain intact.
+- The initial implementation does not upload or share purchase data. A future shared database can be added separately.
 
-1. **`GET_RETAIL_BASKET_COMPARISON`** (Class: `READ`):
-   - Returns deterministic `BasketComparisonResult` (`selectedPlan`, `bestSingleStorePlan`, `bestMultiStorePlan`, `rawMultiStoreSaving`, `minimumSavingsForExtraStore`, `extraStoreThresholdApplied`, `feasibilityTier`, `staleOfferCount`, `unknownAvailabilityCount`).
-2. **`GET_RETAIL_ITEM_OPTIONS`** (Class: `READ`):
-   - Requires authoritative `shoppingListItemId`. Returns top 5 `PackAlternative` options per retailer with effective price, remainder, match confidence, and freshness.
-3. **`SEARCH_RETAIL_PRODUCTS`** (Class: `READ`):
-   - Non-authoritative search helper for general product queries (`query`, `retailerFilter`). Cannot mutate canonical mappings or create inventory stock.
+## Deprecated AI tool identifiers
 
----
+The legacy `GET_RETAIL_BASKET_COMPARISON`, `GET_RETAIL_ITEM_OPTIONS`, and `SEARCH_RETAIL_PRODUCTS` tool identifiers remain for compatibility with existing tool contracts, but their handlers no longer call retailer catalogue adapters. They return a clear message that live lookup is disabled.
 
-## 2. System Prompt v2 Rules (`meal-planner-system-v2.txt`)
+## Future optimisation requirements
 
-- Retail facts come strictly from retail tools.
-- `BasketOptimizer` is authoritative for subtotals, store splits, and the user's configured extra-store minimum threshold.
-- Price provenance and freshness qualification is required in prose (*"Based on an Iceland online price observed today..."*).
-- Retail tools are 100% READ-only.
+A future local optimiser should compare the latest recorded price per shop, account for price age and pack-size equivalence, and only recommend store splits when the savings justify an extra trip. It must distinguish exact product identity from merely similar names and leave unobserved prices unknown.
