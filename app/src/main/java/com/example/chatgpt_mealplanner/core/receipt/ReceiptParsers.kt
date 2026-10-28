@@ -33,7 +33,7 @@ data class ReceiptLineDraft(
     val netQuantity: Double? = null,
     val netQuantityUnit: QuantityUnit? = null,
     val packCount: Int? = null,
-    val category: FoodCategory = FoodCategory.CUPBOARD,
+    val category: FoodCategory = FoodCategory.DRY_GOODS,
     val storageLocation: StorageLocation = StorageLocation.CUPBOARD,
     val confidence: ReceiptLineConfidence = ReceiptLineConfidence.NEEDS_CONFIRMATION,
     val status: ReceiptLineStatus = ReceiptLineStatus.NEEDS_CONFIRMATION
