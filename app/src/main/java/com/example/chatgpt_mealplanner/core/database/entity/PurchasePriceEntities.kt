@@ -11,7 +11,7 @@ import androidx.room.PrimaryKey
  */
 @Entity(
     tableName = "user_stores",
-    indices = [Index(value = ["name"], unique = true)]
+    indices = [Index("name")]
 )
 data class UserStoreEntity(
     @PrimaryKey val id: String,
