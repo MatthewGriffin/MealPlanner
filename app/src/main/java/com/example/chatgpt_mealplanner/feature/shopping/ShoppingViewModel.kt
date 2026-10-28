@@ -187,8 +187,7 @@ class ShoppingViewModel @Inject constructor(
         basketOptimizationJob?.cancel()
         basketOptimizationVersion++
         basketOptimizationFlow.value = null
-        retailLookupMessageFlow.value = if (listWithItems?.items.isNullOrEmpty()) null else
-            "Live retailer lookups are disabled. Recorded purchase prices are shown only for exact product-name matches."
+        retailLookupMessageFlow.value = null
     }
 
     private fun runLocalPriceLookup(listWithItems: ShoppingListWithItems?) {
