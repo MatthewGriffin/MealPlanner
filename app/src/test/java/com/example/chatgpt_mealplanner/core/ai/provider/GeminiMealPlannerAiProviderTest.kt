@@ -689,13 +689,18 @@ class GeminiMealPlannerAiProviderTest {
                 AiToolId.GET_RETAIL_BASKET_COMPARISON,
                 AiToolId.GET_RETAIL_ITEM_OPTIONS,
                 AiToolId.SEARCH_RETAIL_PRODUCTS
-            )
+            ),
+            forcedToolName = AiToolId.SEARCH_RETAIL_PRODUCTS.toolName
         )
         provider.send(req)
 
         assertFalse(
             "Do not send an empty functionDeclarations list when all requested tools are retired",
             capturedPayload!!.containsKey("tools")
+        )
+        assertFalse(
+            "Do not force a retired tool that is absent from Gemini declarations",
+            capturedPayload!!.containsKey("toolConfig")
         )
     }
 
