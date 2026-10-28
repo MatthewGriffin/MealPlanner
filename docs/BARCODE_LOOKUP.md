@@ -37,7 +37,7 @@ Barcode Decoded
 ## 3. Purchase Price History (Separate from Product Metadata)
 - Barcode lookup identifies a product; it does not fetch a retailer catalogue or claim a current store price.
 - Users maintain their own shop list. Shops are user-named and do not require addresses or retailer presets.
-- Prices are recorded locally from actual purchases, including the shop, barcode when available, pack details, amount paid, and purchase date. Observations are historical and append-only so older prices remain available.
+- Prices are entered on the barcode product confirmation screen and recorded locally from actual purchases, linking the scanned barcode to the confirmed product name, shop, pack details, amount paid, and purchase date. Observations are historical and append-only so older prices remain available. Settings manages shop names and displays recent history; prices are not entered there.
 - The initial implementation uses the local Room database only; sharing or cloud synchronization can be added separately later.
 
 ---
