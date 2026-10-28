@@ -21,7 +21,6 @@ import com.example.chatgpt_mealplanner.retail.contract.RetailAvailability
 import com.example.chatgpt_mealplanner.retail.contract.RetailerId
 import com.example.chatgpt_mealplanner.retail.contract.UserShoppingPreferences
 import com.example.chatgpt_mealplanner.retail.engine.BasketOptimizer
-import com.example.chatgpt_mealplanner.retail.engine.FakeRetailerFixtures
 import com.example.chatgpt_mealplanner.retail.engine.PackSelectionEngine
 import com.example.chatgpt_mealplanner.retail.engine.RetailProductMatcher
 import com.example.chatgpt_mealplanner.retail.engine.ShoppingRequirementSpec
@@ -189,7 +188,7 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
 
                 safeLog("[RETAIL_CACHE_CHECK] buildAudit=TOMATO_CACHE_FLOW_20261001_01 requirement=${req.displayName} retailer=${retailerId.name} textRelevantCount=$textRelevantCount eligibleCachedCount=$eligibleCachedCount decision=$decisionStr")
 
-                if (!useCache && (!isTestEnv || allowLiveLookupsInTests)) {
+                if (!useCache && isTestEnv && allowLiveLookupsInTests) {
                     onLookupProgress("Looking up ${req.displayName} at ${retailerId.name.lowercase().replaceFirstChar { it.uppercase() }}…")
                     val safeQuery = (if (req.displayName.contains("heavy cream", ignoreCase = true)) "double cream" else req.displayName).take(50).replace("\n", " ").trim()
                     if (retailerId == RetailerId.ICELAND) {
@@ -293,11 +292,8 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
             // Publish the comparison once all retailer lookups have completed.
         }
 
-        var candidateProducts = retailRepository.getCandidateProductsWithOffers()
-        if (candidateProducts.isEmpty() && !isTestEnv) {
-            // Phase 7A Fixtures Fallback for production/device only
-            candidateProducts = FakeRetailerFixtures.getAsdaFixtures() + FakeRetailerFixtures.getIcelandFixtures()
-        }
+        // Never manufacture retailer offers in production. Empty evidence must remain unknown.
+        val candidateProducts = retailRepository.getCandidateProductsWithOffers()
 
         requirementSpecs.forEach { req ->
             preferences.enabledRetailers.forEach { retailerId ->

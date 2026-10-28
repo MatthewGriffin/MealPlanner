@@ -14,7 +14,7 @@ Live retailer catalogue scraping, online price lookup, branch discovery for pric
 
 ## Deprecated AI tool identifiers
 
-The legacy `GET_RETAIL_BASKET_COMPARISON`, `GET_RETAIL_ITEM_OPTIONS`, and `SEARCH_RETAIL_PRODUCTS` tool identifiers remain for compatibility with existing tool contracts, but their handlers no longer call retailer catalogue adapters. They return a clear message that live lookup is disabled.
+The legacy `GET_RETAIL_BASKET_COMPARISON`, `GET_RETAIL_ITEM_OPTIONS`, and `SEARCH_RETAIL_PRODUCTS` tool identifiers remain for compatibility with existing tool contracts, but Gemini no longer advertises them to the model. If called directly by an older client, their handlers return a clear message that live lookup is disabled and do not call retailer catalogue adapters.
 
 ## Future optimisation requirements
 

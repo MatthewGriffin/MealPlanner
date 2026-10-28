@@ -17,21 +17,15 @@ import com.example.chatgpt_mealplanner.core.repository.ShoppingRepository
 import com.example.chatgpt_mealplanner.core.repository.StapleRuleRepository
 import com.example.chatgpt_mealplanner.core.service.ShoppingDomainService
 import com.example.chatgpt_mealplanner.core.sync.AppRoleResolver
-import com.example.chatgpt_mealplanner.core.sync.follower.FollowerBasketComparisonCacheStore
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import com.example.chatgpt_mealplanner.core.service.RetailShoppingDomainService
-import com.example.chatgpt_mealplanner.core.service.RetailerPreferenceStore
-import com.example.chatgpt_mealplanner.core.service.RetailStorePreferenceStore
 import com.example.chatgpt_mealplanner.retail.contract.BasketComparisonResult
 import com.example.chatgpt_mealplanner.retail.contract.BasketLine
 import com.example.chatgpt_mealplanner.retail.contract.Money
 import com.example.chatgpt_mealplanner.retail.contract.PackAlternative
 import com.example.chatgpt_mealplanner.retail.contract.RetailerId
-import com.example.chatgpt_mealplanner.retail.contract.RetailStoreFormat
-import com.example.chatgpt_mealplanner.retail.contract.UserShoppingPreferences
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.stateIn
@@ -47,11 +41,7 @@ class ShoppingViewModel @Inject constructor(
     private val shoppingDomainService: ShoppingDomainService,
     private val shoppingRepository: ShoppingRepository,
     private val stapleRuleRepository: StapleRuleRepository,
-    private val retailShoppingDomainService: RetailShoppingDomainService,
     private val appRoleResolver: AppRoleResolver,
-    private val retailerPreferenceStore: RetailerPreferenceStore = RetailerPreferenceStore(null),
-    private val retailStorePreferenceStore: RetailStorePreferenceStore = RetailStorePreferenceStore(null),
-    private val followerBasketComparisonCacheStore: FollowerBasketComparisonCacheStore = FollowerBasketComparisonCacheStore(null),
     private val purchasePriceDao: PurchasePriceDao? = null
 ) : ViewModel() {
 
@@ -68,10 +58,7 @@ class ShoppingViewModel @Inject constructor(
     private val retailLookupMessageFlow = MutableStateFlow<String?>(null)
     private val localPriceMatchesFlow = MutableStateFlow<Map<String, List<PurchasePriceWithStore>>>(emptyMap())
     private var localPriceLookupJob: kotlinx.coroutines.Job? = null
-    private var basketOptimizationJob: kotlinx.coroutines.Job? = null
-    private var basketOptimizationVersion = 0L
     private var lastBasketOptimizationSignature: String? = null
-    private val manualRetailerOverrides = mutableMapOf<String, RetailerId>()
 
     private val activeShoppingListFlow = shoppingRepository.observeActiveShoppingListWithItems()
         .onEach { listWithItems ->
@@ -91,7 +78,7 @@ class ShoppingViewModel @Inject constructor(
             } ?: "empty"
             if (requirementSignature != lastBasketOptimizationSignature) {
                 lastBasketOptimizationSignature = requirementSignature
-                runBasketOptimization(listWithItems, emptySet(), emptyList())
+                clearRetailerComparison()
                 runLocalPriceLookup(listWithItems)
             }
         }
@@ -169,13 +156,7 @@ class ShoppingViewModel @Inject constructor(
      * Live retailer catalogue scraping is intentionally disabled. Shopping prices now come
      * only from locally recorded purchase observations; unknown prices remain unknown.
      */
-    private fun runBasketOptimization(
-        listWithItems: ShoppingListWithItems?,
-        configuredRetailers: Set<RetailerId>,
-        savedStores: List<com.example.chatgpt_mealplanner.retail.contract.RetailStoreLocation>
-    ) {
-        basketOptimizationJob?.cancel()
-        basketOptimizationVersion++
+    private fun clearRetailerComparison() {
         basketOptimizationFlow.value = null
         retailLookupMessageFlow.value = null
     }
@@ -237,7 +218,7 @@ class ShoppingViewModel @Inject constructor(
                 selectedItemOptionsFlow.value = emptyList()
                 isLoadingItemOptionsFlow.value = false
             }
-            is ShoppingUiEvent.ReassignItemRetailer -> reassignItemRetailer(event.itemId, event.retailerId)
+            is ShoppingUiEvent.ReassignItemRetailer -> userMessageFlow.value = "Retailer assignment is disabled; use your recorded purchase prices."
             ShoppingUiEvent.RequestAddManualItem -> {
                 manualItemNameFlow.value = ""
                 manualItemNotesFlow.value = ""
@@ -260,65 +241,6 @@ class ShoppingViewModel @Inject constructor(
             is ShoppingUiEvent.DeleteStapleRule -> deleteStapleRule(event.ruleId)
             ShoppingUiEvent.ClearUserMessage -> userMessageFlow.value = null
         }
-    }
-
-    private fun reassignItemRetailer(itemId: String, retailerId: RetailerId) {
-        val comparison = basketOptimizationFlow.value ?: run {
-            userMessageFlow.value = "No completed retailer comparison is available yet"
-            return
-        }
-        manualRetailerOverrides[itemId] = retailerId
-        val updated = applySingleRetailerOverride(comparison, itemId, retailerId)
-        if (updated == null) {
-            manualRetailerOverrides.remove(itemId)
-            userMessageFlow.value = "No suitable priced product is available for that store"
-            return
-        }
-        basketOptimizationFlow.value = updated
-        userMessageFlow.value = "${updated.selectedPlan.lines.firstOrNull { it.shoppingRequirementId == itemId }?.requirementDisplayName ?: "Item"} reassigned to ${retailerId.name.lowercase().replaceFirstChar { it.uppercase() }}"
-    }
-
-    private fun applyRetailerOverrides(comparison: BasketComparisonResult): BasketComparisonResult {
-        return manualRetailerOverrides.toMap().entries.fold(comparison) { current, (itemId, retailerId) ->
-            applySingleRetailerOverride(current, itemId, retailerId) ?: current
-        }
-    }
-
-    private fun applySingleRetailerOverride(
-        comparison: BasketComparisonResult,
-        itemId: String,
-        retailerId: RetailerId
-    ): BasketComparisonResult? {
-        val availablePlans = listOfNotNull(
-            comparison.selectedPlan,
-            comparison.bestSingleStorePlan,
-            comparison.bestMultiStorePlan
-        ) + comparison.alternativePlans
-        val replacement = availablePlans
-            .flatMap { it.lines }
-            .filter { it.shoppingRequirementId == itemId && it.retailerId == retailerId }
-            .minByOrNull { it.lineTotalCost } ?: return null
-
-        val currentPlan = comparison.selectedPlan
-        val updatedLines = currentPlan.lines
-            .filterNot { it.shoppingRequirementId == itemId } + replacement
-        val subtotal = updatedLines.fold(Money.zero()) { total, line -> total + line.lineTotalCost }
-        val updatedPlan = currentPlan.copy(
-            planId = "${currentPlan.planId.removeSuffix("-manual-choice")}-manual-choice",
-            stores = updatedLines.map { it.retailerId }.toSet(),
-            lines = updatedLines,
-            basketSubtotal = subtotal,
-            unmatchedRequirements = currentPlan.unmatchedRequirements.filterNot {
-                it == itemId || it == replacement.requirementDisplayName
-            },
-            explanationText = currentPlan.explanationText + " User-selected retailer override applied for ${replacement.requirementDisplayName}."
-        )
-        return comparison.copy(
-            selectedPlan = updatedPlan,
-            unmatchedRequirements = comparison.unmatchedRequirements.filterNot {
-                it == itemId || it == replacement.requirementDisplayName
-            }
-        )
     }
 
     private fun regenerateShoppingList() {

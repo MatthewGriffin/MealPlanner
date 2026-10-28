@@ -154,7 +154,6 @@ class EndToEndAiRecipeReliabilityTest {
             inventoryDomainService = inventoryDomainService,
             mealDomainService = mealDomainService,
             shoppingDomainService = shoppingDomainService,
-            retailShoppingDomainService = retailShoppingDomainService,
             activeProposalStore = activeProposalStore,
             pendingMutationStore = pendingMutationStore,
             chatDao = chatDao,

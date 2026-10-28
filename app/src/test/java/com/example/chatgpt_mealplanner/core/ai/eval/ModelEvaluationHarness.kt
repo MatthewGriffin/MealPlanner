@@ -100,7 +100,6 @@ class ModelEvaluationHarness(
             inventoryDomainService = inventoryDomainService,
             mealDomainService = mealDomainService,
             shoppingDomainService = shoppingDomainService,
-            retailShoppingDomainService = retailShoppingDomainService,
             chatDao = chatDao,
             pendingMutationStore = pendingMutationStore,
             activeProposalStore = activeProposalStore

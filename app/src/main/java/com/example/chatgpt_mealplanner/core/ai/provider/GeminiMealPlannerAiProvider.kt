@@ -148,11 +148,16 @@ class GeminiMealPlannerAiProvider @Inject constructor(
             }
         }
 
-        val toolsArray = if (request.availableTools.isNotEmpty()) {
+        val declaredTools = request.availableTools.filterNot { tool ->
+            tool == AiToolId.GET_RETAIL_BASKET_COMPARISON ||
+                tool == AiToolId.GET_RETAIL_ITEM_OPTIONS ||
+                tool == AiToolId.SEARCH_RETAIL_PRODUCTS
+        }
+        val toolsArray = if (declaredTools.isNotEmpty()) {
             buildJsonArray {
                 add(buildJsonObject {
                     putJsonArray("functionDeclarations") {
-                        request.availableTools.forEach { tool ->
+                        declaredTools.forEach { tool ->
                             add(buildToolDeclarationJson(tool))
                         }
                     }
@@ -174,7 +179,7 @@ class GeminiMealPlannerAiProvider @Inject constructor(
                     put("tools", toolsArray)
                 }
                 if (!request.forcedToolName.isNullOrBlank()) {
-                    val isDeclared = request.availableTools.any { it.toolName == request.forcedToolName }
+                    val isDeclared = declaredTools.any { it.toolName == request.forcedToolName }
                     if (isDeclared) {
                         safeLog("[AI_FORCED_TOOL] tool=${request.forcedToolName} reason=STRUCTURED_OFFER_REPAIR")
                         putJsonObject("toolConfig") {

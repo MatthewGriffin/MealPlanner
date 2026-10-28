@@ -344,7 +344,8 @@ fun ShoppingScreen(
                                         it.item.status == ShoppingItemStatus.PURCHASED_CONFIRMED
                                 }
                                 val groupKey = group.retailerId?.name ?: group.retailerName
-                                val isExpanded = expandedRetailerGroups[groupKey] == true
+                                // With retailer comparisons disabled, keep the ordinary shopping-list group visible by default.
+                                val isExpanded = expandedRetailerGroups[groupKey] ?: (group.retailerId == null)
                                 item(key = "header_${groupKey}") {
                                     Card(
                                         modifier = Modifier

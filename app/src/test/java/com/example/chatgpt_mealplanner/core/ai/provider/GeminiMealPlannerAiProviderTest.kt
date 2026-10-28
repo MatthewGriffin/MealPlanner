@@ -651,12 +651,57 @@ class GeminiMealPlannerAiProviderTest {
             contextPayloadJson = "{}",
             contextPayload = emptyPayload,
             messages = listOf(AiChatMessage("user", "Hello")),
-            availableTools = listOf(AiToolId.OFFER_ADD_PLANNED_MEAL),
+            availableTools = listOf(
+                AiToolId.OFFER_ADD_PLANNED_MEAL,
+                AiToolId.GET_RETAIL_BASKET_COMPARISON,
+                AiToolId.GET_RETAIL_ITEM_OPTIONS,
+                AiToolId.SEARCH_RETAIL_PRODUCTS
+            ),
             forcedToolName = null
         )
         provider.send(req)
 
         assertFalse("Normal provider request MUST NOT contain toolConfig", capturedPayload!!.containsKey("toolConfig"))
+        val declarations = capturedPayload!!["tools"]!!.jsonArray
+            .first().jsonObject["functionDeclarations"]!!.jsonArray
+        val declaredNames = declarations.map { it.jsonObject["name"]!!.jsonPrimitive.content }
+        assertTrue("Active tools should still be declared", declaredNames.contains("offer_add_planned_meal"))
+        assertFalse("Retired retailer comparison must not be exposed", declaredNames.contains("get_retail_basket_comparison"))
+        assertFalse("Retired retailer options must not be exposed", declaredNames.contains("get_retail_item_options"))
+        assertFalse("Retired retailer search must not be exposed", declaredNames.contains("search_retail_products"))
+    }
+
+    @Test
+    fun requestWithOnlyRetiredRetailTools_omitsToolsFromGeminiPayload() = runBlocking {
+        var capturedPayload: JsonObject? = null
+        provider.httpCallHandler = { _, payload ->
+            capturedPayload = payload
+            Pair(200, makeSuccessBody("Success"))
+        }
+
+        val req = AiProviderRequest(
+            conversationId = "conv1",
+            systemPrompt = "Prompt",
+            contextPayloadJson = "{}",
+            contextPayload = emptyPayload,
+            messages = listOf(AiChatMessage("user", "Compare retailer prices")),
+            availableTools = listOf(
+                AiToolId.GET_RETAIL_BASKET_COMPARISON,
+                AiToolId.GET_RETAIL_ITEM_OPTIONS,
+                AiToolId.SEARCH_RETAIL_PRODUCTS
+            ),
+            forcedToolName = AiToolId.SEARCH_RETAIL_PRODUCTS.toolName
+        )
+        provider.send(req)
+
+        assertFalse(
+            "Do not send an empty functionDeclarations list when all requested tools are retired",
+            capturedPayload!!.containsKey("tools")
+        )
+        assertFalse(
+            "Do not force a retired tool that is absent from Gemini declarations",
+            capturedPayload!!.containsKey("toolConfig")
+        )
     }
 
     @Test

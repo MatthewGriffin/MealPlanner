@@ -122,7 +122,6 @@ class AiOrchestratorIdempotencyTest {
             inventoryDomainService = inventoryService,
             mealDomainService = mealService,
             shoppingDomainService = shoppingService,
-            retailShoppingDomainService = retailService,
             chatDao = fakeChatDao,
             pendingMutationStore = pendingMutationStore,
             activeProposalStore = activeProposalStore

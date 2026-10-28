@@ -111,13 +111,21 @@ class RetailProductMatcher(
                 .containsMatchIn(candidateDescription.lowercase()) &&
             Regex("\\b(breast|fillets?|thighs?)\\b")
                 .containsMatchIn(candidateDescription.lowercase())
+        val candidateIsSeasonedOrCoatedPreparedMeat =
+            wantsPreparedPieces &&
+            Regex("\\b(southern fried|breaded|battered|coated|crispy|bbq|barbecue|marinated|seasoned|flavoured|flavored)\\b")
+                .containsMatchIn(candidateDescription.lowercase())
         val incompatiblePhysicalForm =
-            (candidateFormAttributes.contains("whole") && "whole" !in requirementFormAttributes) ||
+            // "Whole" is only a conflicting form when the requested ingredient needs
+            // prepared pieces; it is a valid descriptor for products such as whole peeled tomatoes.
+            (wantsPreparedPieces && candidateFormAttributes.contains("whole") &&
+                "whole" !in requirementFormAttributes) ||
             (candidateFormAttributes.contains("carcass") && "carcass" !in requirementFormAttributes) ||
             (candidateFormAttributes.contains("bone-in") &&
                 "bone-in" !in requirementFormAttributes &&
                 "boneless" !in requirementFormAttributes) ||
-            candidateIsOnlyGenericWholeItem
+            candidateIsOnlyGenericWholeItem ||
+            candidateIsSeasonedOrCoatedPreparedMeat
         if (incompatiblePhysicalForm) {
             return returnMatch(requirementDisplayName, candidateProduct, RetailMatchCandidate(
                 candidateProduct, MatchType.INCOMPATIBLE, MatchConfidence.LOW, false,
@@ -299,7 +307,7 @@ class RetailProductMatcher(
         // generic "roasting potatoes" requirement; exclude prepared potato products.
         val wantsRoastingPotatoes = reqLower in setOf("roasting potatoes", "potatoes for roasting", "roast potatoes")
         if (wantsRoastingPotatoes) {
-            val isPotato = Regex("\\\\bpotatoes?\\\\b").containsMatchIn(nameLower) ||
+            val isPotato = Regex("\\bpotatoes?\\b").containsMatchIn(nameLower) ||
                 listOf("maris piper", "king edward", "desiree", "rooster potatoes").any { nameLower.contains(it) }
             val isPrepared = listOf("crisps", "chips", "wedges", "mash", "mashed", "potato salad", "croquette", "waffles", "ready meal", "roast potatoes ready").any { nameLower.contains(it) }
             if (isPotato && !isPrepared) {
