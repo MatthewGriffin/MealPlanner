@@ -32,7 +32,15 @@ class Converters {
 
     @TypeConverter
     fun toFoodCategory(value: String?): FoodCategory? = value?.let {
-        runCatching { enumValueOf<FoodCategory>(it) }.getOrDefault(FoodCategory.OTHER)
+        when (it.trim().uppercase()) {
+            "BREAD_BAKERY", "BAKERY" -> FoodCategory.BAKERY
+            "SAUCES_SEASONINGS", "SAUCES_CONDIMENTS" -> FoodCategory.SAUCES_CONDIMENTS
+            "MEAL_KITS", "READY_MEALS" -> FoodCategory.READY_MEALS
+            "FRESH_PANTRY", "PRODUCE" -> FoodCategory.PRODUCE
+            "SNACKS" -> FoodCategory.SNACKS
+            "CUPBOARD", "FRIDGE", "FREEZER" -> FoodCategory.OTHER
+            else -> runCatching { enumValueOf<FoodCategory>(it.trim().uppercase()) }.getOrDefault(FoodCategory.OTHER)
+        }
     }
 
     @TypeConverter
