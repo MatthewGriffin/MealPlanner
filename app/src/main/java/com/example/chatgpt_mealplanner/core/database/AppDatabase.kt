@@ -826,6 +826,18 @@ val MIGRATION_19_20 = object : Migration(19, 20) {
                 ELSE 'OTHER'
             END
         """.trimIndent())
+
+        db.execSQL("""
+            UPDATE `inventory_items`
+            SET `storageLocation` = CASE `storageLocation`
+                WHEN 'FRESH_PANTRY' THEN 'PANTRY'
+                WHEN 'BREAD_BAKERY' THEN 'CUPBOARD'
+                WHEN 'SAUCES_SEASONINGS' THEN 'CUPBOARD'
+                WHEN 'SNACKS' THEN 'CUPBOARD'
+                WHEN 'MEAL_KITS' THEN 'CUPBOARD'
+                ELSE `storageLocation`
+            END
+        """.trimIndent())
     }
 }
 
