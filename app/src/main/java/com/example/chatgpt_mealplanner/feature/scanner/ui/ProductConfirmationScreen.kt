@@ -226,7 +226,7 @@ fun ProductConfirmationScreen(
                     FilterChip(
                         selected = selectedLocation == loc,
                         onClick = { selectedLocation = loc },
-                        label = { Text(loc.name) }
+                        label = { Text(loc.displayName) }
                     )
                 }
             }
@@ -240,7 +240,7 @@ fun ProductConfirmationScreen(
                     FilterChip(
                         selected = selectedCategory == cat,
                         onClick = { selectedCategory = cat },
-                        label = { Text(cat.name) }
+                        label = { Text(cat.displayName) }
                     )
                 }
             }
