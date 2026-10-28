@@ -17,6 +17,7 @@ import com.example.chatgpt_mealplanner.core.database.dao.ChatDao
 import com.example.chatgpt_mealplanner.core.database.dao.PurchasePriceDao
 import com.example.chatgpt_mealplanner.core.database.entity.UserStoreEntity
 import com.example.chatgpt_mealplanner.core.database.entity.PurchasePriceObservationEntity
+import com.example.chatgpt_mealplanner.core.database.entity.PurchasePriceWithStore
 import com.example.chatgpt_mealplanner.core.security.CredentialStore
 import com.example.chatgpt_mealplanner.core.security.StoreDirectoryCredentialStore
 import com.example.chatgpt_mealplanner.core.sync.AppRoleResolver
@@ -58,6 +59,7 @@ data class SettingsUiState(
     val pendingBackupUri: android.net.Uri? = null,
     val enabledRetailers: Set<RetailerId> = RetailerPreferenceStore.DEFAULT_ENABLED_RETAILERS,
     val userStores: List<UserStoreEntity> = emptyList(),
+    val recentPriceHistory: List<PurchasePriceWithStore> = emptyList(),
     val preferredStores: List<RetailStoreLocation> = emptyList(),
     val isStoreSearchInProgress: Boolean = false,
     val storeSearchMessage: String? = null,
@@ -101,6 +103,11 @@ class SettingsViewModel @Inject constructor(
             viewModelScope.launch {
                 dao.observeActiveStores().collect { stores ->
                     _uiState.update { it.copy(userStores = stores) }
+                }
+            }
+            viewModelScope.launch {
+                dao.observeRecentPriceHistory().collect { history ->
+                    _uiState.update { it.copy(recentPriceHistory = history) }
                 }
             }
         }
