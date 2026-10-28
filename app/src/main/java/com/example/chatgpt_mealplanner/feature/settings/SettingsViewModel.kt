@@ -12,7 +12,6 @@ import com.example.chatgpt_mealplanner.core.backup.SafBackupOutcome
 import com.example.chatgpt_mealplanner.core.database.dao.ChatDao
 import com.example.chatgpt_mealplanner.core.database.dao.PurchasePriceDao
 import com.example.chatgpt_mealplanner.core.database.entity.UserStoreEntity
-import com.example.chatgpt_mealplanner.core.database.entity.PurchasePriceObservationEntity
 import com.example.chatgpt_mealplanner.core.database.entity.PurchasePriceWithStore
 import com.example.chatgpt_mealplanner.core.security.CredentialStore
 import com.example.chatgpt_mealplanner.core.sync.AppRoleResolver
@@ -31,7 +30,6 @@ import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.util.Arrays
 import java.util.UUID
-import kotlin.math.roundToLong
 import javax.inject.Inject
 
 data class SettingsUiState(
@@ -132,76 +130,6 @@ class SettingsViewModel @Inject constructor(
             } catch (e: Exception) {
                 _uiState.update { it.copy(syncStatusMessage = "Could not rename shop: ${e.message ?: "unknown error"}") }
             }
-        }
-    }
-
-    fun recordPurchasePrice(
-        storeId: String,
-        productName: String,
-        barcode: String?,
-        brand: String?,
-        packQuantityText: String?,
-        packUnit: String?,
-        packCountText: String?,
-        priceText: String
-    ) {
-        val cleanName = productName.trim()
-        val pricePounds = priceText.trim().replace(",", ".").toDoubleOrNull()
-        val packQuantity = packQuantityText?.trim()?.takeIf { it.isNotEmpty() }?.replace(",", ".")?.toDoubleOrNull()
-        val packCount = packCountText?.trim()?.takeIf { it.isNotEmpty() }?.toIntOrNull()
-        if (storeId.isBlank() || cleanName.isBlank() || pricePounds == null || !pricePounds.isFinite() || pricePounds < 0.0) {
-            _uiState.update { it.copy(syncStatusMessage = "Choose a shop, enter a product name and enter a valid price.") }
-            return
-        }
-        if (packQuantityText?.isNotBlank() == true && (packQuantity == null || !packQuantity.isFinite() || packQuantity <= 0.0)) {
-            _uiState.update { it.copy(syncStatusMessage = "Pack quantity must be a positive number.") }
-            return
-        }
-        if (packCountText?.isNotBlank() == true && (packCount == null || packCount <= 0)) {
-            _uiState.update { it.copy(syncStatusMessage = "Pack count must be a positive whole number.") }
-            return
-        }
-        viewModelScope.launch {
-            try {
-                val dao = purchasePriceDao ?: throw IllegalStateException("Local purchase storage is unavailable.")
-                val store = dao.getStore(storeId)
-                if (store == null || store.isArchived) {
-                    _uiState.update { it.copy(syncStatusMessage = "Choose an active shop.") }
-                    return@launch
-                }
-                val priceMinorUnits = (pricePounds * 100.0).roundToLong()
-                dao.insertPriceObservation(
-                    PurchasePriceObservationEntity(
-                        id = UUID.randomUUID().toString(),
-                        storeId = storeId,
-                        barcode = barcode?.trim()?.takeIf { it.isNotEmpty() },
-                        productName = cleanName,
-                        brand = brand?.trim()?.takeIf { it.isNotEmpty() },
-                        packQuantity = packQuantity,
-                        packUnit = normalizePurchaseUnit(packUnit),
-                        packCount = packCount,
-                        priceMinorUnits = priceMinorUnits,
-                        purchasedAt = System.currentTimeMillis(),
-                        createdAt = System.currentTimeMillis(),
-                        source = "MANUAL"
-                    )
-                )
-                _uiState.update { it.copy(syncStatusMessage = "Saved £${"%.2f".format(priceMinorUnits / 100.0)} for $cleanName at ${store.name}.") }
-            } catch (e: Exception) {
-                _uiState.update { it.copy(syncStatusMessage = "Could not save price: ${e.message ?: "unknown error"}") }
-            }
-        }
-    }
-
-    private fun normalizePurchaseUnit(raw: String?): String? {
-        val unit = raw?.trim()?.uppercase()?.takeIf { it.isNotEmpty() } ?: return null
-        return when (unit) {
-            "G", "GRAM", "GRAMS" -> "GRAM"
-            "KG", "KILOGRAM", "KILOGRAMS" -> "KILOGRAM"
-            "ML", "MILLILITRE", "MILLILITRES", "MILLILITER", "MILLILITERS" -> "MILLILITRE"
-            "L", "LITRE", "LITRES", "LITER", "LITERS" -> "LITRE"
-            "EACH", "UNIT", "UNITS", "PIECE", "PIECES" -> "UNIT"
-            else -> unit
         }
     }
 
