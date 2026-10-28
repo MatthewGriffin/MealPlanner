@@ -116,7 +116,10 @@ class RetailProductMatcher(
             Regex("\\b(southern fried|breaded|battered|coated|crispy|bbq|barbecue|marinated|seasoned|flavoured|flavored)\\b")
                 .containsMatchIn(candidateDescription.lowercase())
         val incompatiblePhysicalForm =
-            (candidateFormAttributes.contains("whole") && "whole" !in requirementFormAttributes) ||
+            // "Whole" is only a conflicting form when the requested ingredient needs
+            // prepared pieces; it is a valid descriptor for products such as whole peeled tomatoes.
+            (wantsPreparedPieces && candidateFormAttributes.contains("whole") &&
+                "whole" !in requirementFormAttributes) ||
             (candidateFormAttributes.contains("carcass") && "carcass" !in requirementFormAttributes) ||
             (candidateFormAttributes.contains("bone-in") &&
                 "bone-in" !in requirementFormAttributes &&
