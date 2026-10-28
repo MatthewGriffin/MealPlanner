@@ -158,7 +158,7 @@ class ScannerViewModel @Inject constructor(
         val storeId = input.purchaseStoreId?.takeIf { it.isNotBlank() } ?: return
         val priceText = input.purchasePriceText?.trim()?.takeIf { it.isNotEmpty() } ?: return
         val pricePounds = priceText.replace(",", ".").toDoubleOrNull()
-            ?.takeIf { it >= 0.0 } ?: return
+            ?.takeIf { it.isFinite() && it >= 0.0 } ?: return
         val dao = purchasePriceDao ?: return
         try {
             val store = dao.getStore(storeId) ?: return
@@ -171,8 +171,8 @@ class ScannerViewModel @Inject constructor(
                     barcode = input.barcode?.trim()?.takeIf { it.isNotEmpty() },
                     productName = input.displayName.trim(),
                     brand = input.brand?.trim()?.takeIf { it.isNotEmpty() },
-                    packQuantity = input.netQuantity,
-                    packUnit = input.netQuantityUnit?.name,
+                    packQuantity = input.netQuantity ?: input.packSize,
+                    packUnit = (input.netQuantityUnit ?: input.packSizeUnit)?.name,
                     packCount = input.packCount,
                     priceMinorUnits = priceMinorUnits,
                     purchasedAt = System.currentTimeMillis(),
