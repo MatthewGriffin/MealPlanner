@@ -283,7 +283,7 @@ fun ProductConfirmationScreen(
                 onClick = { purchaseStoreMenuExpanded = true },
                 enabled = stores.isNotEmpty()
             ) {
-                Text(stores.firstOrNull { it.id == selectedPurchaseStoreId }?.name ?: "Choose a shop in Settings first")
+                Text(stores.firstOrNull { it.id == selectedPurchaseStoreId }?.name ?: "Add a shop in Settings first")
             }
             DropdownMenu(
                 expanded = purchaseStoreMenuExpanded,
