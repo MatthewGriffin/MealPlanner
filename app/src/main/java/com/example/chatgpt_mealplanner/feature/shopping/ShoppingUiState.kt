@@ -12,6 +12,7 @@ import com.example.chatgpt_mealplanner.retail.contract.BasketLine
 import com.example.chatgpt_mealplanner.retail.contract.Money
 import com.example.chatgpt_mealplanner.retail.contract.PackAlternative
 import com.example.chatgpt_mealplanner.retail.contract.RetailerId
+import com.example.chatgpt_mealplanner.core.database.entity.PurchasePriceWithStore
 
 enum class ShoppingTab(val displayName: String) {
     SHOPPING_LIST("Shopping List"),
@@ -40,6 +41,7 @@ data class ShoppingUiState(
     val showAddManualDialog: Boolean = false,
     val basketComparisonResult: BasketComparisonResult? = null,
     val retailLookupMessage: String? = null,
+    val localPriceMatches: Map<String, List<PurchasePriceWithStore>> = emptyMap(),
     val retailerGroups: List<RetailerGroup> = emptyList(),
     val manualItemName: String = "",
     val manualItemNotes: String = ""
