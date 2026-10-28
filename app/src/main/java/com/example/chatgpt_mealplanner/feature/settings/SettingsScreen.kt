@@ -226,7 +226,7 @@ fun SettingsScreen(
         Text("Retail & Shopping", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(4.dp))
         Text(
-            "Basket comparisons use retailers for which you have saved preferred branches. Add or remove branches below to control which retailers participate.",
+            "Price history is built from purchases you record yourself. Live retailer catalogue scraping and branch-based lookup are disabled; unknown prices stay unknown.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
