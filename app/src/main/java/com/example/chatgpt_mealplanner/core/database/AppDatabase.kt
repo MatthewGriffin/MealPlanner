@@ -779,7 +779,7 @@ val MIGRATION_18_19 = object : Migration(18, 19) {
                 PRIMARY KEY(`id`)
             )
         """.trimIndent())
-        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_user_stores_name` ON `user_stores` (`name`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_user_stores_name` ON `user_stores` (`name`)")
 
         db.execSQL("""
             CREATE TABLE IF NOT EXISTS `purchase_price_observations` (
