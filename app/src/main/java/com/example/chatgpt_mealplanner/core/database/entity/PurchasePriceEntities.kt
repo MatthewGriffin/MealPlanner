@@ -1,6 +1,8 @@
 package com.example.chatgpt_mealplanner.core.database.entity
 
 import androidx.room.Entity
+import androidx.room.Embedded
+import androidx.room.ColumnInfo
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -62,4 +64,10 @@ data class PurchasePriceObservationEntity(
     val createdAt: Long = System.currentTimeMillis(),
     /** Optional provenance label such as MANUAL or RECEIPT_IMPORT. */
     val source: String = "MANUAL"
+)
+
+/** Joined view used to display price history without coupling observations to a retailer enum. */
+data class PurchasePriceWithStore(
+    @Embedded val observation: PurchasePriceObservationEntity,
+    @ColumnInfo(name = "storeName") val storeName: String
 )
