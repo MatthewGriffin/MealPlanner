@@ -293,11 +293,8 @@ class RetailShoppingDomainServiceImpl @Inject constructor(
             // Publish the comparison once all retailer lookups have completed.
         }
 
-        var candidateProducts = retailRepository.getCandidateProductsWithOffers()
-        if (candidateProducts.isEmpty() && !isTestEnv) {
-            // Phase 7A Fixtures Fallback for production/device only
-            candidateProducts = FakeRetailerFixtures.getAsdaFixtures() + FakeRetailerFixtures.getIcelandFixtures()
-        }
+        // Never manufacture retailer offers in production. Empty evidence must remain unknown.
+        val candidateProducts = retailRepository.getCandidateProductsWithOffers()
 
         requirementSpecs.forEach { req ->
             preferences.enabledRetailers.forEach { retailerId ->
