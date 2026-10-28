@@ -811,6 +811,24 @@ val MIGRATION_18_19 = object : Migration(18, 19) {
     }
 }
 
+val MIGRATION_19_20 = object : Migration(19, 20) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        // Legacy category values duplicated storage concepts. Preserve meaningful
+        // product-type categories and reset location-only values to OTHER rather
+        // than guessing the product type from where it was stored.
+        db.execSQL("""
+            UPDATE `inventory_items`
+            SET `category` = CASE `category`
+                WHEN 'BREAD_BAKERY' THEN 'BAKERY'
+                WHEN 'SAUCES_SEASONINGS' THEN 'SAUCES_CONDIMENTS'
+                WHEN 'SNACKS' THEN 'SNACKS'
+                WHEN 'MEAL_KITS' THEN 'READY_MEALS'
+                ELSE 'OTHER'
+            END
+        """.trimIndent())
+    }
+}
+
 val ALL_MIGRATIONS = arrayOf(
     MIGRATION_1_2,
     MIGRATION_2_3,
@@ -829,7 +847,8 @@ val ALL_MIGRATIONS = arrayOf(
     MIGRATION_15_16,
     MIGRATION_16_17,
     MIGRATION_17_18,
-    MIGRATION_18_19
+    MIGRATION_18_19,
+    MIGRATION_19_20
 )
 
 @Database(
@@ -873,7 +892,7 @@ val ALL_MIGRATIONS = arrayOf(
         UserStoreEntity::class,
         PurchasePriceObservationEntity::class
     ],
-    version = 19,
+    version = 20,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
