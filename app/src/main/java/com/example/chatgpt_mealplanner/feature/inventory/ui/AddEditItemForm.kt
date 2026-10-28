@@ -38,10 +38,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,7 +55,6 @@ import com.example.chatgpt_mealplanner.core.model.ItemStatus
 import com.example.chatgpt_mealplanner.core.model.QuantityConfidence
 import com.example.chatgpt_mealplanner.core.model.QuantityUnit
 import com.example.chatgpt_mealplanner.core.model.StorageLocation
-import kotlinx.coroutines.launch
 
 data class AddEditItemFormState(
     val id: String? = null,
@@ -233,15 +232,29 @@ fun <T> EnumDropdownSelector(
 
 @Composable
 fun SearchProductDialog(
+    initialQuery: String,
     onDismiss: () -> Unit,
     onSearchQuery: suspend (String) -> List<BarcodeLookupResult>,
     onSelectProduct: (BarcodeLookupResult) -> Unit
 ) {
-    var searchQuery by remember { mutableStateOf("") }
-    var searchResults by remember { mutableStateOf<List<BarcodeLookupResult>>(emptyList()) }
-    var isSearching by remember { mutableStateOf(false) }
-    var searchJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
-    val coroutineScope = rememberCoroutineScope()
+    val searchQuery = initialQuery.trim()
+    var searchResults by remember(searchQuery) { mutableStateOf<List<BarcodeLookupResult>>(emptyList()) }
+    var isSearching by remember(searchQuery) { mutableStateOf(searchQuery.length >= 2) }
+
+    LaunchedEffect(searchQuery) {
+        if (searchQuery.length >= 2) {
+            isSearching = true
+            searchResults = try {
+                onSearchQuery(searchQuery)
+            } catch (_: Exception) {
+                emptyList()
+            }
+            isSearching = false
+        } else {
+            searchResults = emptyList()
+            isSearching = false
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -254,29 +267,9 @@ fun SearchProductDialog(
                 )
                 Spacer(modifier = Modifier.height(8.dp))
 
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { query ->
-                        searchQuery = query
-                        searchJob?.cancel()
-                        if (query.trim().length >= 2) {
-                            isSearching = true
-                            searchJob = coroutineScope.launch {
-                                val results = onSearchQuery(query.trim())
-                                if (searchQuery.trim() == query.trim()) {
-                                    searchResults = results
-                                    isSearching = false
-                                }
-                            }
-                        } else {
-                            searchResults = emptyList()
-                            isSearching = false
-                        }
-                    },
-                    label = { Text("Search Product Name or Brand") },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                Text(
+                    "Searching for “$searchQuery” in saved local products and Open Food Facts:",
+                    style = MaterialTheme.typography.bodyMedium
                 )
 
                 Spacer(modifier = Modifier.height(12.dp))
@@ -375,6 +368,7 @@ fun AddEditItemForm(
 
     if (showSearchDialog && onSearchProducts != null) {
         SearchProductDialog(
+            initialQuery = formState.displayName,
             onDismiss = { showSearchDialog = false },
             onSearchQuery = onSearchProducts,
             onSelectProduct = { result ->
