@@ -15,9 +15,11 @@ class ConvertersTest {
     private val converters = Converters()
 
     @Test
-    fun foodCategoryConverters_roundTripAndFallback() {
-        assertEquals("CUPBOARD", converters.fromFoodCategory(FoodCategory.CUPBOARD))
-        assertEquals(FoodCategory.CUPBOARD, converters.toFoodCategory("CUPBOARD"))
+    fun foodCategoryConverters_roundTripLegacyValuesAndFallback() {
+        assertEquals("DAIRY_EGGS", converters.fromFoodCategory(FoodCategory.DAIRY_EGGS))
+        assertEquals(FoodCategory.DAIRY_EGGS, converters.toFoodCategory("DAIRY_EGGS"))
+        assertEquals(FoodCategory.BAKERY, converters.toFoodCategory("BREAD_BAKERY"))
+        assertEquals(FoodCategory.OTHER, converters.toFoodCategory("CUPBOARD"))
         assertEquals(FoodCategory.OTHER, converters.toFoodCategory("INVALID_CATEGORY"))
         assertNull(converters.fromFoodCategory(null))
     }
@@ -26,6 +28,8 @@ class ConvertersTest {
     fun storageLocationConverters_roundTripAndFallback() {
         assertEquals("FRIDGE", converters.fromStorageLocation(StorageLocation.FRIDGE))
         assertEquals(StorageLocation.FRIDGE, converters.toStorageLocation("FRIDGE"))
+        assertEquals(StorageLocation.PANTRY, converters.toStorageLocation("FRESH_PANTRY"))
+        assertEquals(StorageLocation.CUPBOARD, converters.toStorageLocation("SNACKS"))
         assertEquals(StorageLocation.OTHER, converters.toStorageLocation("UNKNOWN_LOC"))
     }
 
