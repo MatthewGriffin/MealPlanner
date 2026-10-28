@@ -672,6 +672,34 @@ class GeminiMealPlannerAiProviderTest {
     }
 
     @Test
+    fun requestWithOnlyRetiredRetailTools_omitsToolsFromGeminiPayload() = runBlocking {
+        var capturedPayload: JsonObject? = null
+        provider.httpCallHandler = { _, payload ->
+            capturedPayload = payload
+            Pair(200, makeSuccessBody("Success"))
+        }
+
+        val req = AiProviderRequest(
+            conversationId = "conv1",
+            systemPrompt = "Prompt",
+            contextPayloadJson = "{}",
+            contextPayload = emptyPayload,
+            messages = listOf(AiChatMessage("user", "Compare retailer prices")),
+            availableTools = listOf(
+                AiToolId.GET_RETAIL_BASKET_COMPARISON,
+                AiToolId.GET_RETAIL_ITEM_OPTIONS,
+                AiToolId.SEARCH_RETAIL_PRODUCTS
+            )
+        )
+        provider.send(req)
+
+        assertFalse(
+            "Do not send an empty functionDeclarations list when all requested tools are retired",
+            capturedPayload!!.containsKey("tools")
+        )
+    }
+
+    @Test
     fun globalTimeoutCap_constants_allowSlowGeminiResponsesUpTo120Seconds() {
         assertEquals(120_000L, com.example.chatgpt_mealplanner.core.ai.provider.GLOBAL_TIMEOUT_CAP_MS)
     }
