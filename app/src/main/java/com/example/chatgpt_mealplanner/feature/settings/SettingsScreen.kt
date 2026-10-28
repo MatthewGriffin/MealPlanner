@@ -175,7 +175,7 @@ fun SettingsScreen(
         Text("Retail & Shopping", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(4.dp))
         Text(
-            "Price history is built from purchases you record yourself. Live retailer catalogue scraping and branch-based lookup are disabled; unknown prices stay unknown.",
+            "Purchase prices are recorded when you confirm a scanned product and are kept locally on this device.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -184,10 +184,10 @@ fun SettingsScreen(
 
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text("My Shops & Purchase Prices", fontWeight = FontWeight.Bold)
+                Text("My Shops", fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    "Add any shop you buy from, including independent and convenience stores. These names are yours to manage; no address is required. Purchase prices will be recorded locally and kept as history.",
+                    "Add any shop you buy from, including independent and convenience stores. These names are yours to manage; no address is required. When scanning a product barcode, you can enter the price paid and link it to that product.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
