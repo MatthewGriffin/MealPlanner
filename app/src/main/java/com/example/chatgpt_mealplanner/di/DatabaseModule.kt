@@ -14,6 +14,7 @@ import com.example.chatgpt_mealplanner.core.database.dao.MealDao
 import com.example.chatgpt_mealplanner.core.database.dao.ReceiptDao
 import com.example.chatgpt_mealplanner.core.database.dao.ReceiptSpendDao
 import com.example.chatgpt_mealplanner.core.database.dao.RetailDao
+import com.example.chatgpt_mealplanner.core.database.dao.PurchasePriceDao
 import com.example.chatgpt_mealplanner.core.database.dao.ShoppingDao
 import com.example.chatgpt_mealplanner.core.database.dao.StapleRuleDao
 import com.example.chatgpt_mealplanner.core.database.dao.TransactionDao
@@ -102,6 +103,11 @@ object DatabaseModule {
     @Provides
     fun provideRetailDao(database: AppDatabase): RetailDao {
         return database.retailDao()
+    }
+
+    @Provides
+    fun providePurchasePriceDao(database: AppDatabase): PurchasePriceDao {
+        return database.purchasePriceDao()
     }
 
     @Provides
