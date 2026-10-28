@@ -152,9 +152,15 @@ class GeminiMealPlannerAiProvider @Inject constructor(
             buildJsonArray {
                 add(buildJsonObject {
                     putJsonArray("functionDeclarations") {
-                        request.availableTools.forEach { tool ->
-                            add(buildToolDeclarationJson(tool))
-                        }
+                        request.availableTools
+                            .filterNot { tool ->
+                                tool == AiToolId.GET_RETAIL_BASKET_COMPARISON ||
+                                    tool == AiToolId.GET_RETAIL_ITEM_OPTIONS ||
+                                    tool == AiToolId.SEARCH_RETAIL_PRODUCTS
+                            }
+                            .forEach { tool ->
+                                add(buildToolDeclarationJson(tool))
+                            }
                     }
                 })
             }
