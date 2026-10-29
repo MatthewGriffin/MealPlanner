@@ -29,7 +29,7 @@ enum class FoodCategory(val displayName: String) {
         @Deprecated("Use a product-type category; storage is represented by StorageLocation.")
         val FREEZER: FoodCategory get() = OTHER
         @Deprecated("Use a product-type category; storage is represented by StorageLocation.")
-        val FRESH_PANTRY: FoodCategory get() = PRODUCE
+        val FRESH_PANTRY: FoodCategory get() = OTHER
         @Deprecated("Use BAKERY.")
         val BREAD_BAKERY: FoodCategory get() = BAKERY
         @Deprecated("Use SAUCES_CONDIMENTS.")
@@ -67,7 +67,8 @@ fun parseFoodCategory(rawCategory: String?): FoodCategory {
         "BREAD_BAKERY", "BAKERY" -> FoodCategory.BAKERY
         "SAUCES_SEASONINGS", "SAUCES_CONDIMENTS" -> FoodCategory.SAUCES_CONDIMENTS
         "MEAL_KITS", "READY_MEALS" -> FoodCategory.READY_MEALS
-        "FRESH_PANTRY", "PRODUCE" -> FoodCategory.PRODUCE
+        "PRODUCE" -> FoodCategory.PRODUCE
+        "FRESH_PANTRY" -> FoodCategory.OTHER
         "SNACKS" -> FoodCategory.SNACKS
         "CUPBOARD", "FRIDGE", "FREEZER" -> FoodCategory.OTHER
         else -> runCatching { FoodCategory.valueOf(rawCategory.trim().uppercase()) }
