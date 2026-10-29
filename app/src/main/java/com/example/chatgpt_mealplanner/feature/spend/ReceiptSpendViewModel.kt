@@ -269,16 +269,35 @@ class ReceiptSpendViewModel @Inject constructor(
                 is DomainResult.Success -> {
                     // A receipt confirms the list item was bought, but this spend-only flow
                     // does not import a physical inventory lot. Mark it checked, not imported.
-                    draft.items.mapNotNull { it.linkedShoppingListItemId }.distinct().forEach { itemId ->
-                        runCatching { shoppingDao.updateItemStatus(itemId, "CHECKED") }
+                    val linkedShoppingItemIds = draft.items
+                        .mapNotNull { it.linkedShoppingListItemId }
+                        .distinct()
+                    val failedShoppingItemIds = mutableListOf<String>()
+                    linkedShoppingItemIds.forEach { itemId ->
+                        try {
+                            shoppingDao.updateItemStatus(itemId, "CHECKED")
+                        } catch (e: kotlinx.coroutines.CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            failedShoppingItemIds += itemId
+                            android.util.Log.e(
+                                "AI_MEALPLANNER",
+                                "[RECEIPT_LINK_STATUS_UPDATE_FAILED] itemId=$itemId",
+                                e
+                            )
+                        }
                     }
-                    // Refresh candidates so checked items do not remain available
-                    // for linking to a later receipt in the same ViewModel session.
+                    // Refresh candidates so successfully checked items disappear. If an
+                    // update failed, the item remains available for correction and is reported.
                     loadReceiptLinkCandidates()
                     _uiState.update {
                         it.copy(
                             isSaveSuccess = true,
-                            draft = null
+                            draft = null,
+                            errorMessage = if (failedShoppingItemIds.isEmpty()) null else {
+                                "Receipt saved, but ${failedShoppingItemIds.size} shopping-list " +
+                                    "item(s) could not be marked as checked. Please check your shopping list."
+                            }
                         )
                     }
                 }
