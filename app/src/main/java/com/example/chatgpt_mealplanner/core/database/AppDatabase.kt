@@ -846,7 +846,7 @@ val MIGRATION_19_20 = object : Migration(19, 20) {
                 WHEN 'SAUCES_SEASONINGS' THEN 'SAUCES_CONDIMENTS'
                 WHEN 'SNACKS' THEN 'SNACKS'
                 WHEN 'MEAL_KITS' THEN 'READY_MEALS'
-                WHEN 'FRESH_PANTRY' THEN 'PRODUCE'
+                WHEN 'FRESH_PANTRY' THEN 'OTHER'
                 WHEN 'CUPBOARD' THEN 'OTHER'
                 WHEN 'FRIDGE' THEN 'OTHER'
                 WHEN 'FREEZER' THEN 'OTHER'
