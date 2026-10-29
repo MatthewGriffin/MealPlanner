@@ -82,7 +82,7 @@ class ReceiptSpendDomainServiceImpl @Inject constructor(
                 retailerId = draft.retailerId,
                 purchasedAt = dateStr,
                 totalMinorPence = draft.totalMinorPence ?: 0L,
-                subtotalMinorPence = draft.calculatedItemsSumMinorPence,
+                subtotalMinorPence = draft.explicitGrossTotalMinorPence ?: draft.calculatedItemsSumMinorPence,
                 discountMinorPence = draft.discountMinorPence,
                 itemCount = draft.itemCount,
                 fingerprint = draft.fingerprint,
