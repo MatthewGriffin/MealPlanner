@@ -840,6 +840,30 @@ val MIGRATION_19_20 = object : Migration(19, 20) {
         """.trimIndent())
 
         db.execSQL("""
+            UPDATE `leftovers`
+            SET `storageLocation` = CASE `storageLocation`
+                WHEN 'FRESH_PANTRY' THEN 'PANTRY'
+                WHEN 'BREAD_BAKERY' THEN 'CUPBOARD'
+                WHEN 'SAUCES_SEASONINGS' THEN 'CUPBOARD'
+                WHEN 'SNACKS' THEN 'CUPBOARD'
+                WHEN 'MEAL_KITS' THEN 'CUPBOARD'
+                ELSE `storageLocation`
+            END
+        """.trimIndent())
+
+        db.execSQL("""
+            UPDATE `staple_rules`
+            SET `preferredStorageLocation` = CASE `preferredStorageLocation`
+                WHEN 'FRESH_PANTRY' THEN 'PANTRY'
+                WHEN 'BREAD_BAKERY' THEN 'CUPBOARD'
+                WHEN 'SAUCES_SEASONINGS' THEN 'CUPBOARD'
+                WHEN 'SNACKS' THEN 'CUPBOARD'
+                WHEN 'MEAL_KITS' THEN 'CUPBOARD'
+                ELSE `preferredStorageLocation`
+            END
+        """.trimIndent())
+
+        db.execSQL("""
             UPDATE `product_barcode_mappings`
             SET `category` = CASE `category`
                 WHEN 'BREAD_BAKERY' THEN 'BAKERY'
