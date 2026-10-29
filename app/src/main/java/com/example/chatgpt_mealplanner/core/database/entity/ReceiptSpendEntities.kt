@@ -29,9 +29,25 @@ data class ReceiptSpendEntity(
             parentColumns = ["id"],
             childColumns = ["receiptSpendId"],
             onDelete = ForeignKey.CASCADE
+        ),
+        ForeignKey(
+            entity = InventoryItemEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["linkedInventoryItemId"],
+            onDelete = ForeignKey.SET_NULL
+        ),
+        ForeignKey(
+            entity = ShoppingListItemEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["linkedShoppingListItemId"],
+            onDelete = ForeignKey.SET_NULL
         )
     ],
-    indices = [Index(value = ["receiptSpendId"])]
+    indices = [
+        Index(value = ["receiptSpendId"]),
+        Index(value = ["linkedInventoryItemId"]),
+        Index(value = ["linkedShoppingListItemId"])
+    ]
 )
 data class ReceiptSpendItemEntity(
     @PrimaryKey val id: String,
@@ -43,7 +59,9 @@ data class ReceiptSpendItemEntity(
     val unitPriceMinorPence: Long?,
     val category: String,
     val isDiscount: Boolean,
-    val createdAt: Long
+    val createdAt: Long,
+    val linkedInventoryItemId: String? = null,
+    val linkedShoppingListItemId: String? = null
 )
 
 @Entity(
