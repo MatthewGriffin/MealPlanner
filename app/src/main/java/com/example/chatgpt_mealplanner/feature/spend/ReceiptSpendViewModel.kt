@@ -272,6 +272,9 @@ class ReceiptSpendViewModel @Inject constructor(
                     draft.items.mapNotNull { it.linkedShoppingListItemId }.distinct().forEach { itemId ->
                         runCatching { shoppingDao.updateItemStatus(itemId, "CHECKED") }
                     }
+                    // Refresh candidates so checked items do not remain available
+                    // for linking to a later receipt in the same ViewModel session.
+                    loadReceiptLinkCandidates()
                     _uiState.update {
                         it.copy(
                             isSaveSuccess = true,
