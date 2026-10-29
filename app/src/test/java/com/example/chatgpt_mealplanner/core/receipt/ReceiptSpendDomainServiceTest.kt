@@ -224,4 +224,27 @@ class ReceiptSpendDomainServiceTest {
         assertTrue(draft.summaryArithmeticValid)
         assertTrue(draft.canSave)
     }
+
+    @Test
+    fun savingProbableDuplicate_returnsFailureAndDoesNotAddReceiptLines() = runTest {
+        val ocr = ReceiptOcrResult(
+            lines = listOf(
+                ReceiptOcrLine("ASDA 27/09/2026 BREAD £1.20", 0.9f, 0, elements = listOf(ReceiptOcrElement("BREAD", 10,10,100,20,15), ReceiptOcrElement("£1.20", 250,10,300,20,15))),
+                ReceiptOcrLine("TOTAL £1.20", 0.9f, 1, elements = listOf(ReceiptOcrElement("TOTAL", 10,10,100,20,15), ReceiptOcrElement("£1.20", 250,10,300,20,15)))
+            ),
+            fullText = "ASDA 27/09/2026 BREAD £1.20 TOTAL £1.20"
+        )
+
+        val firstDraft = (service.processReceiptOcr(ocr, null) as DomainResult.Success).value
+        assertTrue(service.saveReceiptSpend(firstDraft) is DomainResult.Success)
+        val savedLineCount = dao.savedItems().size
+
+        val duplicateDraft = (service.processReceiptOcr(ocr, null) as DomainResult.Success).value
+        assertTrue(duplicateDraft.isProbableDuplicate)
+        val duplicateResult = service.saveReceiptSpend(duplicateDraft)
+
+        assertTrue(duplicateResult is DomainResult.Failure)
+        assertEquals(savedLineCount, dao.savedItems().size)
+    }
+
 }
