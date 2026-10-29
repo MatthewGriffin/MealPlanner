@@ -3,7 +3,9 @@ package com.example.chatgpt_mealplanner.feature.spend
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.chatgpt_mealplanner.core.database.dao.InventoryDao
 import com.example.chatgpt_mealplanner.core.database.dao.ReceiptSpendDao
+import com.example.chatgpt_mealplanner.core.database.dao.ShoppingDao
 import com.example.chatgpt_mealplanner.core.model.DomainResult
 import com.example.chatgpt_mealplanner.core.receipt.ReceiptOcrService
 import com.example.chatgpt_mealplanner.core.receipt.ReceiptSpendCategory
@@ -43,8 +45,17 @@ data class SpendDashboardState(
     val categoryBreakdown: List<CategorySpendSummary> = emptyList()
 )
 
+enum class ReceiptLinkType { INVENTORY, SHOPPING_LIST }
+
+data class ReceiptLinkCandidate(
+    val id: String,
+    val displayName: String,
+    val type: ReceiptLinkType
+)
+
 data class ReceiptSpendUiState(
     val isScanning: Boolean = false,
+    val linkCandidates: List<ReceiptLinkCandidate> = emptyList(),
     val draft: ReceiptSpendDraft? = null,
     val errorMessage: String? = null,
     val isSaveSuccess: Boolean = false,
@@ -55,7 +66,9 @@ data class ReceiptSpendUiState(
 class ReceiptSpendViewModel @Inject constructor(
     private val ocrService: ReceiptOcrService,
     private val spendDomainService: ReceiptSpendDomainService,
-    private val receiptSpendDao: ReceiptSpendDao
+    private val receiptSpendDao: ReceiptSpendDao,
+    private val inventoryDao: InventoryDao,
+    private val shoppingDao: ShoppingDao
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ReceiptSpendUiState())
@@ -63,6 +76,32 @@ class ReceiptSpendViewModel @Inject constructor(
 
     init {
         loadSpendDashboard()
+        loadReceiptLinkCandidates()
+    }
+
+    private fun loadReceiptLinkCandidates() {
+        viewModelScope.launch {
+            runCatching {
+                val inventoryCandidates = inventoryDao.getAllItemsSync().map { item ->
+                    ReceiptLinkCandidate(item.id, item.displayName, ReceiptLinkType.INVENTORY)
+                }
+                val shoppingList = shoppingDao.getActiveShoppingList()
+                val shoppingCandidates = shoppingList?.let { list ->
+                    shoppingDao.getShoppingListWithItems(list.id)?.items.orEmpty()
+                        .filter { it.item.status.name != "PURCHASED_CONFIRMED" }
+                        .map { withSources ->
+                            ReceiptLinkCandidate(
+                                withSources.item.id,
+                                withSources.item.displayName,
+                                ReceiptLinkType.SHOPPING_LIST
+                            )
+                        }
+                }.orEmpty()
+                (inventoryCandidates + shoppingCandidates).distinctBy { "${it.type}:${it.id}" }
+            }.onSuccess { candidates ->
+                _uiState.update { it.copy(linkCandidates = candidates) }
+            }
+        }
     }
 
     private fun loadSpendDashboard() {
@@ -228,6 +267,10 @@ class ReceiptSpendViewModel @Inject constructor(
         viewModelScope.launch {
             when (val result = spendDomainService.saveReceiptSpend(draft)) {
                 is DomainResult.Success -> {
+                    // A linked shopping-list item is marked purchased only after the receipt saves.
+                    draft.items.mapNotNull { it.linkedShoppingListItemId }.distinct().forEach { itemId ->
+                        runCatching { shoppingDao.updateItemStatus(itemId, "PURCHASED_CONFIRMED") }
+                    }
                     _uiState.update {
                         it.copy(
                             isSaveSuccess = true,
