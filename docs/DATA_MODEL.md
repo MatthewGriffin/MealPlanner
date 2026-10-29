@@ -30,6 +30,22 @@ enum class FoodCategory {
 enum class StorageLocation {
     CUPBOARD, FRIDGE, FREEZER, PANTRY, OTHER
 }
+
+enum class QuantityUnit {
+    GRAM, KILOGRAM, MILLILITRE, LITRE, UNIT, PACK, TIN, BOTTLE, BAG, SLICE, PORTION
+}
+
+enum class QuantityConfidence {
+    EXACT, APPROXIMATE, UNKNOWN
+}
+
+enum class ItemStatus {
+    AVAILABLE, LOW, USE_SOON, OUT, DISCARDED, NEEDS_CONFIRMATION
+}
+
+enum class TransactionType {
+    PURCHASE, CONSUMED, COOKED, DISCARDED, RESTOCK, USER_CORRECTION, ADJUSTMENT
+}
 ```
 
 `FoodCategory` describes what the item is; `StorageLocation` describes where it is physically kept. Category values such as cupboard, fridge, and freezer must not be used as product categories. The v20 migration preserves existing inventory records, translates the few legacy category values that clearly describe product types, and sets ambiguous location-based categories to `OTHER` rather than guessing. Legacy storage values that were not physical places are migrated to `CUPBOARD`, while `FRESH_PANTRY` becomes `PANTRY`.
