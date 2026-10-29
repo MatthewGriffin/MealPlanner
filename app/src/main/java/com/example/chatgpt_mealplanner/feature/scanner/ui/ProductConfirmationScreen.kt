@@ -25,6 +25,9 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -184,16 +187,33 @@ fun ProductConfirmationScreen(
             if (quantityText.toDoubleOrNull() != null && selectedUnit == null) {
                 Text("Please select a unit for the quantity", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             }
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+            var unitMenuExpanded by remember { mutableStateOf(false) }
+            ExposedDropdownMenuBox(
+                expanded = unitMenuExpanded,
+                onExpandedChange = { unitMenuExpanded = !unitMenuExpanded },
+                modifier = Modifier.fillMaxWidth()
             ) {
-                QuantityUnit.entries.forEach { unit ->
-                    FilterChip(
-                        selected = selectedUnit == unit,
-                        onClick = { selectedUnit = unit },
-                        label = { Text(unit.name) }
-                    )
+                OutlinedTextField(
+                    value = selectedUnit?.name ?: "Select unit",
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Quantity Unit *") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = unitMenuExpanded) },
+                    modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable).fillMaxWidth()
+                )
+                ExposedDropdownMenu(
+                    expanded = unitMenuExpanded,
+                    onDismissRequest = { unitMenuExpanded = false }
+                ) {
+                    QuantityUnit.entries.forEach { unit ->
+                        DropdownMenuItem(
+                            text = { Text(unit.name) },
+                            onClick = {
+                                selectedUnit = unit
+                                unitMenuExpanded = false
+                            }
+                        )
+                    }
                 }
             }
 
