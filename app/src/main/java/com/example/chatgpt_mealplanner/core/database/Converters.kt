@@ -16,6 +16,8 @@ import com.example.chatgpt_mealplanner.core.model.ShoppingPriority
 import com.example.chatgpt_mealplanner.core.model.ShoppingSourceType
 import com.example.chatgpt_mealplanner.core.model.StapleRuleMode
 import com.example.chatgpt_mealplanner.core.model.StorageLocation
+import com.example.chatgpt_mealplanner.core.model.parseFoodCategory
+import com.example.chatgpt_mealplanner.core.model.parseStorageLocation
 import com.example.chatgpt_mealplanner.core.model.TransactionType
 import com.example.chatgpt_mealplanner.core.model.WasteRisk
 import com.example.chatgpt_mealplanner.retail.contract.BasketFeasibilityTier
@@ -31,29 +33,13 @@ class Converters {
     fun fromFoodCategory(category: FoodCategory?): String? = category?.name
 
     @TypeConverter
-    fun toFoodCategory(value: String?): FoodCategory? = value?.let {
-        when (it.trim().uppercase()) {
-            "BREAD_BAKERY", "BAKERY" -> FoodCategory.BAKERY
-            "SAUCES_SEASONINGS", "SAUCES_CONDIMENTS" -> FoodCategory.SAUCES_CONDIMENTS
-            "MEAL_KITS", "READY_MEALS" -> FoodCategory.READY_MEALS
-            "FRESH_PANTRY", "PRODUCE" -> FoodCategory.PRODUCE
-            "SNACKS" -> FoodCategory.SNACKS
-            "CUPBOARD", "FRIDGE", "FREEZER" -> FoodCategory.OTHER
-            else -> runCatching { enumValueOf<FoodCategory>(it.trim().uppercase()) }.getOrDefault(FoodCategory.OTHER)
-        }
-    }
+    fun toFoodCategory(value: String?): FoodCategory? = value?.let(::parseFoodCategory)
 
     @TypeConverter
     fun fromStorageLocation(location: StorageLocation?): String? = location?.name
 
     @TypeConverter
-    fun toStorageLocation(value: String?): StorageLocation? = value?.let {
-        when (it.trim().uppercase()) {
-            "FRESH_PANTRY", "PANTRY" -> StorageLocation.PANTRY
-            "BREAD_BAKERY", "SAUCES_SEASONINGS", "SNACKS", "MEAL_KITS" -> StorageLocation.CUPBOARD
-            else -> runCatching { enumValueOf<StorageLocation>(it.trim().uppercase()) }.getOrDefault(StorageLocation.OTHER)
-        }
-    }
+    fun toStorageLocation(value: String?): StorageLocation? = value?.let(::parseStorageLocation)
 
     @TypeConverter
     fun fromQuantityUnit(unit: QuantityUnit?): String? = unit?.name
