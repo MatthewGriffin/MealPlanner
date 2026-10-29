@@ -61,6 +61,30 @@ enum class StorageLocation(val displayName: String) {
     }
 }
 
+fun parseFoodCategory(rawCategory: String?): FoodCategory {
+    if (rawCategory.isNullOrBlank()) return FoodCategory.OTHER
+    return when (rawCategory.trim().uppercase()) {
+        "BREAD_BAKERY", "BAKERY" -> FoodCategory.BAKERY
+        "SAUCES_SEASONINGS", "SAUCES_CONDIMENTS" -> FoodCategory.SAUCES_CONDIMENTS
+        "MEAL_KITS", "READY_MEALS" -> FoodCategory.READY_MEALS
+        "FRESH_PANTRY", "PRODUCE" -> FoodCategory.PRODUCE
+        "SNACKS" -> FoodCategory.SNACKS
+        "CUPBOARD", "FRIDGE", "FREEZER" -> FoodCategory.OTHER
+        else -> runCatching { FoodCategory.valueOf(rawCategory.trim().uppercase()) }
+            .getOrDefault(FoodCategory.OTHER)
+    }
+}
+
+fun parseStorageLocation(rawLocation: String?): StorageLocation {
+    if (rawLocation.isNullOrBlank()) return StorageLocation.OTHER
+    return when (rawLocation.trim().uppercase()) {
+        "FRESH_PANTRY", "PANTRY" -> StorageLocation.PANTRY
+        "BREAD_BAKERY", "SAUCES_SEASONINGS", "SNACKS", "MEAL_KITS" -> StorageLocation.CUPBOARD
+        else -> runCatching { StorageLocation.valueOf(rawLocation.trim().uppercase()) }
+            .getOrDefault(StorageLocation.OTHER)
+    }
+}
+
 enum class QuantityUnit {
     GRAM,
     KILOGRAM,
