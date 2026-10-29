@@ -97,7 +97,9 @@ class ReceiptSpendDomainServiceImpl @Inject constructor(
                     unitPriceMinorPence = item.unitPriceMinorPence,
                     category = item.category,
                     isDiscount = item.isDiscount,
-                    createdAt = System.currentTimeMillis()
+                    createdAt = System.currentTimeMillis(),
+                    linkedInventoryItemId = item.linkedInventoryItemId,
+                    linkedShoppingListItemId = item.linkedShoppingListItemId
                 )
             }
 
