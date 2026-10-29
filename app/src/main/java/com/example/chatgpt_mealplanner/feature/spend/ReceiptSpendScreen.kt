@@ -30,6 +30,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -197,6 +199,57 @@ fun ReceiptSpendScreen(
                                     }
                                 }
                                 Spacer(modifier = Modifier.height(4.dp))
+                                var linkMenuExpanded by remember(item.id) { mutableStateOf(false) }
+                                val linkedCandidate = uiState.linkCandidates.firstOrNull {
+                                    (it.type == ReceiptLinkType.INVENTORY && it.id == item.linkedInventoryItemId) ||
+                                        (it.type == ReceiptLinkType.SHOPPING_LIST && it.id == item.linkedShoppingListItemId)
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        linkedCandidate?.let {
+                                            "Linked: ${it.displayName} (${if (it.type == ReceiptLinkType.INVENTORY) "inventory" else "shopping list"})"
+                                        } ?: "Not linked",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.secondary,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    TextButton(onClick = { linkMenuExpanded = true }) {
+                                        Text(if (linkedCandidate == null) "Link item" else "Change link")
+                                    }
+                                    DropdownMenu(
+                                        expanded = linkMenuExpanded,
+                                        onDismissRequest = { linkMenuExpanded = false }
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = { Text("Leave unmatched") },
+                                            onClick = {
+                                                viewModel.updateItemDraft(item.copy(linkedInventoryItemId = null, linkedShoppingListItemId = null))
+                                                linkMenuExpanded = false
+                                            }
+                                        )
+                                        uiState.linkCandidates.forEach { candidate ->
+                                            DropdownMenuItem(
+                                                text = {
+                                                    Text("${if (candidate.type == ReceiptLinkType.INVENTORY) "Inventory" else "Shopping list"}: ${candidate.displayName}")
+                                                },
+                                                onClick = {
+                                                    viewModel.updateItemDraft(
+                                                        if (candidate.type == ReceiptLinkType.INVENTORY) {
+                                                            item.copy(linkedInventoryItemId = candidate.id, linkedShoppingListItemId = null)
+                                                        } else {
+                                                            item.copy(linkedInventoryItemId = null, linkedShoppingListItemId = candidate.id)
+                                                        }
+                                                    )
+                                                    linkMenuExpanded = false
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
                                 FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                     ReceiptSpendCategory.entries.forEach { cat ->
                                         FilterChip(
