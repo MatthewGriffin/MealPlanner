@@ -13,7 +13,9 @@ data class ReceiptSpendItemDraft(
     val unitPriceMinorPence: Long? = null,
     val category: String = ReceiptSpendCategory.UNCATEGORISED.name,
     val isDiscount: Boolean = false,
-    val confidence: Float = 0.9f
+    val confidence: Float = 0.9f,
+    val linkedInventoryItemId: String? = null,
+    val linkedShoppingListItemId: String? = null
 )
 
 data class ReceiptSpendDraft(
