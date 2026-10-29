@@ -39,6 +39,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -233,15 +234,31 @@ fun <T> EnumDropdownSelector(
 
 @Composable
 fun SearchProductDialog(
+    initialQuery: String = "",
     onDismiss: () -> Unit,
     onSearchQuery: suspend (String) -> List<BarcodeLookupResult>,
     onSelectProduct: (BarcodeLookupResult) -> Unit
 ) {
-    var searchQuery by remember { mutableStateOf("") }
+    var searchQuery by remember(initialQuery) { mutableStateOf(initialQuery) }
     var searchResults by remember { mutableStateOf<List<BarcodeLookupResult>>(emptyList()) }
     var isSearching by remember { mutableStateOf(false) }
     var searchJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     val coroutineScope = rememberCoroutineScope()
+
+    LaunchedEffect(initialQuery) {
+        val query = initialQuery.trim()
+        if (query.length >= 2) {
+            isSearching = true
+            searchJob?.cancel()
+            searchJob = coroutineScope.launch {
+                val results = onSearchQuery(query)
+                if (searchQuery.trim() == query) {
+                    searchResults = results
+                    isSearching = false
+                }
+            }
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -375,6 +392,7 @@ fun AddEditItemForm(
 
     if (showSearchDialog && onSearchProducts != null) {
         SearchProductDialog(
+            initialQuery = formState.displayName,
             onDismiss = { showSearchDialog = false },
             onSearchQuery = onSearchProducts,
             onSelectProduct = { result ->
