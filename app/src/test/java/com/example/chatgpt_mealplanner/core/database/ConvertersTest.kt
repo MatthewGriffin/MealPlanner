@@ -34,6 +34,18 @@ class ConvertersTest {
     }
 
     @Test
+    fun categoryAndStorageLocationEnumsHaveDistinctResponsibilities() {
+        val categoryNames = FoodCategory.entries.map { it.name }.toSet()
+        val locationNames = StorageLocation.entries.map { it.name }.toSet()
+
+        assertEquals(setOf("OTHER"), categoryNames.intersect(locationNames))
+        assertEquals(
+            setOf("CUPBOARD", "FRIDGE", "FREEZER", "PANTRY", "OTHER"),
+            locationNames
+        )
+    }
+
+    @Test
     fun quantityConfidenceConverters_roundTripAndFallback() {
         assertEquals("EXACT", converters.fromQuantityConfidence(QuantityConfidence.EXACT))
         assertEquals(QuantityConfidence.EXACT, converters.toQuantityConfidence("EXACT"))
