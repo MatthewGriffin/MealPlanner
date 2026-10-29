@@ -7,6 +7,7 @@ import com.example.chatgpt_mealplanner.core.database.entity.ReceiptSpendEntity
 import com.example.chatgpt_mealplanner.core.database.entity.ReceiptSpendItemEntity
 import com.example.chatgpt_mealplanner.core.database.entity.RetailPriceSnapshotEntity
 import com.example.chatgpt_mealplanner.core.database.entity.RetailProductEntity
+import com.example.chatgpt_mealplanner.core.model.DomainError
 import com.example.chatgpt_mealplanner.core.model.DomainResult
 import com.example.chatgpt_mealplanner.core.receipt.ReceiptOcrResult
 import com.example.chatgpt_mealplanner.core.receipt.ReceiptSpendDraft
@@ -69,7 +70,9 @@ class ReceiptSpendDomainServiceImpl @Inject constructor(
         val existingSpend = receiptSpendDao.getSpendByFingerprint(draft.fingerprint)
         if (existingSpend != null) {
             safeLog("[RECEIPT_DUPLICATE_SKIPPED] retailer=\"${draft.retailerId}\" fingerprint=\"${draft.fingerprint}\" existingReceiptId=\"${existingSpend.id}\" incomingLineCount=${draft.items.size} existingLineCount=${existingSpend.itemCount}")
-            return DomainResult.Success(Unit)
+            return DomainResult.Failure(
+                DomainError.DuplicateOperation("This receipt has already been saved. No duplicate was added.")
+            )
         }
 
         return transactionRunner.runInDomainTransaction {
