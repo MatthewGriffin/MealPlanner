@@ -88,7 +88,7 @@ class ReceiptSpendViewModel @Inject constructor(
                 val shoppingList = shoppingDao.getActiveShoppingList()
                 val shoppingCandidates = shoppingList?.let { list ->
                     shoppingDao.getShoppingListWithItems(list.id)?.items.orEmpty()
-                        .filter { it.item.status.name != "PURCHASED_CONFIRMED" }
+                        .filter { it.item.status.name !in setOf("PURCHASED_CONFIRMED", "CHECKED") }
                         .map { withSources ->
                             ReceiptLinkCandidate(
                                 withSources.item.id,
@@ -267,9 +267,10 @@ class ReceiptSpendViewModel @Inject constructor(
         viewModelScope.launch {
             when (val result = spendDomainService.saveReceiptSpend(draft)) {
                 is DomainResult.Success -> {
-                    // A linked shopping-list item is marked purchased only after the receipt saves.
+                    // A receipt confirms the list item was bought, but this spend-only flow
+                    // does not import a physical inventory lot. Mark it checked, not imported.
                     draft.items.mapNotNull { it.linkedShoppingListItemId }.distinct().forEach { itemId ->
-                        runCatching { shoppingDao.updateItemStatus(itemId, "PURCHASED_CONFIRMED") }
+                        runCatching { shoppingDao.updateItemStatus(itemId, "CHECKED") }
                     }
                     _uiState.update {
                         it.copy(
