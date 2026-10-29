@@ -892,6 +892,16 @@ val MIGRATION_19_20 = object : Migration(19, 20) {
     }
 }
 
+
+val MIGRATION_20_21 = object : Migration(20, 21) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `receipt_spend_items` ADD COLUMN `linkedInventoryItemId` TEXT REFERENCES `inventory_items`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL")
+        db.execSQL("ALTER TABLE `receipt_spend_items` ADD COLUMN `linkedShoppingListItemId` TEXT REFERENCES `shopping_list_items`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_receipt_spend_items_linkedInventoryItemId` ON `receipt_spend_items` (`linkedInventoryItemId`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_receipt_spend_items_linkedShoppingListItemId` ON `receipt_spend_items` (`linkedShoppingListItemId`)")
+    }
+}
+
 val ALL_MIGRATIONS = arrayOf(
     MIGRATION_1_2,
     MIGRATION_2_3,
@@ -911,7 +921,8 @@ val ALL_MIGRATIONS = arrayOf(
     MIGRATION_16_17,
     MIGRATION_17_18,
     MIGRATION_18_19,
-    MIGRATION_19_20
+    MIGRATION_19_20,
+    MIGRATION_20_21
 )
 
 @Database(
@@ -955,7 +966,7 @@ val ALL_MIGRATIONS = arrayOf(
         UserStoreEntity::class,
         PurchasePriceObservationEntity::class
     ],
-    version = 20,
+    version = 21,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
