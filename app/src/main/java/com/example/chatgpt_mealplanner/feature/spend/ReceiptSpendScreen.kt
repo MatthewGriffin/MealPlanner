@@ -69,15 +69,21 @@ fun ReceiptSpendScreen(
     val context = LocalContext.current
 
     var tempPhotoUri by remember { mutableStateOf<Uri?>(null) }
+    var cameraErrorMessage by remember { mutableStateOf<String?>(null) }
 
     val cameraLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicture()
     ) { success ->
-        if (success && tempPhotoUri != null) {
-            android.util.Log.i("AI_MEALPLANNER", "[RECEIPT_CAMERA_RESULT] success=true uri=$tempPhotoUri")
-            viewModel.processReceiptImage(tempPhotoUri!!)
+        val capturedPhotoUri = tempPhotoUri
+        if (success && capturedPhotoUri != null) {
+            cameraErrorMessage = null
+            android.util.Log.i("AI_MEALPLANNER", "[RECEIPT_CAMERA_RESULT] success=true uri=$capturedPhotoUri")
+            viewModel.processReceiptImage(capturedPhotoUri)
         } else {
-            android.util.Log.i("AI_MEALPLANNER", "[RECEIPT_CAMERA_CANCELLED] success=$success tempPhotoUri=$tempPhotoUri")
+            android.util.Log.i("AI_MEALPLANNER", "[RECEIPT_CAMERA_CANCELLED] success=$success tempPhotoUri=$capturedPhotoUri")
+            if (!success) {
+                cameraErrorMessage = "No photo was captured. Please try again."
+            }
         }
     }
 
@@ -341,14 +347,27 @@ fun ReceiptSpendScreen(
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Button(
                             onClick = {
+                                cameraErrorMessage = null
                                 try {
                                     android.util.Log.i("AI_MEALPLANNER", "[RECEIPT_CAMERA_LAUNCH]")
-                                    val photoFile = File(context.cacheDir, "receipt_${System.currentTimeMillis()}.jpg")
-                                    val photoUri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", photoFile)
+                                    // TakePicture writes into the supplied URI; create the destination first
+                                    // so camera apps that require an existing output file can open it.
+                                    val photoFile = File.createTempFile("receipt_", ".jpg", context.cacheDir)
+                                    val photoUri = FileProvider.getUriForFile(
+                                        context,
+                                        "${context.packageName}.fileprovider",
+                                        photoFile
+                                    )
                                     tempPhotoUri = photoUri
                                     cameraLauncher.launch(photoUri)
                                 } catch (e: Exception) {
-                                    android.util.Log.i("AI_MEALPLANNER", "[RECEIPT_CAMERA_ERROR] exception=${e.javaClass.simpleName} message=\"${e.message}\"")
+                                    android.util.Log.e("AI_MEALPLANNER", "[RECEIPT_CAMERA_ERROR]", e)
+                                    cameraErrorMessage = when (e) {
+                                        is android.content.ActivityNotFoundException ->
+                                            "No camera app is available on this device."
+                                        else ->
+                                            "Couldn't open the camera: ${e.localizedMessage ?: e.javaClass.simpleName}"
+                                    }
                                 }
                             },
                             modifier = Modifier.weight(1f)
@@ -366,6 +385,15 @@ fun ReceiptSpendScreen(
                             Spacer(modifier = Modifier.width(6.dp))
                             Text("Choose Image")
                         }
+                    }
+
+                    if (cameraErrorMessage != null) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            cameraErrorMessage!!,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
                     }
 
                     if (uiState.isScanning) {
