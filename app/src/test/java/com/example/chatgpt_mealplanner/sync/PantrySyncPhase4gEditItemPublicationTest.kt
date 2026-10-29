@@ -52,7 +52,7 @@ class PantrySyncPhase4gEditItemPublicationTest {
             canonicalName = "cheddar cheese",
             displayName = "Cheddar Cheese",
             brand = "Old Croc",
-            category = FoodCategory.FRIDGE,
+            category = FoodCategory.DAIRY_EGGS,
             storageLocation = StorageLocation.FRIDGE,
             quantity = 1.0,
             quantityUnit = QuantityUnit.KILOGRAM,
@@ -128,7 +128,7 @@ class PantrySyncPhase4gEditItemPublicationTest {
             canonicalName = "cheddar cheese",
             displayName = "Sharp Cheddar Cheese",
             brand = "Cathedral City",
-            category = FoodCategory.FRIDGE,
+            category = FoodCategory.DAIRY_EGGS,
             storageLocation = StorageLocation.FRIDGE,
             quantity = 1.0,
             quantityUnit = QuantityUnit.KILOGRAM,
@@ -166,7 +166,7 @@ class PantrySyncPhase4gEditItemPublicationTest {
         assertEquals("Sharp Cheddar Cheese", payload.displayName)
         assertEquals("Cathedral City", payload.brand)
         assertEquals("Updated sharp notes", payload.notes)
-        assertEquals("FRIDGE", payload.category)
+        assertEquals("DAIRY_EGGS", payload.category)
         assertEquals("FRIDGE", payload.storageLocation)
     }
 
