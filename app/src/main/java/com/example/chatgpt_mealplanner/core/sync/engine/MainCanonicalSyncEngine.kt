@@ -21,6 +21,8 @@ import com.example.chatgpt_mealplanner.core.model.ItemStatus
 import com.example.chatgpt_mealplanner.core.model.QuantityConfidence
 import com.example.chatgpt_mealplanner.core.model.QuantityUnit
 import com.example.chatgpt_mealplanner.core.model.StorageLocation
+import com.example.chatgpt_mealplanner.core.model.parseFoodCategory
+import com.example.chatgpt_mealplanner.core.model.parseStorageLocation
 import com.example.chatgpt_mealplanner.sync.contract.AddItemPayloadDto
 import com.example.chatgpt_mealplanner.sync.contract.AdjustQuantityPayloadDto
 import com.example.chatgpt_mealplanner.sync.contract.EditItemPayloadDto
@@ -238,8 +240,8 @@ open class MainCanonicalSyncEngine @Inject constructor(
                         )
                     }
 
-                    val cat = runCatching { FoodCategory.valueOf(payload.category.uppercase()) }.getOrDefault(FoodCategory.CUPBOARD)
-                    val loc = runCatching { StorageLocation.valueOf(payload.storageLocation.uppercase()) }.getOrDefault(StorageLocation.CUPBOARD)
+                    val cat = parseFoodCategory(payload.category)
+                    val loc = parseStorageLocation(payload.storageLocation)
                     val unit = payload.quantityUnit?.let { runCatching { QuantityUnit.valueOf(it.uppercase()) }.getOrNull() }
 
                     val newItem = InventoryItemEntity(
@@ -413,8 +415,8 @@ open class MainCanonicalSyncEngine @Inject constructor(
                             val newName = payload.displayName ?: targetItem.displayName
                             val newBrand = payload.brand ?: targetItem.brand
                             val newNotes = payload.notes ?: targetItem.notes
-                            val newCat = payload.category?.let { runCatching { FoodCategory.valueOf(it.uppercase()) }.getOrNull() } ?: targetItem.category
-                            val newLoc = payload.storageLocation?.let { runCatching { StorageLocation.valueOf(it.uppercase()) }.getOrNull() } ?: targetItem.storageLocation
+                            val newCat = payload.category?.let(::parseFoodCategory) ?: targetItem.category
+                            val newLoc = payload.storageLocation?.let(::parseStorageLocation) ?: targetItem.storageLocation
                             val newRev = targetItem.revision + 1L
 
                             val updated = targetItem.copy(
