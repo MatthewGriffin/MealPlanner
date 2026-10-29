@@ -23,6 +23,7 @@ class FakeReceiptSpendDao : com.example.chatgpt_mealplanner.core.database.dao.Re
     private val mappings = mutableListOf<ReceiptCategoryMappingEntity>()
 
     fun savedItems(): List<ReceiptSpendItemEntity> = spendItems.toList()
+    fun savedSpends(): List<ReceiptSpendEntity> = spends.toList()
 
     override suspend fun insertReceiptSpend(spend: ReceiptSpendEntity) {
         spends.removeAll { it.id == spend.id }
@@ -245,6 +246,26 @@ class ReceiptSpendDomainServiceTest {
 
         assertTrue(duplicateResult is DomainResult.Failure)
         assertEquals(savedLineCount, dao.savedItems().size)
+    }
+
+    @Test
+    fun saveReceiptSpend_persistsGrossTotalSeparatelyFromRecognisedItemSum() = runTest {
+        val ocr = ReceiptOcrResult(
+            lines = listOf(
+                ReceiptOcrLine("ASDA 27/09/2026", 0.9f, 0, elements = listOf(ReceiptOcrElement("ASDA", 0,0,0,0,0), ReceiptOcrElement("27/09/2026", 0,0,0,0,0))),
+                ReceiptOcrLine("BREAD £1.20", 0.9f, 1, elements = listOf(ReceiptOcrElement("BREAD", 10,10,100,20,15), ReceiptOcrElement("£1.20", 250,10,300,20,15))),
+                ReceiptOcrLine("TOTAL £5.00", 0.9f, 2, elements = listOf(ReceiptOcrElement("TOTAL", 10,10,100,20,15), ReceiptOcrElement("£5.00", 250,10,300,20,15)))
+            ),
+            fullText = "ASDA 27/09/2026 BREAD £1.20 TOTAL £5.00"
+        )
+
+        val draft = (service.processReceiptOcr(ocr, null) as DomainResult.Success).value
+        assertEquals(120L, draft.calculatedItemsSumMinorPence)
+        assertEquals(500L, draft.explicitGrossTotalMinorPence)
+
+        assertTrue(service.saveReceiptSpend(draft) is DomainResult.Success)
+
+        assertEquals(500L, dao.savedSpends().single().subtotalMinorPence)
     }
 
 }
