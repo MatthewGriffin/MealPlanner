@@ -202,18 +202,7 @@ fun ChatScreen(
                 Button(
                     onClick = {
                         val plan = uiState.latestMealPlan
-                        if (plan != null) onEvent(
-                            ChatUiEvent.AcceptMealPlan(
-                                plan,
-                                messageId = uiState.messages.lastOrNull { message ->
-                                    message.structuredPayloadJson?.let { raw ->
-                                        runCatching { Json.decodeFromString<ProposalMessagePayload>(raw) }.getOrNull()
-                                    }?.let { it.kind == "MEAL_PLAN" && it.state == "PENDING" }
-                                        ?: false
-                                }?.id,
-                                replaceConflicts = true
-                            )
-                        )
+                        if (plan != null) onEvent(ChatUiEvent.AcceptMealPlan(plan, replaceConflicts = true))
                     },
                     enabled = uiState.latestMealPlan != null && !uiState.isSavingProposal
                 ) { Text("Replace and accept plan") }
