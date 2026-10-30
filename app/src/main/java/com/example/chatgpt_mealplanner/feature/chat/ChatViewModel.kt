@@ -181,6 +181,13 @@ class ChatViewModel @Inject constructor(
         }
         viewModelScope.launch {
             messagesFlow.collect { messages ->
+                messages.asReversed().firstNotNullOfOrNull { message ->
+                    message.structuredPayloadJson?.let { raw ->
+                        runCatching { proposalJson.decodeFromString<ProposalMessagePayload>(raw) }.getOrNull()
+                    }?.takeIf { it.state == "PENDING" && it.kind == "SINGLE_MEAL" }?.mealChangeRequestId
+                }?.let { restoredRequestId ->
+                    if (mealChangeRequestIdFlow.value == null) mealChangeRequestIdFlow.value = restoredRequestId
+                }
                 if (messages.isEmpty() && requestStateHolderFlow.value.requestState == ChatRequestState.FAILED_RETRYABLE) {
                     transitionRequestState(ChatRequestState.IDLE)
                     errorMessageFlow.value = null
@@ -380,6 +387,9 @@ class ChatViewModel @Inject constructor(
                 is AiOrchestrationResult.Final -> {
                     transitionRequestState(ChatRequestState.SUCCEEDED, retainedMessage = null, retainedMessageId = null)
                     latestProposalFlow.value = result.validatedProposal
+                    if (result.validatedProposal != null && mealChangeRequestIdFlow.value != null) {
+                        attachMealChangeRequestToLatestProposal(mealChangeRequestIdFlow.value!!)
+                    }
                     latestMealPlanFlow.value = result.mealPlan?.takeIf { it.size > 1 }
                     latestProposedActionFlow.value = result.proposedAction
 
@@ -680,6 +690,24 @@ class ChatViewModel @Inject constructor(
         }
     }
 
+
+    private suspend fun attachMealChangeRequestToLatestProposal(requestId: String) {
+        runCatching {
+            val latest = chatRepository.getMessagesForConversation("default_conversation")
+                .lastOrNull { it.role.equals("ASSISTANT", ignoreCase = true) && !it.structuredPayloadJson.isNullOrBlank() }
+                ?: return@runCatching
+            val payload = proposalJson.decodeFromString<ProposalMessagePayload>(latest.structuredPayloadJson!!)
+            if (payload.kind == "SINGLE_MEAL" && payload.state == "PENDING") {
+                chatRepository.saveMessage(
+                    latest.copy(
+                        structuredPayloadJson = proposalJson.encodeToString(
+                            payload.copy(mealChangeRequestId = requestId)
+                        )
+                    )
+                )
+            }
+        }
+    }
 
     private suspend fun updateProposalMessageAsApproved(messageId: String?, approvedText: String) {
         if (messageId.isNullOrBlank()) return
