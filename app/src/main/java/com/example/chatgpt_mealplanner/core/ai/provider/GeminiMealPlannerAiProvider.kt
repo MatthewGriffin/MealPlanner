@@ -40,16 +40,14 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import javax.net.ssl.SSLHandshakeException
 
-const val GEMINI_PRIMARY_MODEL = "gemini-3.7-flash"
-const val GEMINI_SECONDARY_MODEL = "gemini-3.6-flash"
-const val GEMINI_TERTIARY_MODEL = "gemini-3.5-flash-lite"
+const val GEMINI_PRIMARY_MODEL = "gemini-3.6-flash"
+const val GEMINI_SECONDARY_MODEL = "gemini-3.5-flash-lite"
 const val GEMINI_MODEL_ID = GEMINI_PRIMARY_MODEL
 const val GLOBAL_TIMEOUT_CAP_MS = 120_000L
 
 val GEMINI_MODEL_CHAIN = listOf(
     GEMINI_PRIMARY_MODEL,
-    GEMINI_SECONDARY_MODEL,
-    GEMINI_TERTIARY_MODEL
+    GEMINI_SECONDARY_MODEL
 )
 
 @Singleton
@@ -94,7 +92,7 @@ class GeminiMealPlannerAiProvider @Inject constructor(
         }
 
         // Keep this diagnostic independent from normal chat retries and model fallback.
-        // One minimal request, with short network timeouts, gives Settings a prompt result.
+        // Test the first supported model only, with short network timeouts, for a prompt result.
         val payload = buildJsonObject {
             putJsonArray("contents") {
                 add(buildJsonObject {
