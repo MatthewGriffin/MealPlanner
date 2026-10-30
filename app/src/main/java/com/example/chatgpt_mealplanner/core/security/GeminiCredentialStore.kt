@@ -8,6 +8,7 @@ import javax.inject.Singleton
 interface CredentialStore {
     fun hasKey(): Boolean
     fun saveKey(key: String)
+    fun replaceKey(key: String) = saveKey(key)
     fun loadKey(): String?
     fun deleteKey()
 }
@@ -26,6 +27,10 @@ open class GeminiCredentialStore @Inject constructor(
         if (!securePreferences.putString("KEY_GEMINI_API_KEY", key.trim())) {
             throw IllegalStateException("Could not persist Gemini API key securely")
         }
+    }
+
+    override fun replaceKey(key: String) {
+        securePreferences.replaceString("KEY_GEMINI_API_KEY", key.trim())
     }
 
     override fun loadKey(): String? =
