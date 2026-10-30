@@ -10,6 +10,9 @@ import com.example.chatgpt_mealplanner.contract.AiToolCall
 import com.example.chatgpt_mealplanner.contract.AiToolClass
 import com.example.chatgpt_mealplanner.contract.AiToolId
 import com.example.chatgpt_mealplanner.contract.AiToolResult
+import com.example.chatgpt_mealplanner.contract.ProposalMessagePayload
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import com.example.chatgpt_mealplanner.contract.AuthorizedMutationScope
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonObject
@@ -500,12 +503,33 @@ class AiMealPlannerOrchestrator @Inject constructor(
                 """.trimIndent()
                 safeLog(finalTraceLog)
 
+                // Store the exact validated snapshot alongside the assistant message. The UI
+                // reconstructs pending cards from this payload after process/app restarts.
+                val validatedMealPlan = if (!retailProductSearchOnly) {
+                    finalRes.mealPlan?.takeIf { it.size > 1 }?.map { recipeValidator.validateProposal(it) }
+                } else null
+                val proposalPayload = when {
+                    validatedMealPlan != null -> ProposalMessagePayload(
+                        kind = "MEAL_PLAN",
+                        meals = validatedMealPlan
+                    )
+                    validatedProposal != null -> ProposalMessagePayload(
+                        kind = "SINGLE_MEAL",
+                        singleMeal = validatedProposal
+                    )
+                    else -> null
+                }
+                val structuredPayloadJson = proposalPayload?.let {
+                    runCatching { Json.encodeToString(it) }.getOrNull()
+                }
                 val assistantMsgId = "msg_${System.currentTimeMillis()}"
                 val assistantEntity = ChatMessageEntity(
                     id = assistantMsgId,
                     conversationId = conversationId,
                     role = "ASSISTANT",
-                    content = textToReturn,
+                    // A proposal card replaces the model's prose to avoid showing it twice.
+                    content = if (structuredPayloadJson != null) "" else textToReturn,
+                    structuredPayloadJson = structuredPayloadJson,
                     modelId = finalRes.modelId,
                     timestamp = System.currentTimeMillis()
                 )
