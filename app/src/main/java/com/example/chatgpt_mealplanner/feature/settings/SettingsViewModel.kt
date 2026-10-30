@@ -268,6 +268,19 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun replaceApiKey(key: String) {
+        try {
+            credentialStore.replaceKey(key)
+            checkCredentialStatus()
+            _uiState.update { it.copy(connectionTestResult = "Replacement key saved. Tap Test Connection to verify.") }
+        } catch (e: Exception) {
+            android.util.Log.e("AI_MEALPLANNER", "[SETTINGS_REPLACE_GEMINI_KEY_ERROR]", e)
+            _uiState.update {
+                it.copy(connectionTestResult = "Could not replace Gemini API key securely: " + (e.localizedMessage ?: e.javaClass.simpleName))
+            }
+        }
+    }
+
     fun deleteApiKey() {
         try {
             credentialStore.deleteKey()
