@@ -7,6 +7,9 @@ import androidx.lifecycle.viewModelScope
 import com.example.chatgpt_mealplanner.contract.AiOrchestrationResult
 import com.example.chatgpt_mealplanner.contract.AiProposedAction
 import com.example.chatgpt_mealplanner.contract.MealProposal
+import com.example.chatgpt_mealplanner.contract.ProposalMessagePayload
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import com.example.chatgpt_mealplanner.contract.ValidatedMealProposal
 import com.example.chatgpt_mealplanner.core.ai.orchestrator.AiMealPlannerOrchestrator
 import com.example.chatgpt_mealplanner.core.database.entity.ChatConversationEntity
@@ -93,6 +96,8 @@ class ChatViewModel @Inject constructor(
     private val showMealPlanConflictDialogFlow = MutableStateFlow(false)
     private val latestProposedActionFlow = MutableStateFlow<AiProposedAction?>(null)
     private val isSavingProposalFlow = MutableStateFlow(false)
+    private val proposalMessageIdFlow = MutableStateFlow<String?>(null)
+    private val proposalJson = Json { ignoreUnknownKeys = true }
 
     private val showCookConfirmationDialogFlow = MutableStateFlow(false)
     private val cookConfirmationMealIdFlow = MutableStateFlow<String?>(null)
@@ -276,8 +281,8 @@ class ChatViewModel @Inject constructor(
             is ChatUiEvent.UpdateMealChangeRequestDraft -> mealChangeRequestDraftFlow.value = event.text
             ChatUiEvent.CancelMealChangeRequestDraft -> cancelMealChangeRequestDraft()
             ChatUiEvent.RetryLastFailedMessage -> retryLastFailedMessage()
-            is ChatUiEvent.SaveMealProposalToPlan -> saveMealProposalToPlan(event.proposal)
-            is ChatUiEvent.AcceptMealPlan -> saveMealPlanToPlan(event.meals, event.replaceConflicts)
+            is ChatUiEvent.SaveMealProposalToPlan -> saveMealProposalToPlan(event.proposal, event.messageId)
+            is ChatUiEvent.AcceptMealPlan -> saveMealPlanToPlan(event.meals, event.messageId, event.replaceConflicts)
             ChatUiEvent.CancelMealPlanReplacement -> {
                 showMealPlanConflictDialogFlow.value = false
                 mealPlanConflictsFlow.value = emptyList()
@@ -449,7 +454,7 @@ class ChatViewModel @Inject constructor(
         }
     }
 
-    private fun saveMealProposalToPlan(uiProposal: MealProposal) {
+    private fun saveMealProposalToPlan(uiProposal: MealProposal, messageId: String? = null) {
         if (isSavingProposalFlow.value) return
         isSavingProposalFlow.value = true
         viewModelScope.launch {
@@ -535,6 +540,7 @@ class ChatViewModel @Inject constructor(
 
                 when (createResult) {
                     is DomainResult.Success -> {
+                        updateProposalMessageAsApproved(messageId, "Saved '${meal.title}' to your meal plan.")
                         latestProposalFlow.value = null
                         runCatching { orchestrator.clearPendingMealProposal("default_conversation") }
                         if (linkedRequest != null) {
@@ -563,7 +569,8 @@ class ChatViewModel @Inject constructor(
         }
     }
 
-    private fun saveMealPlanToPlan(meals: List<MealProposal>, replaceConflicts: Boolean = false) {
+    private fun saveMealPlanToPlan(meals: List<MealProposal>, messageId: String? = null, replaceConflicts: Boolean = false) {
+        if (messageId != null) proposalMessageIdFlow.value = messageId
         if (isSavingProposalFlow.value) return
         if (meals.size < 2 || meals.any { it.title.isBlank() || it.ingredients.isEmpty() || it.steps.isEmpty() || it.suggestedDate.isNullOrBlank() }) {
             errorMessageFlow.value = "This meal plan is missing dates, ingredients, or cooking instructions. Ask the assistant to regenerate the complete plan."
@@ -662,10 +669,32 @@ class ChatViewModel @Inject constructor(
                 latestMealPlanFlow.value = null
                 showMealPlanConflictDialogFlow.value = false
                 mealPlanConflictsFlow.value = emptyList()
+                updateProposalMessageAsApproved(proposalMessageIdFlow.value, "Approved and added all $saved meals to your planner. Shopping requirements update automatically.")
+                proposalMessageIdFlow.value = null
                 errorMessageFlow.value = "Accepted meal plan: added all $saved meals to your planner. Shopping requirements update automatically."
             } finally {
                 isSavingProposalFlow.value = false
             }
+        }
+    }
+
+
+    private suspend fun updateProposalMessageAsApproved(messageId: String?, approvedText: String) {
+        if (messageId.isNullOrBlank()) return
+        runCatching {
+            val existing = chatRepository.getMessagesForConversation("default_conversation")
+                .firstOrNull { it.id == messageId } ?: return@runCatching
+            val payload = existing.structuredPayloadJson?.let {
+                proposalJson.decodeFromString<ProposalMessagePayload>(it)
+            } ?: return@runCatching
+            chatRepository.saveMessage(
+                existing.copy(
+                    content = approvedText,
+                    structuredPayloadJson = proposalJson.encodeToString(payload.copy(state = "APPROVED"))
+                )
+            )
+        }.onFailure {
+            errorMessageFlow.value = "The meal was saved, but its chat approval status could not be updated. Reopen the conversation and check the planner."
         }
     }
 
