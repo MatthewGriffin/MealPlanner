@@ -298,7 +298,8 @@ class AiMealPlannerOrchestrator @Inject constructor(
                 intentClass == com.example.chatgpt_mealplanner.core.ai.context.UserMessageIntentClass.FOLLOW_UP_TO_ACTIVE_PROPOSAL)
 
         val finalResponseText = (providerResponse as? AiProviderResponse.FinalResponse)?.text ?: ""
-        val responseIsMultiMealPlan = isMultiMealResponse(finalResponseText)
+        // Honour the user's explicit request even if Gemini formats its answer as one recipe.
+        val responseIsMultiMealPlan = mealPlanRequest || isMultiMealResponse(finalResponseText)
         val textSuggestsRecipeProposal = finalResponseText.contains("recipe", ignoreCase = true) ||
                 finalResponseText.contains("ingredients", ignoreCase = true) ||
                 finalResponseText.contains("instructions", ignoreCase = true) ||
@@ -364,7 +365,7 @@ class AiMealPlannerOrchestrator @Inject constructor(
                 val retailProductSearchOnly = isRetailProductSearchOnlyRequest(userMessageText)
                 // A retailer lookup is not permission to generate a menu. Treat any structured
                 // plan returned on a product-only turn as ineligible for the meal-plan UI.
-                val responseIsMultiMealPlan = retailProductSearchOnly ||
+                val responseIsMultiMealPlan = retailProductSearchOnly || mealPlanRequest ||
                         (finalRes.mealPlan?.size ?: 0) > 1 || isMultiMealResponse(finalRes.text)
                 var validatedProposal = if (responseIsMultiMealPlan) {
                     null
