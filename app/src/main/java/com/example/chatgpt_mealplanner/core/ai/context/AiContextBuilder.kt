@@ -70,6 +70,25 @@ class AiContextBuilder @Inject constructor(
             )
         }
 
+        val usableInventoryEntities = inventoryDao.getAllItems().first()
+            .map { it.toDomainModel() }
+            .filter { it.status in listOf(
+                com.example.chatgpt_mealplanner.core.model.ItemStatus.AVAILABLE,
+                com.example.chatgpt_mealplanner.core.model.ItemStatus.LOW,
+                com.example.chatgpt_mealplanner.core.model.ItemStatus.USE_SOON
+            ) }
+        val usableInventoryDtos = usableInventoryEntities.map {
+            InventorySummaryContextDto(
+                canonicalIngredientId = it.canonicalIngredientId,
+                displayName = it.displayName,
+                quantity = it.quantity,
+                unit = it.quantityUnit?.name,
+                storageLocation = it.storageLocation.name,
+                isStaple = it.staple,
+                status = it.status.name
+            )
+        }
+
         val useSoonEntities = inventoryDao.getUseSoonItems().first()
         val useSoonDtos = useSoonEntities.map {
             InventorySummaryContextDto(
@@ -123,6 +142,7 @@ class AiContextBuilder @Inject constructor(
             upcomingPlannedMeals = upcomingPlannedDtos,
             availableLeftovers = leftoverDtos,
             useSoonItems = useSoonDtos,
+            usableInventory = usableInventoryDtos,
             lowStockStaples = lowDtos,
             activeShoppingList = activeShoppingDtos,
             activeProposalTitle = activeProposal?.title,
