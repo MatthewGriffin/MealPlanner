@@ -2,14 +2,17 @@ package com.example.chatgpt_mealplanner.contract
 
 import kotlinx.serialization.Serializable
 
+@Serializable
 enum class MealGoal {
     NORMAL, QUICK, LOW_CARB, USE_PERISHABLES, CHEAP, BATCH_COOK, COMFORT_FOOD
 }
 
+@Serializable
 enum class IngredientAvailability {
     AVAILABLE, PARTIAL, MISSING, UNCERTAIN
 }
 
+@Serializable
 enum class RecipeValidationStatus {
     VALID,
     VALID_WITH_WARNINGS,
@@ -52,6 +55,7 @@ data class MealProposal(
     val reasoningSummary: String
 )
 
+@Serializable
 data class ValidatedProposedIngredient(
     val ingredient: ProposedIngredient,
     val availability: IngredientAvailability,
@@ -59,6 +63,7 @@ data class ValidatedProposedIngredient(
     val ownedUnit: String?
 )
 
+@Serializable
 data class ValidatedMealProposal(
     val proposal: MealProposal,
     val validatedIngredients: List<ValidatedProposedIngredient>,
@@ -79,3 +84,18 @@ sealed interface AiProposedAction {
     @Serializable
     data class AddToShopping(val missingIngredients: List<ProposedIngredient>) : AiProposedAction
 }
+
+
+/**
+ * Durable chat representation of a proposal. The state is changed to APPROVED
+ * on the same chat message after the user accepts it, so history never resurrects
+ * an actionable card.
+ */
+@Serializable
+data class ProposalMessagePayload(
+    val schemaVersion: Int = 1,
+    val kind: String,
+    val state: String = "PENDING",
+    val meals: List<ValidatedMealProposal> = emptyList(),
+    val singleMeal: ValidatedMealProposal? = null
+)
