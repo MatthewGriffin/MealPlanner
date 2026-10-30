@@ -447,6 +447,9 @@ class ChatViewModel @Inject constructor(
                 is AiOrchestrationResult.Final -> {
                     transitionRequestState(ChatRequestState.SUCCEEDED, retainedMessage = null, retainedMessageId = null)
                     latestProposalFlow.value = result.validatedProposal
+                    if (result.validatedProposal != null && mealChangeRequestIdFlow.value != null) {
+                        attachMealChangeRequestToLatestProposal(mealChangeRequestIdFlow.value!!)
+                    }
                     latestMealPlanFlow.value = result.mealPlan?.takeIf { it.size > 1 }
                     latestProposedActionFlow.value = result.proposedAction
 
