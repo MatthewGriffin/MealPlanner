@@ -90,6 +90,29 @@ class AndroidKeystoreSecurePreferencesTest {
     }
 
     @Test
+    fun recoversMissingV2KeyFromRetainedLegacyEncryptedPreferences() {
+        val name = "recover_lost_key_test"
+        val backing = context.getSharedPreferences("${name}_keystore_v2", Context.MODE_PRIVATE)
+        backing.edit()
+            .putString("secret", "v1:unrecoverable-old-ciphertext")
+            .putBoolean("__secure_preferences_migration_v2", true)
+            .commit()
+
+        val cipher = RecoveringCipher()
+        val prefs = AndroidKeystoreSecurePreferences(
+            context,
+            name,
+            mapOf("secret" to 'S'),
+            cipher,
+            legacyEncryptedReader = { mapOf("secret" to "S:original-api-key") }
+        )
+
+        assertEquals("original-api-key", prefs.getString("secret"))
+        assertTrue(cipher.keyExists())
+        assertEquals("S:original-api-key", cipher.decrypt(backing.getString("secret", null)!!, byteArrayOf()))
+    }
+
+    @Test
     fun clearRemovesSecureValuesButRetainsMigrationMarker() {
         val name = "clear_test"
         val prefs = AndroidKeystoreSecurePreferences(context, name, emptyMap(), FakeCipher())
@@ -98,6 +121,24 @@ class AndroidKeystoreSecurePreferencesTest {
         assertEquals(null, prefs.getString("secret"))
         assertTrue(context.getSharedPreferences("${name}_keystore_v2", Context.MODE_PRIVATE)
             .getBoolean("__secure_preferences_migration_v2", false))
+    }
+
+    private class RecoveringCipher : SecureValueCipher {
+        private var available = false
+
+        override fun encrypt(plainText: String, associatedData: ByteArray, allowCreateKey: Boolean): String {
+            if (!available && !allowCreateKey) throw GeneralSecurityException("key missing")
+            if (allowCreateKey) available = true
+            return "v1:" + plainText.reversed()
+        }
+
+        override fun decrypt(envelope: String, associatedData: ByteArray): String {
+            if (!available) throw GeneralSecurityException("key missing")
+            if (!envelope.startsWith("v1:")) throw GeneralSecurityException("corrupt")
+            return envelope.removePrefix("v1:").reversed()
+        }
+
+        override fun keyExists(): Boolean = available
     }
 
     private class FakeCipher(private val keyAvailable: Boolean = true) : SecureValueCipher {
