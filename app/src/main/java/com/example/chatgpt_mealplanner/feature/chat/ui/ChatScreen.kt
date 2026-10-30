@@ -60,6 +60,9 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.example.chatgpt_mealplanner.feature.chat.ChatUiEvent
 import com.example.chatgpt_mealplanner.feature.chat.ChatUiState
+import com.example.chatgpt_mealplanner.contract.ProposalMessagePayload
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.decodeFromString
 
 fun formatModelDisplayName(modelId: String?): String? {
     if (modelId.isNullOrBlank()) return null
@@ -82,7 +85,7 @@ fun ChatScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val listState = rememberLazyListState()
 
-    val totalItemCount = uiState.messages.size + (if (uiState.latestMealPlan != null || uiState.latestProposal != null) 1 else 0) + (if (uiState.isLoading) 1 else 0)
+    val totalItemCount = uiState.messages.size + (if (uiState.isLoading) 1 else 0)
     val targetIndex = (totalItemCount - 1).coerceAtLeast(0)
 
     var hasScrolledToInitialBottom by remember(uiState.activeConversationId) { mutableStateOf(false) }
@@ -252,6 +255,28 @@ fun ChatScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 items(uiState.messages, key = { it.id }) { msg ->
+                    val proposalPayload = remember(msg.structuredPayloadJson) {
+                        msg.structuredPayloadJson?.let { raw ->
+                            runCatching { Json.decodeFromString<ProposalMessagePayload>(raw) }.getOrNull()
+                        }
+                    }
+                    val isPendingProposal = proposalPayload?.state == "PENDING"
+                    if (isPendingProposal && proposalPayload != null) {
+                        when (proposalPayload.kind) {
+                            "MEAL_PLAN" -> MealPlanProposalCard(
+                                validatedMeals = proposalPayload.meals,
+                                onAccept = { onEvent(ChatUiEvent.AcceptMealPlan(it, messageId = msg.id)) },
+                                isSaving = uiState.isSavingProposal
+                            )
+                            "SINGLE_MEAL" -> proposalPayload.singleMeal?.let { validated ->
+                                MealProposalCard(
+                                    validatedProposal = validated,
+                                    onSaveToPlan = { onEvent(ChatUiEvent.SaveMealProposalToPlan(it, messageId = msg.id)) },
+                                    isSaving = uiState.isSavingProposal
+                                )
+                            }
+                        }
+                    } else if (msg.content.isNotBlank()) {
                     val isUser = msg.role.equals("USER", ignoreCase = true)
                     val modelDisplayName = formatModelDisplayName(msg.modelId)
                     Row(
@@ -298,23 +323,6 @@ fun ChatScreen(
                             }
                         }
                     }
-                }
-
-                uiState.latestMealPlan?.let { meals ->
-                    item(key = "meal_plan_proposal") {
-                        MealPlanProposalCard(
-                            meals = meals,
-                            onAccept = { onEvent(ChatUiEvent.AcceptMealPlan(it)) },
-                            isSaving = uiState.isSavingProposal
-                        )
-                    }
-                } ?: uiState.latestProposal?.let { proposal ->
-                    item(key = "meal_proposal") {
-                        MealProposalCard(
-                            validatedProposal = proposal,
-                            onSaveToPlan = { onEvent(ChatUiEvent.SaveMealProposalToPlan(it)) },
-                            isSaving = uiState.isSavingProposal
-                        )
                     }
                 }
 
