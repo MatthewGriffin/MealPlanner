@@ -38,6 +38,7 @@ data class SettingsUiState(
     val isApiKeyConfigured: Boolean = false,
     val credentialStorageError: String? = null,
     val connectionTestResult: String? = null,
+    val isConnectionTestInProgress: Boolean = false,
     val exportMessage: String? = null,
     val syncStatusMessage: String? = null,
     val isMainRole: Boolean = false,
@@ -295,15 +296,31 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun testAiConnection() {
-        _uiState.update { it.copy(connectionTestResult = "Testing connection to Gemini API ($GEMINI_MODEL_ID)...") }
+        if (_uiState.value.isConnectionTestInProgress) return
+        _uiState.update {
+            it.copy(
+                isConnectionTestInProgress = true,
+                connectionTestResult = "Testing connection to Gemini API ($GEMINI_MODEL_ID)..."
+            )
+        }
         viewModelScope.launch {
-            val result = provider.testConnection()
-            val resultText = when (result) {
-                is AiProviderResponse.FinalResponse -> "Connected to Gemini! Model: $GEMINI_MODEL_ID"
-                is AiProviderResponse.Error -> result.message
-                else -> "Response: ${result.javaClass.simpleName}"
+            try {
+                val result = provider.testConnection()
+                val resultText = when (result) {
+                    is AiProviderResponse.FinalResponse -> "Connected to Gemini! Model: $GEMINI_MODEL_ID"
+                    is AiProviderResponse.Error -> result.message
+                    else -> "Response: ${result.javaClass.simpleName}"
+                }
+                _uiState.update { it.copy(connectionTestResult = resultText) }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(connectionTestResult = "Connection test failed: ${e.localizedMessage ?: e.javaClass.simpleName}")
+                }
+            } finally {
+                _uiState.update { it.copy(isConnectionTestInProgress = false) }
             }
-            _uiState.update { it.copy(connectionTestResult = resultText) }
         }
     }
 
