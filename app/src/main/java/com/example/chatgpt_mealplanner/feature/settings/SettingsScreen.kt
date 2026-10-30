@@ -113,7 +113,19 @@ fun SettingsScreen(
                 Text("Gemini API Key", fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(4.dp))
 
-                if (uiState.isApiKeyConfigured) {
+                if (uiState.credentialStorageError != null) {
+                    Text(
+                        uiState.credentialStorageError!!,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "Do not enter a replacement key yet. Resolve the storage problem first to avoid overwriting a key that may still be recoverable.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else if (uiState.isApiKeyConfigured) {
                     Text("Status: Configured securely.", color = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.height(8.dp))
                     Button(onClick = { viewModel.deleteApiKey() }) {
