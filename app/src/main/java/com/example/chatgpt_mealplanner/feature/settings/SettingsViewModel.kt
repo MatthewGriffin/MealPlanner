@@ -218,7 +218,22 @@ class SettingsViewModel @Inject constructor(
     }
 
     private fun checkCredentialStatus() {
-        _uiState.update { it.copy(isApiKeyConfigured = credentialStore.hasKey()) }
+        try {
+            _uiState.update {
+                it.copy(
+                    isApiKeyConfigured = credentialStore.hasKey(),
+                    connectionTestResult = if (it.connectionTestResult?.startsWith("Could not access secure Gemini key storage") == true) null else it.connectionTestResult
+                )
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("AI_MEALPLANNER", "[SETTINGS_CREDENTIAL_STATUS_ERROR]", e)
+            _uiState.update {
+                it.copy(
+                    isApiKeyConfigured = false,
+                    connectionTestResult = "Could not access secure Gemini key storage: ${e.localizedMessage ?: e.javaClass.simpleName}"
+                )
+            }
+        }
     }
 
     private fun resolveAppRole() {
@@ -240,15 +255,29 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun saveApiKey(key: String) {
-        credentialStore.saveKey(key)
-        checkCredentialStatus()
-        _uiState.update { it.copy(connectionTestResult = "Key saved. Tap Test Connection to verify.") }
+        try {
+            credentialStore.saveKey(key)
+            checkCredentialStatus()
+            _uiState.update { it.copy(connectionTestResult = "Key saved. Tap Test Connection to verify.") }
+        } catch (e: Exception) {
+            android.util.Log.e("AI_MEALPLANNER", "[SETTINGS_SAVE_GEMINI_KEY_ERROR]", e)
+            _uiState.update {
+                it.copy(connectionTestResult = "Could not save Gemini API key securely: ${e.localizedMessage ?: e.javaClass.simpleName}")
+            }
+        }
     }
 
     fun deleteApiKey() {
-        credentialStore.deleteKey()
-        checkCredentialStatus()
-        _uiState.update { it.copy(connectionTestResult = "Key deleted.") }
+        try {
+            credentialStore.deleteKey()
+            checkCredentialStatus()
+            _uiState.update { it.copy(connectionTestResult = "Key deleted.") }
+        } catch (e: Exception) {
+            android.util.Log.e("AI_MEALPLANNER", "[SETTINGS_DELETE_GEMINI_KEY_ERROR]", e)
+            _uiState.update {
+                it.copy(connectionTestResult = "Could not delete Gemini API key securely: ${e.localizedMessage ?: e.javaClass.simpleName}")
+            }
+        }
     }
 
     fun testAiConnection() {
