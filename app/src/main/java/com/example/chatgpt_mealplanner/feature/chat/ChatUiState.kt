@@ -51,8 +51,8 @@ sealed interface ChatUiEvent {
     data class UpdateMealChangeRequestDraft(val text: String) : ChatUiEvent
     object CancelMealChangeRequestDraft : ChatUiEvent
     object RetryLastFailedMessage : ChatUiEvent
-    data class SaveMealProposalToPlan(val proposal: MealProposal) : ChatUiEvent
-    data class AcceptMealPlan(val meals: List<MealProposal>, val replaceConflicts: Boolean = false) : ChatUiEvent
+    data class SaveMealProposalToPlan(val proposal: MealProposal, val messageId: String? = null) : ChatUiEvent
+    data class AcceptMealPlan(val meals: List<MealProposal>, val messageId: String? = null, val replaceConflicts: Boolean = false) : ChatUiEvent
     object CancelMealPlanReplacement : ChatUiEvent
     data class ConfirmCookedMeal(val mealId: String) : ChatUiEvent
     object DismissCookConfirmation : ChatUiEvent
