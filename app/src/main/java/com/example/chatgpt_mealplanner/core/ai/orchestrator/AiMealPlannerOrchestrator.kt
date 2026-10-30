@@ -408,8 +408,17 @@ class AiMealPlannerOrchestrator @Inject constructor(
                     // The displayed recipe is formatted from this pending snapshot. Build the
                     // card and Save action from that same source so wording cannot drift between
                     // what the user reviewed and what is persisted.
+                    val replacementRequest = userMessageText.contains("replacement recipe", ignoreCase = true) ||
+                        userMessageText.contains("meal-change request", ignoreCase = true)
+                    val modelChangeSummary = finalRes.proposal?.changeSummary?.takeIf { it.isNotBlank() }
+                        ?: if (replacementRequest) {
+                            finalRes.text.lineSequence()
+                                .map { it.trim().removePrefix("#").trim() }
+                                .firstOrNull { it.isNotBlank() && !it.startsWith("MEAL_PLAN_JSON:") }
+                                ?.take(320)
+                        } else null
                     val structuredProposal = proposalFromPendingSnapshot(pendingOffer).copy(
-                        changeSummary = finalRes.proposal?.changeSummary
+                        changeSummary = modelChangeSummary
                     )
                     if (structuredProposal.ingredients.isNotEmpty()) {
                         validatedProposal = recipeValidator.validateProposal(structuredProposal)
