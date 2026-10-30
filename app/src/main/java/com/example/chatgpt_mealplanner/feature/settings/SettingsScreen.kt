@@ -121,10 +121,29 @@ fun SettingsScreen(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        "Do not enter a replacement key yet. Resolve the storage problem first to avoid overwriting a key that may still be recoverable.",
+                        "Enter your Gemini API key again to replace the unreadable saved key. This replaces only the Gemini API key stored on this device.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = apiKeyInput,
+                        onValueChange = { apiKeyInput = it },
+                        label = { Text("AIza...") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(
+                        onClick = {
+                            viewModel.replaceApiKey(apiKeyInput)
+                            apiKeyInput = ""
+                        },
+                        enabled = apiKeyInput.isNotBlank()
+                    ) {
+                        Text("Replace API Key")
+                    }
                 } else if (uiState.isApiKeyConfigured) {
                     Text("Status: Configured securely.", color = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.height(8.dp))
