@@ -153,7 +153,8 @@ data class InventorySummaryContextDto(
     val quantity: Double?,
     val unit: String?,
     val storageLocation: String,
-    val isStaple: Boolean = false
+    val isStaple: Boolean = false,
+    val status: String = "AVAILABLE"
 )
 
 @Serializable
@@ -198,6 +199,7 @@ data class AiContextPayload(
     val upcomingPlannedMeals: List<RecentMealContextDto> = emptyList(),
     val availableLeftovers: List<LeftoverContextDto> = emptyList(),
     val useSoonItems: List<InventorySummaryContextDto> = emptyList(),
+    val usableInventory: List<InventorySummaryContextDto> = emptyList(),
     val lowStockStaples: List<InventorySummaryContextDto> = emptyList(),
     val activeShoppingList: List<ShoppingSummaryContextDto> = emptyList(),
     val activeProposalTitle: String? = null,
