@@ -92,6 +92,18 @@ internal class AndroidKeystoreSecurePreferences(
     @Synchronized fun putString(key: String, value: String?): Boolean =
         writeValues(mapOf(key to value?.let { "S:$it" }))
 
+    /** Replaces this preference file after an explicit user request to replace an unreadable credential. */
+    @Synchronized fun replaceString(key: String, value: String): Boolean {
+        if (!backing.edit().clear().putBoolean(MIGRATION_MARKER, true).commit()) {
+            throw GeneralSecurityException("Could not reset secure preferences for '$prefsName'")
+        }
+        val encrypted = cipher.encrypt("S:$value", associatedData(key), allowCreateKey = true)
+        if (!backing.edit().putString(key, encrypted).commit()) {
+            throw GeneralSecurityException("Could not save replacement secure preference for '$prefsName'")
+        }
+        return true
+    }
+
     @Synchronized fun putInt(key: String, value: Int): Boolean =
         writeValues(mapOf(key to "I:$value"))
 
