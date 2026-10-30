@@ -136,7 +136,7 @@ internal class AndroidKeystoreSecurePreferences(
     private fun ensureMigrated() {
         if (backing.getBoolean(MIGRATION_MARKER, false)) {
             if (backing.all.keys.any { it != MIGRATION_MARKER } && !cipher.keyExists()) {
-                throw GeneralSecurityException("Secure preference key is missing for '$prefsName'")
+                recoverFromLegacyEncryptedPreferences()
             }
             return
         }
@@ -182,6 +182,41 @@ internal class AndroidKeystoreSecurePreferences(
 
         if (!backing.edit().putBoolean(MIGRATION_MARKER, true).commit()) {
             throw GeneralSecurityException("Could not record secure preference migration")
+        }
+    }
+
+    /**
+     * A previous app version may have completed migration while the new Keystore alias was
+     * subsequently lost. The v2 ciphertext is then unrecoverable, but the original encrypted
+     * preferences file is intentionally retained. Only replace v2 values after the legacy
+     * MasterKey has successfully decrypted them and the replacement ciphertext verifies.
+     */
+    private fun recoverFromLegacyEncryptedPreferences() {
+        val legacyValues = when {
+            legacyEncryptedReader != null -> legacyEncryptedReader.invoke()
+            legacyFileExists() -> readLegacyEncryptedPreferences()
+            else -> emptyMap()
+        }
+        if (legacyValues.isEmpty()) {
+            throw GeneralSecurityException("Secure preference key is missing for '$prefsName'; no recoverable legacy values were found")
+        }
+
+        val replacementValues = linkedMapOf<String, String>()
+        var canCreateKey = true
+        for ((key, value) in legacyValues) {
+            replacementValues[key] = cipher.encrypt(value, associatedData(key), canCreateKey)
+            canCreateKey = false
+        }
+        for ((key, envelope) in replacementValues) {
+            if (cipher.decrypt(envelope, associatedData(key)) != legacyValues[key]) {
+                throw GeneralSecurityException("Secure preference recovery verification failed for '$prefsName'")
+            }
+        }
+
+        val editor = backing.edit()
+        replacementValues.forEach { (key, envelope) -> editor.putString(key, envelope) }
+        if (!editor.commit()) {
+            throw GeneralSecurityException("Could not persist recovered secure preferences for '$prefsName'")
         }
     }
 
