@@ -9,6 +9,7 @@ import com.example.chatgpt_mealplanner.contract.AiProposedAction
 import com.example.chatgpt_mealplanner.contract.MealProposal
 import com.example.chatgpt_mealplanner.contract.ProposalMessagePayload
 import kotlinx.serialization.encodeToString
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import com.example.chatgpt_mealplanner.contract.ValidatedMealProposal
 import com.example.chatgpt_mealplanner.core.ai.orchestrator.AiMealPlannerOrchestrator
