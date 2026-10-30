@@ -440,12 +440,12 @@ class GeminiMealPlannerAiProvider @Inject constructor(
         if (statusCode !in 200..299) {
             val extractedError = extractGeminiErrorMessage(responseText)
             val friendlyMsg = when (statusCode) {
-                400 -> "Invalid request format (HTTP 400). Please rephrase your message."
+                400 -> "Gemini rejected the request (HTTP 400): ${extractedError.take(500)}"
                 401, 403 -> "Gemini API key authorization error (HTTP $statusCode). Please check your key in Settings."
-                404 -> "The requested Gemini model is unavailable (HTTP 404): $extractedError"
-                429 -> "Gemini API rate limit reached (HTTP 429)."
-                503 -> "Gemini is temporarily busy (HTTP 503)."
-                else -> "Gemini API error (HTTP $statusCode)."
+                404 -> "The requested Gemini model is unavailable (HTTP 404): ${extractedError.take(500)}"
+                429 -> "Gemini API rate limit reached (HTTP 429): ${extractedError.take(500)}"
+                503 -> "Gemini is temporarily busy (HTTP 503): ${extractedError.take(500)}"
+                else -> "Gemini API error (HTTP $statusCode): ${extractedError.take(500)}"
             }
             return AiProviderResponse.Error(
                 code = "HTTP_$statusCode",
