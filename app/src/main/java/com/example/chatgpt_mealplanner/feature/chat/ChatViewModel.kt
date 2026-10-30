@@ -232,7 +232,7 @@ class ChatViewModel @Inject constructor(
     }
 
     private fun buildMealChangeRequestPrompt(request: MealChangeRequestEntity, mealTitle: String, editedRequest: String): String {
-        return "Prepare a replacement recipe for '$mealTitle' (meal ID ${request.mealId}) that addresses this request: $editedRequest. Preserve the existing meal's scheduled date and meal type. Return a complete recipe proposal for review, including all ingredients and complete cooking instructions. Do not save it directly; the app will replace the existing meal only after I select Save meal."
+        return "Prepare a replacement recipe for '$mealTitle' (meal ID ${request.mealId}) that addresses this request: $editedRequest. Preserve the existing meal's scheduled date and meal type. Return a complete recipe proposal for review, including all ingredients and complete cooking instructions. Populate changeSummary with a clear, concise explanation of how the new recipe addresses the requested change. Do not save it directly; the app will replace the existing meal only after I select Save meal."
     }
 
     private fun submitMealChangeRequestDraft() {
