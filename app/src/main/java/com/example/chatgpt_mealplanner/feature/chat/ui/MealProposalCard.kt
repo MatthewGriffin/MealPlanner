@@ -56,6 +56,28 @@ fun MealProposalCard(
             )
             Spacer(modifier = Modifier.height(8.dp))
 
+            proposal.changeSummary?.takeIf { it.isNotBlank() }?.let { summary ->
+                Text(
+                    text = "What changed: $summary",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+
+            val requiredIngredients = validatedProposal.validatedIngredients.filterNot { it.ingredient.optional }
+            val ownedCount = requiredIngredients.count { it.availability == IngredientAvailability.AVAILABLE }
+            val toBuyCount = requiredIngredients.count { it.availability == IngredientAvailability.PARTIAL || it.availability == IngredientAvailability.MISSING }
+            val toCheckCount = requiredIngredients.count { it.availability == IngredientAvailability.UNCERTAIN }
+            Text(
+                text = "$ownedCount owned • $toBuyCount to buy" + if (toCheckCount > 0) " • $toCheckCount to check" else "",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onPrimaryContainer
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
             Text(
                 text = "Reasoning: ${proposal.reasoningSummary}",
                 style = MaterialTheme.typography.bodySmall,
