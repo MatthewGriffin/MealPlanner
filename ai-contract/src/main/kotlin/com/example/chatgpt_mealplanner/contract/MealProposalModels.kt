@@ -98,5 +98,6 @@ data class ProposalMessagePayload(
     val kind: String,
     val state: String = "PENDING",
     val meals: List<ValidatedMealProposal> = emptyList(),
-    val singleMeal: ValidatedMealProposal? = null
+    val singleMeal: ValidatedMealProposal? = null,
+    val mealChangeRequestId: String? = null
 )
