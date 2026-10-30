@@ -88,41 +88,42 @@ class GeminiMealPlannerAiProvider @Inject constructor(
     private var activeContinuationState: GeminiContinuationState? = null
 
     override suspend fun testConnection(): AiProviderResponse = withContext(ioDispatcher) {
-        runNetworkDiagnostics()
-
         val activeKey = getEffectiveApiKey()
         if (activeKey.isBlank()) {
-            return@withContext AiProviderResponse.Error("NO_API_KEY", "No Gemini API key supplied in BuildConfig or environment.")
+            return@withContext AiProviderResponse.Error("NO_API_KEY", "No Gemini API key supplied.")
         }
 
-        val emptyPayload = AiContextPayload(
-            currentDate = "2026-09-28",
-            dayOfWeek = "MONDAY",
-            preferences = UserPreferencesSummaryDto(),
-            recentCookedMeals = emptyList(),
-            upcomingPlannedMeals = emptyList(),
-            availableLeftovers = emptyList(),
-            useSoonItems = emptyList(),
-            lowStockStaples = emptyList(),
-            activeShoppingList = emptyList()
-        )
-        val req = AiProviderRequest(
-            conversationId = "test_connection",
-            systemPrompt = "You are a test assistant.",
-            contextPayloadJson = "{}",
-            contextPayload = emptyPayload,
-            messages = listOf(AiChatMessage(role = "user", content = "Ping")),
-            availableTools = emptyList()
-        )
+        // Keep this diagnostic independent from normal chat retries and model fallback.
+        // One minimal request, with short network timeouts, gives Settings a prompt result.
+        val payload = buildJsonObject {
+            putJsonArray("contents") {
+                add(buildJsonObject {
+                    put("role", "user")
+                    putJsonArray("parts") {
+                        add(buildJsonObject { put("text", "Reply with OK.") })
+                    }
+                })
+            }
+        }
+        val url = "https://generativelanguage.googleapis.com/v1beta/models/$GEMINI_PRIMARY_MODEL:generateContent?key=$activeKey"
+
         try {
-            val res = send(req)
-            if (res is AiProviderResponse.FinalResponse) {
+            val response = executeGeminiHttpCall(
+                urlStr = url,
+                payload = payload,
+                conversationId = "test_connection",
+                historyContents = payload["contents"]!!.jsonArray,
+                currentModel = GEMINI_PRIMARY_MODEL,
+                connectTimeoutMs = 8_000,
+                readTimeoutMs = 12_000
+            )
+            if (response is AiProviderResponse.FinalResponse) {
                 AiProviderResponse.FinalResponse(
-                    text = "Connected to Gemini! Model: $GEMINI_MODEL_ID",
-                    modelId = res.modelId ?: GEMINI_PRIMARY_MODEL
+                    text = "Connected to Gemini! Model: ${response.modelId ?: GEMINI_PRIMARY_MODEL}",
+                    modelId = response.modelId ?: GEMINI_PRIMARY_MODEL
                 )
             } else {
-                res
+                response
             }
         } catch (e: Exception) {
             AiProviderResponse.Error("CONNECTION_FAILED", e.message ?: "Failed connecting to Gemini API")
@@ -342,7 +343,9 @@ class GeminiMealPlannerAiProvider @Inject constructor(
         payload: JsonObject,
         conversationId: String,
         historyContents: JsonArray,
-        currentModel: String
+        currentModel: String,
+        connectTimeoutMs: Int = 15_000,
+        readTimeoutMs: Int = 55_000
     ): AiProviderResponse {
         val startTime = System.currentTimeMillis()
         val payloadJsonStr = json.encodeToString(payload)
@@ -369,8 +372,8 @@ class GeminiMealPlannerAiProvider @Inject constructor(
             connection.requestMethod = "POST"
             connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
             connection.setRequestProperty("Accept", "application/json")
-            connection.connectTimeout = 15000
-            connection.readTimeout = 55_000
+            connection.connectTimeout = connectTimeoutMs
+            connection.readTimeout = readTimeoutMs
             connection.doOutput = true
             connection.doInput = true
 
