@@ -36,6 +36,7 @@ import javax.inject.Inject
 
 data class SettingsUiState(
     val isApiKeyConfigured: Boolean = false,
+    val credentialStorageError: String? = null,
     val connectionTestResult: String? = null,
     val exportMessage: String? = null,
     val syncStatusMessage: String? = null,
@@ -222,7 +223,7 @@ class SettingsViewModel @Inject constructor(
             _uiState.update {
                 it.copy(
                     isApiKeyConfigured = credentialStore.hasKey(),
-                    connectionTestResult = if (it.connectionTestResult?.startsWith("Could not access secure Gemini key storage") == true) null else it.connectionTestResult
+                    credentialStorageError = null
                 )
             }
         } catch (e: Exception) {
@@ -230,7 +231,7 @@ class SettingsViewModel @Inject constructor(
             _uiState.update {
                 it.copy(
                     isApiKeyConfigured = false,
-                    connectionTestResult = "Could not access secure Gemini key storage: ${e.localizedMessage ?: e.javaClass.simpleName}"
+                    credentialStorageError = "Could not access secure Gemini key storage. Your saved key has not been deleted. Details: ${e.localizedMessage ?: e.javaClass.simpleName}"
                 )
             }
         }
