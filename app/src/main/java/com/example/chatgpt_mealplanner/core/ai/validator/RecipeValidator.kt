@@ -66,15 +66,21 @@ class RecipeValidator @Inject constructor(
             }
 
             val matchingLots = if (ing.canonicalIngredientId != null) {
-                usableInventory.filter { it.canonicalIngredientId == ing.canonicalIngredientId }
+                allInventory.filter { it.canonicalIngredientId == ing.canonicalIngredientId }
             } else {
-                usableInventory.filter { it.displayName.equals(ing.displayName, ignoreCase = true) }
+                allInventory.filter { it.displayName.equals(ing.displayName, ignoreCase = true) }
+            }
+            val hasUncertain = matchingLots.any {
+                it.status == ItemStatus.NEEDS_CONFIRMATION ||
+                    (it.status in listOf(ItemStatus.AVAILABLE, ItemStatus.LOW, ItemStatus.USE_SOON) &&
+                        it.quantityConfidence == QuantityConfidence.UNKNOWN)
+            }
+            val usableMatchingLots = matchingLots.filter {
+                it.status in listOf(ItemStatus.AVAILABLE, ItemStatus.LOW, ItemStatus.USE_SOON)
             }
 
-            val hasUncertain = matchingLots.any { it.quantityConfidence == QuantityConfidence.UNKNOWN || it.status == ItemStatus.NEEDS_CONFIRMATION }
-
             var ownedTotal = 0.0
-            matchingLots.forEach { lot ->
+            usableMatchingLots.forEach { lot ->
                 val qty = lot.quantity ?: 0.0
                 val converted = UnitConverter.convert(qty, lot.quantityUnit ?: parsedUnit, parsedUnit).getOrNull() ?: qty
                 ownedTotal += converted
