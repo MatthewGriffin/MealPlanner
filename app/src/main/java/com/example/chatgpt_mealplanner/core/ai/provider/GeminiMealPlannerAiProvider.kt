@@ -748,7 +748,8 @@ class GeminiMealPlannerAiProvider @Inject constructor(
                             unit = ingObj["plannedUnit"]?.jsonPrimitive?.content ?: "GRAM"
                         )
                     } ?: emptyList(),
-                    reasoningSummary = parsedObj["reasoningSummary"]?.jsonPrimitive?.content ?: "AI Generated Meal"
+                    reasoningSummary = parsedObj["reasoningSummary"]?.jsonPrimitive?.content ?: "AI Generated Meal",
+                    changeSummary = parsedObj["changeSummary"]?.jsonPrimitive?.content
                 )
             } catch (_: Throwable) {
                 null
