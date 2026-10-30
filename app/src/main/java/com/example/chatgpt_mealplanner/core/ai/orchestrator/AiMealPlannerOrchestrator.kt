@@ -408,7 +408,9 @@ class AiMealPlannerOrchestrator @Inject constructor(
                     // The displayed recipe is formatted from this pending snapshot. Build the
                     // card and Save action from that same source so wording cannot drift between
                     // what the user reviewed and what is persisted.
-                    val structuredProposal = proposalFromPendingSnapshot(pendingOffer)
+                    val structuredProposal = proposalFromPendingSnapshot(pendingOffer).copy(
+                        changeSummary = finalRes.proposal?.changeSummary
+                    )
                     if (structuredProposal.ingredients.isNotEmpty()) {
                         validatedProposal = recipeValidator.validateProposal(structuredProposal)
                         activeProposalStore.setActiveProposal(conversationId, structuredProposal)
