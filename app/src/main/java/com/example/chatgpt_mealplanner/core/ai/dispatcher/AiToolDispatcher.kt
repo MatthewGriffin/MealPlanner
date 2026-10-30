@@ -321,7 +321,27 @@ class AiToolDispatcher @Inject constructor(
     }
 
     private suspend fun handleGetUsableInventory(): DomainResult<AiToolPayload> {
-        return handleGetInventorySummary()
+        // Keep this filter explicit: OUT, DISCARDED and NEEDS_CONFIRMATION lots
+        // must never be presented to the model as usable stock.
+        val usableStatuses = setOf(ItemStatus.AVAILABLE, ItemStatus.LOW, ItemStatus.USE_SOON)
+        val items = inventoryDao.getAllItems().first()
+            .map { it.toDomainModel() }
+            .filter { it.status in usableStatuses }
+
+        val dtos = items.map { item ->
+            InventoryItemAiDto(
+                id = item.id,
+                canonicalIngredientId = item.canonicalIngredientId,
+                displayName = item.displayName,
+                brand = item.brand,
+                quantity = item.quantity,
+                unit = item.quantityUnit?.name,
+                confidence = item.quantityConfidence.name,
+                status = item.status.name,
+                storageLocation = item.storageLocation.name
+            )
+        }
+        return DomainResult.Success(AiToolPayload.InventorySummaryPayload(dtos))
     }
 
     private suspend fun handleGetLowStockItems(): DomainResult<AiToolPayload> {
