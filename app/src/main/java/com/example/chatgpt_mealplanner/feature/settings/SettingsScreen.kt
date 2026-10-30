@@ -191,9 +191,10 @@ fun SettingsScreen(
         Spacer(modifier = Modifier.height(16.dp))
         Button(
             onClick = { viewModel.testAiConnection() },
+            enabled = !uiState.isConnectionTestInProgress,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Test Connection")
+            Text(if (uiState.isConnectionTestInProgress) "Testing Connection..." else "Test Connection")
         }
         if (uiState.connectionTestResult != null) {
             Spacer(modifier = Modifier.height(8.dp))
