@@ -52,7 +52,8 @@ data class MealProposal(
     val steps: List<RecipeStep> = emptyList(),
     val estimatedMinutes: Int? = null,
     val mealGoal: MealGoal? = null,
-    val reasoningSummary: String
+    val reasoningSummary: String,
+    val changeSummary: String? = null
 )
 
 @Serializable
