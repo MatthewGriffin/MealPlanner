@@ -97,7 +97,8 @@ class AiContextBuilder @Inject constructor(
                 quantity = it.quantity,
                 unit = it.quantityUnit?.name,
                 storageLocation = it.storageLocation.name,
-                isStaple = it.staple
+                isStaple = it.staple,
+                status = it.status.name
             )
         }
 
@@ -109,7 +110,8 @@ class AiContextBuilder @Inject constructor(
                 quantity = it.quantity,
                 unit = it.quantityUnit?.name,
                 storageLocation = it.storageLocation.name,
-                isStaple = it.staple
+                isStaple = it.staple,
+                status = it.status.name
             )
         }
 
