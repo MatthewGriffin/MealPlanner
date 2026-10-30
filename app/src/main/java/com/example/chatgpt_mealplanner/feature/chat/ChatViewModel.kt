@@ -571,6 +571,7 @@ class ChatViewModel @Inject constructor(
     }
 
     private fun saveMealPlanToPlan(meals: List<MealProposal>, messageId: String? = null, replaceConflicts: Boolean = false) {
+        latestMealPlanFlow.value = meals
         if (messageId != null) proposalMessageIdFlow.value = messageId
         if (isSavingProposalFlow.value) return
         if (meals.size < 2 || meals.any { it.title.isBlank() || it.ingredients.isEmpty() || it.steps.isEmpty() || it.suggestedDate.isNullOrBlank() }) {
