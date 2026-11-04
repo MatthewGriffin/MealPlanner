@@ -161,6 +161,8 @@ class AiToolDispatcher @Inject constructor(
                 AiToolId.DELETE_INVENTORY_ITEM -> handleDeleteInventoryItem(call.argsJson)
                 AiToolId.DELETE_ALL_INVENTORY -> handleDeleteAllInventory()
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             DomainResult.Failure(DomainError.TransactionFailed(e.message ?: "Execution error"))
         }
@@ -1160,6 +1162,8 @@ class AiToolDispatcher @Inject constructor(
         )
         try {
             chatDao.insertOrUpdateToolExecutionLog(log)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (_: Exception) {
             // Logging failures do not abort execution
         }

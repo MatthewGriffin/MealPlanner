@@ -165,6 +165,8 @@ open class FollowerBootstrapEngine @Inject constructor(
             if (!markSuccess) {
                 return BootstrapPassSummary(false, "PAIRING_STORE_COMMIT_FAILED", 0, 0L)
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             return BootstrapPassSummary(false, "DATABASE_INSTALL_FAILED", 0, 0L)
         }

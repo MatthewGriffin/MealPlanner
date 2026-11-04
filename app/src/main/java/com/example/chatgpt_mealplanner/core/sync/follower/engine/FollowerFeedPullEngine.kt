@@ -84,6 +84,8 @@ open class FollowerFeedPullEngine @Inject constructor(
                         sinceSequence = currentCursor,
                         limit = 100
                     )
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
                 } catch (_: Exception) {
                     // Retain original UNAUTHORIZED status if session refresh fails
                 }
@@ -129,6 +131,8 @@ open class FollowerFeedPullEngine @Inject constructor(
                             )
                         )
                     )
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     println("[SYNC_FEED] basket_cache_persist_failed type=${e.javaClass.simpleName}")
                 }

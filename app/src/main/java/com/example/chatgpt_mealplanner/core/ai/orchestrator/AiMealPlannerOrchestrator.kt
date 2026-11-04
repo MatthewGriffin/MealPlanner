@@ -86,6 +86,8 @@ class AiMealPlannerOrchestrator @Inject constructor(
                         timestamp = System.currentTimeMillis()
                     )
                 )
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (_: Exception) {
                 // Persistence failure does NOT abort execution
             }
@@ -156,6 +158,8 @@ class AiMealPlannerOrchestrator @Inject constructor(
                     AiChatMessage(role = message.role.lowercase(), content = message.content)
                 }
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (_: Exception) {
             listOf(AiChatMessage(role = "user", content = userMessageText))
         }
@@ -546,6 +550,8 @@ class AiMealPlannerOrchestrator @Inject constructor(
                 )
                 try {
                     chatRepository.saveMessage(assistantEntity)
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
                 } catch (_: Exception) {
                     // Chat persistence failure does not roll back orchestration
                 }
@@ -586,6 +592,8 @@ class AiMealPlannerOrchestrator @Inject constructor(
                                 timestamp = System.currentTimeMillis()
                             )
                         )
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
                     } catch (_: Exception) {}
 
                     AiOrchestrationResult.Final(
@@ -626,6 +634,8 @@ class AiMealPlannerOrchestrator @Inject constructor(
                     timestamp = System.currentTimeMillis()
                 )
             )
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (_: Exception) {}
     }
 
@@ -811,6 +821,8 @@ class AiMealPlannerOrchestrator @Inject constructor(
                         timestamp = System.currentTimeMillis()
                     )
                 )
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (_: Exception) {}
 
             safeLog("[AI_TURN_END] conversationId=\"$conversationId\" activeProposalPresent=false pendingMutationPresent=false pendingMutationState=NONE plannerMutationCommitted=true")
