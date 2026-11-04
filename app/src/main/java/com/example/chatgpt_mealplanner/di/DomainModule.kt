@@ -1,6 +1,5 @@
 package com.example.chatgpt_mealplanner.di
 
-import com.example.chatgpt_mealplanner.core.ai.config.BackendConfig
 import com.example.chatgpt_mealplanner.core.ai.provider.GeminiMealPlannerAiProvider
 import com.example.chatgpt_mealplanner.core.ai.provider.MealPlannerAiProvider
 import com.example.chatgpt_mealplanner.core.receipt.MlKitReceiptOcrService
@@ -99,12 +98,6 @@ abstract class DomainModule {
     ): com.example.chatgpt_mealplanner.core.backup.SafDocumentStreamProvider
 
     companion object {
-        @Provides
-        @Singleton
-        fun provideBackendConfig(): BackendConfig {
-            return BackendConfig()
-        }
-
         @Provides
         @Singleton
         fun provideIoDispatcher(): CoroutineDispatcher {
