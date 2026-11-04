@@ -27,9 +27,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -39,8 +37,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -49,16 +49,9 @@ import androidx.compose.ui.unit.dp
 import com.example.chatgpt_mealplanner.core.model.RequirementConfidence
 import com.example.chatgpt_mealplanner.core.model.ShoppingItemStatus
 import com.example.chatgpt_mealplanner.core.model.ShoppingListItemWithSources
-import com.example.chatgpt_mealplanner.feature.shopping.RetailerGroup
 import com.example.chatgpt_mealplanner.feature.shopping.ShoppingTab
 import com.example.chatgpt_mealplanner.feature.shopping.ShoppingUiEvent
 import com.example.chatgpt_mealplanner.feature.shopping.ShoppingUiState
-import com.example.chatgpt_mealplanner.retail.contract.BasketLine
-import com.example.chatgpt_mealplanner.retail.contract.PriceFreshness
-import com.example.chatgpt_mealplanner.retail.contract.RetailFreshnessPolicy
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 @Composable
 fun ShoppingScreen(
@@ -69,8 +62,7 @@ fun ShoppingScreen(
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     // Store sections start collapsed so large multi-store lists stay compact.
-    // State is keyed by retailer identity so expanding one section doesn't affect another.
-    val expandedRetailerGroups = remember { mutableStateMapOf<String, Boolean>() }
+    var isListExpanded by remember { mutableStateOf(true) }
 
     LaunchedEffect(uiState.userMessage) {
         uiState.userMessage?.let { msg ->
@@ -82,11 +74,7 @@ fun ShoppingScreen(
     if (uiState.selectedItemForDetail != null) {
         ShoppingItemDetailDialog(
             itemWithSources = uiState.selectedItemForDetail,
-            basketComparisonResult = uiState.basketComparisonResult,
-            retailerOptions = uiState.selectedItemOptions,
-            isLoadingRetailerOptions = uiState.isLoadingItemOptions,
             onOpenMeal = { mealId, mealDate -> onOpenMeal(mealId, mealDate) },
-            onReassignRetailer = { itemId, retailerId -> onEvent(ShoppingUiEvent.ReassignItemRetailer(itemId, retailerId)) },
             onDismiss = { onEvent(ShoppingUiEvent.SelectItemDetail(null)) }
         )
     }
@@ -174,86 +162,7 @@ fun ShoppingScreen(
                                 .fillMaxWidth()
                                 .padding(horizontal = 16.dp, vertical = 4.dp)
                         )
-                        val lookupProgress = uiState.retailLookupMessage
-                            ?.let { Regex("^(\\d+)/(\\d+)").find(it) }
-                        val lookupDone = lookupProgress?.groupValues?.get(1)?.toIntOrNull() ?: 0
-                        val lookupTotal = lookupProgress?.groupValues?.get(2)?.toIntOrNull() ?: 0
-                        if (uiState.retailLookupMessage != null && lookupTotal > 0) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 4.dp)
-                            ) {
-                                Text("$lookupDone/$lookupTotal retailer lookups", style = MaterialTheme.typography.bodySmall)
-                                Text(
-                                    text = uiState.retailLookupMessage.substringAfter(" · "),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                if (lookupDone < lookupTotal) {
-                                    LinearProgressIndicator(
-                                        progress = { lookupDone.toFloat() / lookupTotal },
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-                                }
-                            }
-                        }
                     }
-                    val plan = uiState.basketComparisonResult?.selectedPlan
-                    val lookupInProgress = uiState.retailLookupMessage != null
-                    if (plan != null || lookupInProgress) {
-                        val matchedCount = plan?.lines?.size ?: 0
-                        val totalReqs = uiState.activeListWithItems?.items?.size ?: 0
-                        // During a partial lookup, the plan contains only requirements
-                        // processed so far. Count the rest as not priced yet rather than
-                        // presenting the partial result as a complete basket estimate.
-                        val unmatchedCount = if (lookupInProgress) {
-                            (totalReqs - matchedCount).coerceAtLeast(0)
-                        } else {
-                            plan?.unmatchedRequirements?.size ?: totalReqs
-                        }
-
-                        val totalFormatted = when {
-                            plan == null -> "Calculating…"
-                            lookupInProgress && matchedCount == 0 -> "Searching…"
-                            matchedCount == 0 && totalReqs > 0 -> "Unavailable"
-                            unmatchedCount > 0 && matchedCount > 0 -> "${plan.basketSubtotal.toFormattedString()} ($unmatchedCount unpriced)"
-                            else -> plan.basketSubtotal.toFormattedString()
-                        }
-
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 4.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.primaryContainer
-                            )
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 10.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "Estimated Item Total",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                                Text(
-                                    text = if (lookupInProgress && plan != null && matchedCount > 0) {
-                                        "$totalFormatted · updating"
-                                    } else totalFormatted,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                                )
-                            }
-                        }
-                    }
-
                     val items = uiState.activeListWithItems?.items ?: emptyList()
                     if (items.isEmpty()) {
                         Column(
@@ -286,85 +195,71 @@ fun ShoppingScreen(
                                 .padding(horizontal = 16.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            uiState.retailerGroups.forEach { group ->
-                                val groupCheckedCount = group.items.count {
-                                    it.item.status == ShoppingItemStatus.CHECKED ||
-                                        it.item.status == ShoppingItemStatus.PURCHASED_CONFIRMED
-                                }
-                                val groupKey = group.retailerId?.name ?: group.retailerName
-                                // With retailer comparisons disabled, keep the ordinary shopping-list group visible by default.
-                                val isExpanded = expandedRetailerGroups[groupKey] ?: (group.retailerId == null)
-                                item(key = "header_${groupKey}") {
-                                    Card(
+                            val checkedCount = items.count {
+                                it.item.status == ShoppingItemStatus.CHECKED ||
+                                    it.item.status == ShoppingItemStatus.PURCHASED_CONFIRMED
+                            }
+                            item(key = "shopping_list_header") {
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 8.dp, bottom = 2.dp)
+                                        .clickable {
+                                            isListExpanded = !isListExpanded
+                                        },
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.secondaryContainer
+                                    )
+                                ) {
+                                    Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(top = 8.dp, bottom = 2.dp)
-                                            .clickable {
-                                                expandedRetailerGroups[groupKey] = !isExpanded
-                                            },
-                                        colors = CardDefaults.cardColors(
-                                            containerColor = MaterialTheme.colorScheme.secondaryContainer
-                                        )
+                                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(horizontal = 12.dp, vertical = 8.dp),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            modifier = Modifier.weight(1f),
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Row(
-                                                modifier = Modifier.weight(1f),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Icon(
-                                                    imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                                                    contentDescription = if (isExpanded) "Collapse ${group.retailerName}" else "Expand ${group.retailerName}"
-                                                )
-                                                Column(modifier = Modifier.padding(start = 8.dp)) {
-                                                    Text(
-                                                        text = "${group.retailerName} · $groupCheckedCount/${group.items.size}",
-                                                        style = MaterialTheme.typography.titleSmall,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = MaterialTheme.colorScheme.onSecondaryContainer
-                                                    )
-                                                    Text(
-                                                        text = if (isExpanded) "Tap to collapse" else "Tap to expand",
-                                                        style = MaterialTheme.typography.labelSmall,
-                                                        color = MaterialTheme.colorScheme.onSecondaryContainer
-                                                    )
-                                                }
-                                            }
-                                            if (group.subtotal != null) {
+                                            Icon(
+                                                imageVector = if (isListExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                                contentDescription = if (isListExpanded) "Collapse Shopping List Items" else "Expand Shopping List Items"
+                                            )
+                                            Column(modifier = Modifier.padding(start = 8.dp)) {
                                                 Text(
-                                                    text = group.subtotal.toFormattedString(),
+                                                    text = "Shopping List Items · $checkedCount/${items.size}",
                                                     style = MaterialTheme.typography.titleSmall,
                                                     fontWeight = FontWeight.Bold,
                                                     color = MaterialTheme.colorScheme.onSecondaryContainer
                                                 )
+                                                Text(
+                                                    text = if (isListExpanded) "Tap to collapse" else "Tap to expand",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                                )
                                             }
                                         }
-                                        if (isExpanded) {
-                                            Text(
-                                                text = group.priceScopeNotice,
-                                                modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 8.dp),
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSecondaryContainer
-                                            )
-                                        }
                                     }
-                                }
-
-                                if (isExpanded) {
-                                    items(group.items, key = { it.item.id }) { itemWithSources ->
-                                        ShoppingItemCard(
-                                            itemWithSources = itemWithSources,
-                                            basketLine = group.lineByItemId[itemWithSources.item.id],
-                                            onToggleChecked = { id, status -> onEvent(ShoppingUiEvent.ToggleItemChecked(id, status)) },
-                                            onRemove = { id -> onEvent(ShoppingUiEvent.RemoveItem(id)) },
-                                            onDetailClicked = { onEvent(ShoppingUiEvent.SelectItemDetail(itemWithSources)) }
+                                    if (isListExpanded) {
+                                        Text(
+                                            text = "No live retailer quote · recorded purchase prices only",
+                                            modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 8.dp),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSecondaryContainer
                                         )
                                     }
+                                }
+                            }
+
+                            if (isListExpanded) {
+                                items(items, key = { it.item.id }) { itemWithSources ->
+                                    ShoppingItemCard(
+                                        itemWithSources = itemWithSources,
+                                        onToggleChecked = { id, status -> onEvent(ShoppingUiEvent.ToggleItemChecked(id, status)) },
+                                        onRemove = { id -> onEvent(ShoppingUiEvent.RemoveItem(id)) },
+                                        onDetailClicked = { onEvent(ShoppingUiEvent.SelectItemDetail(itemWithSources)) }
+                                    )
                                 }
                             }
                         }
@@ -385,7 +280,6 @@ fun ShoppingScreen(
 @Composable
 fun ShoppingItemCard(
     itemWithSources: ShoppingListItemWithSources,
-    basketLine: BasketLine? = null,
     onToggleChecked: (id: String, currentStatus: ShoppingItemStatus) -> Unit,
     onRemove: (id: String) -> Unit,
     onDetailClicked: () -> Unit
@@ -435,24 +329,6 @@ fun ShoppingItemCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
-                    if (basketLine != null) {
-                        val prodName = basketLine.productWithOffer.product.name
-                        val costStr = basketLine.lineTotalCost.toFormattedString()
-                        val packCount = basketLine.packCountToBuy
-                        val packStr = if (packCount > 1) " (x$packCount)" else ""
-                        val lineDetail = "$prodName$packStr • $costStr"
-
-                        val freshness = basketLine.productWithOffer.offer.calculateFreshness(RetailFreshnessPolicy())
-                        val freshnessNote = if (freshness == PriceFreshness.STALE) " (Cached price)" else ""
-
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "$lineDetail$freshnessNote",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
                 }
 
                 IconButton(onClick = { onRemove(item.id) }) {
