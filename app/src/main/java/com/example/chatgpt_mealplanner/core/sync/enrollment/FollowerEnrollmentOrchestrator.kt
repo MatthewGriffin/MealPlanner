@@ -93,6 +93,8 @@ open class FollowerEnrollmentOrchestrator @Inject constructor(
                     )
                     followerPairingStore.savePairingConfig(config)
                     followerPairingStore.clearRevoked()
+                    // Main may have been restored from a backup, so its history can differ from what this phone saw.
+                    followerPairingStore.clearBootstrapVerifiedV1()
                     followerSyncScheduler.scheduleSyncWorkNonBlocking(context, "REAUTHORIZATION_COMPLETE")
                     followerSyncScheduler.schedulePeriodicSyncWorkNonBlocking(context)
 
@@ -163,6 +165,9 @@ open class FollowerEnrollmentOrchestrator @Inject constructor(
                 errorMessage = "Failed to store pairing configuration in encrypted preferences"
             )
         }
+
+        // A phone that was paired before must not keep data from its earlier pairing.
+        followerPairingStore.clearBootstrapVerifiedV1()
 
         // 4. Schedule existing sync worker for ongoing background sync
         followerSyncScheduler.scheduleSyncWorkNonBlocking(context, "ENROLLMENT_COMPLETE")

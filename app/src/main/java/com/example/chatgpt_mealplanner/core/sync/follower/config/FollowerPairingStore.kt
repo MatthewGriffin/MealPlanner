@@ -104,6 +104,8 @@ open class FollowerPairingStore @Inject constructor(
     }
 
     open fun clearRevoked(): Boolean = getPrefs()?.remove("KEY_ACCESS_STATUS") ?: false
+    /** Forces a full resync, because local data may no longer match what Main holds. */
+    open fun clearBootstrapVerifiedV1(): Boolean = getPrefs()?.remove("KEY_VERIFIED_BOOTSTRAP_V1") ?: false
     open fun isBootstrapVerifiedV1(): Boolean = getPrefs()?.getBoolean("KEY_VERIFIED_BOOTSTRAP_V1", false) ?: false
     open fun markBootstrapVerifiedV1(): Boolean = getPrefs()?.putBoolean("KEY_VERIFIED_BOOTSTRAP_V1", true) ?: false
     open fun clear() { getPrefs()?.clear() }

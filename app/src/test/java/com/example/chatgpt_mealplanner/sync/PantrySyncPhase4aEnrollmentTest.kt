@@ -100,6 +100,11 @@ open class FakePairingStore : FollowerPairingStore(null) {
         return true
     }
 
+    override fun clearBootstrapVerifiedV1(): Boolean {
+        verifiedBootstrapV1Flag = false
+        return true
+    }
+
     override fun isStoreInaccessible(): Boolean = forceInaccessible
 
     override fun isPaired(): Boolean = savedConfig != null
@@ -350,6 +355,40 @@ class PantrySyncPhase4aEnrollmentTest {
 
         assertFalse("Unrelated invitation consumed by Dev1 MUST NOT authorize Dev2", res2.success)
         assertEquals("INVITATION_ALREADY_CONSUMED", res2.errorCode)
+    }
+
+    @Test
+    fun enrollment_forcesFullResync_forAPhoneThatWasPairedBefore() = runTest {
+        val store = FakePairingStore().apply { verifiedBootstrapV1Flag = true }
+        val client = object : PantrySyncTestClient(keyStoreManager) {
+            override suspend fun registerEnrollment(hostIp: String, port: Int, pinnedCertFingerprint: String, requestDto: EnrollmentRequestDto) =
+                EnrollmentResponseDto(true, householdId)
+        }
+        val orchestrator = FollowerEnrollmentOrchestrator(null, TestFollowerIdentityStore(), keyStoreManager, store, client, FollowerSyncScheduler())
+
+        val inv = invitationManager.createInvitation(householdId, mainDeviceId, "192.168.1.100", 8443, validFingerprint)
+        val res = orchestrator.processQrEnrollment(json.encodeToString(inv))
+
+        assertTrue(res.success)
+        assertFalse("A re-paired phone MUST resync from scratch", store.isBootstrapVerifiedV1())
+    }
+
+    @Test
+    fun reauthorization_forcesFullResync_afterMainIsRestored() = runTest {
+        val store = FakePairingStore().apply { verifiedBootstrapV1Flag = true; revokedMarker = true }
+        val identityStore = TestFollowerIdentityStore()
+        val reauthClient = object : com.example.chatgpt_mealplanner.core.sync.follower.reauth.FollowerReauthorizationClient(store, keyStoreManager, identityStore) {
+            override suspend fun performReauthorization(invitation: QrInvitationPayloadDto) =
+                com.example.chatgpt_mealplanner.core.sync.follower.reauth.ReauthorizationClientResult.Success
+        }
+        val orchestrator = FollowerEnrollmentOrchestrator(null, identityStore, keyStoreManager, store, PantrySyncTestClient(keyStoreManager), FollowerSyncScheduler(), reauthClient)
+
+        val inv = invitationManager.createInvitation(householdId, mainDeviceId, "192.168.1.100", 8443, validFingerprint)
+            .copy(purpose = "REAUTHORIZE_EXISTING_DEVICE")
+        val res = orchestrator.processQrEnrollment(json.encodeToString(inv))
+
+        assertTrue(res.success)
+        assertFalse("A re-paired phone MUST resync from scratch", store.isBootstrapVerifiedV1())
     }
 
     // BLOCKER 2 Tests: Identity Fail Closed
