@@ -5,7 +5,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.chatgpt_mealplanner.core.database.AppDatabase
-import com.example.chatgpt_mealplanner.core.database.MIGRATION_15_16
+import com.example.chatgpt_mealplanner.core.database.ALL_MIGRATIONS
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -32,7 +32,7 @@ class PantryPhase5MainDatabaseMigrationTest {
     }
 
     @Test
-    fun realRoom_mainDatabase_migration15To16_preservesInventoryAndIdentity() = runBlocking {
+    fun realRoom_mainDatabase_migrationFromV15ToCurrent_preservesInventoryAndIdentity() = runBlocking {
         // 1. Create a raw SQLite database at v15 with the exact v15 schema
         val openHelper = androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory().create(
             androidx.sqlite.db.SupportSQLiteOpenHelper.Configuration.builder(context)
@@ -632,26 +632,26 @@ class PantryPhase5MainDatabaseMigrationTest {
 
         v15Db.close()
 
-        // 3. Open migrated database using Room AppDatabase version 16
+        // 3. Open through Room with the same migration list the app uses
         val migratedDb = Room.databaseBuilder(context, AppDatabase::class.java, dbName)
-            .addMigrations(MIGRATION_15_16)
+            .addMigrations(*ALL_MIGRATIONS)
             .allowMainThreadQueries()
             .build()
 
-        // 4. Assert data preservation across MIGRATION_15_16
+        // 4. Assert data preservation across the full migration chain
         val itemAfter = migratedDb.inventoryDao().getItemById("item-v15-1")
-        assertNotNull("Historical item-v15-1 MUST survive migration to v16", itemAfter)
+        assertNotNull("Historical item-v15-1 MUST survive migration to the current version", itemAfter)
         assertEquals("Olive Oil", itemAfter!!.displayName)
         assertEquals(3.5, itemAfter.quantity!!, 0.001)
         assertEquals(5L, itemAfter.revision)
 
         val identityAfter = migratedDb.householdIdentityDao().getHouseholdIdentity()
-        assertNotNull("Household identity MUST survive migration to v16", identityAfter)
+        assertNotNull("Household identity MUST survive migration to the current version", identityAfter)
         assertEquals("house-v15-1", identityAfter!!.householdId)
         assertEquals("Family Pantry", identityAfter.householdName)
 
         val pairedAfter = migratedDb.pairedDeviceDao().getDeviceById("follower-dev-1")
-        assertNotNull("Paired device MUST survive migration to v16", pairedAfter)
+        assertNotNull("Paired device MUST survive migration to the current version", pairedAfter)
         assertEquals("ACTIVE", pairedAfter!!.status)
 
         // 5. Assert v16 sync tables created and initialized
