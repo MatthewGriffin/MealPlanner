@@ -37,7 +37,7 @@ class PantryPhase5FollowerDatabaseMigrationTest {
     }
 
     @Test
-    fun realRoom_followerDatabase_migration3To6_preservesOutboxAndMetadata() = runBlocking {
+    fun realRoom_followerDatabase_migration3To7_preservesOutboxAndMetadata() = runBlocking {
         // 1. Create a raw SQLite database at FollowerDatabase v3
         val openHelper = androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory().create(
             androidx.sqlite.db.SupportSQLiteOpenHelper.Configuration.builder(context)
@@ -158,24 +158,24 @@ class PantryPhase5FollowerDatabaseMigrationTest {
             .allowMainThreadQueries()
             .build()
 
-        assertEquals(6, migratedDb.openHelper.readableDatabase.version)
+        assertEquals(7, migratedDb.openHelper.readableDatabase.version)
         assertTrue(migratedDb.mealDao().getAll().isEmpty())
         val dao = migratedDb.followerDao()
 
-        // 4. Assert data preservation across the full 3-to-6 migration chain
+        // 4. Assert data preservation across the full 3-to-7 migration chain
         val itemAfter = dao.getItemById("item-f3-1")
-        assertNotNull("Historical item-f3-1 MUST survive migration to v6", itemAfter)
+        assertNotNull("Historical item-f3-1 MUST survive migration to v7", itemAfter)
         assertEquals("Whole Milk", itemAfter!!.confirmedDisplayName)
         assertEquals(2.0, itemAfter.confirmedQuantity!!, 0.001)
         assertEquals(3L, itemAfter.mainConfirmedRevision)
 
         val outboxAfter = dao.getOutboxByOperationId("op-out-f3-1")
-        assertNotNull("Historical outbox operation op-out-f3-1 MUST survive migration to v6", outboxAfter)
+        assertNotNull("Historical outbox operation op-out-f3-1 MUST survive migration to v7", outboxAfter)
         assertEquals("PENDING_APPROVAL", outboxAfter!!.status)
         assertEquals(1L, outboxAfter.deviceSequence)
 
         val metaAfter = dao.getSyncMetadata()
-        assertNotNull("Sync metadata MUST survive migration to v6", metaAfter)
+        assertNotNull("Sync metadata MUST survive migration to v7", metaAfter)
         assertEquals(10L, metaAfter!!.lastReconciledCanonicalSequence)
         assertTrue("bootstrapCompleted MUST be migrated to true for existing data", metaAfter.bootstrapCompleted)
 
