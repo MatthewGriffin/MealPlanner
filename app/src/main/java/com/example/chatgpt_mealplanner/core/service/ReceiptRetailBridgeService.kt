@@ -89,6 +89,7 @@ class ReceiptRetailBridgeServiceDelegate @Inject constructor(
     }
 
     private fun safeLog(msg: String) {
+        if (!com.example.chatgpt_mealplanner.BuildConfig.DEBUG) return
         try {
             android.util.Log.i("AI_MEALPLANNER", msg)
         } catch (_: Throwable) {

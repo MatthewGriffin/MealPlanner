@@ -56,12 +56,10 @@ class OpenFoodFactsProductDataProvider @Inject constructor(
                     )
 
                     val dtoLog = "[BARCODE_METADATA] stage=PROVIDER_DTO provider=${endpoint.name} barcode=$externalBarcode productName=\"${product.productNameEn ?: product.productName ?: ""}\" categories=\"${product.categories ?: ""}\" categoryTags=${product.categoriesTags} rawQty=\"${product.quantity ?: ""}\""
-                    println(dtoLog)
-                    runCatching { android.util.Log.i("AI_MEALPLANNER", dtoLog) }
+                    logBarcode(dtoLog)
 
                     val mappedLog = "[BARCODE_METADATA] stage=MAPPED barcode=$barcode displayName=\"${name ?: ""}\" canonicalName=\"${derivedConcept ?: ""}\" netQuantity=${parsedQuantity.netQuantity} netQuantityUnit=${parsedQuantity.netQuantityUnit}"
-                    println(mappedLog)
-                    runCatching { android.util.Log.i("AI_MEALPLANNER", mappedLog) }
+                    logBarcode(mappedLog)
 
                     val metadata = ProductMetadata(
                         barcode = barcode,
@@ -82,15 +80,13 @@ class OpenFoodFactsProductDataProvider @Inject constructor(
                 } else {
                     cleanNotFoundCount++
                     val logMsg = "[BARCODE_LOOKUP] barcode=$externalBarcode provider=${endpoint.name} result=NOT_FOUND"
-                    println(logMsg)
-                    runCatching { android.util.Log.i("AI_MEALPLANNER", logMsg) }
+                    logBarcode(logMsg)
                 }
             } else {
                 hadError = true
                 lastErrorMessage = result.exceptionOrNull()?.message ?: "Network error"
                 val logMsg = "[BARCODE_LOOKUP] barcode=$externalBarcode provider=${endpoint.name} result=ERROR cause=\"$lastErrorMessage\""
-                println(logMsg)
-                runCatching { android.util.Log.i("AI_MEALPLANNER", logMsg) }
+                logBarcode(logMsg)
             }
         }
 
@@ -164,4 +160,10 @@ class OpenFoodFactsProductDataProvider @Inject constructor(
             ProductProviderSearchResult.Success(mappedList)
         }
     }
+}
+
+private fun logBarcode(message: String) {
+    if (!com.example.chatgpt_mealplanner.BuildConfig.DEBUG) return
+    println(message)
+    runCatching { android.util.Log.i("AI_MEALPLANNER", message) }
 }

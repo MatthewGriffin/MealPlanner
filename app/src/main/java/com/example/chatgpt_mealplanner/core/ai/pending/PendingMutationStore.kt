@@ -123,7 +123,7 @@ class PendingMutationStore @Inject constructor(
             is PendingAiMutation.DeleteAllInventory -> mutation.state.name
             is PendingAiMutation.PrepareMarkMealCooked -> mutation.state.name
         }
-        println("[AI_MEALPLANNER] [PENDING_MUTATION_LIFECYCLE] action=SAVE title=\"$title\" state=$stateStr reason=\"$reason\"")
+        if (com.example.chatgpt_mealplanner.BuildConfig.DEBUG) println("[AI_MEALPLANNER] [PENDING_MUTATION_LIFECYCLE] action=SAVE title=\"$title\" state=$stateStr reason=\"$reason\"")
         val entity = when (mutation) {
             is PendingAiMutation.AddPlannedMeal -> PendingAiMutationEntity(
                 conversationId = conversationId,
@@ -191,7 +191,7 @@ class PendingMutationStore @Inject constructor(
             is PendingAiMutation.PrepareMarkMealCooked -> existing.mealTitle
             null -> "NONE"
         }
-        println("[AI_MEALPLANNER] [PENDING_MUTATION_LIFECYCLE] action=CLEAR title=\"$title\" reason=\"$reason\"")
+        if (com.example.chatgpt_mealplanner.BuildConfig.DEBUG) println("[AI_MEALPLANNER] [PENDING_MUTATION_LIFECYCLE] action=CLEAR title=\"$title\" reason=\"$reason\"")
         chatDao.deletePendingAiMutation(conversationId)
     }
 }

@@ -75,8 +75,10 @@ class PantrySyncHostService : Service() {
                     val certFingerprint = tlsKeyManager.getCertificateFingerprint(p12Store)
                     val password = tlsKeyManager.getTlsPassword()
 
-                    println("[TLS_IDENTITY] buildId=SYNC_PHASE2B_HARDENED_V2 householdId=${household.householdId} certFingerprint=$certFingerprint")
-                    try { android.util.Log.i("AI_MEALPLANNER", "[TLS_IDENTITY] buildId=SYNC_PHASE2B_HARDENED_V2 householdId=${household.householdId} certFingerprint=$certFingerprint") } catch (_: Throwable) {}
+                    if (com.example.chatgpt_mealplanner.BuildConfig.DEBUG) {
+                        println("[TLS_IDENTITY] buildId=SYNC_PHASE2B_HARDENED_V2 householdId=${household.householdId} certFingerprint=$certFingerprint")
+                        try { android.util.Log.i("AI_MEALPLANNER", "[TLS_IDENTITY] buildId=SYNC_PHASE2B_HARDENED_V2 householdId=${household.householdId} certFingerprint=$certFingerprint") } catch (_: Throwable) {}
+                    }
 
                     pantrySyncServer.start(
                         keyStore = p12Store,

@@ -26,7 +26,7 @@ class ActiveProposalStore @Inject constructor(
         if (conversationId.isBlank()) return
         val existing = getActiveProposal(conversationId)
         if (existing != null && existing.ingredients.isNotEmpty() && proposal.ingredients.isEmpty()) {
-            println("[AI_MEALPLANNER] [PROPOSAL_STATE_PRECEDENCE] existingSource=\"STRUCTURED_TOOL\" incomingSource=\"MARKDOWN_FALLBACK\" existingIngredientCount=${existing.ingredients.size} incomingIngredientCount=0 action=KEEP_EXISTING")
+            if (com.example.chatgpt_mealplanner.BuildConfig.DEBUG) println("[AI_MEALPLANNER] [PROPOSAL_STATE_PRECEDENCE] existingSource=\"STRUCTURED_TOOL\" incomingSource=\"MARKDOWN_FALLBACK\" existingIngredientCount=${existing.ingredients.size} incomingIngredientCount=0 action=KEEP_EXISTING")
             return
         }
         val entity = ActiveProposalEntity(

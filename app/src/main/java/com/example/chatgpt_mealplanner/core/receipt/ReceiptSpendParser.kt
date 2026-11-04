@@ -477,6 +477,7 @@ object ReceiptSpendParser {
     }
 
     private fun safeLog(msg: String) {
+        if (!com.example.chatgpt_mealplanner.BuildConfig.DEBUG) return
         try {
             Log.d("RECEIPT_PIPELINE_TRACE", msg)
         } catch (ignored: Throwable) {}

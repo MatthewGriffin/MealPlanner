@@ -91,21 +91,23 @@ class MlKitReceiptOcrService @Inject constructor(
                     .thenBy { it.left }
             ).mapIndexed { index, line -> line.copy(lineIndex = index) }
 
-            try {
-                val debugLog = buildString {
-                    appendLine("=== RECEIPT OCR DIAGNOSTICS DUMP ===")
-                    appendLine("Full Text:\n${resultText.text}")
-                    appendLine("Total Lines: ${sortedLines.size}")
-                    sortedLines.forEachIndexed { i, line ->
-                        appendLine("Line $i [confidence=${line.confidence}, elemCount=${line.elements.size}, left=${line.left}, top=${line.top}, right=${line.right}, bottom=${line.bottom}, centerY=${line.centerY}]: \"${line.text}\"")
-                        line.elements.forEachIndexed { ei, elem ->
-                            appendLine("  Elem $ei [left=${elem.left}, top=${elem.top}, right=${elem.right}, bottom=${elem.bottom}, centerY=${elem.centerY}]: \"${elem.text}\"")
+            if (com.example.chatgpt_mealplanner.BuildConfig.DEBUG) {
+                try {
+                    val debugLog = buildString {
+                        appendLine("=== RECEIPT OCR DIAGNOSTICS DUMP ===")
+                        appendLine("Full Text:\n${resultText.text}")
+                        appendLine("Total Lines: ${sortedLines.size}")
+                        sortedLines.forEachIndexed { i, line ->
+                            appendLine("Line $i [confidence=${line.confidence}, elemCount=${line.elements.size}, left=${line.left}, top=${line.top}, right=${line.right}, bottom=${line.bottom}, centerY=${line.centerY}]: \"${line.text}\"")
+                            line.elements.forEachIndexed { ei, elem ->
+                                appendLine("  Elem $ei [left=${elem.left}, top=${elem.top}, right=${elem.right}, bottom=${elem.bottom}, centerY=${elem.centerY}]: \"${elem.text}\"")
+                            }
                         }
+                        appendLine("=====================================")
                     }
-                    appendLine("=====================================")
-                }
-                android.util.Log.d("RECEIPT_OCR_DIAGNOSTICS", debugLog)
-            } catch (ignored: Throwable) {}
+                    android.util.Log.d("RECEIPT_OCR_DIAGNOSTICS", debugLog)
+                } catch (ignored: Throwable) {}
+            }
 
             ReceiptOcrResult(lines = sortedLines, fullText = resultText.text)
         } catch (e: Exception) {

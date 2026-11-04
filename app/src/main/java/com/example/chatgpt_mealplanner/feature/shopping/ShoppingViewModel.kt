@@ -119,15 +119,6 @@ class ShoppingViewModel @Inject constructor(
         val items = listWithItems?.items ?: emptyList()
         val groups = computeRetailerGroups(items, basketResult)
 
-        groups.forEach { group ->
-            group.items.forEach { item ->
-                val line = group.lineByItemId[item.item.id]
-                val assignmentState = if (line != null) "ASSIGNED" else "UNASSIGNED"
-                val retailerName = line?.retailerId?.name ?: group.retailerName
-                println("[AI_MEALPLANNER] [SHOPPING_UI_STATE_ITEM] assignmentState=$assignmentState retailer=$retailerName")
-            }
-        }
-
         ShoppingUiState(
             activeListWithItems = listWithItems,
             isFollower = appRoleResolver.isFollower(),
@@ -198,7 +189,6 @@ class ShoppingViewModel @Inject constructor(
                 }
             }
         }
-        println("[AI_MEALPLANNER] [SHOPPING_VM_INIT] buildAudit=SHOPPING_AUDIT_20261001_02")
         if (!appRoleResolver.isFollower()) {
             regenerateShoppingList()
         }
@@ -481,6 +471,7 @@ class ShoppingViewModel @Inject constructor(
         }
 
         private fun logDiagnostic(tag: String, message: String) {
+            if (!com.example.chatgpt_mealplanner.BuildConfig.DEBUG) return
             println("[$tag] $message")
             try {
                 android.util.Log.d(tag, message)
