@@ -406,6 +406,8 @@ class AiOrchestratorIdempotencyTest {
         val provider = GeminiMealPlannerAiProvider(credentialStore = credentialStore, ioDispatcher = kotlinx.coroutines.Dispatchers.IO)
 
         var capturedUrl = ""
+        var capturedKey = ""
+        provider.requestApiKeyObserver = { capturedKey = it }
         provider.httpCallHandler = { url, _ ->
             capturedUrl = url
             Pair(200, """{"candidates":[{"content":{"parts":[{"text":"Success"}]}}]}""")
@@ -421,7 +423,8 @@ class AiOrchestratorIdempotencyTest {
         )
 
         val response = provider.send(request)
-        assertTrue(capturedUrl.contains("key=persisted_key_777"))
+        assertEquals("persisted_key_777", capturedKey)
+        assertFalse("API key must not be sent in the URL", capturedUrl.contains("persisted_key_777"))
         assertNotEquals("NO_API_KEY", (response as? AiProviderResponse.Error)?.code)
     }
 }

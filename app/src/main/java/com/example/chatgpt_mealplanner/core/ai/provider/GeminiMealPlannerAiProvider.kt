@@ -59,6 +59,7 @@ class GeminiMealPlannerAiProvider @Inject constructor(
     private var apiKey: String? = null
 
     internal var httpCallHandler: ((urlStr: String, payload: JsonObject) -> Pair<Int, String>)? = null
+    internal var requestApiKeyObserver: ((apiKey: String) -> Unit)? = null
     internal var delayProvider: (suspend (Long) -> Unit) = { ms ->
         if (httpCallHandler == null) {
             delay(ms)
@@ -103,11 +104,12 @@ class GeminiMealPlannerAiProvider @Inject constructor(
                 })
             }
         }
-        val url = "https://generativelanguage.googleapis.com/v1beta/models/$GEMINI_PRIMARY_MODEL:generateContent?key=$activeKey"
+        val url = "https://generativelanguage.googleapis.com/v1beta/models/$GEMINI_PRIMARY_MODEL:generateContent"
 
         try {
             val response = executeGeminiHttpCall(
                 urlStr = url,
+                apiKey = activeKey,
                 payload = payload,
                 conversationId = "test_connection",
                 historyContents = payload["contents"]!!.jsonArray,
@@ -276,10 +278,10 @@ class GeminiMealPlannerAiProvider @Inject constructor(
                 modelAttempt++
                 globalAttemptCount++
 
-                val urlStr = "https://generativelanguage.googleapis.com/v1beta/models/$currentModel:generateContent?key=$activeKey"
+                val urlStr = "https://generativelanguage.googleapis.com/v1beta/models/$currentModel:generateContent"
                 val payload = payloadBuilder(currentModel)
 
-                val response = executeGeminiHttpCall(urlStr, payload, conversationId, historyContents, currentModel)
+                val response = executeGeminiHttpCall(urlStr, activeKey, payload, conversationId, historyContents, currentModel)
 
                 if (response !is AiProviderResponse.Error) {
                     safeLog("[GEMINI_ATTEMPT] model=$currentModel attempt=$globalAttemptCount result=success")
@@ -338,6 +340,7 @@ class GeminiMealPlannerAiProvider @Inject constructor(
 
     private fun executeGeminiHttpCall(
         urlStr: String,
+        apiKey: String,
         payload: JsonObject,
         conversationId: String,
         historyContents: JsonArray,
@@ -349,10 +352,11 @@ class GeminiMealPlannerAiProvider @Inject constructor(
         val payloadJsonStr = json.encodeToString(payload)
         val bodyBytes = payloadJsonStr.toByteArray(Charsets.UTF_8)
 
-        safeLog("[GEMINI_HTTP] phase=request_start, url=${redactApiKey(urlStr)}, bodyBytes=${bodyBytes.size}, jsonCharCount=${payloadJsonStr.length}")
+        safeLog("[GEMINI_HTTP] phase=request_start, url=$urlStr, bodyBytes=${bodyBytes.size}, jsonCharCount=${payloadJsonStr.length}")
 
         val customHandler = httpCallHandler
         if (customHandler != null) {
+            requestApiKeyObserver?.invoke(apiKey)
             return try {
                 val (statusCode, responseText) = customHandler(urlStr, payload)
                 safeLog("[GEMINI_HTTP] phase=response_code, code=$statusCode, elapsedMs=${System.currentTimeMillis() - startTime}")
@@ -370,6 +374,7 @@ class GeminiMealPlannerAiProvider @Inject constructor(
             connection.requestMethod = "POST"
             connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
             connection.setRequestProperty("Accept", "application/json")
+            connection.setRequestProperty("x-goog-api-key", apiKey)
             connection.connectTimeout = connectTimeoutMs
             connection.readTimeout = readTimeoutMs
             connection.doOutput = true
@@ -769,10 +774,6 @@ class GeminiMealPlannerAiProvider @Inject constructor(
         }
 
         return null
-    }
-
-    private fun redactApiKey(urlStr: String): String {
-        return urlStr.replace(Regex("key=[^&]+"), "key=REDACTED")
     }
 
     private fun safeLog(msg: String) {
