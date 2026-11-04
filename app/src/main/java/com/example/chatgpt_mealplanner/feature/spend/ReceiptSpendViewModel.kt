@@ -174,7 +174,7 @@ class ReceiptSpendViewModel @Inject constructor(
         }
     }
 
-    fun processReceiptImage(uri: Uri) {
+    fun processReceiptImage(uri: Uri, onFinished: () -> Unit = {}) {
         _uiState.update { it.copy(isScanning = true, errorMessage = null) }
         viewModelScope.launch {
             try {
@@ -197,6 +197,8 @@ class ReceiptSpendViewModel @Inject constructor(
             } catch (e: Exception) {
                 android.util.Log.i("AI_MEALPLANNER", "[RECEIPT_SCAN_PROCESSING_ERROR] exception=${e.javaClass.simpleName} message=\"${e.message}\"")
                 _uiState.update { it.copy(isScanning = false, errorMessage = "Failed to process receipt image: ${e.localizedMessage}") }
+            } finally {
+                onFinished()
             }
         }
     }
