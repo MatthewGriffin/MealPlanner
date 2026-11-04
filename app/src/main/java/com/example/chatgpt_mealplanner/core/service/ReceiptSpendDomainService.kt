@@ -14,8 +14,6 @@ import com.example.chatgpt_mealplanner.core.database.dao.ReceiptSpendDao
 import com.example.chatgpt_mealplanner.core.database.entity.ReceiptCategoryMappingEntity
 import com.example.chatgpt_mealplanner.core.database.entity.ReceiptSpendEntity
 import com.example.chatgpt_mealplanner.core.database.entity.ReceiptSpendItemEntity
-import com.example.chatgpt_mealplanner.core.database.entity.RetailPriceSnapshotEntity
-import com.example.chatgpt_mealplanner.core.database.entity.RetailProductEntity
 import com.example.chatgpt_mealplanner.core.model.DomainError
 import com.example.chatgpt_mealplanner.core.model.DomainResult
 import com.example.chatgpt_mealplanner.core.receipt.ReceiptOcrResult
@@ -39,7 +37,6 @@ interface ReceiptSpendDomainService {
 @Singleton
 class ReceiptSpendDomainServiceImpl @Inject constructor(
     private val receiptSpendDao: ReceiptSpendDao,
-    private val receiptRetailBridgeService: ReceiptRetailBridgeService,
     private val transactionRunner: DatabaseTransactionRunner,
     private val purchasePriceDao: PurchasePriceDao? = null,
     private val inventoryDao: InventoryDao? = null,
@@ -134,31 +131,6 @@ class ReceiptSpendDomainServiceImpl @Inject constructor(
                     receiptSpendDao.insertOrUpdateCategoryMapping(mapping)
                 }
             }
-
-            // Record retail cache via shared ReceiptRetailBridgeService
-            val obsAt = runCatching {
-                SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).parse(dateStr)?.time ?: System.currentTimeMillis()
-            }.getOrDefault(System.currentTimeMillis())
-
-            val bridgeItems = draft.items
-                .filter { !it.isDiscount && it.unitPriceMinorPence != null }
-                .map { item ->
-                    ReceiptObservationItem(
-                        lineId = item.id,
-                        description = item.rawDescription.ifBlank { item.normalizedDescription },
-                        unitPriceMinorPence = item.unitPriceMinorPence!!,
-                        netQuantity = item.quantity.toDouble(),
-                        netQuantityUnit = null,
-                        canonicalIngredientId = null
-                    )
-                }
-
-            receiptRetailBridgeService.recordReceiptObservations(
-                receiptId = draft.id,
-                retailerIdStr = draft.retailerId,
-                observedAtMs = obsAt,
-                items = bridgeItems
-            )
 
             DomainResult.Success(Unit)
         }

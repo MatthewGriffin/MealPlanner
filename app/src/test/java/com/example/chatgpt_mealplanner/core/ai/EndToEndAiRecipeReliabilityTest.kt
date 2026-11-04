@@ -29,7 +29,6 @@ import com.example.chatgpt_mealplanner.core.service.FakeInventoryBarcodeDao
 import com.example.chatgpt_mealplanner.core.service.FakeInventoryDao
 import com.example.chatgpt_mealplanner.core.service.FakeLeftoverDao
 import com.example.chatgpt_mealplanner.core.service.FakeMealDao
-import com.example.chatgpt_mealplanner.core.service.FakeRetailDao
 import com.example.chatgpt_mealplanner.core.service.FakeShoppingDao
 import com.example.chatgpt_mealplanner.core.service.FakeStapleRuleDao
 import com.example.chatgpt_mealplanner.core.service.FakeTransactionDao
@@ -74,7 +73,6 @@ class EndToEndAiRecipeReliabilityTest {
     private lateinit var shoppingDao: FakeShoppingDao
     private lateinit var stapleRuleDao: FakeStapleRuleDao
     private lateinit var transactionDao: FakeTransactionDao
-    private lateinit var retailDao: FakeRetailDao
     private lateinit var chatDao: FakeChatDao
 
     private lateinit var inventoryDomainService: InventoryDomainServiceImpl
@@ -100,7 +98,6 @@ class EndToEndAiRecipeReliabilityTest {
         shoppingDao = FakeShoppingDao()
         stapleRuleDao = FakeStapleRuleDao()
         transactionDao = FakeTransactionDao()
-        retailDao = FakeRetailDao()
         chatDao = FakeChatDao()
 
         pendingMutationStore = PendingMutationStore(chatDao)

@@ -9,8 +9,7 @@ class FakeTransactionRunner(
     private val fakeLeftoverDao: FakeLeftoverDao? = null,
     private val fakeShoppingDao: FakeShoppingDao? = null,
     private val fakeStapleRuleDao: FakeStapleRuleDao? = null,
-    private val fakeReceiptDao: FakeReceiptDao? = null,
-    private val fakeRetailDao: FakeRetailDao? = null
+    private val fakeReceiptDao: FakeReceiptDao? = null
 ) : DatabaseTransactionRunner {
 
     override suspend fun <T> runInTransaction(block: suspend () -> T): T {

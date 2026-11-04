@@ -33,7 +33,6 @@ class ReceiptImportDomainServiceImpl @Inject constructor(
     private val receiptDao: ReceiptDao,
     private val inventoryDomainService: InventoryDomainService,
     private val shoppingDao: ShoppingDao,
-    private val receiptRetailBridgeService: ReceiptRetailBridgeService,
     private val transactionRunner: DatabaseTransactionRunner
 ) : ReceiptImportDomainService {
 
@@ -191,31 +190,6 @@ class ReceiptImportDomainServiceImpl @Inject constructor(
                     }
                 }
             }
-
-            // Record retail cache via shared ReceiptRetailBridgeService
-            val obsAt = runCatching {
-                java.time.LocalDate.parse(draft.purchasedAt).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
-            }.getOrDefault(System.currentTimeMillis())
-
-            val bridgeItems = draft.lines
-                .filter { it.status != ReceiptLineStatus.NON_PRODUCT && it.status != ReceiptLineStatus.IGNORED && it.unitPriceMinorPence != null }
-                .map { line ->
-                    ReceiptObservationItem(
-                        lineId = line.id,
-                        description = line.displayName.ifBlank { line.normalizedText },
-                        unitPriceMinorPence = line.unitPriceMinorPence!!,
-                        netQuantity = line.netQuantity,
-                        netQuantityUnit = line.netQuantityUnit?.name,
-                        canonicalIngredientId = line.candidateCanonicalIngredientId
-                    )
-                }
-
-            receiptRetailBridgeService.recordReceiptObservations(
-                receiptId = draft.id,
-                retailerIdStr = draft.retailerId,
-                observedAtMs = obsAt,
-                items = bridgeItems
-            )
 
             val productsInsertedCount = draft.lines.count { it.unitPriceMinorPence != null }
             val skippedCount = draft.lines.size - productsInsertedCount

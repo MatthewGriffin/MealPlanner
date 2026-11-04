@@ -13,7 +13,6 @@ import com.example.chatgpt_mealplanner.core.service.FakeInventoryBarcodeDao
 import com.example.chatgpt_mealplanner.core.service.FakeInventoryDao
 import com.example.chatgpt_mealplanner.core.service.FakeLeftoverDao
 import com.example.chatgpt_mealplanner.core.service.FakeMealDao
-import com.example.chatgpt_mealplanner.core.service.FakeRetailDao
 import com.example.chatgpt_mealplanner.core.service.FakeShoppingDao
 import com.example.chatgpt_mealplanner.core.service.FakeStapleRuleDao
 import com.example.chatgpt_mealplanner.core.service.FakeTransactionDao
@@ -57,7 +56,6 @@ class ChatViewModelWelcomeTest {
         val shoppingDao = FakeShoppingDao()
         val stapleRuleDao = FakeStapleRuleDao()
         val transactionDao = FakeTransactionDao()
-        val retailDao = FakeRetailDao()
 
         val runner = FakeTransactionRunner(
             fakeMealDao = mealDao,
