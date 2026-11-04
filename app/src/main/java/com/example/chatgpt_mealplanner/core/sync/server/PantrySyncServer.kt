@@ -24,6 +24,9 @@ import com.example.chatgpt_mealplanner.sync.contract.ShoppingListSyncDto
 import com.example.chatgpt_mealplanner.sync.contract.ShoppingItemSyncDto
 import com.example.chatgpt_mealplanner.sync.contract.StapleRuleSyncDto
 import io.ktor.http.HttpStatusCode
+import io.ktor.server.application.ApplicationCall
+import io.ktor.utils.io.core.readText
+import io.ktor.utils.io.readRemaining
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.call
 import io.ktor.server.application.install
@@ -35,7 +38,8 @@ import io.ktor.server.netty.Netty
 import io.ktor.server.netty.NettyApplicationEngine
 import io.netty.channel.nio.NioEventLoopGroup
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.server.request.receiveText
+import io.ktor.server.request.contentLength
+import io.ktor.server.request.receiveChannel
 import io.ktor.server.response.respond
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
@@ -245,7 +249,7 @@ open class PantrySyncServer @Inject constructor(
                     }
 
                     post("/sync/v1/enrollment/register") {
-                        val bodyText = call.receiveText()
+                        val bodyText = call.receiveBoundedText() ?: return@post
                         val reqDto = runCatching { json.decodeFromString<EnrollmentRequestDto>(bodyText) }.getOrNull()
 
                         if (reqDto == null) {
@@ -286,7 +290,7 @@ open class PantrySyncServer @Inject constructor(
                     }
 
                     post("/sync/v1/reauthorize") {
-                        val bodyText = call.receiveText()
+                        val bodyText = call.receiveBoundedText() ?: return@post
                         val req = runCatching { json.decodeFromString<com.example.chatgpt_mealplanner.sync.contract.ReauthorizationRequestDto>(bodyText) }.getOrNull()
 
                         if (req == null) {
@@ -329,7 +333,7 @@ open class PantrySyncServer @Inject constructor(
                     }
 
                     post("/sync/v1/auth/challenge") {
-                        val bodyText = call.receiveText()
+                        val bodyText = call.receiveBoundedText() ?: return@post
                         val reqObj = runCatching { json.parseToJsonElement(bodyText).jsonObject }.getOrNull()
                         val deviceId = reqObj?.get("deviceId")?.jsonPrimitive?.content
 
@@ -347,7 +351,7 @@ open class PantrySyncServer @Inject constructor(
                     }
 
                     post("/sync/v1/auth/session") {
-                        val bodyText = call.receiveText()
+                        val bodyText = call.receiveBoundedText() ?: return@post
                         val reqObj = runCatching { json.parseToJsonElement(bodyText).jsonObject }.getOrNull()
                         val challengeId = reqObj?.get("challengeId")?.jsonPrimitive?.content
                         val deviceId = reqObj?.get("deviceId")?.jsonPrimitive?.content
@@ -403,7 +407,7 @@ open class PantrySyncServer @Inject constructor(
                             return@post
                         }
 
-                        val bodyText = call.receiveText()
+                        val bodyText = call.receiveBoundedText() ?: return@post
                         val operationDto = runCatching { json.decodeFromString<SyncOperationDto>(bodyText) }.getOrNull()
 
                         if (operationDto == null) {
@@ -666,4 +670,26 @@ open class PantrySyncServer @Inject constructor(
             false
         }
     }
+}
+
+internal const val MAX_SYNC_REQUEST_BODY_BYTES = 1_048_576L
+
+/**
+ * Reads a request body of at most [MAX_SYNC_REQUEST_BODY_BYTES], checking the bytes actually
+ * received because Content-Length can be absent or wrong. Over the limit it responds 413 and
+ * returns null, so the caller should stop handling the request.
+ */
+private suspend fun ApplicationCall.receiveBoundedText(): String? {
+    val declaredLength = request.contentLength()
+    val packet = if (declaredLength != null && declaredLength > MAX_SYNC_REQUEST_BODY_BYTES) {
+        null
+    } else {
+        receiveChannel().readRemaining(MAX_SYNC_REQUEST_BODY_BYTES + 1)
+    }
+    if (packet == null || packet.remaining > MAX_SYNC_REQUEST_BODY_BYTES) {
+        packet?.release()
+        respond(HttpStatusCode.PayloadTooLarge, buildJsonObject { put("error", "REQUEST_TOO_LARGE") })
+        return null
+    }
+    return packet.readText()
 }

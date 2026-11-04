@@ -29,11 +29,25 @@ open class SyncSessionManager @Inject constructor(
     private val pairedDeviceDao: PairedDeviceDao
 ) {
     private val challenges = ConcurrentHashMap<String, PendingChallenge>()
-    private val usedNonces = ConcurrentHashMap.newKeySet<String>()
     private val sessions = ConcurrentHashMap<String, ActiveSession>()
     private val secureRandom = SecureRandom()
 
+    internal val pendingChallengeCount: Int get() = challenges.size
+
+    /**
+     * Challenges can be requested without authentication, so expired ones are purged and the
+     * oldest is evicted at the cap. Under a flood a real device may have to request a new challenge.
+     */
+    private fun purgeAndBoundChallenges(now: Long) {
+        challenges.values.removeIf { now > it.expiresAt }
+        while (challenges.size >= MAX_PENDING_CHALLENGES) {
+            val oldest = challenges.values.minByOrNull { it.expiresAt } ?: break
+            challenges.remove(oldest.challengeId)
+        }
+    }
+
     open fun createChallenge(householdId: String, deviceId: String): AuthChallengeDto {
+        purgeAndBoundChallenges(System.currentTimeMillis())
         val challengeId = UUID.randomUUID().toString()
         val nonceBytes = ByteArray(32)
         secureRandom.nextBytes(nonceBytes)
@@ -64,8 +78,8 @@ open class SyncSessionManager @Inject constructor(
     ): String? {
         val challenge = challenges.remove(challengeId) ?: return null
         if (challenge.deviceId != deviceId) return null
+        // Removing the challenge above is what makes its nonce single-use.
         if (System.currentTimeMillis() > challenge.expiresAt) return null
-        if (!usedNonces.add(challenge.nonce)) return null // Single-use nonce
 
         val pairedDevice = pairedDeviceDao.getDeviceById(deviceId) ?: return null
         if (pairedDevice.status != "ACTIVE") return null
@@ -89,8 +103,10 @@ open class SyncSessionManager @Inject constructor(
         val tokenBytes = ByteArray(32)
         secureRandom.nextBytes(tokenBytes)
         val sessionToken = java.util.Base64.getEncoder().encodeToString(tokenBytes)
-        val expiresAt = System.currentTimeMillis() + 3600_000L
+        val now = System.currentTimeMillis()
+        val expiresAt = now + 3600_000L
 
+        sessions.values.removeIf { now > it.expiresAt }
         sessions[sessionToken] = ActiveSession(
             token = sessionToken,
             deviceId = deviceId,
@@ -125,5 +141,9 @@ open class SyncSessionManager @Inject constructor(
     ): ByteArray {
         val canonicalStr = "pantry-household-sync|1|$householdId|$deviceId|$challengeId|$nonce"
         return canonicalStr.toByteArray(Charsets.UTF_8)
+    }
+
+    internal companion object {
+        const val MAX_PENDING_CHALLENGES = 256
     }
 }

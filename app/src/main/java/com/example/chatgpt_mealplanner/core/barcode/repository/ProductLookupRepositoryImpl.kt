@@ -42,13 +42,11 @@ class ProductLookupRepositoryImpl @Inject constructor(
                         (metadata.canonicalName == null || metadata.canonicalName == metadata.displayName)
 
                 val decisionLog = "[BARCODE_CONCEPT_COMPAT] barcode=$barcode source=${cachedEntity.source} displayName=\"${metadata.displayName ?: ""}\" canonicalName=\"${metadata.canonicalName ?: ""}\" canonicalEqualsDisplay=${metadata.canonicalName == metadata.displayName} isManual=${cachedEntity.source == com.example.chatgpt_mealplanner.core.barcode.model.ProductDataSource.MANUAL} isConceptVerified=$isConceptVerified needsCompatibilityRepair=$needsCompatibilityRepair"
-                println(decisionLog)
-                runCatching { android.util.Log.i("AI_MEALPLANNER", decisionLog) }
+                logBarcode(decisionLog)
 
                 val finalMetadata = if (needsCompatibilityRepair) {
                     val startLog = "[BARCODE_CONCEPT_COMPAT] barcode=$barcode action=PROVIDER_REFRESH_STARTED"
-                    println(startLog)
-                    runCatching { android.util.Log.i("AI_MEALPLANNER", startLog) }
+                    logBarcode(startLog)
 
                     when (val providerResult = productDataProvider.lookupBarcode(externalBarcode)) {
                         is ProductProviderResult.Success -> {
@@ -68,23 +66,19 @@ class ProductLookupRepositoryImpl @Inject constructor(
                             verificationStore.markConceptVerified(normalizedBarcode)
 
                             val resLog = "[BARCODE_CONCEPT_COMPAT] barcode=$barcode action=PROVIDER_REFRESH_RESULT result=SUCCESS providerCanonicalName=\"${providerMeta.canonicalName ?: ""}\""
-                            println(resLog)
-                            runCatching { android.util.Log.i("AI_MEALPLANNER", resLog) }
+                            logBarcode(resLog)
 
                             val writtenLog = "[BARCODE_CONCEPT_COMPAT] barcode=$barcode action=CACHE_REPAIR_WRITTEN canonicalName=\"${enriched.canonicalName ?: ""}\""
-                            println(writtenLog)
-                            runCatching { android.util.Log.i("AI_MEALPLANNER", writtenLog) }
+                            logBarcode(writtenLog)
 
                             val verifyLog = "[BARCODE_CONCEPT_COMPAT] barcode=$barcode action=MARK_VERIFIED"
-                            println(verifyLog)
-                            runCatching { android.util.Log.i("AI_MEALPLANNER", verifyLog) }
+                            logBarcode(verifyLog)
 
                             enriched
                         }
                         else -> {
                             val resLog = "[BARCODE_CONCEPT_COMPAT] barcode=$barcode action=PROVIDER_REFRESH_RESULT result=FAILURE providerCanonicalName=null"
-                            println(resLog)
-                            runCatching { android.util.Log.i("AI_MEALPLANNER", resLog) }
+                            logBarcode(resLog)
                             metadata
                         }
                     }
@@ -93,8 +87,7 @@ class ProductLookupRepositoryImpl @Inject constructor(
                 }
 
                 val logMsg = "[BARCODE_LOOKUP] raw=$barcode external=$externalBarcode provider=CACHE cache=HIT result=FOUND rawQty=null parsedQty=${finalMetadata.netQuantity} parsedUnit=${finalMetadata.netQuantityUnit} canonicalName=\"${finalMetadata.canonicalName}\""
-                println(logMsg)
-                runCatching { android.util.Log.i("AI_MEALPLANNER", logMsg) }
+                logBarcode(logMsg)
                 return ProductLookupResult.Found(finalMetadata, isFromCache = true)
             }
         }
@@ -157,4 +150,10 @@ class ProductLookupRepositoryImpl @Inject constructor(
     override suspend fun getCachedMapping(barcode: String): ProductMetadata? {
         return barcodeMappingDao.getMappingByBarcode(barcode)?.toMetadata()
     }
+}
+
+private fun logBarcode(message: String) {
+    if (!com.example.chatgpt_mealplanner.BuildConfig.DEBUG) return
+    println(message)
+    runCatching { android.util.Log.i("AI_MEALPLANNER", message) }
 }

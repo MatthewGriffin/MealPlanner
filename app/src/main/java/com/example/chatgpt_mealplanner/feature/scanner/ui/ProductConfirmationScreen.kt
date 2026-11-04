@@ -96,10 +96,6 @@ fun ProductConfirmationScreen(
     var purchasePriceText by remember(metadata.barcode) { mutableStateOf("") }
     var purchaseStoreMenuExpanded by remember { mutableStateOf(false) }
 
-    val confirmLog = "[BARCODE_METADATA] stage=CONFIRMATION barcode=$barcode displayName=\"${metadata.displayName ?: ""}\" canonicalName=\"${metadata.canonicalName ?: ""}\" initialProductName=\"$displayName\" netQuantity=${metadata.netQuantity} netQuantityUnit=${metadata.netQuantityUnit}"
-    println(confirmLog)
-    runCatching { android.util.Log.i("AI_MEALPLANNER", confirmLog) }
-
     Column(
         modifier = modifier
             .fillMaxSize()

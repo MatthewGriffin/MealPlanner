@@ -1365,6 +1365,7 @@ class InventoryDomainServiceImpl @Inject constructor(
     }
 
     private fun safeLog(msg: String) {
+        if (!com.example.chatgpt_mealplanner.BuildConfig.DEBUG) return
         try {
             Log.d("INVENTORY_IDENTITY_TRACE", msg)
         } catch (ignored: Throwable) {}

@@ -15,7 +15,6 @@ import com.example.chatgpt_mealplanner.core.ai.provider.MealPlannerAiProvider
 import com.example.chatgpt_mealplanner.core.ai.validator.RecipeValidator
 import com.example.chatgpt_mealplanner.core.database.entity.ChatConversationEntity
 import com.example.chatgpt_mealplanner.core.repository.ChatRepositoryImpl
-import com.example.chatgpt_mealplanner.core.repository.RetailRepositoryImpl
 import com.example.chatgpt_mealplanner.core.service.FakeChatDao
 import com.example.chatgpt_mealplanner.core.service.FakeInventoryBarcodeDao
 import com.example.chatgpt_mealplanner.core.service.FakeInventoryDao
@@ -28,7 +27,6 @@ import com.example.chatgpt_mealplanner.core.service.FakeTransactionDao
 import com.example.chatgpt_mealplanner.core.service.FakeTransactionRunner
 import com.example.chatgpt_mealplanner.core.service.InventoryDomainServiceImpl
 import com.example.chatgpt_mealplanner.core.service.MealDomainServiceImpl
-import com.example.chatgpt_mealplanner.core.service.RetailShoppingDomainServiceImpl
 import com.example.chatgpt_mealplanner.core.service.ShoppingDomainServiceImpl
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
@@ -58,7 +56,6 @@ class ReferentialSelectionTest {
     private lateinit var inventoryDomainService: InventoryDomainServiceImpl
     private lateinit var mealDomainService: MealDomainServiceImpl
     private lateinit var shoppingDomainService: ShoppingDomainServiceImpl
-    private lateinit var retailShoppingDomainService: RetailShoppingDomainServiceImpl
     private lateinit var chatRepository: ChatRepositoryImpl
 
     private lateinit var aiToolDispatcher: AiToolDispatcher
@@ -135,13 +132,6 @@ class ReferentialSelectionTest {
             transactionRunner = runner
         )
 
-        val retailRepo = RetailRepositoryImpl(retailDao)
-        retailShoppingDomainService = RetailShoppingDomainServiceImpl(
-            shoppingDomainService = shoppingDomainService,
-            shoppingDao = shoppingDao,
-            retailRepository = retailRepo,
-            retailDao = retailDao
-        )
 
         aiToolDispatcher = AiToolDispatcher(
             inventoryDao = inventoryDao,

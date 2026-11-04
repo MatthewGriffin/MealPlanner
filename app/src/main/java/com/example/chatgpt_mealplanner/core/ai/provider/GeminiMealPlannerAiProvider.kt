@@ -776,6 +776,7 @@ class GeminiMealPlannerAiProvider @Inject constructor(
     }
 
     private fun safeLog(msg: String) {
+        if (!com.example.chatgpt_mealplanner.BuildConfig.DEBUG) return
         try {
             Log.d("GEMINI_CREDENTIAL_TRACE", msg)
         } catch (_: Throwable) {}

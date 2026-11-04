@@ -105,7 +105,7 @@ object ReceiptSummaryParser {
         val summaryArithmeticValid = mathChecksOut && cardMatchesPaid
         val isHighConfidence = summaryArithmeticValid && (finalPaid ?: 0L) > 0L
 
-        try {
+        if (com.example.chatgpt_mealplanner.BuildConfig.DEBUG) try {
             Log.d("RECEIPT_PIPELINE_TRACE", "[SUMMARY_PARSER] explicitGross=$explicitGrossPence, savings=$explicitSavingsPence, explicitPaid=$explicitPaidPence, cardPence=$cardPaymentPence -> finalPaid=$finalPaid, gross=$gross")
         } catch (ignored: Throwable) {}
 

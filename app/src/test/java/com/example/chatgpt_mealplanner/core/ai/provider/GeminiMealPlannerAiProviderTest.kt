@@ -80,10 +80,16 @@ class GeminiMealPlannerAiProviderTest {
         provider = GeminiMealPlannerAiProvider(credentialStore = credentialStore, ioDispatcher = Dispatchers.Unconfined)
     }
 
+    private fun modelFrom(urlStr: String): String = urlStr.substringAfter("/models/").substringBefore(":")
+
+    private fun helloRequest() = AiProviderRequest(
+        "conv1", "Prompt", "{}", emptyPayload, listOf(AiChatMessage("user", "Hello")), emptyList()
+    )
+
     @Test
-    fun modelChain_usesCorrectGemini37FlashId() {
+    fun modelChain_usesSupportedGeminiModels() {
         assertEquals(
-            listOf("gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite"),
+            listOf("gemini-3.6-flash", "gemini-3.5-flash-lite"),
             GEMINI_MODEL_CHAIN
         )
     }
@@ -181,147 +187,117 @@ class GeminiMealPlannerAiProviderTest {
     fun primarySuccess_doesNotFallback() = runBlocking {
         val requestedModels = mutableListOf<String>()
         provider.httpCallHandler = { urlStr, _ ->
-            val model = urlStr.substringAfter("/models/").substringBefore(":")
-            requestedModels.add(model)
-            Pair(200, makeSuccessBody("Success from primary 3.7"))
+            requestedModels.add(modelFrom(urlStr))
+            Pair(200, makeSuccessBody("Success from primary"))
         }
 
-        val req = AiProviderRequest("conv1", "Prompt", "{}", emptyPayload, listOf(AiChatMessage("user", "Hello")), emptyList())
-        val res = provider.send(req)
+        val res = provider.send(helloRequest())
 
         assertTrue(res is AiProviderResponse.FinalResponse)
-        assertEquals("Success from primary 3.7", (res as AiProviderResponse.FinalResponse).text)
-        assertEquals("gemini-3.7-flash", (res as AiProviderResponse.FinalResponse).modelId)
-        assertEquals(listOf("gemini-3.7-flash"), requestedModels)
+        assertEquals("Success from primary", (res as AiProviderResponse.FinalResponse).text)
+        assertEquals(GEMINI_PRIMARY_MODEL, res.modelId)
+        assertEquals(listOf(GEMINI_PRIMARY_MODEL), requestedModels)
     }
 
     @Test
-    fun primary429_immediatelyFallsBackTo36() = runBlocking {
+    fun primary429_immediatelyFallsBackToSecondary() = runBlocking {
         val requestedModels = mutableListOf<String>()
         provider.httpCallHandler = { urlStr, _ ->
-            val model = urlStr.substringAfter("/models/").substringBefore(":")
+            val model = modelFrom(urlStr)
             requestedModels.add(model)
-            if (model == "gemini-3.7-flash") {
+            if (model == GEMINI_PRIMARY_MODEL) {
                 Pair(429, makeErrorBody(429, "Quota exceeded"))
             } else {
-                Pair(200, makeSuccessBody("Success from 3.6-flash"))
+                Pair(200, makeSuccessBody("Success from secondary"))
             }
         }
 
-        val req = AiProviderRequest("conv1", "Prompt", "{}", emptyPayload, listOf(AiChatMessage("user", "Hello")), emptyList())
-        val res = provider.send(req)
+        val res = provider.send(helloRequest())
 
         assertTrue(res is AiProviderResponse.FinalResponse)
-        assertEquals("Success from 3.6-flash", (res as AiProviderResponse.FinalResponse).text)
-        assertEquals("gemini-3.6-flash", (res as AiProviderResponse.FinalResponse).modelId)
-        assertEquals(listOf("gemini-3.7-flash", "gemini-3.6-flash"), requestedModels)
+        assertEquals("Success from secondary", (res as AiProviderResponse.FinalResponse).text)
+        assertEquals(GEMINI_SECONDARY_MODEL, res.modelId)
+        assertEquals(listOf(GEMINI_PRIMARY_MODEL, GEMINI_SECONDARY_MODEL), requestedModels)
     }
 
     @Test
-    fun primary503RetryThenFallsBackTo36() = runBlocking {
+    fun primary503RetryThenFallsBackToSecondary() = runBlocking {
         val requestedModels = mutableListOf<String>()
         provider.httpCallHandler = { urlStr, _ ->
-            val model = urlStr.substringAfter("/models/").substringBefore(":")
+            val model = modelFrom(urlStr)
             requestedModels.add(model)
-            if (model == "gemini-3.7-flash") {
+            if (model == GEMINI_PRIMARY_MODEL) {
                 Pair(503, makeErrorBody(503, "High demand"))
             } else {
-                Pair(200, makeSuccessBody("Success from 3.6-flash"))
+                Pair(200, makeSuccessBody("Success from secondary"))
             }
         }
 
-        val req = AiProviderRequest("conv1", "Prompt", "{}", emptyPayload, listOf(AiChatMessage("user", "Hello")), emptyList())
-        val res = provider.send(req)
+        val res = provider.send(helloRequest())
 
         assertTrue(res is AiProviderResponse.FinalResponse)
-        assertEquals("Success from 3.6-flash", (res as AiProviderResponse.FinalResponse).text)
-        assertEquals("gemini-3.6-flash", (res as AiProviderResponse.FinalResponse).modelId)
-        assertEquals(listOf("gemini-3.7-flash", "gemini-3.7-flash", "gemini-3.6-flash"), requestedModels)
-    }
-
-    @Test
-    fun secondary429_immediatelyFallsBackTo35FlashLite() = runBlocking {
-        val requestedModels = mutableListOf<String>()
-        provider.httpCallHandler = { urlStr, _ ->
-            val model = urlStr.substringAfter("/models/").substringBefore(":")
-            requestedModels.add(model)
-            when (model) {
-                "gemini-3.7-flash", "gemini-3.6-flash" -> Pair(429, makeErrorBody(429, "Quota limit"))
-                "gemini-3.5-flash-lite" -> Pair(200, makeSuccessBody("Success from 3.5-flash-lite"))
-                else -> Pair(400, makeErrorBody(400, "Unexpected model: $model"))
-            }
-        }
-
-        val req = AiProviderRequest("conv1", "Prompt", "{}", emptyPayload, listOf(AiChatMessage("user", "Hello")), emptyList())
-        val res = provider.send(req)
-
-        assertTrue(res is AiProviderResponse.FinalResponse)
-        assertEquals("Success from 3.5-flash-lite", (res as AiProviderResponse.FinalResponse).text)
-        assertEquals("gemini-3.5-flash-lite", (res as AiProviderResponse.FinalResponse).modelId)
-        assertEquals(listOf("gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite"), requestedModels)
-    }
-
-    @Test
-    fun secondary503RetryThenFallsBackTo35FlashLite() = runBlocking {
-        val requestedModels = mutableListOf<String>()
-        provider.httpCallHandler = { urlStr, _ ->
-            val model = urlStr.substringAfter("/models/").substringBefore(":")
-            requestedModels.add(model)
-            when (model) {
-                "gemini-3.7-flash" -> Pair(429, makeErrorBody(429, "Quota"))
-                "gemini-3.6-flash" -> Pair(503, makeErrorBody(503, "High demand"))
-                else -> Pair(200, makeSuccessBody("Success from 3.5-flash-lite"))
-            }
-        }
-
-        val req = AiProviderRequest("conv1", "Prompt", "{}", emptyPayload, listOf(AiChatMessage("user", "Hello")), emptyList())
-        val res = provider.send(req)
-
-        assertTrue(res is AiProviderResponse.FinalResponse)
-        assertEquals("Success from 3.5-flash-lite", (res as AiProviderResponse.FinalResponse).text)
-        assertEquals(listOf("gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite"), requestedModels)
+        assertEquals("Success from secondary", (res as AiProviderResponse.FinalResponse).text)
+        assertEquals(GEMINI_SECONDARY_MODEL, res.modelId)
+        assertEquals(listOf(GEMINI_PRIMARY_MODEL, GEMINI_PRIMARY_MODEL, GEMINI_SECONDARY_MODEL), requestedModels)
     }
 
     @Test
     fun modelSpecific404_immediatelySkipsModel() = runBlocking {
         val requestedModels = mutableListOf<String>()
         provider.httpCallHandler = { urlStr, _ ->
-            val model = urlStr.substringAfter("/models/").substringBefore(":")
+            val model = modelFrom(urlStr)
             requestedModels.add(model)
-            if (model == "gemini-3.7-flash") {
-                Pair(404, makeErrorBody(404, "models/gemini-3.7-flash is not found for API version v1beta"))
+            if (model == GEMINI_PRIMARY_MODEL) {
+                Pair(404, makeErrorBody(404, "models/$GEMINI_PRIMARY_MODEL is not found for API version v1beta"))
             } else {
-                Pair(200, makeSuccessBody("Success from fallback"))
+                Pair(200, makeSuccessBody("Success from secondary"))
             }
         }
 
-        val req = AiProviderRequest("conv1", "Prompt", "{}", emptyPayload, listOf(AiChatMessage("user", "Hello")), emptyList())
-        val res = provider.send(req)
+        val res = provider.send(helloRequest())
 
         assertTrue(res is AiProviderResponse.FinalResponse)
-        assertEquals("Success from fallback", (res as AiProviderResponse.FinalResponse).text)
-        assertEquals(listOf("gemini-3.7-flash", "gemini-3.6-flash"), requestedModels)
+        assertEquals("Success from secondary", (res as AiProviderResponse.FinalResponse).text)
+        assertEquals(GEMINI_SECONDARY_MODEL, res.modelId)
+        assertEquals(listOf(GEMINI_PRIMARY_MODEL, GEMINI_SECONDARY_MODEL), requestedModels)
     }
 
     @Test
-    fun flashLite_canCompleteRequest() = runBlocking {
+    fun allModels429_returnsErrorAfterTryingEachModelOnce() = runBlocking {
         val requestedModels = mutableListOf<String>()
         provider.httpCallHandler = { urlStr, _ ->
-            val model = urlStr.substringAfter("/models/").substringBefore(":")
+            val model = modelFrom(urlStr)
             requestedModels.add(model)
-            if (model == "gemini-3.5-flash-lite") {
-                Pair(200, makeSuccessBody("Complete from flash-lite"))
+            if (model == GEMINI_PRIMARY_MODEL) {
+                Pair(429, makeErrorBody(429, "Quota limit"))
             } else {
-                Pair(429, makeErrorBody(429, "Quota"))
+                Pair(429, makeErrorBody(429, "Quota limit"))
             }
         }
 
-        val req = AiProviderRequest("conv1", "Prompt", "{}", emptyPayload, listOf(AiChatMessage("user", "Hello")), emptyList())
-        val res = provider.send(req)
+        val res = provider.send(helloRequest())
 
-        assertTrue(res is AiProviderResponse.FinalResponse)
-        assertEquals("Complete from flash-lite", (res as AiProviderResponse.FinalResponse).text)
-        assertEquals(listOf("gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite"), requestedModels)
+        assertTrue(res is AiProviderResponse.Error)
+        assertEquals(listOf(GEMINI_PRIMARY_MODEL, GEMINI_SECONDARY_MODEL), requestedModels)
+    }
+
+    @Test
+    fun secondary503_isRetriedBeforeReturningError() = runBlocking {
+        val requestedModels = mutableListOf<String>()
+        provider.httpCallHandler = { urlStr, _ ->
+            val model = modelFrom(urlStr)
+            requestedModels.add(model)
+            if (model == GEMINI_PRIMARY_MODEL) {
+                Pair(429, makeErrorBody(429, "Quota"))
+            } else {
+                Pair(503, makeErrorBody(503, "High demand"))
+            }
+        }
+
+        val res = provider.send(helloRequest())
+
+        assertTrue(res is AiProviderResponse.Error)
+        assertEquals(listOf(GEMINI_PRIMARY_MODEL, GEMINI_SECONDARY_MODEL, GEMINI_SECONDARY_MODEL), requestedModels)
     }
 
     @Test
@@ -352,13 +328,13 @@ class GeminiMealPlannerAiProviderTest {
 
         assertTrue(res is AiProviderResponse.Error)
         assertEquals("HTTP_404", (res as AiProviderResponse.Error).code)
-        assertEquals("Arbitrary 404 must NOT trigger fallback to secondary models", listOf("gemini-3.7-flash"), requestedModels)
+        assertEquals("Arbitrary 404 must NOT trigger fallback to secondary models", listOf(GEMINI_PRIMARY_MODEL), requestedModels)
     }
 
     @Test
     fun rawGoogleErrors_areNotShownToUser() = runBlocking {
         provider.httpCallHandler = { _, _ ->
-            Pair(404, "{\"error\":{\"code\":404,\"message\":\"models/gemini-3.7-flash is not found for API version v1beta\"}}")
+            Pair(404, "{\"error\":{\"code\":404,\"message\":\"models/$GEMINI_PRIMARY_MODEL is not found for API version v1beta\"}}")
         }
 
         val req = AiProviderRequest("conv1", "Prompt", "{}", emptyPayload, listOf(AiChatMessage("user", "Hello")), emptyList())
@@ -376,7 +352,7 @@ class GeminiMealPlannerAiProviderTest {
         provider.httpCallHandler = { urlStr, _ ->
             val model = urlStr.substringAfter("/models/").substringBefore(":")
             requestedModels.add(model)
-            if (model == "gemini-3.7-flash") {
+            if (model == GEMINI_PRIMARY_MODEL) {
                 Pair(503, makeErrorBody(503, "Busy"))
             } else {
                 Pair(200, makeSuccessBody("Follow-up response after read tool"))
@@ -425,7 +401,7 @@ class GeminiMealPlannerAiProviderTest {
         provider.httpCallHandler = { urlStr, payload ->
             payloads.add(payload)
             val model = urlStr.substringAfter("/models/").substringBefore(":")
-            if (model == "gemini-3.7-flash") {
+            if (model == GEMINI_PRIMARY_MODEL) {
                 Pair(429, makeErrorBody(429, "Quota exceeded"))
             } else {
                 Pair(200, makeSuccessBody("Success"))
@@ -450,7 +426,7 @@ class GeminiMealPlannerAiProviderTest {
         provider.httpCallHandler = { urlStr, payload ->
             payloads.add(payload)
             val model = urlStr.substringAfter("/models/").substringBefore(":")
-            if (model == "gemini-3.7-flash") {
+            if (model == GEMINI_PRIMARY_MODEL) {
                 Pair(429, makeErrorBody(429, "Quota exceeded"))
             } else {
                 Pair(200, makeSuccessBody("Success"))
@@ -471,7 +447,7 @@ class GeminiMealPlannerAiProviderTest {
         provider.httpCallHandler = { urlStr, payload ->
             payloads.add(payload)
             val model = urlStr.substringAfter("/models/").substringBefore(":")
-            if (model == "gemini-3.7-flash") {
+            if (model == GEMINI_PRIMARY_MODEL) {
                 Pair(503, makeErrorBody(503, "Busy"))
             } else {
                 Pair(200, makeSuccessBody("Mutation acknowledged"))
@@ -598,9 +574,8 @@ class GeminiMealPlannerAiProviderTest {
             println("  ${idx + 1}. ${tool.toolName}: $size bytes")
         }
 
-        val scratchDir = java.io.File("/home/proot/.cache/Google/AndroidStudio2026.1.3/projects/chatgpt_mealplanner.b861639a/.artifacts/1dbd63cc-043b-479f-b8a8-8cedec76bf9e/scratch")
-        scratchDir.mkdirs()
-        val dumpFile = java.io.File(scratchDir, "gemini_request_diagnostic_payload.json")
+        val dumpFile = java.io.File.createTempFile("gemini_request_diagnostic_payload", ".json")
+        dumpFile.deleteOnExit()
         dumpFile.writeText(jsonPrinter.encodeToString(fullPayload))
         println("Wrote diagnostic payload to ${dumpFile.absolutePath}")
 

@@ -67,9 +67,6 @@ fun ShoppingScreen(
     modifier: Modifier = Modifier,
     onOpenMeal: (mealId: String, mealDate: String) -> Unit = { _, _ -> }
 ) {
-    LaunchedEffect(Unit) {
-        println("[AI_MEALPLANNER] [SHOPPING_SCREEN_ENTRY] buildAudit=SHOPPING_AUDIT_20261001_02")
-    }
     val snackbarHostState = remember { SnackbarHostState() }
     // Store sections start collapsed so large multi-store lists stay compact.
     // State is keyed by retailer identity so expanding one section doesn't affect another.
@@ -444,14 +441,6 @@ fun ShoppingItemCard(
 ) {
     val item = itemWithSources.item
     val isChecked = item.status == ShoppingItemStatus.CHECKED || item.status == ShoppingItemStatus.PURCHASED_CONFIRMED
-
-    LaunchedEffect(item.id, basketLine) {
-        val assignmentState = if (basketLine != null) "ASSIGNED" else "UNASSIGNED"
-        val retailerName = basketLine?.retailerId?.name ?: "UNASSIGNED"
-        val prodName = basketLine?.productWithOffer?.product?.name ?: "null"
-        val prodId = basketLine?.productWithOffer?.product?.retailerProductId ?: "null"
-        println("[AI_MEALPLANNER] [SHOPPING_UI_ROW] buildAudit=TOMATO_UI_PATH_20261001_01 name=\"${item.displayName}\" assignmentState=$assignmentState retailer=$retailerName productName=\"$prodName\" productId=$prodId")
-    }
 
     Card(
         modifier = Modifier

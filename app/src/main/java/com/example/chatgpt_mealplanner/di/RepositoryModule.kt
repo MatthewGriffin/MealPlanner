@@ -8,8 +8,6 @@ import com.example.chatgpt_mealplanner.core.repository.LeftoverRepository
 import com.example.chatgpt_mealplanner.core.repository.LeftoverRepositoryImpl
 import com.example.chatgpt_mealplanner.core.repository.MealRepository
 import com.example.chatgpt_mealplanner.core.repository.MealRepositoryImpl
-import com.example.chatgpt_mealplanner.core.repository.RetailRepository
-import com.example.chatgpt_mealplanner.core.repository.RetailRepositoryImpl
 import com.example.chatgpt_mealplanner.core.repository.ShoppingRepository
 import com.example.chatgpt_mealplanner.core.repository.ShoppingRepositoryImpl
 import com.example.chatgpt_mealplanner.core.repository.StapleRuleRepository
@@ -67,10 +65,4 @@ abstract class RepositoryModule {
     abstract fun bindChatRepository(
         impl: ChatRepositoryImpl
     ): ChatRepository
-
-    @Binds
-    @Singleton
-    abstract fun bindRetailRepository(
-        impl: RetailRepositoryImpl
-    ): RetailRepository
 }

@@ -350,6 +350,7 @@ class MealPlannerViewModel @Inject constructor(
     }
 
     private fun logDiagnostic(tag: String, message: String) {
+        if (!com.example.chatgpt_mealplanner.BuildConfig.DEBUG) return
         println("[$tag] $message")
         try {
             android.util.Log.d(tag, message)

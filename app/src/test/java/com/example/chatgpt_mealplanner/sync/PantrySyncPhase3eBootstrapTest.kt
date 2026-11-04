@@ -460,11 +460,29 @@ class PantrySyncPhase3eBootstrapTest {
     // 1. deterministic_concurrencyProof_stepsAtoL
     @Test
     fun deterministic_concurrencyProof_stepsAtoL() = runTest {
+        // FakeTransactionRunner doesn't isolate transactions, so this proof needs a runner that
+        // serializes them the way Room does. Otherwise the mutation can overtake the snapshot.
+        val serializingRunner = SerializingTransactionRunner()
+        val serializedEngine = MainCanonicalSyncEngine(
+            canonicalSyncDao = mainCanonicalDao,
+            pairedDeviceDao = mainPairedDeviceDao,
+            inventoryDao = mainInventoryDao,
+            transactionRunner = serializingRunner
+        )
+        val serializedServer = PantrySyncServer(
+            identityManager = identityManager,
+            sessionManager = sessionManager,
+            syncEngine = serializedEngine,
+            canonicalSyncDao = mainCanonicalDao,
+            inventoryDao = mainInventoryDao,
+            transactionRunner = serializingRunner
+        )
+
         val seqReadLatch = CountDownLatch(1)
         val releaseSnapshotTransactionLatch = CountDownLatch(1)
         val mutationStartLatch = CountDownLatch(1)
 
-        server.onInsideSnapshotTransactionHook = {
+        serializedServer.onInsideSnapshotTransactionHook = {
             seqReadLatch.countDown()
             releaseSnapshotTransactionLatch.await()
         }
@@ -494,7 +512,7 @@ class PantrySyncPhase3eBootstrapTest {
 
         // A. Start bootstrap snapshot transaction
         val snapshotDeferred = async(Dispatchers.IO) {
-            buildSnapshotFromMainState()
+            serializedServer.createBootstrapSnapshot()
         }
 
         // B & C. Wait for snapshot transaction to enter, read watermark X, and pause inside hook
@@ -505,7 +523,7 @@ class PantrySyncPhase3eBootstrapTest {
         var mutationResult: SyncOperationResultDto? = null
         val mutationJob = async(Dispatchers.IO) {
             mutationStartLatch.countDown()
-            val res = mainCanonicalEngine.processOperation(followerDeviceId, addOp)
+            val res = serializedEngine.processOperation(followerDeviceId, addOp)
             mutationCommitted = true
             mutationResult = res
             res
@@ -906,4 +924,17 @@ open class FakeChatDao : com.example.chatgpt_mealplanner.core.database.dao.ChatD
     override suspend fun getActiveProposal(conversationId: String) = null
     override suspend fun insertOrUpdateActiveProposal(entity: com.example.chatgpt_mealplanner.core.database.entity.ActiveProposalEntity) {}
     override suspend fun deleteActiveProposal(conversationId: String) {}
+}
+
+private class SerializingTransactionRunner : com.example.chatgpt_mealplanner.core.database.DatabaseTransactionRunner {
+    private val mutex = kotlinx.coroutines.sync.Mutex()
+
+    override suspend fun <T> runInTransaction(block: suspend () -> T): T {
+        mutex.lock()
+        try {
+            return block()
+        } finally {
+            mutex.unlock()
+        }
+    }
 }

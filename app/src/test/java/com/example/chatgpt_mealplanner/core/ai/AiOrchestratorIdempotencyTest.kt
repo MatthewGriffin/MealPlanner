@@ -19,7 +19,6 @@ import com.example.chatgpt_mealplanner.core.ai.validator.RecipeValidator
 import com.example.chatgpt_mealplanner.core.database.entity.AiToolExecutionLogEntity
 import com.example.chatgpt_mealplanner.core.database.entity.ChatMessageEntity
 import com.example.chatgpt_mealplanner.core.repository.ChatRepository
-import com.example.chatgpt_mealplanner.core.repository.RetailRepository
 import com.example.chatgpt_mealplanner.core.security.FakeCredentialStore
 import com.example.chatgpt_mealplanner.core.service.FakeChatDao
 import com.example.chatgpt_mealplanner.core.service.FakeInventoryBarcodeDao
@@ -34,12 +33,8 @@ import com.example.chatgpt_mealplanner.core.service.FakeTransactionDao
 import com.example.chatgpt_mealplanner.core.service.FakeTransactionRunner
 import com.example.chatgpt_mealplanner.core.service.InventoryDomainServiceImpl
 import com.example.chatgpt_mealplanner.core.service.MealDomainServiceImpl
-import com.example.chatgpt_mealplanner.core.service.RetailShoppingDomainServiceImpl
 import com.example.chatgpt_mealplanner.core.service.ShoppingDomainServiceImpl
-import com.example.chatgpt_mealplanner.retail.contract.RetailProductMappingDecision
-import com.example.chatgpt_mealplanner.retail.contract.RetailProductWithOffer
 import com.example.chatgpt_mealplanner.retail.contract.RetailerId
-import com.example.chatgpt_mealplanner.retail.engine.UserProductMappingKey
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -109,7 +104,6 @@ class AiOrchestratorIdempotencyTest {
         val inventoryService = InventoryDomainServiceImpl(inventoryDao, barcodeDao, transactionDao, stapleRuleDao, runner)
         val mealService = MealDomainServiceImpl(mealDao, inventoryDao, transactionDao, leftoverDao, runner)
         val shoppingService = ShoppingDomainServiceImpl(shoppingDao, mealDao, inventoryDao, stapleRuleDao, runner)
-        val retailService = RetailShoppingDomainServiceImpl(shoppingService, shoppingDao, FakeRetailRepository(), retailDao)
 
         pendingMutationStore = com.example.chatgpt_mealplanner.core.ai.pending.PendingMutationStore(fakeChatDao)
         activeProposalStore = com.example.chatgpt_mealplanner.core.ai.proposal.ActiveProposalStore(fakeChatDao)
@@ -456,17 +450,4 @@ private class FakeChatRepository(private val chatDao: FakeChatDao) : ChatReposit
     override suspend fun saveMessage(message: ChatMessageEntity) {
         chatDao.insertMessage(message)
     }
-}
-
-private class FakeRetailRepository : RetailRepository {
-    override suspend fun getProductMappings(): Map<UserProductMappingKey, RetailProductMappingDecision> = emptyMap()
-    override suspend fun saveProductMapping(
-        retailerId: RetailerId,
-        retailerProductId: String,
-        canonicalIngredientId: String,
-        decision: RetailProductMappingDecision,
-        userConfirmed: Boolean
-    ) {}
-    override suspend fun getCandidateProductsWithOffers(): List<RetailProductWithOffer> = emptyList()
-    override suspend fun cacheProductsWithOffers(items: List<RetailProductWithOffer>) {}
 }
