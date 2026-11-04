@@ -15,3 +15,4 @@ local.properties
 *.apk
 .artifacts/
 receipt_ocr_dump.txt
+pantry-copy.tar
