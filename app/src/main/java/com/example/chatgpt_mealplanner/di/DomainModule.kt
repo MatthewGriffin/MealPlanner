@@ -17,12 +17,8 @@ import com.example.chatgpt_mealplanner.core.service.ReceiptRetailBridgeService
 import com.example.chatgpt_mealplanner.core.service.ReceiptRetailBridgeServiceDelegate
 import com.example.chatgpt_mealplanner.core.service.ReceiptSpendDomainService
 import com.example.chatgpt_mealplanner.core.service.ReceiptSpendDomainServiceImpl
-import com.example.chatgpt_mealplanner.core.service.RetailShoppingDomainService
-import com.example.chatgpt_mealplanner.core.service.RetailShoppingDomainServiceImpl
 import com.example.chatgpt_mealplanner.core.service.ShoppingDomainService
 import com.example.chatgpt_mealplanner.core.service.ShoppingDomainServiceImpl
-import com.example.chatgpt_mealplanner.backend.retail.OpenStreetMapStoreDirectory
-import com.example.chatgpt_mealplanner.backend.retail.StoreDirectoryProvider
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
@@ -53,12 +49,6 @@ abstract class DomainModule {
     abstract fun bindShoppingDomainService(
         impl: ShoppingDomainServiceImpl
     ): ShoppingDomainService
-
-    @Binds
-    @Singleton
-    abstract fun bindRetailShoppingDomainService(
-        impl: RetailShoppingDomainServiceImpl
-    ): RetailShoppingDomainService
 
     @Binds
     @Singleton
@@ -111,10 +101,6 @@ abstract class DomainModule {
     companion object {
         @Provides
         @Singleton
-        fun provideStoreDirectoryProvider(): StoreDirectoryProvider = OpenStreetMapStoreDirectory()
-
-        @Provides
-        @Singleton
         fun provideBackendConfig(): BackendConfig {
             return BackendConfig()
         }
@@ -123,36 +109,6 @@ abstract class DomainModule {
         @Singleton
         fun provideIoDispatcher(): CoroutineDispatcher {
             return Dispatchers.IO
-        }
-
-        @Provides
-        @Singleton
-        fun provideIcelandRetailerAdapter(): com.example.chatgpt_mealplanner.backend.retail.IcelandRetailerAdapter {
-            return com.example.chatgpt_mealplanner.backend.retail.IcelandRetailerAdapter()
-        }
-
-        @Provides
-        @Singleton
-        fun provideAsdaRetailerAdapter(): com.example.chatgpt_mealplanner.backend.retail.AsdaRetailerAdapter {
-            return com.example.chatgpt_mealplanner.backend.retail.AsdaRetailerAdapter()
-        }
-
-        @Provides
-        @Singleton
-        fun provideAldiRetailerAdapter(): com.example.chatgpt_mealplanner.backend.retail.AldiRetailerAdapter {
-            return com.example.chatgpt_mealplanner.backend.retail.AldiRetailerAdapter()
-        }
-
-        @Provides
-        @Singleton
-        fun provideAdditionalRetailerAdapter(): com.example.chatgpt_mealplanner.backend.retail.AdditionalRetailerAdapter {
-            return com.example.chatgpt_mealplanner.backend.retail.AdditionalRetailerAdapter()
-        }
-
-        @Provides
-        @Singleton
-        fun provideTescoRetailerAdapter(): com.example.chatgpt_mealplanner.backend.retail.TescoRetailerAdapter {
-            return com.example.chatgpt_mealplanner.backend.retail.TescoRetailerAdapter()
         }
     }
 }

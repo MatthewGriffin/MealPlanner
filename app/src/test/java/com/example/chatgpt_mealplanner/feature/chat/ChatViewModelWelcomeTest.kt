@@ -8,7 +8,6 @@ import com.example.chatgpt_mealplanner.core.ai.provider.MealPlannerAiProvider
 import com.example.chatgpt_mealplanner.core.ai.validator.RecipeValidator
 import com.example.chatgpt_mealplanner.core.database.entity.ChatConversationEntity
 import com.example.chatgpt_mealplanner.core.repository.ChatRepositoryImpl
-import com.example.chatgpt_mealplanner.core.repository.RetailRepositoryImpl
 import com.example.chatgpt_mealplanner.core.service.FakeChatDao
 import com.example.chatgpt_mealplanner.core.service.FakeInventoryBarcodeDao
 import com.example.chatgpt_mealplanner.core.service.FakeInventoryDao
@@ -21,7 +20,6 @@ import com.example.chatgpt_mealplanner.core.service.FakeTransactionDao
 import com.example.chatgpt_mealplanner.core.service.FakeTransactionRunner
 import com.example.chatgpt_mealplanner.core.service.InventoryDomainServiceImpl
 import com.example.chatgpt_mealplanner.core.service.MealDomainServiceImpl
-import com.example.chatgpt_mealplanner.core.service.RetailShoppingDomainServiceImpl
 import com.example.chatgpt_mealplanner.core.service.ShoppingDomainServiceImpl
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -94,13 +92,6 @@ class ChatViewModelWelcomeTest {
             transactionRunner = runner
         )
 
-        val retailRepo = RetailRepositoryImpl(retailDao)
-        val retailShoppingDomainService = RetailShoppingDomainServiceImpl(
-            shoppingDomainService = shoppingDomainService,
-            shoppingDao = shoppingDao,
-            retailRepository = retailRepo,
-            retailDao = retailDao
-        )
 
         val pendingMutationStore = com.example.chatgpt_mealplanner.core.ai.pending.PendingMutationStore(chatDao)
         val activeProposalStore = com.example.chatgpt_mealplanner.core.ai.proposal.ActiveProposalStore(chatDao)

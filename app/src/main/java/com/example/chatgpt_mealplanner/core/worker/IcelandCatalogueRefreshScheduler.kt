@@ -20,8 +20,8 @@ object IcelandCatalogueRefreshScheduler {
         runCatching {
             val workManager = WorkManager.getInstance(context.applicationContext)
             workManager.cancelAllWorkByTag("retail-catalogue")
-            workManager.cancelUniqueWork(IcelandCatalogueRefreshWorker.LAUNCH_WORK_NAME)
-            workManager.cancelUniqueWork(IcelandCatalogueRefreshWorker.PERIODIC_WORK_NAME)
+            workManager.cancelUniqueWork("iceland_catalogue_refresh_on_launch")
+            workManager.cancelUniqueWork("iceland_catalogue_refresh_weekly")
         }
     }
 }

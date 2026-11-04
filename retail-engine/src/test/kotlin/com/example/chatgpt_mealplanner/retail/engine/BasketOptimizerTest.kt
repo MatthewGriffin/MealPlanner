@@ -97,4 +97,14 @@ class BasketOptimizerTest {
         assertEquals("Chopped Tomatoes 400g", comparison.selectedPlan.lines.first().productWithOffer.product.name)
         assertEquals(Money(100L), comparison.selectedPlan.basketSubtotal)
     }
+
+    @Test
+    fun unmatchedRequirements_useStableIds_notDisplayNames() {
+        val first = ShoppingRequirementSpec("id_req_1", "milk", "Milk", 1.0, "PACK", "ESSENTIAL")
+        val second = ShoppingRequirementSpec("id_req_2", "milk", "Milk", 1.0, "PACK", "ESSENTIAL")
+
+        val result = BasketOptimizer(RetailProductMatcher(emptyMap())).optimizeBasket(listOf(first, second), emptyList())
+
+        assertEquals(listOf("id_req_1", "id_req_2"), result.selectedPlan.unmatchedRequirements.sorted())
+    }
 }

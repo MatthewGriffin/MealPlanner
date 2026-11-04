@@ -1,12 +1,3 @@
-import java.util.Properties
-
-val localProperties = Properties()
-val localPropertiesFile = rootProject.file("local.properties")
-if (localPropertiesFile.exists()) {
-    localPropertiesFile.inputStream().use { localProperties.load(it) }
-}
-val asdaApiKey = localProperties.getProperty("ASDA_ALGOLIA_API_KEY", "")
-
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -34,16 +25,12 @@ android {
     }
 
     buildTypes {
-        debug {
-            buildConfigField("String", "ASDA_ALGOLIA_API_KEY", "\"$asdaApiKey\"")
-        }
         release {
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            buildConfigField("String", "ASDA_ALGOLIA_API_KEY", "\"\"")
         }
     }
     compileOptions {
@@ -86,8 +73,6 @@ dependencies {
     implementation(project(":sync-contract"))
     implementation(project(":ai-contract"))
     implementation(project(":retail-contract"))
-    implementation(project(":retail-engine"))
-    implementation(project(":backend"))
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
@@ -123,9 +108,6 @@ dependencies {
     implementation("io.ktor:ktor-server-netty:2.3.12")
     implementation("io.ktor:ktor-server-content-negotiation:2.3.12")
     implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.12")
-    // The Android catalogue refresh worker creates its own Ktor client.
-    implementation("io.ktor:ktor-client-core:2.3.12")
-    implementation("io.ktor:ktor-client-okhttp:2.3.12")
     implementation(libs.retrofit.core)
     implementation(libs.retrofit.kotlinx.serialization)
     implementation(libs.okhttp.core)

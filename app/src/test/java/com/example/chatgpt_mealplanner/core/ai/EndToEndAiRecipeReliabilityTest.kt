@@ -23,7 +23,6 @@ import com.example.chatgpt_mealplanner.core.database.entity.ChatConversationEnti
 import com.example.chatgpt_mealplanner.core.model.MealStatus
 import com.example.chatgpt_mealplanner.core.model.QuantityUnit
 import com.example.chatgpt_mealplanner.core.repository.ChatRepositoryImpl
-import com.example.chatgpt_mealplanner.core.repository.RetailRepositoryImpl
 import com.example.chatgpt_mealplanner.core.security.FakeCredentialStore
 import com.example.chatgpt_mealplanner.core.service.FakeChatDao
 import com.example.chatgpt_mealplanner.core.service.FakeInventoryBarcodeDao
@@ -37,7 +36,6 @@ import com.example.chatgpt_mealplanner.core.service.FakeTransactionDao
 import com.example.chatgpt_mealplanner.core.service.FakeTransactionRunner
 import com.example.chatgpt_mealplanner.core.service.InventoryDomainServiceImpl
 import com.example.chatgpt_mealplanner.core.service.MealDomainServiceImpl
-import com.example.chatgpt_mealplanner.core.service.RetailShoppingDomainServiceImpl
 import com.example.chatgpt_mealplanner.core.service.ShoppingDomainServiceImpl
 import com.example.chatgpt_mealplanner.feature.chat.ChatUiEvent
 import com.example.chatgpt_mealplanner.feature.chat.ChatViewModel
@@ -82,7 +80,6 @@ class EndToEndAiRecipeReliabilityTest {
     private lateinit var inventoryDomainService: InventoryDomainServiceImpl
     private lateinit var mealDomainService: MealDomainServiceImpl
     private lateinit var shoppingDomainService: ShoppingDomainServiceImpl
-    private lateinit var retailShoppingDomainService: RetailShoppingDomainServiceImpl
     private lateinit var chatRepository: ChatRepositoryImpl
 
     private lateinit var aiToolDispatcher: AiToolDispatcher
@@ -144,11 +141,6 @@ class EndToEndAiRecipeReliabilityTest {
             transactionRunner = runner
         )
 
-        retailShoppingDomainService = RetailShoppingDomainServiceImpl(
-            shoppingDomainService = shoppingDomainService,
-            shoppingDao = shoppingDao,
-            retailRepository = RetailRepositoryImpl(retailDao)
-        )
 
         aiToolDispatcher = AiToolDispatcher(
             inventoryDomainService = inventoryDomainService,
