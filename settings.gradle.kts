@@ -26,5 +26,4 @@ rootProject.name = "ChatGPT_MealPlanner"
 include(":app")
 include(":ai-contract")
 include(":retail-contract")
-include(":retail-engine")
 include(":sync-contract")
