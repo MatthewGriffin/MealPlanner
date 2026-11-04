@@ -1,7 +1,14 @@
 package com.example.chatgpt_mealplanner.core.service
 
 import com.example.chatgpt_mealplanner.core.database.DatabaseTransactionRunner
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import kotlin.coroutines.AbstractCoroutineContextElement
+import kotlin.coroutines.CoroutineContext
 
+/** Runs one transaction at a time and allows nesting, like Room, so tests can't see overlapping writes. */
 class FakeTransactionRunner(
     private val fakeMealDao: FakeMealDao? = null,
     private val fakeInventoryDao: FakeInventoryDao? = null,
@@ -13,7 +20,20 @@ class FakeTransactionRunner(
     private val fakeRetailDao: FakeRetailDao? = null
 ) : DatabaseTransactionRunner {
 
+    private val lock = Mutex()
+
+    private inner class InTransaction : AbstractCoroutineContextElement(Key) {
+        val runner get() = this@FakeTransactionRunner
+    }
+
+    private companion object Key : CoroutineContext.Key<FakeTransactionRunner.InTransaction>
+
     override suspend fun <T> runInTransaction(block: suspend () -> T): T {
+        if (currentCoroutineContext()[Key]?.runner === this) return block()
+        return lock.withLock { withContext(InTransaction()) { runWithRollback(block) } }
+    }
+
+    private suspend fun <T> runWithRollback(block: suspend () -> T): T {
         val mealBackup = fakeMealDao?.mealsMap?.toMutableMap()
         val ingBackup = fakeMealDao?.ingredientsMap?.mapValues { it.value.toMutableList() }?.toMutableMap()
         val invBackup = fakeInventoryDao?.itemsMap?.toMutableMap()
