@@ -1,5 +1,7 @@
 package com.example.chatgpt_mealplanner.sync
 
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import com.example.chatgpt_mealplanner.core.database.entity.HouseholdIdentityEntity
 import com.example.chatgpt_mealplanner.core.database.entity.PairedDeviceEntity
 import com.example.chatgpt_mealplanner.core.database.entity.toEntity
@@ -419,6 +421,45 @@ class PantrySyncPhase4gHostLifecycleTest {
         } finally {
             socket?.close()
         }
+    }
+
+    @Test
+    fun requestBodyOverLimit_isRejectedWith413_withOrWithoutContentLength() = kotlinx.coroutines.runBlocking {
+        val household = identityManager.getOrCreateHouseholdIdentity()
+        val p12Store = tlsKeyManager.getOrCreateMainTlsKeyStore(household.householdId)
+        val fingerprint = tlsKeyManager.getCertificateFingerprint(p12Store)
+        val port = getTestPort()
+        server.start(p12Store, tlsKeyManager.getTlsPassword(), port)
+
+        val client = com.example.chatgpt_mealplanner.core.sync.client.PantrySyncTestClient(keyStoreManager)
+            .createPinnedOkHttpClient(fingerprint)
+        val limit = com.example.chatgpt_mealplanner.core.sync.server.MAX_SYNC_REQUEST_BODY_BYTES.toInt()
+        val mediaType = "application/json".toMediaType()
+        fun post(body: okhttp3.RequestBody): Int = client.newCall(
+            okhttp3.Request.Builder().url("https://127.0.0.1:$port/sync/v1/auth/challenge").post(body).build()
+        ).execute().use { it.code }
+
+        // The engine binds asynchronously, so wait for the first successful exchange.
+        var smallBodyCode = -1
+        for (attempt in 0 until 50) {
+            smallBodyCode = runCatching { post("{}".toRequestBody(mediaType)) }.getOrDefault(-1)
+            if (smallBodyCode != -1) break
+            kotlinx.coroutines.delay(100)
+        }
+        assertEquals("A body under the limit reaches the route", 400, smallBodyCode)
+
+        val atLimit = ("{}" + " ".repeat(limit - 2)).toByteArray()
+        assertEquals("A body at the limit reaches the route", 400, post(atLimit.toRequestBody(mediaType)))
+
+        val overLimit = ByteArray(limit + 1024)
+        assertEquals(413, post(overLimit.toRequestBody(mediaType)))
+
+        val chunkedOverLimit = object : okhttp3.RequestBody() {
+            override fun contentType() = mediaType
+            override fun contentLength() = -1L
+            override fun writeTo(sink: okio.BufferedSink) { sink.write(overLimit) }
+        }
+        assertEquals(413, post(chunkedOverLimit))
     }
 
     @Test
