@@ -125,6 +125,8 @@ class GeminiMealPlannerAiProviderTest {
     fun geminiProvider_existingCredential_reachesNetworkRequest() = runBlocking {
         credentialStore.saveKey("valid_persisted_key_456")
         var capturedUrl = ""
+        var capturedKey = ""
+        provider.requestApiKeyObserver = { capturedKey = it }
         provider.httpCallHandler = { url, _ ->
             capturedUrl = url
             Pair(200, makeSuccessBody("Success"))
@@ -140,7 +142,8 @@ class GeminiMealPlannerAiProviderTest {
         )
 
         val response = provider.send(request)
-        assertTrue(capturedUrl.contains("key=valid_persisted_key_456"))
+        assertEquals("valid_persisted_key_456", capturedKey)
+        assertFalse("API key must not be sent in the URL", capturedUrl.contains("valid_persisted_key_456"))
         assertNotEquals("NO_API_KEY", (response as? AiProviderResponse.Error)?.code)
     }
 

@@ -36,6 +36,8 @@ class GeminiCredentialStoreTest {
 
         val provider = GeminiMealPlannerAiProvider(credentialStore = credentialStore)
         var capturedUrl = ""
+        var capturedKey = ""
+        provider.requestApiKeyObserver = { capturedKey = it }
         provider.httpCallHandler = { url, _ ->
             capturedUrl = url
             Pair(200, """{"candidates":[{"content":{"parts":[{"text":"Success"}]}}]}""")
@@ -54,7 +56,8 @@ class GeminiCredentialStoreTest {
         )
 
         val response = provider.send(request)
-        assertTrue(capturedUrl.contains("key=test_secret_gemini_key_123"))
+        assertEquals("test_secret_gemini_key_123", capturedKey)
+        assertFalse("API key must not be sent in the URL", capturedUrl.contains("test_secret_gemini_key_123"))
         assertNotEquals("NO_API_KEY", (response as? AiProviderResponse.Error)?.code)
     }
 
@@ -105,6 +108,8 @@ class GeminiCredentialStoreTest {
         assertTrue(credentialStore.hasKey())
         val provider = GeminiMealPlannerAiProvider(credentialStore = credentialStore)
         var capturedUrl = ""
+        var capturedKey = ""
+        provider.requestApiKeyObserver = { capturedKey = it }
         provider.httpCallHandler = { url, _ ->
             capturedUrl = url
             Pair(200, """{"candidates":[{"content":{"parts":[{"text":"Success"}]}}]}""")
@@ -120,7 +125,8 @@ class GeminiCredentialStoreTest {
         )
 
         val response = provider.send(request)
-        assertTrue(capturedUrl.contains("key=valid_gemini_key"))
+        assertEquals("valid_gemini_key", capturedKey)
+        assertFalse("API key must not be sent in the URL", capturedUrl.contains("valid_gemini_key"))
         assertNotEquals("NO_API_KEY", (response as? AiProviderResponse.Error)?.code)
     }
 }

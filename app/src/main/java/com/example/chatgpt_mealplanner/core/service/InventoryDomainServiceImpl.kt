@@ -283,6 +283,8 @@ class InventoryDomainServiceImpl @Inject constructor(
                                             source = "AUTO_ASSOCIATE_EXACT_NAME"
                                         )
                                     )
+                                } catch (e: kotlinx.coroutines.CancellationException) {
+                                    throw e
                                 } catch (_: Throwable) {}
                             }
                             val updatedItem = inventoryDao.getItemById(targetItem.id)?.toDomainModel() ?: targetItem
@@ -691,6 +693,8 @@ class InventoryDomainServiceImpl @Inject constructor(
                 )
             } catch (_: IllegalArgumentException) {
                 return DomainResult.Failure(DomainError.ItemNotFound(itemId))
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Throwable) {
                 return DomainResult.Failure(DomainError.TransactionFailed(e.message ?: "Failed to record local quantity correction"))
             }
@@ -810,6 +814,8 @@ class InventoryDomainServiceImpl @Inject constructor(
                 return DomainResult.Failure(DomainError.ItemNotFound(itemId))
             } catch (e: DuplicateDiscardRequestException) {
                 return DomainResult.Failure(DomainError.DuplicateOperation(e.message ?: "Discard request for item $itemId is already pending approval"))
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Throwable) {
                 return DomainResult.Failure(DomainError.TransactionFailed(e.message ?: "Failed to record local discard request"))
             }
@@ -911,6 +917,8 @@ class InventoryDomainServiceImpl @Inject constructor(
                 }
             } catch (e: IllegalStateException) {
                 return DomainResult.Failure(DomainError.DuplicateOperation(e.message ?: "Restock blocked by pending operations"))
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Throwable) {
                 return DomainResult.Failure(DomainError.TransactionFailed(e.message ?: "Failed to record local restock"))
             }

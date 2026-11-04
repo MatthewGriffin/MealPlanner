@@ -106,10 +106,14 @@ class MlKitReceiptOcrService @Inject constructor(
                         appendLine("=====================================")
                     }
                     android.util.Log.d("RECEIPT_OCR_DIAGNOSTICS", debugLog)
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
                 } catch (ignored: Throwable) {}
             }
 
             ReceiptOcrResult(lines = sortedLines, fullText = resultText.text)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             ReceiptOcrResult(lines = emptyList(), fullText = "")
         }

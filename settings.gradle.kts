@@ -25,7 +25,6 @@ dependencyResolutionManagement {
 rootProject.name = "ChatGPT_MealPlanner"
 include(":app")
 include(":ai-contract")
-include(":backend")
 include(":retail-contract")
 include(":retail-engine")
 include(":sync-contract")

@@ -79,6 +79,9 @@ open class PantrySyncTestClient @Inject constructor(
     private val json = Json { ignoreUnknownKeys = true }
 
     open fun createPinnedOkHttpClient(pinnedCertFingerprint: String?): OkHttpClient {
+        require(com.example.chatgpt_mealplanner.sync.contract.SyncContractValidation.isValidSha256Fingerprint(pinnedCertFingerprint)) {
+            "Missing, blank, or malformed TLS certificate fingerprint"
+        }
         val trustManager = object : X509TrustManager {
             override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
             override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) {
@@ -92,7 +95,7 @@ open class PantrySyncTestClient @Inject constructor(
                     if (i < digest.size - 1) sb.append(":")
                 }
                 val actualFingerprint = sb.toString()
-                if (!pinnedCertFingerprint.isNullOrBlank() && !actualFingerprint.equals(pinnedCertFingerprint, ignoreCase = true)) {
+                if (!actualFingerprint.equals(pinnedCertFingerprint?.trim(), ignoreCase = true)) {
                     throw java.security.cert.CertificateException("TLS Certificate Pin Mismatch! Expected: $pinnedCertFingerprint, Actual: $actualFingerprint")
                 }
             }
@@ -169,6 +172,8 @@ open class PantrySyncTestClient @Inject constructor(
             } else {
                 TestClientSyncResult(false, false, pingResponseBody, "Ping failed HTTP ${pingResponse.code}")
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             TestClientSyncResult(false, false, null, "Spike error: ${e.message}")
         }
@@ -214,6 +219,8 @@ open class PantrySyncTestClient @Inject constructor(
             }
         } catch (e: java.io.IOException) {
             TestClientOperationResult(status = NetworkResultStatus.TRANSPORT_ERROR, error = e.message ?: "Network transport error")
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             TestClientOperationResult(status = NetworkResultStatus.SERVER_ERROR, error = e.message ?: "Execution error")
         }
@@ -257,6 +264,8 @@ open class PantrySyncTestClient @Inject constructor(
             }
         } catch (e: java.io.IOException) {
             TestClientFeedResult(status = NetworkResultStatus.TRANSPORT_ERROR, error = e.message ?: "Network transport error")
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             TestClientFeedResult(status = NetworkResultStatus.SERVER_ERROR, error = e.message ?: "Execution error")
         }
@@ -270,6 +279,8 @@ open class PantrySyncTestClient @Inject constructor(
     ): TestClientBootstrapResult = withContext(Dispatchers.IO) {
         val client = try {
             createPinnedOkHttpClient(pinnedCertFingerprint)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             return@withContext TestClientBootstrapResult(status = NetworkResultStatus.TRANSPORT_ERROR, error = "TLS_ERROR")
         }
@@ -285,6 +296,8 @@ open class PantrySyncTestClient @Inject constructor(
             client.newCall(request).execute()
         } catch (e: java.io.IOException) {
             return@withContext TestClientBootstrapResult(status = NetworkResultStatus.TRANSPORT_ERROR, error = "NETWORK_ERROR")
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             return@withContext TestClientBootstrapResult(status = NetworkResultStatus.SERVER_ERROR, error = "SERVER_ERROR")
         }
@@ -319,6 +332,8 @@ open class PantrySyncTestClient @Inject constructor(
     ): AuthTokenResult = withContext(Dispatchers.IO) {
         val client = try {
             createPinnedOkHttpClient(pinnedCertFingerprint)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             return@withContext AuthTokenResult.TransportFailure(e.message ?: "TLS setup error")
         }
@@ -331,6 +346,8 @@ open class PantrySyncTestClient @Inject constructor(
             client.newCall(challengeRequest).execute()
         } catch (e: java.io.IOException) {
             return@withContext AuthTokenResult.TransportFailure(e.message ?: "Network transport error during challenge")
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             return@withContext AuthTokenResult.ServerFailure("CHALLENGE_EXEC_ERROR", e.message ?: "Challenge execution error")
         }
@@ -366,6 +383,8 @@ open class PantrySyncTestClient @Inject constructor(
             client.newCall(sessionRequest).execute()
         } catch (e: java.io.IOException) {
             return@withContext AuthTokenResult.TransportFailure(e.message ?: "Network transport error during session request")
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             return@withContext AuthTokenResult.ServerFailure("SESSION_EXEC_ERROR", e.message ?: "Session execution error")
         }
@@ -448,6 +467,8 @@ open class PantrySyncTestClient @Inject constructor(
                     errorMessage = response.message
                 )
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             com.example.chatgpt_mealplanner.sync.contract.EnrollmentResponseDto(
                 success = false,

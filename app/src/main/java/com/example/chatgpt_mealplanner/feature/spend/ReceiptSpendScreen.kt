@@ -81,9 +81,13 @@ fun ReceiptSpendScreen(
         if (success && capturedPhotoUri != null) {
             cameraErrorMessage = null
             android.util.Log.i("AI_MEALPLANNER", "[RECEIPT_CAMERA_RESULT] success=true uri=$capturedPhotoUri")
-            viewModel.processReceiptImage(capturedPhotoUri)
+            // OCR only needs the photo while it runs, so don't leave it in the cache afterwards.
+            viewModel.processReceiptImage(capturedPhotoUri) {
+                runCatching { context.contentResolver.delete(capturedPhotoUri, null, null) }
+            }
         } else {
             android.util.Log.i("AI_MEALPLANNER", "[RECEIPT_CAMERA_CANCELLED] success=$success tempPhotoUri=$capturedPhotoUri")
+            capturedPhotoUri?.let { uri -> runCatching { context.contentResolver.delete(uri, null, null) } }
             if (!success) {
                 cameraErrorMessage = "No photo was captured. Please try again."
             }
@@ -95,6 +99,9 @@ fun ReceiptSpendScreen(
             android.util.Log.i("AI_MEALPLANNER", "[RECEIPT_CAMERA_LAUNCH]")
             // TakePicture writes into the supplied URI; create the destination first
             // so camera apps that require an existing output file can open it.
+            // Clear any photo left behind if the app was killed before OCR finished.
+            context.cacheDir.listFiles { file -> file.name.startsWith("receipt_") && file.name.endsWith(".jpg") }
+                ?.forEach { it.delete() }
             val photoFile = File.createTempFile("receipt_", ".jpg", context.cacheDir)
             val photoUri = FileProvider.getUriForFile(
                 context,
