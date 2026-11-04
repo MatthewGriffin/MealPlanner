@@ -148,7 +148,7 @@ val FOLLOWER_MIGRATION_6_7 = object : Migration(6, 7) {
         FollowerMealRequestEntity::class
     ],
     version = 7,
-    exportSchema = false
+    exportSchema = true
 )
 abstract class FollowerDatabase : RoomDatabase() {
     abstract fun mealDao(): com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerMealDao
