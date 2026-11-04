@@ -18,14 +18,14 @@ class SettingsNavigationTest {
     val composeTestRule = createAndroidComposeRule<MainActivity>()
 
     @Test
-    fun clickGearIcon_navigatesToSettingsScreen_andDisplaysOpenAiApiKey() {
+    fun clickGearIcon_navigatesToSettingsScreen_andDisplaysGeminiApiKey() {
         // 1. Assert gear icon exists in top-right TopAppBar
         composeTestRule.onNodeWithContentDescription("Settings").assertIsDisplayed()
 
         // 2. Perform click on gear icon
         composeTestRule.onNodeWithContentDescription("Settings").performClick()
 
-        // 3. Assert "OpenAI API Key" card title is visible on screen
-        composeTestRule.onNodeWithText("OpenAI API Key").assertIsDisplayed()
+        // 3. Assert "Gemini API Key" card title is visible on screen
+        composeTestRule.onNodeWithText("Gemini API Key").assertIsDisplayed()
     }
 }
