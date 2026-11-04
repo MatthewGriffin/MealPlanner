@@ -15,14 +15,14 @@ class Migration16To17Test {
     }
 
     @Test
-    fun allMigrationsRegisteredInProduction_covers1To22Path() {
-        assertEquals(21, ALL_MIGRATIONS.size)
+    fun allMigrationsRegisteredInProduction_covers1To23Path() {
+        assertEquals(22, ALL_MIGRATIONS.size)
         assertEquals(1, ALL_MIGRATIONS.first().startVersion)
         assertEquals(2, ALL_MIGRATIONS.first().endVersion)
-        assertEquals(21, ALL_MIGRATIONS.last().startVersion)
-        assertEquals(22, ALL_MIGRATIONS.last().endVersion)
+        assertEquals(22, ALL_MIGRATIONS.last().startVersion)
+        assertEquals(23, ALL_MIGRATIONS.last().endVersion)
 
-        // Verify continuous upgrade path from version 1 to 22
+        // Verify continuous upgrade path from version 1 to 23
         for (i in 0 until ALL_MIGRATIONS.size - 1) {
             val current = ALL_MIGRATIONS[i]
             val next = ALL_MIGRATIONS[i + 1]

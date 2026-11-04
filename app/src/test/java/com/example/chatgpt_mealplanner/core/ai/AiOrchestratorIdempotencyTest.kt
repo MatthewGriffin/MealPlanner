@@ -26,7 +26,6 @@ import com.example.chatgpt_mealplanner.core.service.FakeInventoryDao
 import com.example.chatgpt_mealplanner.core.service.FakeLeftoverDao
 import com.example.chatgpt_mealplanner.core.service.FakeMealDao
 import com.example.chatgpt_mealplanner.core.service.FakeReceiptDao
-import com.example.chatgpt_mealplanner.core.service.FakeRetailDao
 import com.example.chatgpt_mealplanner.core.service.FakeShoppingDao
 import com.example.chatgpt_mealplanner.core.service.FakeStapleRuleDao
 import com.example.chatgpt_mealplanner.core.service.FakeTransactionDao
@@ -89,7 +88,6 @@ class AiOrchestratorIdempotencyTest {
         val leftoverDao = FakeLeftoverDao()
         val shoppingDao = FakeShoppingDao()
         val receiptDao = FakeReceiptDao()
-        val retailDao = FakeRetailDao()
         val runner = FakeTransactionRunner(
             fakeMealDao = mealDao,
             fakeInventoryDao = inventoryDao,
@@ -97,8 +95,7 @@ class AiOrchestratorIdempotencyTest {
             fakeLeftoverDao = leftoverDao,
             fakeShoppingDao = shoppingDao,
             fakeStapleRuleDao = stapleRuleDao,
-            fakeReceiptDao = receiptDao,
-            fakeRetailDao = retailDao
+            fakeReceiptDao = receiptDao
         )
 
         val inventoryService = InventoryDomainServiceImpl(inventoryDao, barcodeDao, transactionDao, stapleRuleDao, runner)

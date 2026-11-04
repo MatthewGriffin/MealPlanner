@@ -4,7 +4,6 @@ import com.example.chatgpt_mealplanner.core.model.DomainResult
 import com.example.chatgpt_mealplanner.core.service.FakeInventoryBarcodeDao
 import com.example.chatgpt_mealplanner.core.service.FakeInventoryDao
 import com.example.chatgpt_mealplanner.core.service.FakeReceiptDao
-import com.example.chatgpt_mealplanner.core.service.FakeRetailDao
 import com.example.chatgpt_mealplanner.core.service.FakeShoppingDao
 import com.example.chatgpt_mealplanner.core.service.FakeStapleRuleDao
 import com.example.chatgpt_mealplanner.core.service.FakeTransactionDao
@@ -28,7 +27,6 @@ class ReceiptImportDomainServiceTest {
     private lateinit var transactionDao: FakeTransactionDao
     private lateinit var shoppingDao: FakeShoppingDao
     private lateinit var stapleRuleDao: FakeStapleRuleDao
-    private lateinit var retailDao: FakeRetailDao
     private lateinit var runner: FakeTransactionRunner
 
     private lateinit var inventoryDomainService: InventoryDomainServiceImpl
@@ -42,14 +40,12 @@ class ReceiptImportDomainServiceTest {
         transactionDao = FakeTransactionDao()
         shoppingDao = FakeShoppingDao()
         stapleRuleDao = FakeStapleRuleDao()
-        retailDao = FakeRetailDao()
 
         runner = FakeTransactionRunner(
             fakeInventoryDao = inventoryDao,
             fakeTransactionDao = transactionDao,
             fakeShoppingDao = shoppingDao,
-            fakeReceiptDao = receiptDao,
-            fakeRetailDao = retailDao
+            fakeReceiptDao = receiptDao
         )
 
         inventoryDomainService = InventoryDomainServiceImpl(
@@ -64,7 +60,6 @@ class ReceiptImportDomainServiceTest {
             receiptDao = receiptDao,
             inventoryDomainService = inventoryDomainService,
             shoppingDao = shoppingDao,
-            receiptRetailBridgeService = FakeReceiptRetailBridgeService(),
             transactionRunner = runner
         )
     }

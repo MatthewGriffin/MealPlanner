@@ -67,31 +67,17 @@ class FakeReceiptSpendDao : com.example.chatgpt_mealplanner.core.database.dao.Re
     }
 }
 
-class FakeReceiptRetailBridgeService : com.example.chatgpt_mealplanner.core.service.ReceiptRetailBridgeService {
-    val recordedItems = mutableListOf<com.example.chatgpt_mealplanner.core.service.ReceiptObservationItem>()
-    override suspend fun recordReceiptObservations(
-        receiptId: String,
-        retailerIdStr: String,
-        observedAtMs: Long,
-        items: List<com.example.chatgpt_mealplanner.core.service.ReceiptObservationItem>
-    ) {
-        recordedItems.addAll(items)
-    }
-}
-
 @RunWith(JUnit4::class)
 class ReceiptSpendDomainServiceTest {
 
     private lateinit var dao: FakeReceiptSpendDao
-    private lateinit var bridge: FakeReceiptRetailBridgeService
     private lateinit var service: ReceiptSpendDomainServiceImpl
 
     @Before
     fun setup() {
         dao = FakeReceiptSpendDao()
-        bridge = FakeReceiptRetailBridgeService()
         val runner = FakeTransactionRunner()
-        service = ReceiptSpendDomainServiceImpl(dao, bridge, runner)
+        service = ReceiptSpendDomainServiceImpl(dao, runner)
     }
 
     private suspend fun asdaDraft(vararg items: ReceiptSpendItemDraft): ReceiptSpendDraft {
@@ -126,7 +112,7 @@ class ReceiptSpendDomainServiceTest {
         whenever(listItem.canonicalIngredientId).thenReturn("cheese")
         whenever(shoppingDao.getShoppingListItemById("list_item")).thenReturn(listItem)
         whenever(priceDao.getAllStores()).thenReturn(listOf(UserStoreEntity(id = "asda_store", name = "Asda")))
-        val linking = ReceiptSpendDomainServiceImpl(dao, bridge, FakeTransactionRunner(), priceDao, null, shoppingDao)
+        val linking = ReceiptSpendDomainServiceImpl(dao, FakeTransactionRunner(), priceDao, null, shoppingDao)
 
         val result = linking.saveReceiptSpend(asdaDraft(linkedLine("MATURE CHEDDAR 450G")))
 
@@ -145,7 +131,7 @@ class ReceiptSpendDomainServiceTest {
     fun linkedLine_createsShop_whenNoneMatchesTheRetailer() = runTest {
         val priceDao = mock<PurchasePriceDao>()
         whenever(priceDao.getAllStores()).thenReturn(emptyList())
-        val linking = ReceiptSpendDomainServiceImpl(dao, bridge, FakeTransactionRunner(), priceDao)
+        val linking = ReceiptSpendDomainServiceImpl(dao, FakeTransactionRunner(), priceDao)
 
         linking.saveReceiptSpend(asdaDraft(linkedLine("CHEDDAR")).copy(retailerId = "FOOD_WAREHOUSE"))
 
@@ -158,7 +144,7 @@ class ReceiptSpendDomainServiceTest {
     @Test
     fun unlinkedLines_andUnknownRetailers_recordNoPrice() = runTest {
         val priceDao = mock<PurchasePriceDao>()
-        val linking = ReceiptSpendDomainServiceImpl(dao, bridge, FakeTransactionRunner(), priceDao)
+        val linking = ReceiptSpendDomainServiceImpl(dao, FakeTransactionRunner(), priceDao)
         val unlinked = linkedLine("CHEDDAR").copy(linkedShoppingListItemId = null)
 
         linking.saveReceiptSpend(asdaDraft(unlinked))
@@ -172,7 +158,7 @@ class ReceiptSpendDomainServiceTest {
     fun priceRecordingFailure_doesNotFailTheSavedReceipt() = runTest {
         val priceDao = mock<PurchasePriceDao>()
         whenever(priceDao.getAllStores()).thenThrow(IllegalStateException("database unavailable"))
-        val linking = ReceiptSpendDomainServiceImpl(dao, bridge, FakeTransactionRunner(), priceDao)
+        val linking = ReceiptSpendDomainServiceImpl(dao, FakeTransactionRunner(), priceDao)
 
         val result = linking.saveReceiptSpend(asdaDraft(linkedLine("CHEDDAR")))
 

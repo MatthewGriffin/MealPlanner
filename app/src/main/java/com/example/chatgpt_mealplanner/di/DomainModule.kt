@@ -12,8 +12,6 @@ import com.example.chatgpt_mealplanner.core.service.MealDomainService
 import com.example.chatgpt_mealplanner.core.service.MealDomainServiceImpl
 import com.example.chatgpt_mealplanner.core.service.ReceiptImportDomainService
 import com.example.chatgpt_mealplanner.core.service.ReceiptImportDomainServiceImpl
-import com.example.chatgpt_mealplanner.core.service.ReceiptRetailBridgeService
-import com.example.chatgpt_mealplanner.core.service.ReceiptRetailBridgeServiceDelegate
 import com.example.chatgpt_mealplanner.core.service.ReceiptSpendDomainService
 import com.example.chatgpt_mealplanner.core.service.ReceiptSpendDomainServiceImpl
 import com.example.chatgpt_mealplanner.core.service.ShoppingDomainService
@@ -66,12 +64,6 @@ abstract class DomainModule {
     abstract fun bindReceiptSpendDomainService(
         impl: ReceiptSpendDomainServiceImpl
     ): ReceiptSpendDomainService
-
-    @Binds
-    @Singleton
-    abstract fun bindReceiptRetailBridgeService(
-        impl: ReceiptRetailBridgeServiceDelegate
-    ): ReceiptRetailBridgeService
 
     @Binds
     @Singleton

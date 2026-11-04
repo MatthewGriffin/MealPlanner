@@ -13,7 +13,6 @@ import com.example.chatgpt_mealplanner.core.database.dao.LeftoverDao
 import com.example.chatgpt_mealplanner.core.database.dao.MealDao
 import com.example.chatgpt_mealplanner.core.database.dao.ReceiptDao
 import com.example.chatgpt_mealplanner.core.database.dao.ReceiptSpendDao
-import com.example.chatgpt_mealplanner.core.database.dao.RetailDao
 import com.example.chatgpt_mealplanner.core.database.dao.PurchasePriceDao
 import com.example.chatgpt_mealplanner.core.database.dao.ShoppingDao
 import com.example.chatgpt_mealplanner.core.database.dao.StapleRuleDao
@@ -21,9 +20,6 @@ import com.example.chatgpt_mealplanner.core.database.dao.TransactionDao
 import com.example.chatgpt_mealplanner.core.database.entity.ActiveProposalEntity
 import com.example.chatgpt_mealplanner.core.database.entity.AiToolExecutionLogEntity
 import com.example.chatgpt_mealplanner.core.database.entity.PendingAiMutationEntity
-import com.example.chatgpt_mealplanner.core.database.entity.BasketLineEntity
-import com.example.chatgpt_mealplanner.core.database.entity.BasketPlanEntity
-import com.example.chatgpt_mealplanner.core.database.entity.BasketComparisonCacheEntity
 import com.example.chatgpt_mealplanner.core.database.entity.ChatConversationEntity
 import com.example.chatgpt_mealplanner.core.database.entity.ChatMessageEntity
 import com.example.chatgpt_mealplanner.core.database.entity.InventoryItemBarcodeEntity
@@ -42,9 +38,6 @@ import com.example.chatgpt_mealplanner.core.database.entity.ReceiptImportLineEnt
 import com.example.chatgpt_mealplanner.core.database.entity.ReceiptProductMappingEntity
 import com.example.chatgpt_mealplanner.core.database.entity.ReceiptSpendEntity
 import com.example.chatgpt_mealplanner.core.database.entity.ReceiptSpendItemEntity
-import com.example.chatgpt_mealplanner.core.database.entity.RetailPriceSnapshotEntity
-import com.example.chatgpt_mealplanner.core.database.entity.RetailProductEntity
-import com.example.chatgpt_mealplanner.core.database.entity.RetailProductMappingEntity
 import com.example.chatgpt_mealplanner.core.database.entity.ShoppingListEntity
 import com.example.chatgpt_mealplanner.core.database.entity.ShoppingListItemEntity
 import com.example.chatgpt_mealplanner.core.database.entity.ShoppingRequirementSourceEntity
@@ -920,6 +913,21 @@ val MIGRATION_21_22 = object : Migration(21, 22) {
     }
 }
 
+/** Nothing has read these since live retailer prices were removed. Receipts keep their own copies. */
+val MIGRATION_22_23 = object : Migration(22, 23) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        // Lines reference plans, so they go first.
+        listOf(
+            "basket_lines",
+            "basket_plans",
+            "basket_comparison_cache",
+            "retail_product_mappings",
+            "retail_price_snapshots",
+            "retail_products"
+        ).forEach { table -> db.execSQL("DROP TABLE IF EXISTS `$table`") }
+    }
+}
+
 const val MAIN_DATABASE_NAME = "pantry_planner.db"
 
 val ALL_MIGRATIONS = arrayOf(
@@ -943,7 +951,8 @@ val ALL_MIGRATIONS = arrayOf(
     MIGRATION_18_19,
     MIGRATION_19_20,
     MIGRATION_20_21,
-    MIGRATION_21_22
+    MIGRATION_21_22,
+    MIGRATION_22_23
 )
 
 @Database(
@@ -965,12 +974,6 @@ val ALL_MIGRATIONS = arrayOf(
         AiToolExecutionLogEntity::class,
         PendingAiMutationEntity::class,
         ActiveProposalEntity::class,
-        RetailProductEntity::class,
-        RetailPriceSnapshotEntity::class,
-        RetailProductMappingEntity::class,
-        BasketPlanEntity::class,
-        BasketComparisonCacheEntity::class,
-        BasketLineEntity::class,
         ReceiptImportEntity::class,
         ReceiptImportLineEntity::class,
         ReceiptProductMappingEntity::class,
@@ -987,7 +990,7 @@ val ALL_MIGRATIONS = arrayOf(
         UserStoreEntity::class,
         PurchasePriceObservationEntity::class
     ],
-    version = 22,
+    version = 23,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -1001,7 +1004,6 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun shoppingDao(): ShoppingDao
     abstract fun stapleRuleDao(): StapleRuleDao
     abstract fun chatDao(): ChatDao
-    abstract fun retailDao(): RetailDao
     abstract fun purchasePriceDao(): PurchasePriceDao
     abstract fun receiptDao(): ReceiptDao
     abstract fun receiptSpendDao(): ReceiptSpendDao
