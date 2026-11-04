@@ -3,14 +3,12 @@ set -Eeuo pipefail
 
 cd "$(dirname "$0")"
 
-echo "==> Pulling latest changes from origin/master"
-git pull --ff-only origin master
+branch="$(git rev-parse --abbrev-ref HEAD)"
+echo "==> Pulling latest changes for ${branch}"
+git pull --ff-only
 
-echo "==> Building debug APK"
-./gradlew --no-daemon :app:assembleDebug
-
-echo "==> Running sync-contract and app unit tests"
-./gradlew --no-daemon :sync-contract:test :app:testDebugUnitTest
+echo "==> Building debug APK and running all module unit tests"
+./gradlew --no-daemon assembleDebug test --continue
 
 echo "==> Git pull, build, and unit tests passed"
 exit 0
