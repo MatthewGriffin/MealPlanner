@@ -2,6 +2,7 @@ package com.example.chatgpt_mealplanner.core.backup
 
 val ENCRYPTED_CONTAINER_MAGIC = "PANTRYENC".toByteArray(Charsets.US_ASCII) // 9 bytes
 const val ENCRYPTED_WIRE_VERSION = 1 // 4 bytes Big-Endian Int32
+const val FULL_BACKUP_WIRE_VERSION = 2 // Whole-database archive, restorable by this app
 const val KDF_ID_PBKDF2_HMAC_SHA256: Short = 1 // 2 bytes
 const val AEAD_ID_AES_256_GCM: Short = 1 // 2 bytes
 const val KDF_SALT_SIZE_BYTES = 32 // 32 bytes

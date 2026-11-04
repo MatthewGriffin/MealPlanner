@@ -61,6 +61,12 @@ fun SettingsScreen(
         viewModel.onBackupDestinationSelected(uri)
     }
 
+    val restoreBackupLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        viewModel.onRestoreFileSelected(uri)
+    }
+
     val uiState by viewModel.uiState.collectAsState()
     var apiKeyInput by remember { mutableStateOf("") }
     var userShopNameInput by remember { mutableStateOf("") }
@@ -84,6 +90,17 @@ fun SettingsScreen(
                     Text("Cancel")
                 }
             }
+        )
+    }
+
+    if (uiState.restartToFinishRestore) {
+        androidx.compose.runtime.LaunchedEffect(Unit) { restartApp(context) }
+    }
+
+    if (uiState.pendingRestoreUri != null) {
+        RestoreBackupDialog(
+            onDismiss = { viewModel.dismissRestoreDialog() },
+            onConfirm = { passChars -> viewModel.executeRestore(passChars) }
         )
     }
 
@@ -389,13 +406,21 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = if (uiState.isMainRole) {
-                        "Saves a passphrase-protected, encrypted backup of all household items, staples, categories, and canonical sync operations to a location you choose."
+                        "Saves a passphrase-protected backup of everything on this phone, including your Gemini key and sync identity. Anyone with the file and passphrase can read them."
                     } else {
                         "Household backup is available on the Main device only."
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                Spacer(modifier = Modifier.height(8.dp))
+                androidx.compose.material3.OutlinedButton(
+                    onClick = { restoreBackupLauncher.launch(arrayOf("*/*")) },
+                    enabled = uiState.isMainRole && !uiState.isRestoreInProgress && !uiState.isBackupInProgress,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(if (uiState.isRestoreInProgress) "Restoring Backup..." else "Restore from Backup")
+                }
                 if (uiState.backupStatusMessage != null) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(uiState.backupStatusMessage!!, color = MaterialTheme.colorScheme.primary)
@@ -405,6 +430,54 @@ fun SettingsScreen(
     }
 }
 
+
+private fun restartApp(context: android.content.Context) {
+    val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName) ?: return
+    val component = launchIntent.component ?: return
+    context.startActivity(android.content.Intent.makeRestartActivityTask(component))
+    Runtime.getRuntime().exit(0)
+}
+
+@Composable
+private fun RestoreBackupDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (CharArray) -> Unit
+) {
+    var passphrase by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Restore from Backup", fontWeight = FontWeight.Bold) },
+        text = {
+            Column {
+                Text(
+                    "This replaces everything on this phone with the backup, and the app will restart. " +
+                        "Any joined phones will need to re-pair and resync.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = passphrase,
+                    onValueChange = { passphrase = it },
+                    label = { Text("Backup Passphrase") },
+                    singleLine = true,
+                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm(passphrase.toCharArray()) },
+                enabled = passphrase.isNotEmpty()
+            ) {
+                Text("Replace My Data")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
 
 @Composable
 fun EncryptedBackupPassphraseDialog(

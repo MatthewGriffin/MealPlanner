@@ -920,6 +920,8 @@ val MIGRATION_21_22 = object : Migration(21, 22) {
     }
 }
 
+const val MAIN_DATABASE_NAME = "pantry_planner.db"
+
 val ALL_MIGRATIONS = arrayOf(
     MIGRATION_1_2,
     MIGRATION_2_3,

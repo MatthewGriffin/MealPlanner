@@ -12,7 +12,8 @@ open class MainEncryptedBackupSaveCoordinator @Inject constructor(
     private val appRoleResolver: AppRoleResolver,
     private val snapshotBuilder: MainBackupSnapshotBuilder,
     private val encryptionCodec: MainBackupEncryptionCodec,
-    private val safWriter: MainEncryptedBackupSafWriter
+    private val safWriter: MainEncryptedBackupSafWriter,
+    private val fullBackupManager: FullBackupManager? = null
 ) {
 
     open suspend fun executeMainBackupSave(
@@ -48,6 +49,21 @@ open class MainEncryptedBackupSaveCoordinator @Inject constructor(
             return SafBackupOutcome.NoDocumentIoAttempted(
                 DomainError.TransactionFailed("No document I/O attempted: Backup cancelled (no document destination selected).")
             )
+        }
+
+        if (fullBackupManager != null) {
+            val encryptedBackup = try {
+                fullBackupManager.createEncryptedBackup(passphrase, currentTimeMs)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                return SafBackupOutcome.NoDocumentIoAttempted(
+                    DomainError.TransactionFailed("No document I/O attempted: Failed creating the household backup: ${e.message}")
+                )
+            }
+            return safWriter.writeAndVerifyFullBackup(appContext, destinationUri, encryptedBackup) { saved ->
+                fullBackupManager.verifyEncryptedBackup(saved, passphrase)
+            }
         }
 
         // 4. Collect transactional Main snapshot

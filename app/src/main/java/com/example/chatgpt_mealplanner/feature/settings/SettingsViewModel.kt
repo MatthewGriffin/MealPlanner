@@ -46,6 +46,9 @@ data class SettingsUiState(
     val backupStatusMessage: String? = null,
     val isBackupInProgress: Boolean = false,
     val isPassphraseDialogVisible: Boolean = false,
+    val pendingRestoreUri: android.net.Uri? = null,
+    val isRestoreInProgress: Boolean = false,
+    val restartToFinishRestore: Boolean = false,
     val pendingBackupUri: android.net.Uri? = null,
     val userStores: List<UserStoreEntity> = emptyList(),
     val recentPriceHistory: List<PurchasePriceWithStore> = emptyList(),
@@ -61,9 +64,12 @@ class SettingsViewModel @Inject constructor(
     private val followerSyncScheduler: FollowerSyncScheduler,
     private val appRoleResolver: AppRoleResolver,
     private val mainBackupSaveCoordinator: MainEncryptedBackupSaveCoordinator,
-    private val purchasePriceDao: PurchasePriceDao? = null
+    private val purchasePriceDao: PurchasePriceDao? = null,
+    private val fullBackupManager: com.example.chatgpt_mealplanner.core.backup.FullBackupManager? = null
 ) : ViewModel() {
-    private val _uiState = MutableStateFlow(SettingsUiState())
+    private val _uiState = MutableStateFlow(
+        SettingsUiState(backupStatusMessage = fullBackupManager?.consumeLastRestoreResult())
+    )
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
     init {
@@ -403,6 +409,50 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun onRestoreFileSelected(uri: android.net.Uri?) {
+        if (uri == null) return
+        if (!appRoleResolver.isMain()) {
+            _uiState.update { it.copy(backupStatusMessage = "This phone is joined to a household. Only the Main phone can restore a backup.") }
+            return
+        }
+        _uiState.update { it.copy(pendingRestoreUri = uri, backupStatusMessage = null) }
+    }
+
+    fun dismissRestoreDialog() {
+        _uiState.update { it.copy(pendingRestoreUri = null) }
+    }
+
+    fun executeRestore(passphrase: CharArray, ioDispatcher: CoroutineDispatcher = Dispatchers.IO) {
+        val uri = _uiState.value.pendingRestoreUri
+        val manager = fullBackupManager
+        if (uri == null || manager == null || _uiState.value.isRestoreInProgress) {
+            Arrays.fill(passphrase, ' ')
+            return
+        }
+        _uiState.update {
+            it.copy(pendingRestoreUri = null, isRestoreInProgress = true, backupStatusMessage = "Checking backup...")
+        }
+        viewModelScope.launch {
+            try {
+                when (val result = withContext(ioDispatcher) { manager.stageRestore(uri, passphrase) }) {
+                    is com.example.chatgpt_mealplanner.core.model.DomainResult.Success ->
+                        _uiState.update { it.copy(restartToFinishRestore = true) }
+                    is com.example.chatgpt_mealplanner.core.model.DomainResult.Failure ->
+                        _uiState.update {
+                            val cause = (result.error as? com.example.chatgpt_mealplanner.core.model.DomainError.TransactionFailed)?.cause
+                            it.copy(isRestoreInProgress = false, backupStatusMessage = cause ?: "Restore failed. Your data hasn't changed.")
+                        }
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isRestoreInProgress = false, backupStatusMessage = "Restore failed. Your data hasn't changed.") }
+            } finally {
+                Arrays.fill(passphrase, ' ')
+            }
+        }
+    }
+
     fun dismissPassphraseDialog() {
         _uiState.update {
             it.copy(
@@ -475,6 +525,9 @@ class SettingsViewModel @Inject constructor(
 
                 val displayName = getDocumentDisplayName(appContext, destinationUri) ?: "Selected file"
                 val resultText = when (outcome) {
+                    is SafBackupOutcome.VerifiedFullBackup -> {
+                        "Full household backup encrypted, verified and saved to $displayName."
+                    }
                     is SafBackupOutcome.VerifiedSuccess -> {
                         "Household backup encrypted and verified successfully saved to $displayName!"
                     }
