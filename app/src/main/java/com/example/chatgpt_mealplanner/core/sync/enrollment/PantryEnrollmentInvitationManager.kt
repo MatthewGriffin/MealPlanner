@@ -1,5 +1,6 @@
 package com.example.chatgpt_mealplanner.core.sync.enrollment
 
+import com.example.chatgpt_mealplanner.core.util.rethrowIfCancelled
 import com.example.chatgpt_mealplanner.core.database.dao.PairedDeviceDao
 import com.example.chatgpt_mealplanner.core.database.entity.PairedDeviceEntity
 import com.example.chatgpt_mealplanner.sync.contract.EnrollmentRequestDto
@@ -233,6 +234,7 @@ open class PantryEnrollmentInvitationManager @Inject constructor(
         } catch (e: Exception) {
             // Registration failed: Release claim without marking invitation consumed
             invitation.claimedByDeviceId = null
+            rethrowIfCancelled()
             EnrollmentResponseDto(
                 success = false,
                 householdId = expectedHouseholdId,

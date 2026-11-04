@@ -1,5 +1,6 @@
 package com.example.chatgpt_mealplanner.core.sync.follower.engine
 
+import com.example.chatgpt_mealplanner.core.util.rethrowIfCancelled
 import androidx.room.withTransaction
 import com.example.chatgpt_mealplanner.core.database.AppDatabase
 import com.example.chatgpt_mealplanner.core.database.entity.ShoppingListEntity
@@ -58,6 +59,7 @@ class FollowerMealPlanSyncEngine @Inject constructor(
         } catch (e: java.time.DateTimeException) {
             failure("Main's meal snapshot contains an invalid meal date.")
         } catch (e: Exception) {
+            rethrowIfCancelled()
             println("[MEAL_SYNC] install_failed type=${e.javaClass.simpleName}")
             failure("Could not save Main's meal plan on this device.")
         }

@@ -1,5 +1,6 @@
 package com.example.chatgpt_mealplanner.feature.settings
 
+import com.example.chatgpt_mealplanner.core.util.rethrowIfCancelled
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -116,6 +117,7 @@ class SettingsViewModel @Inject constructor(
                 )
                 _uiState.update { it.copy(syncStatusMessage = "Added shop: $cleanName") }
             } catch (e: Exception) {
+                rethrowIfCancelled()
                 _uiState.update { it.copy(syncStatusMessage = "Could not add shop: ${e.message ?: "unknown error"}") }
             }
         }
@@ -138,6 +140,7 @@ class SettingsViewModel @Inject constructor(
                 dao.updateStore(store.copy(name = cleanName, updatedAt = System.currentTimeMillis()))
                 _uiState.update { it.copy(syncStatusMessage = "Shop renamed to $cleanName") }
             } catch (e: Exception) {
+                rethrowIfCancelled()
                 _uiState.update { it.copy(syncStatusMessage = "Could not rename shop: ${e.message ?: "unknown error"}") }
             }
         }
@@ -196,6 +199,7 @@ class SettingsViewModel @Inject constructor(
                 )
                 _uiState.update { it.copy(syncStatusMessage = "Saved £${"%.2f".format(priceMinorUnits / 100.0)} for $cleanName at ${store.name}.") }
             } catch (e: Exception) {
+                rethrowIfCancelled()
                 _uiState.update { it.copy(syncStatusMessage = "Could not save price: ${e.message ?: "unknown error"}") }
             }
         }
@@ -220,6 +224,7 @@ class SettingsViewModel @Inject constructor(
                 dao.archiveStore(storeId)
                 _uiState.update { it.copy(syncStatusMessage = "Shop archived. Its purchase history is retained.") }
             } catch (e: Exception) {
+                rethrowIfCancelled()
                 _uiState.update { it.copy(syncStatusMessage = "Could not archive shop: ${e.message ?: "unknown error"}") }
             }
         }
@@ -374,6 +379,7 @@ class SettingsViewModel @Inject constructor(
                     it.copy(exportMessage = "Inventory export saved successfully to $displayName.")
                 }
             } catch (e: Exception) {
+                rethrowIfCancelled()
                 _uiState.update {
                     it.copy(exportMessage = "Export failed: ${e.message ?: "Unknown error"}")
                 }

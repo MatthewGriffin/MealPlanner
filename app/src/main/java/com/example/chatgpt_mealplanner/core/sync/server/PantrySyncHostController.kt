@@ -1,5 +1,6 @@
 package com.example.chatgpt_mealplanner.core.sync.server
 
+import com.example.chatgpt_mealplanner.core.util.rethrowIfCancelled
 import android.content.Context
 import android.content.Intent
 import androidx.core.content.ContextCompat
@@ -162,6 +163,7 @@ open class PantrySyncHostController @Inject constructor(
         val client = try {
             createPinnedOkHttpClient(expectedTlsFingerprint)
         } catch (e: Exception) {
+            rethrowIfCancelled()
             return@withContext false
         }
 
@@ -184,6 +186,7 @@ open class PantrySyncHostController @Inject constructor(
                     val dto = runCatching { json.decodeFromString<HealthResponseDto>(body) }.getOrNull()
                     response.isSuccessful && dto != null && dto.status == "ok" && dto.service == "pantry-household-sync"
                 } catch (e: Exception) {
+                    rethrowIfCancelled()
                     false
                 }
 

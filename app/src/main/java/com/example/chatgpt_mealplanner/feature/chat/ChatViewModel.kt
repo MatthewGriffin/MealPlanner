@@ -1,5 +1,6 @@
 package com.example.chatgpt_mealplanner.feature.chat
 
+import com.example.chatgpt_mealplanner.core.util.rethrowIfCancelled
 import android.content.Context
 import android.os.PowerManager
 import androidx.lifecycle.ViewModel
@@ -567,6 +568,7 @@ class ChatViewModel @Inject constructor(
                                 mealChangeRequestIdFlow.value = null
                                 errorMessageFlow.value = "Updated '${meal.title}' and completed the change request."
                             } catch (e: Exception) {
+                                rethrowIfCancelled()
                                 errorMessageFlow.value = "The meal was updated, but the request could not be marked complete. It remains open for retry."
                             }
                         } else {

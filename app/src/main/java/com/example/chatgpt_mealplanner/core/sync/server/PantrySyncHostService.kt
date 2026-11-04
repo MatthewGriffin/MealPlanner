@@ -1,5 +1,6 @@
 package com.example.chatgpt_mealplanner.core.sync.server
 
+import com.example.chatgpt_mealplanner.core.util.rethrowIfCancelled
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -89,6 +90,7 @@ class PantrySyncHostService : Service() {
                 _serviceState.value = HostServiceState.READY
             } catch (e: Exception) {
                 _serviceState.value = HostServiceState.FAILED
+                rethrowIfCancelled()
             }
         }
 

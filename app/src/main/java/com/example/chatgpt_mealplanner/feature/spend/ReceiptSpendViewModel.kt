@@ -1,5 +1,6 @@
 package com.example.chatgpt_mealplanner.feature.spend
 
+import com.example.chatgpt_mealplanner.core.util.rethrowIfCancelled
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -195,6 +196,7 @@ class ReceiptSpendViewModel @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
+                rethrowIfCancelled()
                 android.util.Log.i("AI_MEALPLANNER", "[RECEIPT_SCAN_PROCESSING_ERROR] exception=${e.javaClass.simpleName} message=\"${e.message}\"")
                 _uiState.update { it.copy(isScanning = false, errorMessage = "Failed to process receipt image: ${e.localizedMessage}") }
             } finally {

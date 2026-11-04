@@ -1,5 +1,6 @@
 package com.example.chatgpt_mealplanner.core.sync.follower.client
 
+import com.example.chatgpt_mealplanner.core.util.rethrowIfCancelled
 import com.example.chatgpt_mealplanner.core.sync.client.PantrySyncTestClient
 import com.example.chatgpt_mealplanner.core.sync.follower.database.FollowerDatabase
 import com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerDao
@@ -104,6 +105,7 @@ open class FollowerSyncUploader @Inject constructor(
                                 operationDto = dto
                             )
                         } catch (_: Exception) {
+                            rethrowIfCancelled()
                             // Retain original result if session refresh fails
                         }
                     }

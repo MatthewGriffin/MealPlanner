@@ -1,5 +1,6 @@
 package com.example.chatgpt_mealplanner.core.ai.provider
 
+import com.example.chatgpt_mealplanner.core.util.rethrowIfCancelled
 import android.util.Log
 import com.example.chatgpt_mealplanner.contract.AiChatMessage
 import com.example.chatgpt_mealplanner.contract.AiContextPayload
@@ -126,6 +127,7 @@ class GeminiMealPlannerAiProvider @Inject constructor(
                 response
             }
         } catch (e: Exception) {
+            rethrowIfCancelled()
             AiProviderResponse.Error("CONNECTION_FAILED", e.message ?: "Failed connecting to Gemini API")
         }
     }

@@ -1,5 +1,6 @@
 package com.example.chatgpt_mealplanner.core.startup
 
+import com.example.chatgpt_mealplanner.core.util.rethrowIfCancelled
 import android.content.Context
 import com.example.chatgpt_mealplanner.core.database.AppDatabase
 import com.example.chatgpt_mealplanner.core.sync.follower.config.FollowerPairingStore
@@ -29,6 +30,7 @@ class AppStartupManager @Inject constructor(
             database.inventoryDao().getAllItemsSync()
             AppHealthStatus.HEALTHY
         } catch (e: Exception) {
+            rethrowIfCancelled()
             AppHealthStatus.DATABASE_CORRUPT
         }
 

@@ -1,5 +1,6 @@
 package com.example.chatgpt_mealplanner.core.backup
 
+import com.example.chatgpt_mealplanner.core.util.rethrowIfCancelled
 import com.example.chatgpt_mealplanner.core.database.AppDatabase
 import com.example.chatgpt_mealplanner.core.database.DatabaseTransactionRunner
 import com.example.chatgpt_mealplanner.core.database.entity.InventoryItemEntity
@@ -125,6 +126,7 @@ open class BackupManager @Inject constructor(
             }
             DomainResult.Success(Unit)
         } catch (e: Exception) {
+            rethrowIfCancelled()
             DomainResult.Failure(DomainError.TransactionFailed("Import restoration failed: ${e.message}"))
         }
     }

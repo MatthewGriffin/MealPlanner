@@ -1,5 +1,6 @@
 package com.example.chatgpt_mealplanner.core.sync.server
 
+import com.example.chatgpt_mealplanner.core.util.rethrowIfCancelled
 import com.example.chatgpt_mealplanner.core.database.entity.toDomainModel
 import com.example.chatgpt_mealplanner.core.database.DatabaseTransactionRunner
 import com.example.chatgpt_mealplanner.core.database.dao.CanonicalSyncDao
@@ -648,6 +649,7 @@ open class PantrySyncServer @Inject constructor(
         val client = try {
             createPinnedOkHttpClient(expectedTlsFingerprint)
         } catch (e: Exception) {
+            rethrowIfCancelled()
             return@withContext false
         }
 
@@ -667,6 +669,7 @@ open class PantrySyncServer @Inject constructor(
             }
         } catch (e: Exception) {
             markFailed()
+            rethrowIfCancelled()
             false
         }
     }
