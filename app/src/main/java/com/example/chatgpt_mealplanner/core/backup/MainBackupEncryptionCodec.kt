@@ -15,26 +15,8 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-open class MainBackupEncryptionCodec @Inject constructor(
-    private val containerEncoderDecoder: MainBackupContainerEncoderDecoder
-) {
+open class MainBackupEncryptionCodec @Inject constructor() {
     private val secureRandom = SecureRandom()
-
-    open fun encodeEncryptedBackup(
-        snapshot: MainHouseholdBackupDto,
-        passphrase: CharArray,
-        currentTimeMs: Long = System.currentTimeMillis(),
-        iterations: Int = DEFAULT_KDF_ITERATIONS
-    ): ByteArray {
-        require(passphrase.isNotEmpty()) { "Backup passphrase MUST NOT be empty." }
-        require(iterations in MIN_KDF_ITERATIONS..MAX_KDF_ITERATIONS) {
-            "KDF iterations $iterations outside permitted range [$MIN_KDF_ITERATIONS, $MAX_KDF_ITERATIONS]."
-        }
-
-        // Encode snapshot DTO into plaintext .pantrybak container
-        val plaintextContainerBytes = containerEncoderDecoder.encodeContainer(snapshot, currentTimeMs)
-        return encryptPayload(plaintextContainerBytes, passphrase, iterations, ENCRYPTED_WIRE_VERSION)
-    }
 
     open fun encodeFullBackup(
         archive: ByteArray,
@@ -46,14 +28,13 @@ open class MainBackupEncryptionCodec @Inject constructor(
             "KDF iterations $iterations outside permitted range [$MIN_KDF_ITERATIONS, $MAX_KDF_ITERATIONS]."
         }
         require(archive.size <= MAX_CONTAINER_BODY_SIZE_BYTES) { "Household data is too large to back up." }
-        return encryptPayload(archive, passphrase, iterations, FULL_BACKUP_WIRE_VERSION)
+        return encryptPayload(archive, passphrase, iterations)
     }
 
     private fun encryptPayload(
-        plaintextContainerBytes: ByteArray,
+        plaintextBytes: ByteArray,
         passphrase: CharArray,
-        iterations: Int,
-        wireVersion: Int
+        iterations: Int
     ): ByteArray {
         // 2. Generate random salt and nonce
         val salt = ByteArray(KDF_SALT_SIZE_BYTES)
@@ -69,13 +50,13 @@ open class MainBackupEncryptionCodec @Inject constructor(
         val gcmSpec = GCMParameterSpec(AEAD_GCM_TAG_SIZE_BITS, nonce)
 
         // Calculate expected ciphertext length: plaintext length + 16B GCM tag
-        val ciphertextLength = plaintextContainerBytes.size + AEAD_GCM_TAG_SIZE_BYTES
+        val ciphertextLength = plaintextBytes.size + AEAD_GCM_TAG_SIZE_BYTES
 
         // 5. Construct 59-byte raw header
         val headerBuffer = ByteBuffer.allocate(ENCRYPTED_HEADER_SIZE_BYTES).apply {
             order(ByteOrder.BIG_ENDIAN)
             put(ENCRYPTED_CONTAINER_MAGIC)
-            putInt(wireVersion)
+            putInt(FULL_BACKUP_WIRE_VERSION)
             putShort(KDF_ID_PBKDF2_HMAC_SHA256)
             putShort(AEAD_ID_AES_256_GCM)
             put(salt)
@@ -89,7 +70,7 @@ open class MainBackupEncryptionCodec @Inject constructor(
         cipher.init(Cipher.ENCRYPT_MODE, secretKey, gcmSpec)
         cipher.updateAAD(headerBytes)
 
-        val ciphertextWithTag = cipher.doFinal(plaintextContainerBytes)
+        val ciphertextWithTag = cipher.doFinal(plaintextBytes)
 
         // 7. Output complete encrypted container: [Header (59B)][Ciphertext + GCM Tag]
         val outputBuffer = ByteBuffer.allocate(headerBytes.size + ciphertextWithTag.size).apply {
@@ -101,22 +82,11 @@ open class MainBackupEncryptionCodec @Inject constructor(
         return outputBuffer.array()
     }
 
-    open fun decodeAndValidateEncryptedBackup(
-        encryptedBytes: ByteArray,
-        passphrase: CharArray
-    ): DomainResult<MainHouseholdBackupDto> {
-        return when (val decrypted = decryptPayload(encryptedBytes, passphrase, ENCRYPTED_WIRE_VERSION)) {
-            is DomainResult.Failure -> DomainResult.Failure(decrypted.error)
-            // Pass Decrypted Plaintext to PANTRYBK Container Decoder
-            is DomainResult.Success -> containerEncoderDecoder.decodeAndValidateContainer(decrypted.value)
-        }
-    }
-
     open fun decodeFullBackup(encryptedBytes: ByteArray, passphrase: CharArray): DomainResult<ByteArray> {
         if (encryptedBytes.size >= ENCRYPTED_HEADER_SIZE_BYTES) {
             val wireVersion = ByteBuffer.wrap(encryptedBytes, ENCRYPTED_CONTAINER_MAGIC.size, 4)
                 .order(ByteOrder.BIG_ENDIAN).int
-            if (wireVersion == ENCRYPTED_WIRE_VERSION) {
+            if (wireVersion == LEGACY_WIRE_VERSION) {
                 return DomainResult.Failure(
                     DomainError.TransactionFailed(
                         "This backup was made by an older version of the app and can't be restored. Save a new backup to replace it."
@@ -124,13 +94,12 @@ open class MainBackupEncryptionCodec @Inject constructor(
                 )
             }
         }
-        return decryptPayload(encryptedBytes, passphrase, FULL_BACKUP_WIRE_VERSION)
+        return decryptPayload(encryptedBytes, passphrase)
     }
 
     private fun decryptPayload(
         encryptedBytes: ByteArray,
-        passphrase: CharArray,
-        expectedWireVersion: Int
+        passphrase: CharArray
     ): DomainResult<ByteArray> {
         if (passphrase.isEmpty()) {
             return DomainResult.Failure(DomainError.TransactionFailed("Backup passphrase MUST NOT be empty."))
@@ -168,9 +137,9 @@ open class MainBackupEncryptionCodec @Inject constructor(
 
         // 2. Verify Wire Version (4 bytes)
         val wireVersion = headerBuffer.int
-        if (wireVersion != expectedWireVersion) {
+        if (wireVersion != FULL_BACKUP_WIRE_VERSION) {
             return DomainResult.Failure(
-                DomainError.TransactionFailed("Unsupported encrypted wire version: $wireVersion. Expected $expectedWireVersion.")
+                DomainError.TransactionFailed("Unsupported encrypted wire version: $wireVersion. Expected $FULL_BACKUP_WIRE_VERSION.")
             )
         }
 

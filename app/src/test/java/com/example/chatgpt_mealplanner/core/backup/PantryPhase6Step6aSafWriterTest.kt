@@ -2,16 +2,19 @@ package com.example.chatgpt_mealplanner.core.backup
 
 import android.content.Context
 import android.net.Uri
-import com.example.chatgpt_mealplanner.core.database.DatabaseTransactionRunner
 import com.example.chatgpt_mealplanner.core.sync.AppRoleResolver
 import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
-import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.junit.runners.JUnit4
+import org.mockito.kotlin.any
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
+import org.mockito.kotlin.verify
+import org.mockito.kotlin.whenever
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
@@ -20,16 +23,8 @@ import java.io.OutputStream
 @RunWith(JUnit4::class)
 class PantryPhase6Step6aSafWriterTest {
 
-    private lateinit var encoderDecoder: MainBackupContainerEncoderDecoder
-    private lateinit var codec: MainBackupEncryptionCodec
-
-    @Before
-    fun setUp() {
-        encoderDecoder = MainBackupContainerEncoderDecoder()
-        codec = MainBackupEncryptionCodec(encoderDecoder)
-    }
-
     private val dummyUri: Uri = android.net.FakeUri()
+    private val encryptedBytes = ByteArray(256) { it.toByte() }
 
     private class FakeAppRoleResolver(private val isMainRole: Boolean) : AppRoleResolver(
         com.example.chatgpt_mealplanner.core.sync.follower.config.FollowerPairingStore(null)
@@ -48,279 +43,191 @@ class PantryPhase6Step6aSafWriterTest {
         override fun openInputStream(appContext: Context?, uri: Uri?): InputStream? = inputStreamProvider()
     }
 
-    private fun createSampleSnapshot(): MainHouseholdBackupDto = MainHouseholdBackupDto(
-        exportedAt = 1791890000000L,
-        householdId = "house-saf-100",
-        householdName = "SAF Writer Test Household",
-        mainDeviceId = "main-dev-1",
-        nextCanonicalSequence = 42L,
-        inventory = listOf(
-            InventoryItemExportDto(
-                id = "item-saf-1",
-                barcode = "123456789",
-                canonicalIngredientId = "ING_OIL",
-                canonicalName = "olive oil",
-                displayName = "Extra Virgin Olive Oil",
-                brand = "Asda",
-                category = "CUPBOARD",
-                storageLocation = "CUPBOARD",
-                quantity = 3.5,
-                quantityUnit = "LITRE",
-                packCount = 1,
-                packSize = 1.0,
-                packSizeUnit = "LITRE",
-                quantityConfidence = "EXACT",
-                status = "AVAILABLE",
-                opened = true,
-                frozen = false,
-                staple = true,
-                purchaseDate = "2026-10-01",
-                openedDate = "2026-10-02",
-                useByDate = "2027-10-01",
-                bestBeforeDate = null,
-                notes = "SAF test",
-                createdAt = 1000L,
-                updatedAt = 2000L,
-                revision = 5L
-            )
-        )
+    private fun writerThatMustNotBeUsed() = MainEncryptedBackupSafWriter(
+        FakeSafDocumentStreamProvider(outputStreamProvider = { error("") }, inputStreamProvider = { error("") })
     )
 
-    @Test
-    fun executeMainBackupSave_mainRoleAndValidUri_writesAndVerifiesEncryptedBackup() = runTest {
-        val noOpRunner = object : DatabaseTransactionRunner {
-            override suspend fun <T> runInTransaction(block: suspend () -> T): T = block()
-        }
-        val snapshotBuilder = object : MainBackupSnapshotBuilder(null, noOpRunner) {
-            override suspend fun createMainBackupSnapshot(currentTimeMs: Long): MainHouseholdBackupDto {
-                return createSampleSnapshot().copy(exportedAt = currentTimeMs)
-            }
-        }
-        val roleResolver = FakeAppRoleResolver(isMainRole = true)
+    private fun managerReturning(bytes: ByteArray): FullBackupManager {
+        val manager: FullBackupManager = mock()
+        whenever(manager.createEncryptedBackup(any(), any())).thenReturn(bytes)
+        whenever(manager.verifyEncryptedBackup(any(), any())).thenReturn(true)
+        return manager
+    }
 
-        val writtenBytes = ByteArrayOutputStream()
-        val fakeStreamProvider = FakeSafDocumentStreamProvider(
-            outputStreamProvider = { writtenBytes },
-            inputStreamProvider = { ByteArrayInputStream(writtenBytes.toByteArray()) }
+    private fun unverifiedCause(outcome: SafBackupOutcome): String {
+        assertTrue("Outcome MUST be DocumentIoAttemptedUnverified", outcome is SafBackupOutcome.DocumentIoAttemptedUnverified)
+        val unverified = outcome as SafBackupOutcome.DocumentIoAttemptedUnverified
+        assertEquals(dummyUri, unverified.destinationUri)
+        assertTrue(
+            "Cause MUST mention SAF Document I/O attempted (unverified)",
+            unverified.cause.cause.startsWith("SAF Document I/O attempted (unverified)")
         )
-        val safWriter = MainEncryptedBackupSafWriter(fakeStreamProvider)
-        val coordinator = MainEncryptedBackupSaveCoordinator(roleResolver, snapshotBuilder, codec, safWriter)
+        return unverified.cause.cause
+    }
 
+    private fun noIoCause(outcome: SafBackupOutcome): String {
+        assertTrue("Outcome MUST be NoDocumentIoAttempted", outcome is SafBackupOutcome.NoDocumentIoAttempted)
+        val cause = (outcome as SafBackupOutcome.NoDocumentIoAttempted).cause.cause
+        assertTrue("Cause MUST mention No document I/O attempted", cause.startsWith("No document I/O attempted"))
+        return cause
+    }
+
+    private suspend fun write(provider: SafDocumentStreamProvider, verify: (ByteArray) -> Boolean = { true }) =
+        MainEncryptedBackupSafWriter(provider).writeAndVerifyFullBackup(null, dummyUri, encryptedBytes, verify)
+
+    @Test
+    fun executeMainBackupSave_mainRoleAndValidUri_writesAndVerifiesFullBackup() = runTest {
+        val writtenBytes = ByteArrayOutputStream()
+        val writer = MainEncryptedBackupSafWriter(
+            FakeSafDocumentStreamProvider(
+                outputStreamProvider = { writtenBytes },
+                inputStreamProvider = { ByteArrayInputStream(writtenBytes.toByteArray()) }
+            )
+        )
+        val manager = managerReturning(encryptedBytes)
+        val coordinator = MainEncryptedBackupSaveCoordinator(FakeAppRoleResolver(isMainRole = true), writer, manager)
         val passphrase = "PantryMasterPassword#2026!".toCharArray()
+
         val outcome = coordinator.executeMainBackupSave(null, dummyUri, passphrase, currentTimeMs = 2000000L)
 
-        assertTrue("Outcome MUST be VerifiedSuccess", outcome is SafBackupOutcome.VerifiedSuccess)
-        val snapshot = (outcome as SafBackupOutcome.VerifiedSuccess).snapshot
-        assertEquals("pantry-household-backup-v1", snapshot.backupFormatVersion)
-        assertEquals("house-saf-100", snapshot.householdId)
-        assertTrue("Written encrypted bytes MUST be non-empty", writtenBytes.size() > 0)
+        assertEquals(SafBackupOutcome.VerifiedFullBackup, outcome)
+        assertArrayEquals(encryptedBytes, writtenBytes.toByteArray())
+        verify(manager).verifyEncryptedBackup(encryptedBytes, passphrase)
     }
 
     @Test
-    fun executeMainBackupSave_followerRole_rejectsBeforeSnapshotOrWrite() = runTest {
-        var snapshotCalled = false
-        val snapshotBuilder = object : MainBackupSnapshotBuilder(null, object : DatabaseTransactionRunner {
-            override suspend fun <T> runInTransaction(block: suspend () -> T): T = block()
-        }) {
-            override suspend fun createMainBackupSnapshot(currentTimeMs: Long): MainHouseholdBackupDto {
-                snapshotCalled = true
-                return createSampleSnapshot()
-            }
-        }
-        val roleResolver = FakeAppRoleResolver(isMainRole = false)
-        val fakeStreamProvider = FakeSafDocumentStreamProvider(
-            outputStreamProvider = { error("") },
-            inputStreamProvider = { error("") }
-        )
-        val safWriter = MainEncryptedBackupSafWriter(fakeStreamProvider)
-        val coordinator = MainEncryptedBackupSaveCoordinator(roleResolver, snapshotBuilder, codec, safWriter)
+    fun executeMainBackupSave_followerRole_rejectsBeforeBackupOrWrite() = runTest {
+        val manager = managerReturning(encryptedBytes)
+        val coordinator = MainEncryptedBackupSaveCoordinator(FakeAppRoleResolver(isMainRole = false), writerThatMustNotBeUsed(), manager)
 
         val outcome = coordinator.executeMainBackupSave(null, dummyUri, "Pass123!".toCharArray())
 
-        assertTrue("Follower role MUST return NoDocumentIoAttempted", outcome is SafBackupOutcome.NoDocumentIoAttempted)
-        val causeMsg = (outcome as SafBackupOutcome.NoDocumentIoAttempted).cause.cause
-        assertTrue("Cause MUST mention Main device only", causeMsg.contains("Main device only"))
-        assertFalse("Snapshot builder MUST NOT be called on Follower role", snapshotCalled)
+        assertTrue("Cause MUST mention Main device only", noIoCause(outcome).contains("Main device only"))
+        verify(manager, never()).createEncryptedBackup(any(), any())
     }
 
     @Test
     fun executeMainBackupSave_nullUri_returnsCancelledErrorWithoutWrite() = runTest {
-        val noOpRunner = object : DatabaseTransactionRunner {
-            override suspend fun <T> runInTransaction(block: suspend () -> T): T = block()
-        }
-        val snapshotBuilder = MainBackupSnapshotBuilder(null, noOpRunner)
-        val roleResolver = FakeAppRoleResolver(isMainRole = true)
-        val fakeStreamProvider = FakeSafDocumentStreamProvider(
-            outputStreamProvider = { error("") },
-            inputStreamProvider = { error("") }
+        val coordinator = MainEncryptedBackupSaveCoordinator(
+            FakeAppRoleResolver(isMainRole = true), writerThatMustNotBeUsed(), managerReturning(encryptedBytes)
         )
-        val safWriter = MainEncryptedBackupSafWriter(fakeStreamProvider)
-        val coordinator = MainEncryptedBackupSaveCoordinator(roleResolver, snapshotBuilder, codec, safWriter)
 
         val outcome = coordinator.executeMainBackupSave(null, null, "Pass123!".toCharArray())
 
-        assertTrue("Null URI MUST return NoDocumentIoAttempted", outcome is SafBackupOutcome.NoDocumentIoAttempted)
-        val causeMsg = (outcome as SafBackupOutcome.NoDocumentIoAttempted).cause.cause
-        assertTrue("Cause MUST mention backup cancelled", causeMsg.contains("cancelled"))
+        assertTrue("Cause MUST mention backup cancelled", noIoCause(outcome).contains("cancelled"))
     }
 
     @Test
     fun executeMainBackupSave_emptyPassphrase_rejectsWithPassphraseError() = runTest {
-        val noOpRunner = object : DatabaseTransactionRunner {
-            override suspend fun <T> runInTransaction(block: suspend () -> T): T = block()
-        }
-        val snapshotBuilder = MainBackupSnapshotBuilder(null, noOpRunner)
-        val roleResolver = FakeAppRoleResolver(isMainRole = true)
-        val fakeStreamProvider = FakeSafDocumentStreamProvider(
-            outputStreamProvider = { error("") },
-            inputStreamProvider = { error("") }
+        val coordinator = MainEncryptedBackupSaveCoordinator(
+            FakeAppRoleResolver(isMainRole = true), writerThatMustNotBeUsed(), managerReturning(encryptedBytes)
         )
-        val safWriter = MainEncryptedBackupSafWriter(fakeStreamProvider)
-        val coordinator = MainEncryptedBackupSaveCoordinator(roleResolver, snapshotBuilder, codec, safWriter)
 
         val outcome = coordinator.executeMainBackupSave(null, dummyUri, "".toCharArray())
 
-        assertTrue("Empty passphrase MUST return NoDocumentIoAttempted", outcome is SafBackupOutcome.NoDocumentIoAttempted)
-        val causeMsg = (outcome as SafBackupOutcome.NoDocumentIoAttempted).cause.cause
-        assertTrue("Cause MUST mention passphrase", causeMsg.contains("passphrase"))
-    }
-
-    @Test
-    fun writeAndVerifyEncryptedBackup_mismatchedReadbackBytes_failsReadbackVerification() = runTest {
-        val snapshot = createSampleSnapshot()
-        val passphrase = "Pass123!".toCharArray()
-        val encryptedBytes = codec.encodeEncryptedBackup(snapshot, passphrase, currentTimeMs = 2000000L)
-
-        // Simulate corrupted readback stream returning altered bytes
-        val corruptedReadbackBytes = encryptedBytes.clone()
-        corruptedReadbackBytes[corruptedReadbackBytes.size - 1] = (corruptedReadbackBytes[corruptedReadbackBytes.size - 1] + 1).toByte()
-
-        val fakeStreamProvider = FakeSafDocumentStreamProvider(
-            outputStreamProvider = { ByteArrayOutputStream() },
-            inputStreamProvider = { ByteArrayInputStream(corruptedReadbackBytes) }
-        )
-        val customSafWriter = MainEncryptedBackupSafWriter(fakeStreamProvider)
-
-        val outcome = customSafWriter.writeAndVerifyEncryptedBackup(null, dummyUri, encryptedBytes, passphrase, codec)
-
-        assertTrue("Mismatched readback bytes MUST return DocumentIoAttemptedUnverified", outcome is SafBackupOutcome.DocumentIoAttemptedUnverified)
-        val causeMsg = (outcome as SafBackupOutcome.DocumentIoAttemptedUnverified).cause.cause
-        assertTrue("Cause MUST mention byte mismatch", causeMsg.contains("mismatch"))
-        assertEquals(dummyUri, outcome.destinationUri)
-    }
-
-    @Test
-    fun writeAndVerifyEncryptedBackup_failingOutputStream_reportsWriteError() = runTest {
-        val snapshot = createSampleSnapshot()
-        val passphrase = "Pass123!".toCharArray()
-        val encryptedBytes = codec.encodeEncryptedBackup(snapshot, passphrase, currentTimeMs = 2000000L)
-
-        val fakeStreamProvider = FakeSafDocumentStreamProvider(
-            outputStreamProvider = { throw java.io.IOException("SAF Provider write permission denied") },
-            inputStreamProvider = { error("") }
-        )
-        val customSafWriter = MainEncryptedBackupSafWriter(fakeStreamProvider)
-
-        val outcome = customSafWriter.writeAndVerifyEncryptedBackup(null, dummyUri, encryptedBytes, passphrase, codec)
-
-        assertTrue("Failing output stream MUST return DocumentIoAttemptedUnverified", outcome is SafBackupOutcome.DocumentIoAttemptedUnverified)
-        val causeMsg = (outcome as SafBackupOutcome.DocumentIoAttemptedUnverified).cause.cause
-        assertTrue("Cause MUST mention write failure", causeMsg.contains("Write failed") || causeMsg.contains("permission denied"))
-        assertEquals(dummyUri, outcome.destinationUri)
+        assertTrue("Cause MUST mention passphrase", noIoCause(outcome).contains("passphrase"))
     }
 
     @Test
     fun executeMainBackupSave_roleResolverThrowsException_failsClosed() = runTest {
-        val snapshotBuilder = MainBackupSnapshotBuilder(null, object : DatabaseTransactionRunner {
-            override suspend fun <T> runInTransaction(block: suspend () -> T): T = block()
-        })
         val failingRoleResolver = object : AppRoleResolver(
             com.example.chatgpt_mealplanner.core.sync.follower.config.FollowerPairingStore(null)
         ) {
             override fun isMain(): Boolean = throw IllegalStateException("Role store unreadable")
         }
-        val fakeStreamProvider = FakeSafDocumentStreamProvider(
-            outputStreamProvider = { error("") },
-            inputStreamProvider = { error("") }
+        val coordinator = MainEncryptedBackupSaveCoordinator(
+            failingRoleResolver, writerThatMustNotBeUsed(), managerReturning(encryptedBytes)
         )
-        val safWriter = MainEncryptedBackupSafWriter(fakeStreamProvider)
-        val coordinator = MainEncryptedBackupSaveCoordinator(failingRoleResolver, snapshotBuilder, codec, safWriter)
 
         val outcome = coordinator.executeMainBackupSave(null, dummyUri, "Pass123!".toCharArray())
 
-        assertTrue("Failing role resolver MUST return NoDocumentIoAttempted", outcome is SafBackupOutcome.NoDocumentIoAttempted)
-        val causeMsg = (outcome as SafBackupOutcome.NoDocumentIoAttempted).cause.cause
-        assertTrue("Cause MUST mention Main device only", causeMsg.contains("Main device only"))
+        assertTrue("Cause MUST mention Main device only", noIoCause(outcome).contains("Main device only"))
     }
 
     @Test
-    fun writeAndVerifyEncryptedBackup_nullOutputStream_reportsUnableToOpenDocumentError() = runTest {
-        val snapshot = createSampleSnapshot()
-        val passphrase = "Pass123!".toCharArray()
-        val encryptedBytes = codec.encodeEncryptedBackup(snapshot, passphrase, currentTimeMs = 2000000L)
+    fun executeMainBackupSave_backupCreationFails_reportsNoIoAttempted() = runTest {
+        val manager: FullBackupManager = mock()
+        whenever(manager.createEncryptedBackup(any(), any())).thenThrow(IllegalStateException("Database unreadable"))
+        val coordinator = MainEncryptedBackupSaveCoordinator(FakeAppRoleResolver(isMainRole = true), writerThatMustNotBeUsed(), manager)
 
-        val fakeStreamProvider = FakeSafDocumentStreamProvider(
-            outputStreamProvider = { null },
-            inputStreamProvider = { error("") }
+        val outcome = coordinator.executeMainBackupSave(null, dummyUri, "Pass123!".toCharArray())
+
+        assertTrue("Cause MUST carry the failure", noIoCause(outcome).contains("Database unreadable"))
+    }
+
+    @Test
+    fun writeAndVerifyFullBackup_mismatchedReadbackBytes_failsReadbackVerification() = runTest {
+        val corrupted = encryptedBytes.clone().also { it[it.size - 1] = (it[it.size - 1] + 1).toByte() }
+
+        val outcome = write(
+            FakeSafDocumentStreamProvider(
+                outputStreamProvider = { ByteArrayOutputStream() },
+                inputStreamProvider = { ByteArrayInputStream(corrupted) }
+            )
         )
-        val customSafWriter = MainEncryptedBackupSafWriter(fakeStreamProvider)
 
-        val outcome = customSafWriter.writeAndVerifyEncryptedBackup(null, dummyUri, encryptedBytes, passphrase, codec)
-
-        assertTrue("Null output stream MUST return DocumentIoAttemptedUnverified", outcome is SafBackupOutcome.DocumentIoAttemptedUnverified)
-        val causeMsg = (outcome as SafBackupOutcome.DocumentIoAttemptedUnverified).cause.cause
-        assertTrue("Error MUST mention unable to open selected document", causeMsg.contains("Unable to open"))
+        assertTrue("Cause MUST mention the mismatch", unverifiedCause(outcome).contains("didn't match"))
     }
 
     @Test
-    fun writeAndVerifyEncryptedBackup_nullInputStream_reportsReadbackOpenError() = runTest {
-        val snapshot = createSampleSnapshot()
-        val passphrase = "Pass123!".toCharArray()
-        val encryptedBytes = codec.encodeEncryptedBackup(snapshot, passphrase, currentTimeMs = 2000000L)
+    fun writeAndVerifyFullBackup_verificationRejectsSavedFile_reportsUnverified() = runTest {
+        val written = ByteArrayOutputStream()
 
-        val fakeStreamProvider = FakeSafDocumentStreamProvider(
-            outputStreamProvider = { ByteArrayOutputStream() },
-            inputStreamProvider = { null }
+        val outcome = write(
+            FakeSafDocumentStreamProvider(
+                outputStreamProvider = { written },
+                inputStreamProvider = { ByteArrayInputStream(written.toByteArray()) }
+            ),
+            verify = { false }
         )
-        val customSafWriter = MainEncryptedBackupSafWriter(fakeStreamProvider)
 
-        val outcome = customSafWriter.writeAndVerifyEncryptedBackup(null, dummyUri, encryptedBytes, passphrase, codec)
-
-        assertTrue("Null input stream MUST return DocumentIoAttemptedUnverified", outcome is SafBackupOutcome.DocumentIoAttemptedUnverified)
-        val causeMsg = (outcome as SafBackupOutcome.DocumentIoAttemptedUnverified).cause.cause
-        assertTrue("Error MUST mention document could not be opened for readback", causeMsg.contains("could not be opened"))
+        assertTrue("Cause MUST mention failed verification", unverifiedCause(outcome).contains("failed verification"))
     }
 
     @Test
-    fun writeAndVerifyEncryptedBackup_inputStreamThrowsOnRead_reportsReadbackError() = runTest {
-        val snapshot = createSampleSnapshot()
-        val passphrase = "Pass123!".toCharArray()
-        val encryptedBytes = codec.encodeEncryptedBackup(snapshot, passphrase, currentTimeMs = 2000000L)
+    fun writeAndVerifyFullBackup_failingOutputStream_reportsWriteError() = runTest {
+        val outcome = write(
+            FakeSafDocumentStreamProvider(
+                outputStreamProvider = { throw java.io.IOException("SAF Provider write permission denied") },
+                inputStreamProvider = { error("") }
+            )
+        )
 
-        val failingInputStream = object : java.io.InputStream() {
+        assertTrue("Cause MUST mention write failure", unverifiedCause(outcome).contains("Failed writing"))
+    }
+
+    @Test
+    fun writeAndVerifyFullBackup_nullOutputStream_reportsUnableToOpenDocumentError() = runTest {
+        val outcome = write(FakeSafDocumentStreamProvider(outputStreamProvider = { null }, inputStreamProvider = { error("") }))
+
+        assertTrue("Cause MUST mention unable to open selected document", unverifiedCause(outcome).contains("Unable to open"))
+    }
+
+    @Test
+    fun writeAndVerifyFullBackup_nullInputStream_reportsReadbackOpenError() = runTest {
+        val outcome = write(
+            FakeSafDocumentStreamProvider(outputStreamProvider = { ByteArrayOutputStream() }, inputStreamProvider = { null })
+        )
+
+        assertTrue("Cause MUST mention the failed read back", unverifiedCause(outcome).contains("couldn't be read back"))
+    }
+
+    @Test
+    fun writeAndVerifyFullBackup_inputStreamThrowsOnRead_reportsReadbackError() = runTest {
+        val failingInputStream = object : InputStream() {
             override fun read(): Int = throw java.io.IOException("SAF Provider read storage unmounted")
         }
 
-        val fakeStreamProvider = FakeSafDocumentStreamProvider(
-            outputStreamProvider = { ByteArrayOutputStream() },
-            inputStreamProvider = { failingInputStream }
+        val outcome = write(
+            FakeSafDocumentStreamProvider(outputStreamProvider = { ByteArrayOutputStream() }, inputStreamProvider = { failingInputStream })
         )
-        val customSafWriter = MainEncryptedBackupSafWriter(fakeStreamProvider)
 
-        val outcome = customSafWriter.writeAndVerifyEncryptedBackup(null, dummyUri, encryptedBytes, passphrase, codec)
-
-        assertTrue("Failing input stream MUST return DocumentIoAttemptedUnverified", outcome is SafBackupOutcome.DocumentIoAttemptedUnverified)
-        val causeMsg = (outcome as SafBackupOutcome.DocumentIoAttemptedUnverified).cause.cause
-        assertTrue("Error MUST mention readback verification failed", causeMsg.contains("readback verification failed"))
+        assertTrue("Cause MUST report the failure", unverifiedCause(outcome).contains("Failed writing or verifying"))
     }
 
     @Test
-    fun writeAndVerifyEncryptedBackup_oversizedReadbackStream_rejectsExceedingLimitError() = runTest {
-        val snapshot = createSampleSnapshot()
-        val passphrase = "Pass123!".toCharArray()
-        val encryptedBytes = codec.encodeEncryptedBackup(snapshot, passphrase, currentTimeMs = 2000000L)
-
-        val oversizedInputStream = object : java.io.InputStream() {
+    fun writeAndVerifyFullBackup_oversizedReadbackStream_isRejected() = runTest {
+        val oversizedInputStream = object : InputStream() {
             private var bytesProduced = 0
             override fun read(): Int {
                 if (bytesProduced > MAX_ENCRYPTED_CONTAINER_SIZE_BYTES + 100) return -1
@@ -328,57 +235,14 @@ class PantryPhase6Step6aSafWriterTest {
                 return 0x55
             }
         }
+        var verifyCalled = false
 
-        val fakeStreamProvider = FakeSafDocumentStreamProvider(
-            outputStreamProvider = { ByteArrayOutputStream() },
-            inputStreamProvider = { oversizedInputStream }
+        val outcome = write(
+            FakeSafDocumentStreamProvider(outputStreamProvider = { ByteArrayOutputStream() }, inputStreamProvider = { oversizedInputStream }),
+            verify = { verifyCalled = true; true }
         )
-        val customSafWriter = MainEncryptedBackupSafWriter(fakeStreamProvider)
 
-        val outcome = customSafWriter.writeAndVerifyEncryptedBackup(null, dummyUri, encryptedBytes, passphrase, codec)
-
-        assertTrue("Oversized readback stream MUST return DocumentIoAttemptedUnverified", outcome is SafBackupOutcome.DocumentIoAttemptedUnverified)
-        val causeMsg = (outcome as SafBackupOutcome.DocumentIoAttemptedUnverified).cause.cause
-        assertTrue("Error MUST mention size exceeds maximum allowed limit", causeMsg.contains("exceeds maximum allowed limit"))
-    }
-
-    @Test
-    fun executeMainBackupSave_preIoFailure_explicitlyIdentifiesNoIoAttempted() = runTest {
-        val snapshotBuilder = MainBackupSnapshotBuilder(null, object : DatabaseTransactionRunner {
-            override suspend fun <T> runInTransaction(block: suspend () -> T): T = block()
-        })
-        val roleResolver = FakeAppRoleResolver(isMainRole = false)
-        val fakeStreamProvider = FakeSafDocumentStreamProvider(
-            outputStreamProvider = { error("") },
-            inputStreamProvider = { error("") }
-        )
-        val safWriter = MainEncryptedBackupSafWriter(fakeStreamProvider)
-        val coordinator = MainEncryptedBackupSaveCoordinator(roleResolver, snapshotBuilder, codec, safWriter)
-
-        val outcome = coordinator.executeMainBackupSave(null, dummyUri, "Pass123!".toCharArray())
-
-        assertTrue("Pre-I/O failure MUST return SafBackupOutcome.NoDocumentIoAttempted", outcome is SafBackupOutcome.NoDocumentIoAttempted)
-        val causeMsg = (outcome as SafBackupOutcome.NoDocumentIoAttempted).cause.cause
-        assertTrue("Cause MUST mention No document I/O attempted", causeMsg.startsWith("No document I/O attempted"))
-    }
-
-    @Test
-    fun writeAndVerifyEncryptedBackup_postIoFailure_explicitlyIdentifiesSafIoAttemptedUnverified() = runTest {
-        val snapshot = createSampleSnapshot()
-        val passphrase = "Pass123!".toCharArray()
-        val encryptedBytes = codec.encodeEncryptedBackup(snapshot, passphrase, currentTimeMs = 2000000L)
-
-        val fakeStreamProvider = FakeSafDocumentStreamProvider(
-            outputStreamProvider = { throw java.io.IOException("Permission denied") },
-            inputStreamProvider = { error("") }
-        )
-        val customSafWriter = MainEncryptedBackupSafWriter(fakeStreamProvider)
-
-        val outcome = customSafWriter.writeAndVerifyEncryptedBackup(null, dummyUri, encryptedBytes, passphrase, codec)
-
-        assertTrue("Post-I/O failure MUST return SafBackupOutcome.DocumentIoAttemptedUnverified", outcome is SafBackupOutcome.DocumentIoAttemptedUnverified)
-        val causeMsg = (outcome as SafBackupOutcome.DocumentIoAttemptedUnverified).cause.cause
-        assertTrue("Cause MUST mention SAF Document I/O attempted (unverified)", causeMsg.startsWith("SAF Document I/O attempted (unverified)"))
-        assertEquals(dummyUri, outcome.destinationUri)
+        assertTrue("Cause MUST report the failure", unverifiedCause(outcome).contains("Failed writing or verifying"))
+        assertTrue("Oversized readback MUST NOT reach verification", !verifyCalled)
     }
 }

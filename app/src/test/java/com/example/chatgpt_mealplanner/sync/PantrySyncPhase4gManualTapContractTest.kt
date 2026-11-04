@@ -342,13 +342,8 @@ class PantrySyncPhase4gManualTapContractTest {
         )
         val fakeSaveCoordinator = com.example.chatgpt_mealplanner.core.backup.MainEncryptedBackupSaveCoordinator(
             FakeAppRoleResolver(),
-            com.example.chatgpt_mealplanner.core.backup.MainBackupSnapshotBuilder(null, object : com.example.chatgpt_mealplanner.core.database.DatabaseTransactionRunner {
-                override suspend fun <T> runInTransaction(block: suspend () -> T): T = block()
-            }),
-            com.example.chatgpt_mealplanner.core.backup.MainBackupEncryptionCodec(
-                com.example.chatgpt_mealplanner.core.backup.MainBackupContainerEncoderDecoder()
-            ),
-            fakeSafWriter
+            fakeSafWriter,
+            org.mockito.kotlin.mock()
         )
 
         val settingsVm = SettingsViewModel(

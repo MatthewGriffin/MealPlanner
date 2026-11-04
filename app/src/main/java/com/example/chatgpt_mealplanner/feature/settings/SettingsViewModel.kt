@@ -528,9 +528,6 @@ class SettingsViewModel @Inject constructor(
                     is SafBackupOutcome.VerifiedFullBackup -> {
                         "Full household backup encrypted, verified and saved to $displayName."
                     }
-                    is SafBackupOutcome.VerifiedSuccess -> {
-                        "Household backup encrypted and verified successfully saved to $displayName!"
-                    }
                     is SafBackupOutcome.NoDocumentIoAttempted -> {
                         outcome.cause.cause
                     }

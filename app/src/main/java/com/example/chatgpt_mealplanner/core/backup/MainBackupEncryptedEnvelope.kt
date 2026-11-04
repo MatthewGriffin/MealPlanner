@@ -1,8 +1,8 @@
 package com.example.chatgpt_mealplanner.core.backup
 
 val ENCRYPTED_CONTAINER_MAGIC = "PANTRYENC".toByteArray(Charsets.US_ASCII) // 9 bytes
-const val ENCRYPTED_WIRE_VERSION = 1 // 4 bytes Big-Endian Int32
-const val FULL_BACKUP_WIRE_VERSION = 2 // Whole-database archive, restorable by this app
+const val LEGACY_WIRE_VERSION = 1 // Partial backups from before full restore. Only recognised so they can be refused clearly
+const val FULL_BACKUP_WIRE_VERSION = 2 // 4 bytes Big-Endian Int32. Whole-database archive, restorable by this app
 const val KDF_ID_PBKDF2_HMAC_SHA256: Short = 1 // 2 bytes
 const val AEAD_ID_AES_256_GCM: Short = 1 // 2 bytes
 const val KDF_SALT_SIZE_BYTES = 32 // 32 bytes
@@ -18,8 +18,10 @@ const val DEFAULT_KDF_ITERATIONS = 250_000
 const val ENCRYPTED_HEADER_SIZE_BYTES = 69
 const val MIN_ENCRYPTED_CONTAINER_SIZE_BYTES = ENCRYPTED_HEADER_SIZE_BYTES + AEAD_GCM_TAG_SIZE_BYTES // 85 bytes
 
-// Max encrypted container size = Max plaintext body (50 MB) + PANTRYBK framing overhead (48 B) + PANTRYENC header (69 B) + GCM tag (16 B) = 52,428,933 bytes
-const val MAX_ENCRYPTED_CONTAINER_SIZE_BYTES = MAX_CONTAINER_BODY_SIZE_BYTES + CONTAINER_OVERHEAD_SIZE + ENCRYPTED_HEADER_SIZE_BYTES + AEAD_GCM_TAG_SIZE_BYTES
+const val MAX_CONTAINER_BODY_SIZE_BYTES = 50 * 1024 * 1024 // 50 MB max archive size
+
+// Max encrypted container size = Max archive (50 MB) + PANTRYENC header (69 B) + GCM tag (16 B) = 52,428,885 bytes
+const val MAX_ENCRYPTED_CONTAINER_SIZE_BYTES = MAX_CONTAINER_BODY_SIZE_BYTES + ENCRYPTED_HEADER_SIZE_BYTES + AEAD_GCM_TAG_SIZE_BYTES
 
 data class EncryptedBackupHeader(
     val magic: ByteArray,
