@@ -4,7 +4,6 @@ import android.net.Uri
 import com.example.chatgpt_mealplanner.core.ai.provider.MealPlannerAiProvider
 import com.example.chatgpt_mealplanner.core.backup.BackupManager
 import com.example.chatgpt_mealplanner.core.backup.MainEncryptedBackupSaveCoordinator
-import com.example.chatgpt_mealplanner.core.backup.MainHouseholdBackupDto
 import com.example.chatgpt_mealplanner.core.backup.SafBackupOutcome
 import com.example.chatgpt_mealplanner.core.database.dao.ChatDao
 import com.example.chatgpt_mealplanner.core.model.DomainError
@@ -55,26 +54,19 @@ class SettingsViewModelBackupTest {
 
     private class FakeSaveCoordinator(
         var isMainRole: Boolean = true,
-        var outcomeToReturn: SafBackupOutcome = SafBackupOutcome.VerifiedSuccess(
-            MainHouseholdBackupDto(exportedAt = 1000L, householdId = "house-100", householdName = "Test House", mainDeviceId = "main-1", nextCanonicalSequence = 1L)
-        )
+        var outcomeToReturn: SafBackupOutcome = SafBackupOutcome.VerifiedFullBackup
     ) : MainEncryptedBackupSaveCoordinator(
         object : AppRoleResolver(com.example.chatgpt_mealplanner.core.sync.follower.config.FollowerPairingStore(null)) {
             override fun isMain(): Boolean = isMainRole
             override suspend fun isMainAsync(): Boolean = isMainRole
         },
-        com.example.chatgpt_mealplanner.core.backup.MainBackupSnapshotBuilder(null, object : com.example.chatgpt_mealplanner.core.database.DatabaseTransactionRunner {
-            override suspend fun <T> runInTransaction(block: suspend () -> T): T = block()
-        }),
-        com.example.chatgpt_mealplanner.core.backup.MainBackupEncryptionCodec(
-            com.example.chatgpt_mealplanner.core.backup.MainBackupContainerEncoderDecoder()
-        ),
         com.example.chatgpt_mealplanner.core.backup.MainEncryptedBackupSafWriter(
             object : com.example.chatgpt_mealplanner.core.backup.SafDocumentStreamProvider {
                 override fun openOutputStream(appContext: android.content.Context?, uri: Uri?): java.io.OutputStream? = null
                 override fun openInputStream(appContext: android.content.Context?, uri: Uri?): java.io.InputStream? = null
             }
-        )
+        ),
+        mock()
     ) {
         fun setOutcome(outcome: SafBackupOutcome) {
             outcomeToReturn = outcome
@@ -237,14 +229,7 @@ class SettingsViewModelBackupTest {
 
     @Test
     fun executeEncryptedBackup_verifiedSuccess_updatesSuccessState() = runTest(testDispatcher) {
-        val sampleDto = MainHouseholdBackupDto(
-            exportedAt = 1000L,
-            householdId = "house-100",
-            householdName = "Test House",
-            mainDeviceId = "main-1",
-            nextCanonicalSequence = 1L
-        )
-        fakeSaveCoordinator.setOutcome(SafBackupOutcome.VerifiedSuccess(sampleDto))
+        fakeSaveCoordinator.setOutcome(SafBackupOutcome.VerifiedFullBackup)
 
         viewModel = createViewModel(isMain = true)
         testScheduler.advanceUntilIdle()
@@ -258,7 +243,7 @@ class SettingsViewModelBackupTest {
         val state = viewModel.uiState.value
         assertFalse("Backup MUST no longer be in progress", state.isBackupInProgress)
         assertNull("Pending URI MUST be cleared", state.pendingBackupUri)
-        assertTrue("Status message MUST mention verified successfully", state.backupStatusMessage?.contains("verified successfully") == true)
+        assertTrue("Status message MUST mention the verified backup", state.backupStatusMessage?.contains("verified and saved") == true)
         assertTrue("Passphrase array MUST be zeroed out", validPassphrase.all { it == ' ' })
     }
 

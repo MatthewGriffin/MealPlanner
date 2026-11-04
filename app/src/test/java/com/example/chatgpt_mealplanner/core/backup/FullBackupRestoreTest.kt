@@ -37,7 +37,7 @@ class FullBackupRestoreTest {
 
     private val passphrase = "correct horse".toCharArray()
     private val uri: Uri = Uri.parse("content://test/backup")
-    private val codec = MainBackupEncryptionCodec(MainBackupContainerEncoderDecoder())
+    private val codec = MainBackupEncryptionCodec()
     private lateinit var context: Context
     private lateinit var database: AppDatabase
     private lateinit var manager: FullBackupManager
@@ -157,7 +157,9 @@ class FullBackupRestoreTest {
 
     @Test
     fun olderBackupFormat_isExplainedAndRejected() = runBlocking {
-        fileToRestore = codec.encodeEncryptedBackup(MainHouseholdBackupDto(exportedAt = 1L), passphrase)
+        fileToRestore = codec.encodeFullBackup(ByteArray(8), passphrase).also {
+            java.nio.ByteBuffer.wrap(it).putInt(ENCRYPTED_CONTAINER_MAGIC.size, LEGACY_WIRE_VERSION)
+        }
 
         assertTrue(failureMessage(manager.stageRestore(uri, passphrase)).contains("older version"))
     }

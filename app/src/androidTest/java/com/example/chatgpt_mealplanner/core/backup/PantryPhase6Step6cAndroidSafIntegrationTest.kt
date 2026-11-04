@@ -1,20 +1,25 @@
 package com.example.chatgpt_mealplanner.core.backup
 
 import android.content.Context
+import android.database.sqlite.SQLiteDatabase
 import android.net.Uri
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.example.chatgpt_mealplanner.core.database.ALL_MIGRATIONS
 import com.example.chatgpt_mealplanner.core.database.AppDatabase
-import com.example.chatgpt_mealplanner.core.database.DatabaseTransactionRunner
 import com.example.chatgpt_mealplanner.core.database.entity.InventoryItemEntity
+import com.example.chatgpt_mealplanner.core.model.DomainResult
 import com.example.chatgpt_mealplanner.core.model.FoodCategory
 import com.example.chatgpt_mealplanner.core.model.ItemStatus
 import com.example.chatgpt_mealplanner.core.model.QuantityConfidence
 import com.example.chatgpt_mealplanner.core.model.QuantityUnit
 import com.example.chatgpt_mealplanner.core.model.StorageLocation
+import com.example.chatgpt_mealplanner.core.security.CredentialStore
 import com.example.chatgpt_mealplanner.core.sync.AppRoleResolver
+import com.example.chatgpt_mealplanner.core.sync.security.PantryTlsKeyManager
 import kotlinx.coroutines.runBlocking
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -22,189 +27,148 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
 
+/** Saves full backups through the real ContentResolver and SQLite on a device. */
 @RunWith(AndroidJUnit4::class)
 class PantryPhase6Step6cAndroidSafIntegrationTest {
 
+    private val databaseName = "test_full_backup_saf.db"
+    private val passphrase = "AndroidMasterPassword#2026!".toCharArray()
+    private val codec = MainBackupEncryptionCodec()
     private lateinit var targetContext: Context
-    private lateinit var encoderDecoder: MainBackupContainerEncoderDecoder
-    private lateinit var codec: MainBackupEncryptionCodec
+    private lateinit var database: AppDatabase
+    private lateinit var backupFile: File
+    private lateinit var extractedDatabase: File
+
+    private class FakeAppRoleResolver : AppRoleResolver(
+        com.example.chatgpt_mealplanner.core.sync.follower.config.FollowerPairingStore(null)
+    ) {
+        override suspend fun isMainAsync(): Boolean = true
+        override fun isMain(): Boolean = true
+        override suspend fun isFollowerAsync(): Boolean = false
+        override fun isFollower(): Boolean = false
+    }
+
+    private class FakeCredentialStore : CredentialStore {
+        override fun hasKey(): Boolean = true
+        override fun saveKey(key: String) {}
+        override fun loadKey(): String = "gemini-test-key"
+        override fun deleteKey() {}
+    }
+
+    private class FakeTlsKeyManager : PantryTlsKeyManager(null) {
+        override fun exportTlsIdentity() = "tls-bytes".toByteArray() to "tls-password"
+    }
 
     @Before
     fun setUp() {
         targetContext = ApplicationProvider.getApplicationContext()
-        encoderDecoder = MainBackupContainerEncoderDecoder()
-        codec = MainBackupEncryptionCodec(encoderDecoder)
+        targetContext.deleteDatabase(databaseName)
+        // Room's default journal mode here is WAL, so recent writes are still in the -wal file during the backup.
+        database = Room.databaseBuilder(targetContext, AppDatabase::class.java, databaseName)
+            .addMigrations(*ALL_MIGRATIONS)
+            .build()
+        backupFile = File(targetContext.cacheDir, "test_full_backup_saf.pantryenc").apply { delete() }
+        extractedDatabase = File(targetContext.cacheDir, "test_full_backup_extracted.db").apply { delete() }
     }
 
-    private class FakeAppRoleResolver(private val isMainRole: Boolean) : AppRoleResolver(
-        com.example.chatgpt_mealplanner.core.sync.follower.config.FollowerPairingStore(null)
-    ) {
-        override suspend fun isMainAsync(): Boolean = isMainRole
-        override fun isMain(): Boolean = isMainRole
-        override suspend fun isFollowerAsync(): Boolean = !isMainRole
-        override fun isFollower(): Boolean = !isMainRole
+    @After
+    fun tearDown() {
+        database.close()
+        targetContext.deleteDatabase(databaseName)
+        backupFile.delete()
+        extractedDatabase.delete()
     }
 
-    private fun createSampleSnapshot(): MainHouseholdBackupDto = MainHouseholdBackupDto(
-        exportedAt = 1791890000000L,
-        householdId = "house-saf-android-100",
-        householdName = "Android SAF Integration Household",
-        mainDeviceId = "main-dev-1",
-        nextCanonicalSequence = 42L,
-        inventory = listOf(
-            InventoryItemExportDto(
-                id = "item-saf-android-1",
-                barcode = "123456789",
-                canonicalIngredientId = "ING_OIL",
-                canonicalName = "olive oil",
-                displayName = "Extra Virgin Olive Oil",
-                brand = "Asda",
-                category = "CUPBOARD",
-                storageLocation = "CUPBOARD",
-                quantity = 3.5,
-                quantityUnit = "LITRE",
-                packCount = 1,
-                packSize = 1.0,
-                packSizeUnit = "LITRE",
-                quantityConfidence = "EXACT",
-                status = "AVAILABLE",
-                opened = true,
-                frozen = false,
-                staple = true,
-                purchaseDate = "2026-10-01",
-                openedDate = "2026-10-02",
-                useByDate = "2027-10-01",
-                bestBeforeDate = null,
-                notes = "Android SAF test",
-                createdAt = 1000L,
-                updatedAt = 2000L,
-                revision = 5L
-            )
-        )
+    private fun item(id: String, displayName: String) = InventoryItemEntity(
+        id = id,
+        barcode = "987654321",
+        canonicalIngredientId = "ING_MILK",
+        canonicalName = "whole milk",
+        displayName = displayName,
+        brand = "Arla",
+        category = FoodCategory.FRIDGE,
+        storageLocation = StorageLocation.FRIDGE,
+        quantity = 2.0,
+        quantityUnit = QuantityUnit.LITRE,
+        packCount = 1,
+        packSize = 2.0,
+        packSizeUnit = QuantityUnit.LITRE,
+        quantityConfidence = QuantityConfidence.EXACT,
+        status = ItemStatus.AVAILABLE,
+        opened = false,
+        frozen = false,
+        staple = true,
+        purchaseDate = "2026-10-10",
+        openedDate = null,
+        useByDate = "2026-10-25",
+        bestBeforeDate = null,
+        notes = "Backup test milk",
+        createdAt = 1000L,
+        updatedAt = 2000L,
+        revision = 1L
     )
 
-    @Test
-    fun realContentResolverFileStream_writesAndVerifiesEncryptedBackupOnAndroid() = runBlocking {
-        val noOpRunner = object : DatabaseTransactionRunner {
-            override suspend fun <T> runInTransaction(block: suspend () -> T): T = block()
-        }
-        val snapshotBuilder = object : MainBackupSnapshotBuilder(null, noOpRunner) {
-            override suspend fun createMainBackupSnapshot(currentTimeMs: Long): MainHouseholdBackupDto {
-                return createSampleSnapshot().copy(exportedAt = currentTimeMs)
+    private fun manager(streamProvider: SafDocumentStreamProvider) =
+        FullBackupManager(targetContext, database, FakeCredentialStore(), FakeTlsKeyManager(), codec, streamProvider)
+
+    private suspend fun saveBackup(): SafBackupOutcome {
+        val streamProvider = DefaultSafDocumentStreamProvider()
+        val coordinator = MainEncryptedBackupSaveCoordinator(
+            FakeAppRoleResolver(),
+            MainEncryptedBackupSafWriter(streamProvider),
+            manager(streamProvider)
+        )
+        return coordinator.executeMainBackupSave(targetContext, Uri.fromFile(backupFile), passphrase, currentTimeMs = 3000000L)
+    }
+
+    private fun readSavedContents(): FullBackupContents {
+        val decrypted = codec.decodeFullBackup(backupFile.readBytes(), passphrase)
+        assertTrue("Saved backup MUST decrypt", decrypted is DomainResult.Success)
+        return FullBackupArchive.read((decrypted as DomainResult.Success).value)
+    }
+
+    private fun displayNamesIn(contents: FullBackupContents): Set<String> {
+        extractedDatabase.writeBytes(contents.database)
+        SQLiteDatabase.openDatabase(extractedDatabase.path, null, SQLiteDatabase.OPEN_READONLY).use { db ->
+            db.rawQuery("SELECT displayName FROM inventory_items", null).use { cursor ->
+                return buildSet { while (cursor.moveToNext()) add(cursor.getString(0)) }
             }
-        }
-        val roleResolver = FakeAppRoleResolver(isMainRole = true)
-        val defaultStreamProvider = DefaultSafDocumentStreamProvider()
-        val safWriter = MainEncryptedBackupSafWriter(defaultStreamProvider)
-        val coordinator = MainEncryptedBackupSaveCoordinator(roleResolver, snapshotBuilder, codec, safWriter)
-
-        val testFile = File(targetContext.cacheDir, "test_pantry_saf_backup.pantrybak")
-        if (testFile.exists()) testFile.delete()
-
-        try {
-            val fileUri = Uri.fromFile(testFile)
-            val passphrase = "AndroidMasterPassword#2026!".toCharArray()
-
-            val outcome = coordinator.executeMainBackupSave(
-                appContext = targetContext,
-                destinationUri = fileUri,
-                passphrase = passphrase,
-                currentTimeMs = 2000000L
-            )
-
-            if (outcome is SafBackupOutcome.NoDocumentIoAttempted) {
-                org.junit.Assert.fail("Failed pre-I/O: ${outcome.cause.cause}")
-            } else if (outcome is SafBackupOutcome.DocumentIoAttemptedUnverified) {
-                org.junit.Assert.fail("Failed post-I/O: ${outcome.cause.cause}")
-            }
-
-            assertTrue("Real ContentResolver file stream SAF backup save MUST succeed", outcome is SafBackupOutcome.VerifiedSuccess)
-            val snapshot = (outcome as SafBackupOutcome.VerifiedSuccess).snapshot
-            assertEquals("pantry-household-backup-v1", snapshot.backupFormatVersion)
-            assertEquals("house-saf-android-100", snapshot.householdId)
-            assertTrue("Saved file MUST exist on disk", testFile.exists())
-            assertTrue("Saved file size MUST be non-empty", testFile.length() > 0)
-        } finally {
-            if (testFile.exists()) testFile.delete()
         }
     }
 
     @Test
-    fun inMemoryRoomDatabase_createsAndEncryptsMainSnapshotAndVerifiesReadback() = runBlocking {
-        val db = Room.inMemoryDatabaseBuilder(targetContext, AppDatabase::class.java)
-            .allowMainThreadQueries()
-            .build()
+    fun realContentResolver_savesVerifiedBackupHoldingTheWholeDatabaseAndSecrets() = runBlocking {
+        database.inventoryDao().insertItem(item("item-1", "Organic Whole Milk"))
 
-        try {
-            val itemEntity = InventoryItemEntity(
-                id = "item-room-1",
-                barcode = "987654321",
-                canonicalIngredientId = "ING_MILK",
-                canonicalName = "whole milk",
-                displayName = "Organic Whole Milk",
-                brand = "Arla",
-                category = FoodCategory.FRIDGE,
-                storageLocation = StorageLocation.FRIDGE,
-                quantity = 2.0,
-                quantityUnit = QuantityUnit.LITRE,
-                packCount = 1,
-                packSize = 2.0,
-                packSizeUnit = QuantityUnit.LITRE,
-                quantityConfidence = QuantityConfidence.EXACT,
-                status = ItemStatus.AVAILABLE,
-                opened = false,
-                frozen = false,
-                staple = true,
-                purchaseDate = "2026-10-10",
-                openedDate = null,
-                useByDate = "2026-10-25",
-                bestBeforeDate = null,
-                notes = "Room test milk",
-                createdAt = 1000L,
-                updatedAt = 2000L,
-                revision = 1L
-            )
-            db.inventoryDao().insertItem(itemEntity)
+        val outcome = saveBackup()
 
-            val roomRunner = object : DatabaseTransactionRunner {
-                override suspend fun <T> runInTransaction(block: suspend () -> T): T {
-                    return block()
-                }
-            }
+        assertEquals(SafBackupOutcome.VerifiedFullBackup, outcome)
+        val contents = readSavedContents()
+        assertEquals(FULL_BACKUP_FORMAT, contents.manifest.format)
+        assertEquals(database.openHelper.readableDatabase.version, contents.manifest.roomSchemaVersion)
+        assertEquals(3000000L, contents.manifest.createdAt)
+        assertEquals("gemini-test-key", contents.secrets.geminiApiKey)
+        assertEquals(setOf("Organic Whole Milk"), displayNamesIn(contents))
+    }
 
-            val realSnapshotBuilder = MainBackupSnapshotBuilder(db, roomRunner)
-            val roleResolver = FakeAppRoleResolver(isMainRole = true)
-            val defaultStreamProvider = DefaultSafDocumentStreamProvider()
-            val safWriter = MainEncryptedBackupSafWriter(defaultStreamProvider)
-            val coordinator = MainEncryptedBackupSaveCoordinator(roleResolver, realSnapshotBuilder, codec, safWriter)
+    @Test
+    fun walMode_backupCapturesRecentlyCommittedWrites() = runBlocking {
+        database.inventoryDao().insertItem(item("item-1", "First"))
+        // No checkpoint, so this write is only in the WAL when the backup is taken.
+        database.inventoryDao().insertItem(item("item-2", "Second"))
 
-            val testFile = File(targetContext.cacheDir, "test_room_snapshot_backup.pantrybak")
-            if (testFile.exists()) testFile.delete()
+        assertEquals(SafBackupOutcome.VerifiedFullBackup, saveBackup())
 
-            try {
-                val fileUri = Uri.fromFile(testFile)
-                val passphrase = "RoomSnapshotMasterPassword#2026!".toCharArray()
+        assertEquals(setOf("First", "Second"), displayNamesIn(readSavedContents()))
+    }
 
-                val outcome = coordinator.executeMainBackupSave(
-                    appContext = targetContext,
-                    destinationUri = fileUri,
-                    passphrase = passphrase,
-                    currentTimeMs = 3000000L
-                )
+    @Test
+    fun savedBackup_passesTheChecksRestoreRuns() = runBlocking {
+        database.inventoryDao().insertItem(item("item-1", "Organic Whole Milk"))
+        assertEquals(SafBackupOutcome.VerifiedFullBackup, saveBackup())
 
-                assertTrue("Room transactional snapshot backup save MUST succeed", outcome is SafBackupOutcome.VerifiedSuccess)
-                val snapshot = (outcome as SafBackupOutcome.VerifiedSuccess).snapshot
-                assertEquals("pantry-household-backup-v1", snapshot.backupFormatVersion)
-                assertEquals(1, snapshot.inventory.size)
-                assertEquals("Organic Whole Milk", snapshot.inventory[0].displayName)
-                assertEquals("987654321", snapshot.inventory[0].barcode)
-                assertTrue("Saved file MUST exist on disk", testFile.exists())
-                assertTrue("Saved file size MUST be non-empty", testFile.length() > 0)
-            } finally {
-                if (testFile.exists()) testFile.delete()
-            }
-        } finally {
-            db.close()
-        }
+        val bytes = backupFile.readBytes()
+
+        assertTrue(manager(DefaultSafDocumentStreamProvider()).verifyEncryptedBackup(bytes, passphrase))
     }
 }

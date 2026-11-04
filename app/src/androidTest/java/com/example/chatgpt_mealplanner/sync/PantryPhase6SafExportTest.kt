@@ -108,11 +108,18 @@ class PantryPhase6SafExportTest {
         )
         val fakeSaveCoordinator = com.example.chatgpt_mealplanner.core.backup.MainEncryptedBackupSaveCoordinator(
             FakeAppRoleResolver(isMainRole),
-            com.example.chatgpt_mealplanner.core.backup.MainBackupSnapshotBuilder(null, noOpRunner),
-            com.example.chatgpt_mealplanner.core.backup.MainBackupEncryptionCodec(
-                com.example.chatgpt_mealplanner.core.backup.MainBackupContainerEncoderDecoder()
-            ),
-            fakeSafWriter
+            fakeSafWriter,
+            com.example.chatgpt_mealplanner.core.backup.FullBackupManager(
+                context,
+                androidx.room.Room.inMemoryDatabaseBuilder(context, com.example.chatgpt_mealplanner.core.database.AppDatabase::class.java).build(),
+                FakeCredentialStore(),
+                com.example.chatgpt_mealplanner.core.sync.security.PantryTlsKeyManager(null),
+                com.example.chatgpt_mealplanner.core.backup.MainBackupEncryptionCodec(),
+                object : com.example.chatgpt_mealplanner.core.backup.SafDocumentStreamProvider {
+                    override fun openOutputStream(appContext: Context?, uri: android.net.Uri?): java.io.OutputStream? = null
+                    override fun openInputStream(appContext: Context?, uri: android.net.Uri?): java.io.InputStream? = null
+                }
+            )
         )
         return SettingsViewModel(
             context = context,

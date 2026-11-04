@@ -10,10 +10,8 @@ import javax.inject.Singleton
 @Singleton
 open class MainEncryptedBackupSaveCoordinator @Inject constructor(
     private val appRoleResolver: AppRoleResolver,
-    private val snapshotBuilder: MainBackupSnapshotBuilder,
-    private val encryptionCodec: MainBackupEncryptionCodec,
     private val safWriter: MainEncryptedBackupSafWriter,
-    private val fullBackupManager: FullBackupManager? = null
+    private val fullBackupManager: FullBackupManager
 ) {
 
     open suspend fun executeMainBackupSave(
@@ -22,7 +20,7 @@ open class MainEncryptedBackupSaveCoordinator @Inject constructor(
         passphrase: CharArray,
         currentTimeMs: Long = System.currentTimeMillis()
     ): SafBackupOutcome {
-        // 1. Role Guard: Enforce MAIN role BEFORE snapshot collection or SAF I/O
+        // 1. Role Guard: Enforce MAIN role BEFORE creating the backup or any SAF I/O
         val isMainRole = try {
             appRoleResolver.isMain()
         } catch (e: kotlinx.coroutines.CancellationException) {
@@ -51,50 +49,17 @@ open class MainEncryptedBackupSaveCoordinator @Inject constructor(
             )
         }
 
-        if (fullBackupManager != null) {
-            val encryptedBackup = try {
-                fullBackupManager.createEncryptedBackup(passphrase, currentTimeMs)
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                return SafBackupOutcome.NoDocumentIoAttempted(
-                    DomainError.TransactionFailed("No document I/O attempted: Failed creating the household backup: ${e.message}")
-                )
-            }
-            return safWriter.writeAndVerifyFullBackup(appContext, destinationUri, encryptedBackup) { saved ->
-                fullBackupManager.verifyEncryptedBackup(saved, passphrase)
-            }
-        }
-
-        // 4. Collect transactional Main snapshot
-        val snapshot = try {
-            snapshotBuilder.createMainBackupSnapshot(currentTimeMs)
+        val encryptedBackup = try {
+            fullBackupManager.createEncryptedBackup(passphrase, currentTimeMs)
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
             return SafBackupOutcome.NoDocumentIoAttempted(
-                DomainError.TransactionFailed("No document I/O attempted: Failed generating Main household snapshot: ${e.message ?: "Unknown error"}")
+                DomainError.TransactionFailed("No document I/O attempted: Failed creating the household backup: ${e.message}")
             )
         }
-
-        // 5. Encrypt snapshot DTO into PANTRYENC binary container
-        val encryptedBytes = try {
-            encryptionCodec.encodeEncryptedBackup(snapshot, passphrase, currentTimeMs)
-        } catch (e: kotlinx.coroutines.CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            return SafBackupOutcome.NoDocumentIoAttempted(
-                DomainError.TransactionFailed("No document I/O attempted: Failed encrypting Main household backup: ${e.message ?: "Unknown error"}")
-            )
+        return safWriter.writeAndVerifyFullBackup(appContext, destinationUri, encryptedBackup) { saved ->
+            fullBackupManager.verifyEncryptedBackup(saved, passphrase)
         }
-
-        // 6. Delegate write, readback, exact-byte check, and decryption verification to SAF Writer
-        return safWriter.writeAndVerifyEncryptedBackup(
-            appContext = appContext,
-            uri = destinationUri,
-            encryptedBytes = encryptedBytes,
-            passphrase = passphrase,
-            encryptionCodec = encryptionCodec
-        )
     }
 }
