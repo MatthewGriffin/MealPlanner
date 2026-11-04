@@ -22,16 +22,10 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import com.example.chatgpt_mealplanner.retail.contract.BasketComparisonResult
-import com.example.chatgpt_mealplanner.retail.contract.BasketLine
-import com.example.chatgpt_mealplanner.retail.contract.Money
-import com.example.chatgpt_mealplanner.retail.contract.PackAlternative
-import com.example.chatgpt_mealplanner.retail.contract.RetailerId
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.onEach
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -50,16 +44,12 @@ class ShoppingViewModel @Inject constructor(
     private val userMessageFlow = MutableStateFlow<String?>(null)
     private val isLoadingFlow = MutableStateFlow(false)
     private val selectedItemDetailFlow = MutableStateFlow<ShoppingListItemWithSources?>(null)
-    private val selectedItemOptionsFlow = MutableStateFlow<List<PackAlternative>>(emptyList())
-    private val isLoadingItemOptionsFlow = MutableStateFlow(false)
     private val showAddManualDialogFlow = MutableStateFlow(false)
     private val manualItemNameFlow = MutableStateFlow("")
     private val manualItemNotesFlow = MutableStateFlow("")
-    private val basketOptimizationFlow = MutableStateFlow<BasketComparisonResult?>(null)
-    private val retailLookupMessageFlow = MutableStateFlow<String?>(null)
     private val shopPriceOptionsFlow = MutableStateFlow<Map<String, List<ShopPriceOption>>>(emptyMap())
     private var localPriceLookupJob: kotlinx.coroutines.Job? = null
-    private var lastBasketOptimizationSignature: String? = null
+    private var lastPriceLookupSignature: String? = null
 
     private val activeShoppingListFlow = shoppingRepository.observeActiveShoppingListWithItems()
         .onEach { listWithItems ->
@@ -77,9 +67,8 @@ class ShoppingViewModel @Inject constructor(
                     ).joinToString(":")
                 }
             } ?: "empty"
-            if (requirementSignature != lastBasketOptimizationSignature) {
-                lastBasketOptimizationSignature = requirementSignature
-                clearRetailerComparison()
+            if (requirementSignature != lastPriceLookupSignature) {
+                lastPriceLookupSignature = requirementSignature
                 runLocalPriceLookup(listWithItems)
             }
         }
@@ -94,12 +83,8 @@ class ShoppingViewModel @Inject constructor(
         isLoadingFlow,
         selectedItemDetailFlow,
         showAddManualDialogFlow,
-        basketOptimizationFlow,
         manualItemNameFlow,
         manualItemNotesFlow,
-        retailLookupMessageFlow,
-        selectedItemOptionsFlow,
-        isLoadingItemOptionsFlow,
         shopPriceOptionsFlow
     ) { flows ->
         val listWithItems = flows[0] as ShoppingListWithItems?
@@ -109,16 +94,9 @@ class ShoppingViewModel @Inject constructor(
         val isLoading = flows[4] as Boolean
         val itemDetail = flows[5] as ShoppingListItemWithSources?
         val showAddDialog = flows[6] as Boolean
-        val basketResult = flows[7] as BasketComparisonResult?
-        val manualItemName = flows[8] as String
-        val manualItemNotes = flows[9] as String
-        val retailLookupMessage = flows[10] as String?
-        val selectedItemOptions = flows[11] as List<PackAlternative>
-        val isLoadingItemOptions = flows[12] as Boolean
-        val shopPriceOptions = flows[13] as Map<String, List<ShopPriceOption>>
-
-        val items = listWithItems?.items ?: emptyList()
-        val groups = computeRetailerGroups(items, basketResult)
+        val manualItemName = flows[7] as String
+        val manualItemNotes = flows[8] as String
+        val shopPriceOptions = flows[9] as Map<String, List<ShopPriceOption>>
 
         ShoppingUiState(
             activeListWithItems = listWithItems,
@@ -128,13 +106,8 @@ class ShoppingViewModel @Inject constructor(
             userMessage = userMessage,
             isLoading = isLoading,
             selectedItemForDetail = itemDetail,
-            selectedItemOptions = selectedItemOptions,
-            isLoadingItemOptions = isLoadingItemOptions,
             showAddManualDialog = showAddDialog,
-            basketComparisonResult = basketResult,
-            retailLookupMessage = retailLookupMessage,
             shopPriceOptions = shopPriceOptions,
-            retailerGroups = groups,
             manualItemName = manualItemName,
             manualItemNotes = manualItemNotes
         )
@@ -144,15 +117,7 @@ class ShoppingViewModel @Inject constructor(
         initialValue = ShoppingUiState()
     )
 
-    /**
-     * Live retailer catalogue scraping is intentionally disabled. Shopping prices now come
-     * only from locally recorded purchase observations; unknown prices remain unknown.
-     */
-    private fun clearRetailerComparison() {
-        basketOptimizationFlow.value = null
-        retailLookupMessageFlow.value = null
-    }
-
+    /** Shopping prices only come from locally recorded purchases, so unknown prices stay unknown. */
     private fun runLocalPriceLookup(listWithItems: ShoppingListWithItems?) {
         localPriceLookupJob?.cancel()
         val dao = purchasePriceDao
@@ -208,12 +173,7 @@ class ShoppingViewModel @Inject constructor(
             is ShoppingUiEvent.RemoveItem -> removeItem(event.itemId)
             is ShoppingUiEvent.SelectItemDetail -> {
                 selectedItemDetailFlow.value = event.itemWithSources
-                // Retailer catalogue alternatives are intentionally disabled. Local purchase
-                // history is surfaced separately and never presented as a live quote.
-                selectedItemOptionsFlow.value = emptyList()
-                isLoadingItemOptionsFlow.value = false
             }
-            is ShoppingUiEvent.ReassignItemRetailer -> userMessageFlow.value = "Retailer assignment is disabled; use your recorded purchase prices."
             ShoppingUiEvent.RequestAddManualItem -> {
                 manualItemNameFlow.value = ""
                 manualItemNotesFlow.value = ""
@@ -374,128 +334,6 @@ class ShoppingViewModel @Inject constructor(
             is DomainError.ItemNotFound -> "Item not found: ${error.itemId}"
             is DomainError.InvalidQuantity -> "Invalid quantity: ${error.quantity}"
             is DomainError.ItemNotUsable -> "Item not available: ${error.itemId}"
-        }
-    }
-
-    companion object {
-        fun computeRetailerGroups(
-            items: List<ShoppingListItemWithSources>,
-            basketResult: BasketComparisonResult?
-        ): List<RetailerGroup> {
-            if (items.isEmpty()) return emptyList()
-
-            if (basketResult == null) {
-                return listOf(
-                    RetailerGroup(
-                        retailerId = null,
-                        retailerName = "Shopping List Items",
-                        subtotal = null,
-                        items = items
-                    )
-                )
-            }
-
-            val selectedPlan = basketResult.selectedPlan
-            // Basket lines are keyed by shopping-requirement ID. Do not fall back to
-            // canonical ingredient IDs or names: several distinct list rows can share
-            // either value, and mapping one line to multiple rows inflates retailer totals.
-            val lineByReqId = selectedPlan.lines.associateBy { it.shoppingRequirementId }
-
-            fun findLineForItem(item: ShoppingListItemWithSources): BasketLine? =
-                lineByReqId[item.item.id]
-
-            val itemMapByRetailer = items.groupBy { item ->
-                findLineForItem(item)?.retailerId
-            }
-
-            val groups = mutableListOf<RetailerGroup>()
-
-            // Display order must not imply that any retailer is preferred by the app.
-            // Saved preferred branches determine eligible retailers; group display is neutral.
-            val orderedStores = selectedPlan.stores.sortedBy(::formatRetailerName)
-
-            orderedStores.distinct().forEach { storeId ->
-                val groupItems = itemMapByRetailer[storeId]
-                if (!groupItems.isNullOrEmpty()) {
-                    val groupLines = groupItems.mapNotNull { findLineForItem(it) }
-                    val subtotal = if (groupLines.isNotEmpty()) {
-                        groupLines.map { it.lineTotalCost }.reduce { acc, money -> acc + money }
-                    } else null
-
-                    val lineMap = groupItems.mapNotNull { item ->
-                        val line = findLineForItem(item)
-                        if (line != null) item.item.id to line else null
-                    }.toMap()
-
-                    groups.add(
-                        RetailerGroup(
-                            retailerId = storeId,
-                            retailerName = formatRetailerName(storeId),
-                            subtotal = subtotal,
-                            items = groupItems,
-                            lineByItemId = lineMap
-                        )
-                    )
-                }
-            }
-
-            val unassignedItems = itemMapByRetailer[null]
-            if (!unassignedItems.isNullOrEmpty()) {
-                groups.add(
-                    RetailerGroup(
-                        retailerId = null,
-                        retailerName = "Unassigned Items",
-                        subtotal = null,
-                        items = unassignedItems
-                    )
-                )
-            }
-
-            logDiagnostic("SHOPPING_UI_MAPPING", "shoppingItems=${items.size} basketLines=${selectedPlan.lines.size} optimizerUnmatched=${selectedPlan.unmatchedRequirements.size} retailerGroups=${groups.count { it.retailerId != null }} uiUnassigned=${unassignedItems?.size ?: 0}")
-
-            selectedPlan.lines.forEach { line ->
-                val found = items.any { findLineForItem(it) == line }
-                logDiagnostic("BASKET_LINE_MAP", "requirementId=${line.shoppingRequirementId} retailer=${line.retailerId.name} lineCost=${line.lineTotalCost.toFormattedString()} shoppingItemFound=$found")
-            }
-
-            items.forEach { item ->
-                val line = findLineForItem(item)
-                val isUnmatched = selectedPlan.unmatchedRequirements.contains(item.item.id) || selectedPlan.unmatchedRequirements.contains(item.item.displayName)
-                logDiagnostic("SHOPPING_ITEM_MAP", "shoppingItemId=${item.item.id} requirementIdentity=${item.item.id} matchedBasketLine=${line != null} optimizerUnmatched=$isUnmatched")
-            }
-
-            val groupedSubtotal = groups.filter { it.retailerId != null }
-                .mapNotNull { it.subtotal }
-                .fold(Money.zero()) { acc, money -> acc + money }
-
-            if (selectedPlan.basketSubtotal > Money.zero() && groups.none { it.retailerId != null }) {
-                logDiagnostic("SHOPPING_UI_INVARIANT", "basketSubtotal=${selectedPlan.basketSubtotal.toFormattedString()} groupedSubtotal=${groupedSubtotal.toFormattedString()} matchedLines=${selectedPlan.lines.size} retailerGroups=0 status=MAPPING_MISMATCH")
-            }
-
-            return groups
-        }
-
-        private fun logDiagnostic(tag: String, message: String) {
-            if (!com.example.chatgpt_mealplanner.BuildConfig.DEBUG) return
-            println("[$tag] $message")
-            try {
-                android.util.Log.d(tag, message)
-            } catch (_: Throwable) {
-                // Unstubbed in JVM unit tests
-            }
-        }
-
-        private fun formatRetailerName(retailerId: RetailerId): String {
-            return when (retailerId) {
-                RetailerId.ASDA -> "ASDA"
-                RetailerId.ICELAND -> "Iceland"
-                RetailerId.FOOD_WAREHOUSE -> "The Food Warehouse"
-                RetailerId.TESCO -> "Tesco"
-                RetailerId.MORRISONS -> "Morrisons"
-                RetailerId.SAINSBURYS -> "Sainsbury's"
-                RetailerId.ALDI -> "Aldi"
-                RetailerId.LIDL -> "Lidl"
-            }
         }
     }
 }
