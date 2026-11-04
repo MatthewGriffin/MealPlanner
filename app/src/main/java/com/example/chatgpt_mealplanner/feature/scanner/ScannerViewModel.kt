@@ -1,5 +1,6 @@
 package com.example.chatgpt_mealplanner.feature.scanner
 
+import com.example.chatgpt_mealplanner.core.util.rethrowIfCancelled
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.chatgpt_mealplanner.core.barcode.model.ConfirmedProductInput
@@ -182,6 +183,7 @@ class ScannerViewModel @Inject constructor(
                 )
             )
         } catch (_: Exception) {
+            rethrowIfCancelled()
             // Inventory save must not fail because an optional price-history write failed.
         }
     }

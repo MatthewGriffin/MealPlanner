@@ -1,5 +1,6 @@
 package com.example.chatgpt_mealplanner.core.sync.follower.reauth
 
+import com.example.chatgpt_mealplanner.core.util.rethrowIfCancelled
 import com.example.chatgpt_mealplanner.core.security.AndroidKeyStoreManager
 import com.example.chatgpt_mealplanner.core.sync.follower.config.FollowerPairingStore
 import com.example.chatgpt_mealplanner.sync.contract.QrInvitationPayloadDto
@@ -109,6 +110,7 @@ open class FollowerReauthorizationClient @Inject constructor(
         val signatureBase64 = try {
             keyStoreManager.signChallenge(keyAlias, canonicalBytes)
         } catch (e: Exception) {
+            rethrowIfCancelled()
             return@withContext ReauthorizationClientResult.Failure("SIGNATURE_FAILED", "Failed to sign re-authorization challenge with existing key")
         }
 
@@ -123,6 +125,7 @@ open class FollowerReauthorizationClient @Inject constructor(
         val client = try {
             createPinnedOkHttpClient(invitation.tlsCertificateFingerprint)
         } catch (e: Exception) {
+            rethrowIfCancelled()
             return@withContext ReauthorizationClientResult.Failure("TLS_SETUP_FAILED", e.message ?: "TLS setup error")
         }
 
@@ -135,6 +138,7 @@ open class FollowerReauthorizationClient @Inject constructor(
         } catch (e: java.io.IOException) {
             return@withContext ReauthorizationClientResult.Failure("NETWORK_ERROR", e.message ?: "Network error during re-authorization")
         } catch (e: Exception) {
+            rethrowIfCancelled()
             return@withContext ReauthorizationClientResult.Failure("SERVER_ERROR", e.message ?: "Server error during re-authorization")
         }
 
