@@ -1,5 +1,7 @@
 package com.example.chatgpt_mealplanner.feature.spend
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -53,6 +55,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.chatgpt_mealplanner.core.receipt.ReceiptSpendCategory
@@ -84,6 +87,40 @@ fun ReceiptSpendScreen(
             if (!success) {
                 cameraErrorMessage = "No photo was captured. Please try again."
             }
+        }
+    }
+
+    val launchCamera: () -> Unit = {
+        try {
+            android.util.Log.i("AI_MEALPLANNER", "[RECEIPT_CAMERA_LAUNCH]")
+            // TakePicture writes into the supplied URI; create the destination first
+            // so camera apps that require an existing output file can open it.
+            val photoFile = File.createTempFile("receipt_", ".jpg", context.cacheDir)
+            val photoUri = FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                photoFile
+            )
+            tempPhotoUri = photoUri
+            cameraLauncher.launch(photoUri)
+        } catch (e: Exception) {
+            android.util.Log.e("AI_MEALPLANNER", "[RECEIPT_CAMERA_ERROR]", e)
+            cameraErrorMessage = when (e) {
+                is android.content.ActivityNotFoundException ->
+                    "No camera app is available on this device."
+                else ->
+                    "Couldn't open the camera: ${e.localizedMessage ?: e.javaClass.simpleName}"
+            }
+        }
+    }
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            launchCamera()
+        } else {
+            cameraErrorMessage = "Camera permission is needed to take a photo. You can choose an image from your gallery instead."
         }
     }
 
@@ -348,26 +385,16 @@ fun ReceiptSpendScreen(
                         Button(
                             onClick = {
                                 cameraErrorMessage = null
-                                try {
-                                    android.util.Log.i("AI_MEALPLANNER", "[RECEIPT_CAMERA_LAUNCH]")
-                                    // TakePicture writes into the supplied URI; create the destination first
-                                    // so camera apps that require an existing output file can open it.
-                                    val photoFile = File.createTempFile("receipt_", ".jpg", context.cacheDir)
-                                    val photoUri = FileProvider.getUriForFile(
-                                        context,
-                                        "${context.packageName}.fileprovider",
-                                        photoFile
-                                    )
-                                    tempPhotoUri = photoUri
-                                    cameraLauncher.launch(photoUri)
-                                } catch (e: Exception) {
-                                    android.util.Log.e("AI_MEALPLANNER", "[RECEIPT_CAMERA_ERROR]", e)
-                                    cameraErrorMessage = when (e) {
-                                        is android.content.ActivityNotFoundException ->
-                                            "No camera app is available on this device."
-                                        else ->
-                                            "Couldn't open the camera: ${e.localizedMessage ?: e.javaClass.simpleName}"
-                                    }
+                                // The manifest declares CAMERA for the in-app scanners, so Android rejects
+                                // ACTION_IMAGE_CAPTURE with a SecurityException until it has been granted.
+                                val hasCameraPermission = ContextCompat.checkSelfPermission(
+                                    context,
+                                    Manifest.permission.CAMERA
+                                ) == PackageManager.PERMISSION_GRANTED
+                                if (hasCameraPermission) {
+                                    launchCamera()
+                                } else {
+                                    cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
                                 }
                             },
                             modifier = Modifier.weight(1f)
