@@ -79,6 +79,9 @@ open class PantrySyncTestClient @Inject constructor(
     private val json = Json { ignoreUnknownKeys = true }
 
     open fun createPinnedOkHttpClient(pinnedCertFingerprint: String?): OkHttpClient {
+        require(com.example.chatgpt_mealplanner.sync.contract.SyncContractValidation.isValidSha256Fingerprint(pinnedCertFingerprint)) {
+            "Missing, blank, or malformed TLS certificate fingerprint"
+        }
         val trustManager = object : X509TrustManager {
             override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
             override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) {
@@ -92,7 +95,7 @@ open class PantrySyncTestClient @Inject constructor(
                     if (i < digest.size - 1) sb.append(":")
                 }
                 val actualFingerprint = sb.toString()
-                if (!pinnedCertFingerprint.isNullOrBlank() && !actualFingerprint.equals(pinnedCertFingerprint, ignoreCase = true)) {
+                if (!actualFingerprint.equals(pinnedCertFingerprint?.trim(), ignoreCase = true)) {
                     throw java.security.cert.CertificateException("TLS Certificate Pin Mismatch! Expected: $pinnedCertFingerprint, Actual: $actualFingerprint")
                 }
             }
