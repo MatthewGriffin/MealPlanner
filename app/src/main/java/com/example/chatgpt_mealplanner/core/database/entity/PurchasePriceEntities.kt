@@ -63,7 +63,9 @@ data class PurchasePriceObservationEntity(
     val purchasedAt: Long = System.currentTimeMillis(),
     val createdAt: Long = System.currentTimeMillis(),
     /** Optional provenance label such as MANUAL or RECEIPT_IMPORT. */
-    val source: String = "MANUAL"
+    val source: String = "MANUAL",
+    /** What the product is, such as "cheese", so different brands and pack names can be compared. */
+    val canonicalName: String? = null
 )
 
 /** Joined view used to display price history without coupling observations to a retailer enum. */
