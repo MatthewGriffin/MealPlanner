@@ -49,7 +49,7 @@ object DatabaseModule {
         return Room.databaseBuilder(
             context,
             AppDatabase::class.java,
-            "pantry_planner.db"
+            com.example.chatgpt_mealplanner.core.database.MAIN_DATABASE_NAME
         )
             .addMigrations(*com.example.chatgpt_mealplanner.core.database.ALL_MIGRATIONS)
             .build()

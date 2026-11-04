@@ -31,9 +31,30 @@ open class MainBackupEncryptionCodec @Inject constructor(
             "KDF iterations $iterations outside permitted range [$MIN_KDF_ITERATIONS, $MAX_KDF_ITERATIONS]."
         }
 
-        // 1. Encode snapshot DTO into plaintext .pantrybak container
+        // Encode snapshot DTO into plaintext .pantrybak container
         val plaintextContainerBytes = containerEncoderDecoder.encodeContainer(snapshot, currentTimeMs)
+        return encryptPayload(plaintextContainerBytes, passphrase, iterations, ENCRYPTED_WIRE_VERSION)
+    }
 
+    open fun encodeFullBackup(
+        archive: ByteArray,
+        passphrase: CharArray,
+        iterations: Int = DEFAULT_KDF_ITERATIONS
+    ): ByteArray {
+        require(passphrase.isNotEmpty()) { "Backup passphrase MUST NOT be empty." }
+        require(iterations in MIN_KDF_ITERATIONS..MAX_KDF_ITERATIONS) {
+            "KDF iterations $iterations outside permitted range [$MIN_KDF_ITERATIONS, $MAX_KDF_ITERATIONS]."
+        }
+        require(archive.size <= MAX_CONTAINER_BODY_SIZE_BYTES) { "Household data is too large to back up." }
+        return encryptPayload(archive, passphrase, iterations, FULL_BACKUP_WIRE_VERSION)
+    }
+
+    private fun encryptPayload(
+        plaintextContainerBytes: ByteArray,
+        passphrase: CharArray,
+        iterations: Int,
+        wireVersion: Int
+    ): ByteArray {
         // 2. Generate random salt and nonce
         val salt = ByteArray(KDF_SALT_SIZE_BYTES)
         val nonce = ByteArray(AEAD_NONCE_SIZE_BYTES)
@@ -54,7 +75,7 @@ open class MainBackupEncryptionCodec @Inject constructor(
         val headerBuffer = ByteBuffer.allocate(ENCRYPTED_HEADER_SIZE_BYTES).apply {
             order(ByteOrder.BIG_ENDIAN)
             put(ENCRYPTED_CONTAINER_MAGIC)
-            putInt(ENCRYPTED_WIRE_VERSION)
+            putInt(wireVersion)
             putShort(KDF_ID_PBKDF2_HMAC_SHA256)
             putShort(AEAD_ID_AES_256_GCM)
             put(salt)
@@ -84,6 +105,33 @@ open class MainBackupEncryptionCodec @Inject constructor(
         encryptedBytes: ByteArray,
         passphrase: CharArray
     ): DomainResult<MainHouseholdBackupDto> {
+        return when (val decrypted = decryptPayload(encryptedBytes, passphrase, ENCRYPTED_WIRE_VERSION)) {
+            is DomainResult.Failure -> DomainResult.Failure(decrypted.error)
+            // Pass Decrypted Plaintext to PANTRYBK Container Decoder
+            is DomainResult.Success -> containerEncoderDecoder.decodeAndValidateContainer(decrypted.value)
+        }
+    }
+
+    open fun decodeFullBackup(encryptedBytes: ByteArray, passphrase: CharArray): DomainResult<ByteArray> {
+        if (encryptedBytes.size >= ENCRYPTED_HEADER_SIZE_BYTES) {
+            val wireVersion = ByteBuffer.wrap(encryptedBytes, ENCRYPTED_CONTAINER_MAGIC.size, 4)
+                .order(ByteOrder.BIG_ENDIAN).int
+            if (wireVersion == ENCRYPTED_WIRE_VERSION) {
+                return DomainResult.Failure(
+                    DomainError.TransactionFailed(
+                        "This backup was made by an older version of the app and can't be restored. Save a new backup to replace it."
+                    )
+                )
+            }
+        }
+        return decryptPayload(encryptedBytes, passphrase, FULL_BACKUP_WIRE_VERSION)
+    }
+
+    private fun decryptPayload(
+        encryptedBytes: ByteArray,
+        passphrase: CharArray,
+        expectedWireVersion: Int
+    ): DomainResult<ByteArray> {
         if (passphrase.isEmpty()) {
             return DomainResult.Failure(DomainError.TransactionFailed("Backup passphrase MUST NOT be empty."))
         }
@@ -120,9 +168,9 @@ open class MainBackupEncryptionCodec @Inject constructor(
 
         // 2. Verify Wire Version (4 bytes)
         val wireVersion = headerBuffer.int
-        if (wireVersion != ENCRYPTED_WIRE_VERSION) {
+        if (wireVersion != expectedWireVersion) {
             return DomainResult.Failure(
-                DomainError.TransactionFailed("Unsupported encrypted wire version: $wireVersion. Expected $ENCRYPTED_WIRE_VERSION.")
+                DomainError.TransactionFailed("Unsupported encrypted wire version: $wireVersion. Expected $expectedWireVersion.")
             )
         }
 
@@ -192,8 +240,7 @@ open class MainBackupEncryptionCodec @Inject constructor(
             )
         }
 
-        // 9. Pass Decrypted Plaintext to PANTRYBK Container Decoder
-        return containerEncoderDecoder.decodeAndValidateContainer(decryptedPlaintextBytes)
+        return DomainResult.Success(decryptedPlaintextBytes)
     }
 
     private fun deriveAesKey(passphrase: CharArray, salt: ByteArray, iterations: Int): SecretKey {

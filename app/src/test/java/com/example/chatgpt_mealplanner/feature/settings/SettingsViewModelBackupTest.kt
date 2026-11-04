@@ -111,7 +111,10 @@ class SettingsViewModelBackupTest {
         Dispatchers.resetMain()
     }
 
-    private fun createViewModel(isMain: Boolean = true): SettingsViewModel {
+    private fun createViewModel(
+        isMain: Boolean = true,
+        fullBackupManager: com.example.chatgpt_mealplanner.core.backup.FullBackupManager? = null
+    ): SettingsViewModel {
         appRoleResolver.isMainRole = isMain
         fakeSaveCoordinator.isMainRole = isMain
         return SettingsViewModel(
@@ -122,8 +125,59 @@ class SettingsViewModelBackupTest {
             backupManager = backupManager,
             followerSyncScheduler = followerSyncScheduler,
             appRoleResolver = appRoleResolver,
-            mainBackupSaveCoordinator = fakeSaveCoordinator
+            mainBackupSaveCoordinator = fakeSaveCoordinator,
+            fullBackupManager = fullBackupManager
         )
+    }
+
+    @Test
+    fun restore_success_asksTheAppToRestart() = runTest {
+        val manager = mock<com.example.chatgpt_mealplanner.core.backup.FullBackupManager>()
+        val uri = mock<android.net.Uri>()
+        org.mockito.kotlin.whenever(manager.stageRestore(org.mockito.kotlin.any(), org.mockito.kotlin.any()))
+            .thenReturn(com.example.chatgpt_mealplanner.core.model.DomainResult.Success(Unit))
+        viewModel = createViewModel(fullBackupManager = manager)
+        testScheduler.advanceUntilIdle()
+
+        viewModel.onRestoreFileSelected(uri)
+        assertEquals(uri, viewModel.uiState.value.pendingRestoreUri)
+        viewModel.executeRestore("passphrase".toCharArray(), ioDispatcher = testDispatcher)
+        testScheduler.advanceUntilIdle()
+
+        assertTrue(viewModel.uiState.value.restartToFinishRestore)
+        assertNull(viewModel.uiState.value.pendingRestoreUri)
+    }
+
+    @Test
+    fun restore_failure_showsWhy_andDoesNotRestart() = runTest {
+        val manager = mock<com.example.chatgpt_mealplanner.core.backup.FullBackupManager>()
+        org.mockito.kotlin.whenever(manager.stageRestore(org.mockito.kotlin.any(), org.mockito.kotlin.any()))
+            .thenReturn(
+                com.example.chatgpt_mealplanner.core.model.DomainResult.Failure(
+                    com.example.chatgpt_mealplanner.core.model.DomainError.TransactionFailed("Wrong passphrase")
+                )
+            )
+        viewModel = createViewModel(fullBackupManager = manager)
+        testScheduler.advanceUntilIdle()
+
+        viewModel.onRestoreFileSelected(mock())
+        viewModel.executeRestore("passphrase".toCharArray(), ioDispatcher = testDispatcher)
+        testScheduler.advanceUntilIdle()
+
+        assertFalse(viewModel.uiState.value.restartToFinishRestore)
+        assertFalse(viewModel.uiState.value.isRestoreInProgress)
+        assertEquals("Wrong passphrase", viewModel.uiState.value.backupStatusMessage)
+    }
+
+    @Test
+    fun restore_isBlockedOnJoinedPhones() = runTest {
+        viewModel = createViewModel(isMain = false)
+        testScheduler.advanceUntilIdle()
+
+        viewModel.onRestoreFileSelected(mock())
+
+        assertNull(viewModel.uiState.value.pendingRestoreUri)
+        assertTrue(viewModel.uiState.value.backupStatusMessage!!.contains("Main phone"))
     }
 
     @Test

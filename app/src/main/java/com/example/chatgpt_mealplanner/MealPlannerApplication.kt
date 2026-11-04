@@ -25,6 +25,8 @@ class MealPlannerApplication : Application(), Configuration.Provider {
             .build()
 
     override fun onCreate() {
+        // Runs first because super.onCreate() starts dependency injection, which uses the database.
+        com.example.chatgpt_mealplanner.core.backup.FullBackupRestoreInstaller.applyPendingRestore(this)
         super.onCreate()
         followerNetworkCallbackListener.registerListener()
         com.example.chatgpt_mealplanner.core.worker.IcelandCatalogueRefreshScheduler.schedule(this)

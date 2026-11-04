@@ -13,6 +13,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 sealed interface SafBackupOutcome {
+    data object VerifiedFullBackup : SafBackupOutcome
     data class VerifiedSuccess(val snapshot: MainHouseholdBackupDto) : SafBackupOutcome
     data class NoDocumentIoAttempted(val cause: DomainError.TransactionFailed) : SafBackupOutcome
     data class DocumentIoAttemptedUnverified(val cause: DomainError.TransactionFailed, val destinationUri: Uri?) : SafBackupOutcome
@@ -112,6 +113,34 @@ open class MainEncryptedBackupSafWriter @Inject constructor(
         }
 
         return@withContext SafBackupOutcome.VerifiedSuccess((result as DomainResult.Success).value)
+    }
+
+    /** Writes a full backup and confirms the saved file can be read back and decrypted. */
+    open suspend fun writeAndVerifyFullBackup(
+        appContext: Context?,
+        uri: Uri,
+        encryptedBytes: ByteArray,
+        verify: (ByteArray) -> Boolean
+    ): SafBackupOutcome = withContext(Dispatchers.IO) {
+        fun unverified(detail: String) = SafBackupOutcome.DocumentIoAttemptedUnverified(
+            DomainError.TransactionFailed("SAF Document I/O attempted (unverified): $detail"),
+            uri
+        )
+        try {
+            val output = streamProvider.openOutputStream(appContext, uri)
+                ?: return@withContext unverified("Unable to open selected document for writing")
+            output.use { it.write(encryptedBytes); it.flush() }
+            val input = streamProvider.openInputStream(appContext, uri)
+                ?: return@withContext unverified("Write completed but the saved document couldn't be read back")
+            val saved = input.use { readBoundedBytes(it, MAX_ENCRYPTED_CONTAINER_SIZE_BYTES) }
+            if (!saved.contentEquals(encryptedBytes)) return@withContext unverified("Saved backup didn't match what was written")
+            if (!verify(saved)) return@withContext unverified("Saved backup failed verification")
+            SafBackupOutcome.VerifiedFullBackup
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            unverified("Failed writing or verifying the backup document")
+        }
     }
 
     private fun readBoundedBytes(stream: InputStream, maxBytes: Int): ByteArray {

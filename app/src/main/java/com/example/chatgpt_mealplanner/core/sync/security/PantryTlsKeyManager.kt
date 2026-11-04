@@ -267,5 +267,25 @@ open class PantryTlsKeyManager @Inject constructor(
         return clean1 == clean2
     }
 
+    /** Returns the keystore file and its password, or null if this phone has no TLS identity yet. */
+    open fun exportTlsIdentity(): Pair<ByteArray, String>? {
+        val file = context?.filesDir?.let { File(it, fileName) }?.takeIf { it.exists() } ?: return null
+        return file.readBytes() to String(getOrCreateEncryptedPassword(allowCreate = false))
+    }
+
+    /** Installs a TLS identity from a backup, with its password protected by this phone's Keystore. */
+    open fun restoreTlsIdentity(keystoreBytes: ByteArray, password: String) {
+        val ctx = context ?: throw SecurityException("Application context unavailable")
+        val prefs = com.example.chatgpt_mealplanner.core.security.AndroidKeystoreSecurePreferences(
+            ctx,
+            "pantry_tls_secure_prefs",
+            mapOf("KEY_TLS_P12_PASSWORD" to 'S')
+        )
+        if (!prefs.putString("KEY_TLS_P12_PASSWORD", password)) {
+            throw SecurityException("Could not persist TLS keystore password securely")
+        }
+        File(ctx.filesDir, fileName).writeBytes(keystoreBytes)
+    }
+
     fun getTlsPassword(): CharArray = getOrCreateEncryptedPassword(allowCreate = !(context?.filesDir?.let { File(it, fileName).exists() } ?: false))
 }
