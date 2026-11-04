@@ -902,6 +902,24 @@ val MIGRATION_20_21 = object : Migration(20, 21) {
     }
 }
 
+val MIGRATION_21_22 = object : Migration(21, 22) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `purchase_price_observations` ADD COLUMN `canonicalName` TEXT")
+        // Older prices can still be compared when their barcode has a known product.
+        db.execSQL(
+            """
+            UPDATE `purchase_price_observations`
+            SET `canonicalName` = (
+                SELECT COALESCE(`canonicalIngredientId`, `canonicalName`)
+                FROM `product_barcode_mappings`
+                WHERE `product_barcode_mappings`.`barcode` = `purchase_price_observations`.`barcode`
+            )
+            WHERE `barcode` IS NOT NULL
+            """.trimIndent()
+        )
+    }
+}
+
 val ALL_MIGRATIONS = arrayOf(
     MIGRATION_1_2,
     MIGRATION_2_3,
@@ -922,7 +940,8 @@ val ALL_MIGRATIONS = arrayOf(
     MIGRATION_17_18,
     MIGRATION_18_19,
     MIGRATION_19_20,
-    MIGRATION_20_21
+    MIGRATION_20_21,
+    MIGRATION_21_22
 )
 
 @Database(
@@ -966,7 +985,7 @@ val ALL_MIGRATIONS = arrayOf(
         UserStoreEntity::class,
         PurchasePriceObservationEntity::class
     ],
-    version = 21,
+    version = 22,
     exportSchema = true
 )
 @TypeConverters(Converters::class)

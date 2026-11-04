@@ -177,7 +177,8 @@ class ScannerViewModel @Inject constructor(
                     priceMinorUnits = priceMinorUnits,
                     purchasedAt = System.currentTimeMillis(),
                     createdAt = System.currentTimeMillis(),
-                    source = "SCANNER"
+                    source = "SCANNER",
+                    canonicalName = (input.canonicalIngredientId ?: input.canonicalName)?.trim()?.takeIf { it.isNotEmpty() }
                 )
             )
         } catch (_: Exception) {

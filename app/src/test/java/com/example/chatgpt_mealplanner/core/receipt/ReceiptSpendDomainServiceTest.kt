@@ -1,5 +1,16 @@
 package com.example.chatgpt_mealplanner.core.receipt
 
+import com.example.chatgpt_mealplanner.core.database.dao.PurchasePriceDao
+import com.example.chatgpt_mealplanner.core.database.dao.ShoppingDao
+import com.example.chatgpt_mealplanner.core.database.entity.PurchasePriceObservationEntity
+import com.example.chatgpt_mealplanner.core.database.entity.ShoppingListItemEntity
+import com.example.chatgpt_mealplanner.core.database.entity.UserStoreEntity
+import org.mockito.kotlin.any
+import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
+import org.mockito.kotlin.verify
+import org.mockito.kotlin.whenever
 import com.example.chatgpt_mealplanner.core.database.entity.ReceiptCategoryMappingEntity
 import com.example.chatgpt_mealplanner.core.database.entity.ReceiptSpendEntity
 import com.example.chatgpt_mealplanner.core.database.entity.ReceiptSpendItemEntity
@@ -81,6 +92,92 @@ class ReceiptSpendDomainServiceTest {
         bridge = FakeReceiptRetailBridgeService()
         val runner = FakeTransactionRunner()
         service = ReceiptSpendDomainServiceImpl(dao, bridge, runner)
+    }
+
+    private suspend fun asdaDraft(vararg items: ReceiptSpendItemDraft): ReceiptSpendDraft {
+        val ocr = ReceiptOcrResult(
+            lines = listOf(ReceiptOcrLine("ASDA 27/09/2026", 0.9f, 0)),
+            fullText = "ASDA 27/09/2026"
+        )
+        val draft = (service.processReceiptOcr(ocr, null) as DomainResult.Success).value
+        return draft.copy(retailerId = "ASDA", purchasedAt = "2026-09-27", items = items.toList())
+    }
+
+    private fun linkedLine(description: String) = ReceiptSpendItemDraft(
+        rawDescription = description,
+        normalizedDescription = description,
+        lineAmountMinorPence = 450L,
+        unitPriceMinorPence = 450L,
+        linkedShoppingListItemId = "list_item"
+    )
+
+    private suspend fun savedObservations(priceDao: PurchasePriceDao): List<PurchasePriceObservationEntity> {
+        val captor = argumentCaptor<List<PurchasePriceObservationEntity>>()
+        verify(priceDao).insertPriceObservations(captor.capture())
+        return captor.firstValue
+    }
+
+    @Test
+    fun linkedLine_recordsPrice_withConceptAndSizeFromReceiptText() = runTest {
+        val priceDao = mock<PurchasePriceDao>()
+        val shoppingDao = mock<ShoppingDao>()
+        val listItem = mock<ShoppingListItemEntity>()
+        whenever(listItem.displayName).thenReturn("Grated cheese")
+        whenever(listItem.canonicalIngredientId).thenReturn("cheese")
+        whenever(shoppingDao.getShoppingListItemById("list_item")).thenReturn(listItem)
+        whenever(priceDao.getAllStores()).thenReturn(listOf(UserStoreEntity(id = "asda_store", name = "Asda")))
+        val linking = ReceiptSpendDomainServiceImpl(dao, bridge, FakeTransactionRunner(), priceDao, null, shoppingDao)
+
+        val result = linking.saveReceiptSpend(asdaDraft(linkedLine("MATURE CHEDDAR 450G")))
+
+        assertTrue(result is DomainResult.Success)
+        val saved = savedObservations(priceDao).single()
+        assertEquals("asda_store", saved.storeId)
+        assertEquals("cheese", saved.canonicalName)
+        assertEquals("Grated cheese", saved.productName)
+        assertEquals(450L, saved.priceMinorUnits)
+        assertEquals(450.0, saved.packQuantity!!, 0.001)
+        assertEquals("GRAM", saved.packUnit)
+        assertEquals("RECEIPT_LINK", saved.source)
+    }
+
+    @Test
+    fun linkedLine_createsShop_whenNoneMatchesTheRetailer() = runTest {
+        val priceDao = mock<PurchasePriceDao>()
+        whenever(priceDao.getAllStores()).thenReturn(emptyList())
+        val linking = ReceiptSpendDomainServiceImpl(dao, bridge, FakeTransactionRunner(), priceDao)
+
+        linking.saveReceiptSpend(asdaDraft(linkedLine("CHEDDAR")).copy(retailerId = "FOOD_WAREHOUSE"))
+
+        val captor = argumentCaptor<UserStoreEntity>()
+        verify(priceDao).insertStore(captor.capture())
+        assertEquals("Food Warehouse", captor.firstValue.name)
+        assertEquals(captor.firstValue.id, savedObservations(priceDao).single().storeId)
+    }
+
+    @Test
+    fun unlinkedLines_andUnknownRetailers_recordNoPrice() = runTest {
+        val priceDao = mock<PurchasePriceDao>()
+        val linking = ReceiptSpendDomainServiceImpl(dao, bridge, FakeTransactionRunner(), priceDao)
+        val unlinked = linkedLine("CHEDDAR").copy(linkedShoppingListItemId = null)
+
+        linking.saveReceiptSpend(asdaDraft(unlinked))
+        linking.saveReceiptSpend(asdaDraft(linkedLine("CHEDDAR")).copy(retailerId = "GENERIC", fingerprint = "other"))
+
+        verify(priceDao, never()).insertPriceObservations(any())
+        verify(priceDao, never()).insertStore(any())
+    }
+
+    @Test
+    fun priceRecordingFailure_doesNotFailTheSavedReceipt() = runTest {
+        val priceDao = mock<PurchasePriceDao>()
+        whenever(priceDao.getAllStores()).thenThrow(IllegalStateException("database unavailable"))
+        val linking = ReceiptSpendDomainServiceImpl(dao, bridge, FakeTransactionRunner(), priceDao)
+
+        val result = linking.saveReceiptSpend(asdaDraft(linkedLine("CHEDDAR")))
+
+        assertTrue(result is DomainResult.Success)
+        assertEquals(1, dao.savedSpends().size)
     }
 
     @Test

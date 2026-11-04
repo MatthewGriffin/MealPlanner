@@ -4,7 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.chatgpt_mealplanner.core.model.DomainError
 import com.example.chatgpt_mealplanner.core.database.dao.PurchasePriceDao
-import com.example.chatgpt_mealplanner.core.database.entity.PurchasePriceWithStore
+import com.example.chatgpt_mealplanner.core.service.ShopPriceComparator
+import com.example.chatgpt_mealplanner.core.service.ShopPriceOption
 import com.example.chatgpt_mealplanner.core.model.DomainResult
 import com.example.chatgpt_mealplanner.core.model.InventoryItem
 import com.example.chatgpt_mealplanner.core.model.QuantityConfidence
@@ -56,7 +57,7 @@ class ShoppingViewModel @Inject constructor(
     private val manualItemNotesFlow = MutableStateFlow("")
     private val basketOptimizationFlow = MutableStateFlow<BasketComparisonResult?>(null)
     private val retailLookupMessageFlow = MutableStateFlow<String?>(null)
-    private val localPriceMatchesFlow = MutableStateFlow<Map<String, List<PurchasePriceWithStore>>>(emptyMap())
+    private val shopPriceOptionsFlow = MutableStateFlow<Map<String, List<ShopPriceOption>>>(emptyMap())
     private var localPriceLookupJob: kotlinx.coroutines.Job? = null
     private var lastBasketOptimizationSignature: String? = null
 
@@ -99,7 +100,7 @@ class ShoppingViewModel @Inject constructor(
         retailLookupMessageFlow,
         selectedItemOptionsFlow,
         isLoadingItemOptionsFlow,
-        localPriceMatchesFlow
+        shopPriceOptionsFlow
     ) { flows ->
         val listWithItems = flows[0] as ShoppingListWithItems?
         val stapleRules = flows[1] as List<StapleRule>
@@ -114,7 +115,7 @@ class ShoppingViewModel @Inject constructor(
         val retailLookupMessage = flows[10] as String?
         val selectedItemOptions = flows[11] as List<PackAlternative>
         val isLoadingItemOptions = flows[12] as Boolean
-        val localPriceMatches = flows[13] as Map<String, List<PurchasePriceWithStore>>
+        val shopPriceOptions = flows[13] as Map<String, List<ShopPriceOption>>
 
         val items = listWithItems?.items ?: emptyList()
         val groups = computeRetailerGroups(items, basketResult)
@@ -132,7 +133,7 @@ class ShoppingViewModel @Inject constructor(
             showAddManualDialog = showAddDialog,
             basketComparisonResult = basketResult,
             retailLookupMessage = retailLookupMessage,
-            localPriceMatches = localPriceMatches,
+            shopPriceOptions = shopPriceOptions,
             retailerGroups = groups,
             manualItemName = manualItemName,
             manualItemNotes = manualItemNotes
@@ -157,26 +158,30 @@ class ShoppingViewModel @Inject constructor(
         val dao = purchasePriceDao
         val items = listWithItems?.items.orEmpty()
         if (dao == null || items.isEmpty()) {
-            localPriceMatchesFlow.value = emptyMap()
+            shopPriceOptionsFlow.value = emptyMap()
             return
         }
         localPriceLookupJob = viewModelScope.launch {
             try {
                 val matches = withContext(Dispatchers.IO) {
+                    val history = dao.getActiveStorePriceHistory()
                     items.associate { entry ->
-                        val history = dao.getPriceHistoryByExactProductName(entry.item.displayName)
-                        val latestPerStore = history
-                            .distinctBy { it.observation.storeId }
-                            .sortedWith(compareBy<PurchasePriceWithStore> { it.observation.priceMinorUnits }
-                                .thenByDescending { it.observation.purchasedAt })
-                        entry.item.id to latestPerStore
+                        val item = entry.item
+                        val matching = history.filter {
+                            ShopPriceComparator.matchesItem(item.canonicalIngredientId, item.displayName, it.observation)
+                        }
+                        item.id to ShopPriceComparator.compare(
+                            neededQuantity = item.suggestedPurchaseQuantity,
+                            neededUnit = item.suggestedPurchaseUnit,
+                            prices = matching
+                        )
                     }.filterValues { it.isNotEmpty() }
                 }
-                localPriceMatchesFlow.value = matches
+                shopPriceOptionsFlow.value = matches
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (_: Exception) {
-                localPriceMatchesFlow.value = emptyMap()
+                shopPriceOptionsFlow.value = emptyMap()
             }
         }
     }

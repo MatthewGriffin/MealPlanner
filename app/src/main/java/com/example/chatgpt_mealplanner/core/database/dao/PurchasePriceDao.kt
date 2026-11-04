@@ -51,6 +51,9 @@ interface PurchasePriceDao {
     @Query("SELECT purchase_price_observations.*, user_stores.name AS storeName FROM purchase_price_observations INNER JOIN user_stores ON user_stores.id = purchase_price_observations.storeId WHERE user_stores.isArchived = 0 AND purchase_price_observations.productName = :productName COLLATE NOCASE ORDER BY purchase_price_observations.purchasedAt DESC")
     suspend fun getPriceHistoryByExactProductName(productName: String): List<PurchasePriceWithStore>
 
+    @Query("SELECT purchase_price_observations.*, user_stores.name AS storeName FROM purchase_price_observations INNER JOIN user_stores ON user_stores.id = purchase_price_observations.storeId WHERE user_stores.isArchived = 0 ORDER BY purchasedAt DESC")
+    suspend fun getActiveStorePriceHistory(): List<PurchasePriceWithStore>
+
     @Query("SELECT * FROM purchase_price_observations WHERE storeId = :storeId AND productName = :productName COLLATE NOCASE ORDER BY purchasedAt DESC LIMIT 1")
     suspend fun getLatestPriceByNameAtStore(storeId: String, productName: String): PurchasePriceObservationEntity?
 
