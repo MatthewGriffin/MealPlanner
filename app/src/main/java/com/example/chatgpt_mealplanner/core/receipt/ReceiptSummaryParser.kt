@@ -28,6 +28,9 @@ object ReceiptSummaryParser {
         var cardPaymentPence: Long? = null
 
         val lines = ocrResult.lines
+        val alignment = ReceiptRowAligner.align(lines)
+        fun alignedAmount(lineIndex: Int): Long? =
+            alignment.priceLineFor[lineIndex]?.let { ReceiptMoneyParser.parseAmountPence(lines[it].text) }
 
         // 1. Savings / Discount Detection via Bidirectional Spatial Proximity (deltaY <= 30px)
         val savingsLabelLine = lines.firstOrNull {
@@ -40,13 +43,14 @@ object ReceiptSummaryParser {
             if (amountInLabel != null && amountInLabel != 0L) {
                 explicitSavingsPence = Math.abs(amountInLabel)
             } else {
+                alignedAmount(lines.indexOf(savingsLabelLine))?.let { explicitSavingsPence = Math.abs(it) }
                 // Search bidirectionally (before or after label) for discount price token within deltaY <= 30px
                 val nearbySavingsLine = lines.firstOrNull { line ->
                     line != savingsLabelLine &&
                     Math.abs(line.centerY - savingsLabelLine.centerY) <= 30 &&
                     ReceiptMoneyParser.parseAmountPence(line.text) != null
                 }
-                if (nearbySavingsLine != null) {
+                if (explicitSavingsPence == 0L && nearbySavingsLine != null) {
                     val parsedSav = ReceiptMoneyParser.parseAmountPence(nearbySavingsLine.text)
                     if (parsedSav != null) {
                         explicitSavingsPence = Math.abs(parsedSav)
@@ -68,14 +72,17 @@ object ReceiptSummaryParser {
                         Math.abs(l.centerY - line.centerY) <= 24 &&
                         ReceiptMoneyParser.parseAmountPence(l.text) != null
                     }
-                    if (nearbyCardLine != null) {
-                        cardPaymentPence = ReceiptMoneyParser.parseAmountPence(nearbyCardLine.text)
+                    val cardAmount = alignedAmount(index)
+                        ?: nearbyCardLine?.let { ReceiptMoneyParser.parseAmountPence(it.text) }
+                    if (cardAmount != null) {
+                        cardPaymentPence = cardAmount
                     }
                 }
             }
 
             if (norm.startsWith("TOTAL") || norm.startsWith("BALANCE") || norm.contains("AMOUNT PAID") || norm.contains("BALANCE DUE")) {
                 val parsedTotal = ReceiptMoneyParser.parseAmountPence(line.text)
+                    ?: alignedAmount(index)
                     ?: lines.firstOrNull { l -> Math.abs(l.centerY - line.centerY) <= 24 && ReceiptMoneyParser.parseAmountPence(l.text) != null }?.let { ReceiptMoneyParser.parseAmountPence(it.text) }
 
                 if (parsedTotal != null && parsedTotal > 0) {

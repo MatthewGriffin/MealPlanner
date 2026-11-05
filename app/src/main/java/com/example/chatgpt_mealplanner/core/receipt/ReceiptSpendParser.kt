@@ -254,6 +254,7 @@ object ReceiptSpendParser {
         val hardExclusionLimitY = minOf(taxSummaryStartY, paymentRegionStartY)
 
         // 2. Spatial Two-Column Product Line Reconstruction Engine
+        val alignment = ReceiptRowAligner.align(ocrResult.lines)
         val consumedPriceLines = mutableSetOf<Int>()
         val consumedDescriptionLines = mutableSetOf<Int>()
 
@@ -315,6 +316,12 @@ object ReceiptSpendParser {
                 return@forEachIndexed
             }
 
+            // A price alone can sit above its description in a tilted photo. Leave it for that
+            // description unless a higher-confidence neighbour needs it (handled below).
+            if (lineIdx in alignment.priceOnlyLines && lineIdx in alignment.priceLineFor.values) {
+                return@forEachIndexed
+            }
+
             // Case A: Price is on the same line
             val elems = if (ocrLine.elements.isNotEmpty()) ocrLine.elements.sortedBy { it.left } else listOf(ReceiptOcrElement(ocrLine.text, ocrLine.left, ocrLine.top, ocrLine.right, ocrLine.bottom, ocrLine.centerY))
             val lastElem = elems.lastOrNull() ?: return@forEachIndexed
@@ -335,7 +342,7 @@ object ReceiptSpendParser {
                     idx !in consumedPriceLines &&
                     idx != lineIdx &&
                     candidate.centerY < hardExclusionLimitY &&
-                    Math.abs(candidate.centerY - ocrLine.centerY) <= 18 &&
+                    Math.abs(candidate.centerY - ocrLine.centerY) <= maxOf(18, alignment.rowTolerance) &&
                     candidate.left < ocrLine.left &&
                     candidate.confidence > ocrLine.confidence &&
                     ReceiptDescriptionNormalizer.normalize(candidate.text).contains(Regex("[A-Za-z]")) &&
@@ -355,19 +362,9 @@ object ReceiptSpendParser {
                 }
             } else {
                 // Case B: Price is on a separate line spatially aligned on the right (Two-Column Pairing)
-                val candidatePriceLine = ocrResult.lines.mapIndexed { idx, candidate -> Pair(idx, candidate) }.firstOrNull { (idx, candidate) ->
-                    val deltaY = Math.abs(candidate.centerY - ocrLine.centerY)
-                    val rightAligned = candidate.left > (ocrLine.left + 50)
-                    val hasPrice = ReceiptMoneyParser.parseRightAlignedAmountPence(candidate.text) != null
-
-                    idx !in consumedPriceLines &&
-                    idx !in consumedDescriptionLines &&
-                    idx != lineIdx &&
-                    candidate.centerY < hardExclusionLimitY &&
-                    deltaY <= 18 &&
-                    rightAligned &&
-                    hasPrice
-                }
+                val candidatePriceLine = alignment.priceLineFor[lineIdx]
+                    ?.takeIf { it !in consumedPriceLines && ocrResult.lines[it].centerY < hardExclusionLimitY }
+                    ?.let { Pair(it, ocrResult.lines[it]) }
 
                 if (candidatePriceLine != null) {
                     consumedPriceLines.add(candidatePriceLine.first)
