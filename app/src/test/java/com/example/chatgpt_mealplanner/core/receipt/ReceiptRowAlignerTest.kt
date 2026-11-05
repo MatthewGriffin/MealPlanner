@@ -66,4 +66,31 @@ class ReceiptRowAlignerTest {
             assertEquals("paid at x$scale", 3888L, draft.totalMinorPence)
         }
     }
+
+    private fun itemsFrom(vararg rows: String): List<Pair<String, Long>> {
+        val lines = rows.mapIndexed { i, text -> line(text, 100, 100 + i * 40).copy(lineIndex = i) }
+        return ReceiptSpendParser.parseOcrResult(ReceiptOcrResult(lines, rows.joinToString("\n")), null)
+            .items.map { it.normalizedDescription to it.lineAmountMinorPence }
+    }
+
+    @Test
+    fun productsContainingKeywordLetters_areKept() {
+        assertEquals(
+            listOf("STILL WATER" to 50L, "OREGANO" to 100L, "REGULAR CRISPS" to 100L, "HOTEL CHOCOLAT" to 100L, "BIRTHDAY CARD" to 150L),
+            itemsFrom("ASDA", "STILL WATER 0.50", "OREGANO 1.00", "REGULAR CRISPS 1.00", "HOTEL CHOCOLAT 1.00", "BIRTHDAY CARD 1.50", "TOTAL 5.00")
+        )
+    }
+
+    @Test
+    fun loyaltyHeaders_doNotEndTheItemList() {
+        assertEquals(
+            listOf("MILK" to 200L),
+            itemsFrom("TESCO", "CLUBCARD STATEMENT", "MID 12345678", "MILK 2.00", "TOTAL 2.00")
+        )
+    }
+
+    @Test
+    fun priceWithTrailingVatLetter_isReadAndRemovedFromTheName() {
+        assertEquals(listOf("MILK" to 200L, "BREAD" to 300L), itemsFrom("ASDA", "MILK 2.00 A", "BREAD 3.00 B", "TOTAL 5.00"))
+    }
 }
