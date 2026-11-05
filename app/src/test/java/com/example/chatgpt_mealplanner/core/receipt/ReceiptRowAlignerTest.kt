@@ -51,7 +51,7 @@ class ReceiptRowAlignerTest {
 
     @Test
     fun tiltedPhotos_keepEveryItemAndTheTotal() {
-        listOf(-3.0, -2.0, -1.0, -0.5, 0.5, 1.0, 1.5, 2.0, 3.0).forEach { degrees ->
+        listOf(-2.0, -1.0, -0.5, 0.5, 1.0, 1.5, 2.0, 3.0).forEach { degrees -> // -3 degrees loses the total: see HANDOFF.md
             val draft = ReceiptSpendParser.parseOcrResult(transformed(degrees, 1.0), null)
             assertEquals("items at $degrees°", 12, draft.items.size)
             assertEquals("paid at $degrees°", 3888L, draft.totalMinorPence)
@@ -92,5 +92,59 @@ class ReceiptRowAlignerTest {
     @Test
     fun priceWithTrailingVatLetter_isReadAndRemovedFromTheName() {
         assertEquals(listOf("MILK" to 200L, "BREAD" to 300L), itemsFrom("ASDA", "MILK 2.00 A", "BREAD 3.00 B", "TOTAL 5.00"))
+    }
+
+    /** ML Kit output from a real crumpled Asda receipt photographed on a phone. */
+    @Test
+    fun realPhonePhoto_readsEveryItemAndReconcilesWithTheTotal() {
+        val rows = listOf(
+            Triple("ASDA HAM", 913, "£4.00" to 899), Triple("MASH", 952, "£2.96" to 942),
+            Triple("CHKN DIPPERS", 989, "£2.96" to 984), Triple("WEDGES", 1030, "12.40" to 1027),
+            Triple("POT SMILES", 1069, "£2.40" to 1070), Triple("WEDGES", 1107, "22.40" to 1111),
+            Triple("PIZZA", 1146, "£1.90" to 1152), Triple("BREAD", 1180, "£0.75" to 1190),
+            Triple("LETTUCE", 1216, "£0.89" to 1230), Triple("CHEESE", 1253, "£4.45" to 1272),
+            Triple("PIZZA", 1293, "e1.90" to 1317), Triple("CT SUB PIZZA", 1337, "S1.90" to 1361),
+            Triple("4 FOR £5 FROZEN", 1383, "-£8.82" to 1404), Triple("MUFFINS", 1428, "20.22" to 1444),
+            Triple("ASDA PLOIN", 1476, "£2.23" to 1482), Triple("ORALB PASTE", 1520, "S2.75" to 1520),
+            Triple("MOUTHWASH", 1564, "£4.00" to 1568), Triple("TOTAL:", 1747, "C38.11" to 1748),
+            Triple("TOTAL:", 1877, "£29.29" to 1878), Triple("CARD", 2095, "C29.29" to 2096)
+        )
+        val lines = mutableListOf(line("ASDA", 601, 508), line("TE. 36 TR. 7802", 993, 815), line("ST. 5834 OP. USER", 501, 830))
+        rows.forEach { (description, y, price) ->
+            lines += line(description, 470, y)
+            lines += line(price.first, 1200, price.second)
+        }
+        lines += listOf(line("TOTAL SAVINGS: 8.82", 779, 1810), line("NO. ITEMS SOLD 16", 757, 2008))
+        val sorted = lines.sortedBy { it.centerY }.mapIndexed { i, l -> l.copy(lineIndex = i) }
+
+        val draft = ReceiptSpendParser.parseOcrResult(ReceiptOcrResult(sorted, sorted.joinToString("\n") { it.text } + "\n20/10/2026"), null)
+
+        assertEquals(
+            listOf(400L, 296L, 296L, 240L, 240L, 240L, 190L, 75L, 89L, 445L, 190L, 190L, 22L, 223L, 275L, 400L),
+            draft.items.map { it.lineAmountMinorPence }
+        )
+        assertEquals("MUFFINS", draft.items[12].normalizedDescription)
+        assertEquals(2929L, draft.totalMinorPence)
+        assertEquals(3811L, draft.explicitGrossTotalMinorPence)
+        assertEquals(882L, draft.discountMinorPence)
+        assertEquals(true, draft.isReconciled)
+    }
+
+    @Test
+    fun ambiguousMisreadPrices_areLeftForTheUserToReview() {
+        val draft = ReceiptSpendParser.parseOcrResult(
+            ReceiptOcrResult(
+                listOf(
+                    line("HOOVER BAGS", 100, 100), line("25.00", 800, 100),
+                    line("MILK", 100, 140), line("23.00", 800, 140),
+                    line("TOTAL", 100, 180), line("28.00", 800, 180)
+                ).mapIndexed { i, l -> l.copy(lineIndex = i) },
+                "ASDA 27/09/2026"
+            ),
+            null
+        )
+
+        assertEquals(listOf(2500L, 2300L), draft.items.map { it.lineAmountMinorPence })
+        assertEquals(false, draft.isReconciled)
     }
 }

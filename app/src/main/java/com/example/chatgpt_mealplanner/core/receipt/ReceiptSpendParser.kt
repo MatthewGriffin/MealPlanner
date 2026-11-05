@@ -225,6 +225,7 @@ object ReceiptSpendParser {
         safeLog("[SUMMARY_RESULT] Retailer=${summary.retailerId}, Paid=${summary.finalPaidTotalMinorPence}, Gross=${summary.grossTotalMinorPence}, Savings=${summary.savingsMinorPence}")
 
         val items = mutableListOf<ReceiptSpendItemDraft>()
+        val rawPriceTokens = mutableMapOf<String, String>()
 
         var expectedItemCountFromReceipt: Int? = null
         var taxSummaryStartY = Int.MAX_VALUE
@@ -333,6 +334,7 @@ object ReceiptSpendParser {
 
             var matchedPricePence: Long? = directPricePence
             var rawDescString = ocrLine.text
+            var rawPriceToken = lastElem.text
             var isPreferredDescription = false
 
             if (directPricePence != null) {
@@ -370,6 +372,7 @@ object ReceiptSpendParser {
                     consumedPriceLines.add(candidatePriceLine.first)
                     consumedDescriptionLines.add(lineIdx)
                     matchedPricePence = ReceiptMoneyParser.parseRightAlignedAmountPence(candidatePriceLine.second.text)
+                    rawPriceToken = candidatePriceLine.second.text
                     rawDescString = ocrLine.text
                     safeLog("[SPATIAL_PAIR_SUCCESS] Paired Line $lineIdx \"${ocrLine.text}\" with Line ${candidatePriceLine.first} \"${candidatePriceLine.second.text}\" -> price=${matchedPricePence}p")
                 }
@@ -416,17 +419,17 @@ object ReceiptSpendParser {
 
             safeLog("[ITEM_ACCEPTED] Line $lineIdx -> desc=\"$normDesc\", amount=${amountPence}p, category=$category")
 
-            items.add(
-                ReceiptSpendItemDraft(
-                    rawDescription = rawDescString,
-                    normalizedDescription = normDesc,
-                    lineAmountMinorPence = amountPence,
-                    quantity = 1,
-                    unitPriceMinorPence = amountPence,
-                    category = category,
-                    isDiscount = false
-                )
+            val newItem = ReceiptSpendItemDraft(
+                rawDescription = rawDescString,
+                normalizedDescription = normDesc,
+                lineAmountMinorPence = amountPence,
+                quantity = 1,
+                unitPriceMinorPence = amountPence,
+                category = category,
+                isDiscount = false
             )
+            rawPriceTokens[newItem.id] = rawPriceToken
+            items.add(newItem)
         }
 
         var recognisedGrossItemSpend = items.sumOf { it.lineAmountMinorPence }
@@ -471,27 +474,13 @@ object ReceiptSpendParser {
 
         safeLog("[RECONCILIATION_BEFORE] itemCount=${items.size}, sum=${recognisedGrossItemSpend}p, grossTarget=$grossTarget, delta=${recognisedGrossItemSpend - (grossTarget ?: 0L)}p")
 
-        // Contextual Reconciliation Price Recovery:
-        // Apply correction ONLY if overage == 2000p (exact £20 symbol corruption error)
         if (grossTarget != null && recognisedGrossItemSpend > grossTarget) {
-            val overage = recognisedGrossItemSpend - grossTarget
-            if (overage == 2000L) {
-                val candidateItemIndex = items.indexOfFirst { item -> item.lineAmountMinorPence > 2000L }
-                if (candidateItemIndex != -1) {
-                    val candidateItem = items[candidateItemIndex]
-                    val originalPrice = candidateItem.lineAmountMinorPence
-                    val correctedPrice = originalPrice - 2000L
-                    safeLog("[PRICE_RECOVERY_CANDIDATE] index=$candidateItemIndex, desc=\"${candidateItem.normalizedDescription}\", original=${originalPrice}p, candidateCorrected=${correctedPrice}p, sumAfterCorrection=${recognisedGrossItemSpend - 2000L}p, grossTarget=$grossTarget")
-
-                    items[candidateItemIndex] = candidateItem.copy(
-                        lineAmountMinorPence = correctedPrice,
-                        unitPriceMinorPence = correctedPrice
-                    )
-                    recognisedGrossItemSpend = items.sumOf { it.lineAmountMinorPence }
-                    safeLog("[PRICE_RECOVERY_APPLIED] description=\"${candidateItem.normalizedDescription}\", original=${originalPrice}p, corrected=${correctedPrice}p, reason=EXACT_GROSS_RECONCILIATION")
-                }
-            } else {
-                safeLog("[PRICE_RECOVERY_REJECTED] overage=${overage}p != 2000p")
+            val corrected = correctMisreadCurrencySymbols(items, rawPriceTokens, grossTarget)
+            if (corrected != null) {
+                items.clear()
+                items.addAll(corrected)
+                recognisedGrossItemSpend = items.sumOf { it.lineAmountMinorPence }
+                safeLog("[PRICE_RECOVERY_APPLIED] sum=$recognisedGrossItemSpend grossTarget=$grossTarget")
             }
         }
 
@@ -547,6 +536,39 @@ object ReceiptSpendParser {
             transactionRef = summary.transactionRef,
             items = items
         )
+    }
+
+    /**
+     * OCR can read a pound sign as a digit, so "£2.40" becomes "22.40" or "12.40". A price with no
+     * currency symbol may have one leading digit dropped, but only if exactly one combination of
+     * those corrections makes the items equal the receipt total. Otherwise nothing changes and the
+     * mismatch stays visible for the user to review.
+     */
+    private fun correctMisreadCurrencySymbols(
+        items: List<ReceiptSpendItemDraft>,
+        rawPriceTokens: Map<String, String>,
+        grossTarget: Long
+    ): List<ReceiptSpendItemDraft>? {
+        val unsymbolisedPrice = Regex("""^(\d)(\d{1,2})\.(\d{2})$""")
+        val candidates = items.mapNotNull { item ->
+            val match = unsymbolisedPrice.find(rawPriceTokens[item.id]?.trim().orEmpty()) ?: return@mapNotNull null
+            val (_, pounds, pence) = match.destructured
+            item to pounds.toLong() * 100L + pence.toLong()
+        }
+        if (candidates.isEmpty() || candidates.size > 12) return null
+
+        val total = items.sumOf { it.lineAmountMinorPence }
+        val solutions = (1 until (1 shl candidates.size)).filter { mask ->
+            val saved = candidates.indices.filter { mask and (1 shl it) != 0 }
+                .sumOf { candidates[it].first.lineAmountMinorPence - candidates[it].second }
+            total - saved == grossTarget
+        }
+        val mask = solutions.singleOrNull() ?: return null
+        val replacements = candidates.indices.filter { mask and (1 shl it) != 0 }
+            .associate { candidates[it].first.id to candidates[it].second }
+        return items.map { item ->
+            replacements[item.id]?.let { item.copy(lineAmountMinorPence = it, unitPriceMinorPence = it) } ?: item
+        }
     }
 
     private fun safeLog(msg: String) {
