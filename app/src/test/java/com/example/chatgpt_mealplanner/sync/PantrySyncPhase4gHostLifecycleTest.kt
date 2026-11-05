@@ -220,33 +220,74 @@ class PantrySyncPhase4gHostLifecycleTest {
     // N. TLS initialization failure -> FAILED
     @Test
     fun testN_tlsInitializationFailure_setsFailedState() {
+        val emptyKeyStore = java.security.KeyStore.getInstance("PKCS12").apply { load(null, null) }
+
+        runCatching { server.start(emptyKeyStore, "password".toCharArray(), freePort()) }
+
+        assertEquals(com.example.chatgpt_mealplanner.core.sync.server.PantryServerState.FAILED, server.getServerState())
         assertFalse(server.isRunning())
     }
 
     // O. Bind/server startup failure -> FAILED
     @Test
-    fun testO_bindServerStartupFailure_setsFailedState() {
+    fun testO_bindServerStartupFailure_setsFailedState() = runTest {
+        val household = identityManager.getOrCreateHouseholdIdentity()
+        val p12Store = tlsKeyManager.getOrCreateMainTlsKeyStore(household.householdId)
+
+        java.net.ServerSocket(0).use { occupied ->
+            runCatching { server.start(p12Store, tlsKeyManager.getTlsPassword(), occupied.localPort) }
+        }
+
+        assertEquals(com.example.chatgpt_mealplanner.core.sync.server.PantryServerState.FAILED, server.getServerState())
         assertFalse(server.isRunning())
     }
 
     // P. Readiness timeout -> no QR
     @Test
     fun testP_readinessTimeout_noQrGenerated() = runTest {
-        pairingStore.savePairingConfig(FollowerPairingConfig("192.168.1.100", 8443, validFingerprint, followerDeviceId))
-        val vm = PairDeviceViewModel(identityManager, tlsKeyManager, invitationManager, hostController, null)
+        val notReadyController = object : PantrySyncHostController(server, pairingStore, com.example.chatgpt_mealplanner.core.sync.AppRoleResolver(pairingStore)) {
+            override suspend fun awaitHttpsHealthReadiness(
+                context: android.content.Context?,
+                hostIp: String,
+                port: Int,
+                expectedTlsFingerprint: String,
+                maxWaitMs: Long,
+                pollIntervalMs: Long
+            ): Boolean = false
+        }
+        val vm = PairDeviceViewModel(
+            identityManager,
+            tlsKeyManager,
+            invitationManager,
+            notReadyController,
+            org.mockito.kotlin.mock<android.content.Context>()
+        )
         advanceUntilIdle()
 
         assertNull(vm.uiState.value.qrBitmap)
+        assertNull(vm.uiState.value.invitationPayload)
+        assertTrue(vm.uiState.value.errorMessage!!.contains("couldn't start"))
     }
 
     // Q. HTTPS health failure -> no QR
     @Test
-    fun testQ_httpsHealthFailure_noQrGenerated() = runTest {
-        pairingStore.savePairingConfig(FollowerPairingConfig("192.168.1.100", 8443, validFingerprint, followerDeviceId))
-        val vm = PairDeviceViewModel(identityManager, tlsKeyManager, invitationManager, hostController, null)
-        advanceUntilIdle()
+    fun testQ_httpsHealthFailure_isNotReadyAndServerStaysUnverified() = kotlinx.coroutines.runBlocking {
+        val household = identityManager.getOrCreateHouseholdIdentity()
+        val p12Store = tlsKeyManager.getOrCreateMainTlsKeyStore(household.householdId)
+        server.start(p12Store, tlsKeyManager.getTlsPassword(), freePort())
 
-        assertNull(vm.uiState.value.qrBitmap)
+        // Nothing answers health checks on this port, so the running engine must not count as ready.
+        val isReady = hostController.awaitHttpsHealthReadiness(
+            context = null,
+            hostIp = "127.0.0.1",
+            port = freePort(),
+            expectedTlsFingerprint = tlsKeyManager.getCertificateFingerprint(p12Store),
+            maxWaitMs = 500L,
+            pollIntervalMs = 50L
+        )
+
+        assertFalse(isReady)
+        assertFalse(server.isRunning())
     }
 
     // R. Wrong TLS fingerprint -> no QR
@@ -381,6 +422,8 @@ class PantrySyncPhase4gHostLifecycleTest {
     }
 
     private fun getTestPort(): Int = 20000 + java.util.Random().nextInt(10000)
+
+    private fun freePort(): Int = java.net.ServerSocket(0).use { it.localPort }
 
     // Production Netty HTTPS Server Tests (V1.4)
     @Test
