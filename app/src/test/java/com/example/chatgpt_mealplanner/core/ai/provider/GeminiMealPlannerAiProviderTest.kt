@@ -19,6 +19,7 @@ import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.putJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
@@ -577,6 +578,89 @@ class GeminiMealPlannerAiProviderTest {
         assertEquals("model", contents[contents.size - 2].jsonObject["role"]!!.jsonPrimitive.content)
         assertEquals("user", answer["role"]!!.jsonPrimitive.content)
         assertEquals(2, answer["parts"]!!.jsonArray.size)
+    }
+
+    private fun candidateBody(finishReason: String, text: String) = buildJsonObject {
+        putJsonArray("candidates") {
+            add(buildJsonObject {
+                put("finishReason", finishReason)
+                putJsonObject("content") {
+                    put("role", "model")
+                    putJsonArray("parts") { add(buildJsonObject { put("text", text) }) }
+                }
+            })
+        }
+    }.toString()
+
+    private fun errorCodeFor(body: String): String? {
+        provider.httpCallHandler = { _, _ -> Pair(200, body) }
+        return (runBlocking { provider.send(recipeRequest()) } as? AiProviderResponse.Error)?.code
+    }
+
+    @Test
+    fun cutOffReply_isRefusedInsteadOfShownAsFinished() {
+        assertEquals("RESPONSE_TRUNCATED", errorCodeFor(candidateBody("MAX_TOKENS", "Here is half a rec")))
+    }
+
+    @Test
+    fun blockedReplies_sayWhatHappened() {
+        assertEquals("RESPONSE_BLOCKED", errorCodeFor(candidateBody("SAFETY", "text")))
+        assertEquals("RESPONSE_BLOCKED", errorCodeFor(candidateBody("SOME_NEW_REASON", "text")))
+        assertEquals("RESPONSE_BLOCKED", errorCodeFor("""{"promptFeedback":{"blockReason":"SAFETY"}}"""))
+    }
+
+    @Test
+    fun malformedToolCall_isRetriedThenFallsBack() = runBlocking {
+        val models = mutableListOf<String>()
+        provider.httpCallHandler = { url, _ ->
+            models.add(url.substringAfter("/models/").substringBefore(":"))
+            Pair(200, if (models.size < 3) candidateBody("MALFORMED_FUNCTION_CALL", "") else makeSuccessBody("Fine"))
+        }
+
+        val response = provider.send(recipeRequest())
+
+        assertEquals(GEMINI_SECONDARY_MODEL, models.last())
+        assertTrue(response is AiProviderResponse.FinalResponse)
+    }
+
+    @Test
+    fun normallyFinishedReply_isAccepted() {
+        assertEquals(null, errorCodeFor(candidateBody("STOP", "Dinner idea")))
+    }
+
+    private fun finalReplyFor(text: String): AiProviderResponse {
+        provider.httpCallHandler = { _, _ -> Pair(200, candidateBody("STOP", text)) }
+        return runBlocking { provider.send(recipeRequest()) }
+    }
+
+    private val validPlanJson = """[
+        {"title":"Pasta","suggestedDate":"2026-11-06","mealType":"DINNER","servings":2,"ingredients":[{"displayName":"Penne","quantity":200,"unit":"GRAM"}],"steps":[{"order":1,"instruction":"Boil"}]},
+        {"title":"Curry","suggestedDate":"2026-11-07","mealType":"DINNER","servings":2,"ingredients":[{"displayName":"Rice","quantity":200,"unit":"GRAM"}],"steps":[{"order":1,"instruction":"Simmer"}]}
+    ]"""
+
+    @Test
+    fun unreadableMealPlanJson_isNeverShownToTheUser() {
+        val response = finalReplyFor("Your week:\nMonday: Pasta\nMEAL_PLAN_JSON: [{\"title\":\"Pasta")
+
+        val final = response as AiProviderResponse.FinalResponse
+        assertEquals("Your week:\nMonday: Pasta", final.text)
+        assertEquals(null, final.mealPlan)
+    }
+
+    @Test
+    fun replyThatIsOnlyUnreadableMealPlanJson_isAnError() {
+        val response = finalReplyFor("MEAL_PLAN_JSON: [{\"title\":\"Pasta")
+
+        assertEquals("RESPONSE_INVALID", (response as AiProviderResponse.Error).code)
+    }
+
+    @Test
+    fun mealPlanJsonInACodeFence_isStillRead() {
+        val response = finalReplyFor("Your week\nMEAL_PLAN_JSON:\n```json\n$validPlanJson\n```")
+
+        val final = response as AiProviderResponse.FinalResponse
+        assertEquals(listOf("Pasta", "Curry"), final.mealPlan?.map { it.title })
+        assertEquals("Your week", final.text)
     }
 
     @Test
