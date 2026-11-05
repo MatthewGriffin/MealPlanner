@@ -8,6 +8,7 @@ import com.example.chatgpt_mealplanner.core.database.dao.InventoryDao
 import com.example.chatgpt_mealplanner.core.database.dao.ReceiptSpendDao
 import com.example.chatgpt_mealplanner.core.database.dao.ShoppingDao
 import com.example.chatgpt_mealplanner.core.model.DomainResult
+import com.example.chatgpt_mealplanner.core.receipt.ReceiptDescriptionNormalizer
 import com.example.chatgpt_mealplanner.core.receipt.ReceiptOcrException
 import com.example.chatgpt_mealplanner.core.receipt.ReceiptOcrService
 import com.example.chatgpt_mealplanner.core.receipt.ReceiptSpendCategory
@@ -183,12 +184,13 @@ class ReceiptSpendViewModel @Inject constructor(
                 val ocrResult = ocrService.recognizeTextFromUri(uri)
                 when (val result = spendDomainService.processReceiptOcr(ocrResult, uri.toString())) {
                     is DomainResult.Success -> {
-                        val draft = result.value
-                        if (draft.items.isEmpty()) {
-                            android.util.Log.i("AI_MEALPLANNER", "[RECEIPT_SCAN_INVALID] retailer=\"${draft.retailerId}\" itemCount=0")
-                            _uiState.update { it.copy(isScanning = false, errorMessage = "No receipt items could be parsed from this image. Please try a clearer photo.") }
+                        // A scan with no recognised items can still have a usable total and date,
+                        // and items can be added by hand, so only a scan with no text at all fails.
+                        if (ocrResult.lines.isEmpty()) {
+                            android.util.Log.i("AI_MEALPLANNER", "[RECEIPT_SCAN_INVALID] retailer=\"${result.value.retailerId}\" noText=true")
+                            _uiState.update { it.copy(isScanning = false, errorMessage = "No text was found in this photo. Flatten the receipt, use good light, and try again.") }
                         } else {
-                            _uiState.update { it.copy(isScanning = false, draft = draft) }
+                            _uiState.update { it.copy(isScanning = false, draft = result.value) }
                         }
                     }
                     is DomainResult.Failure -> {
@@ -215,57 +217,57 @@ class ReceiptSpendViewModel @Inject constructor(
     }
 
     fun updateItemDraft(updatedItem: ReceiptSpendItemDraft) {
-        _uiState.update { state ->
-            val currentDraft = state.draft ?: return@update state
-            val updatedItems = currentDraft.linesMatch(updatedItem)
-            state.copy(draft = currentDraft.copy(items = updatedItems))
+        editDraft { draft -> draft.withUserEdits(items = draft.items.map { if (it.id == updatedItem.id) updatedItem else it }) }
+    }
+
+    fun updateItemDetails(itemId: String, description: String, pricePence: Long) {
+        val normalized = ReceiptDescriptionNormalizer.normalize(description)
+        editDraft { draft ->
+            draft.withUserEdits(
+                items = draft.items.map { item ->
+                    if (item.id != itemId) return@map item
+                    item.copy(
+                        normalizedDescription = normalized,
+                        lineAmountMinorPence = pricePence,
+                        unitPriceMinorPence = pricePence / item.quantity.coerceAtLeast(1),
+                        category = if (normalized == item.normalizedDescription) item.category else ReceiptSpendCategory.classifyDescription(normalized).name
+                    )
+                }
+            )
+        }
+    }
+
+    fun addItemDraft(description: String, pricePence: Long) {
+        val normalized = ReceiptDescriptionNormalizer.normalize(description)
+        editDraft { draft ->
+            draft.withUserEdits(
+                items = draft.items + ReceiptSpendItemDraft(
+                    rawDescription = description.trim(),
+                    normalizedDescription = normalized,
+                    lineAmountMinorPence = pricePence,
+                    unitPriceMinorPence = pricePence,
+                    category = ReceiptSpendCategory.classifyDescription(normalized).name
+                )
+            )
         }
     }
 
     fun updateSummaryPaidTotal(paidTotalPence: Long) {
-        _uiState.update { state ->
-            val currentDraft = state.draft ?: return@update state
-            val canSave = paidTotalPence > 0L && currentDraft.retailerId.isNotBlank() && currentDraft.purchasedAt != null && !currentDraft.dateNeedsConfirmation
-            state.copy(
-                draft = currentDraft.copy(
-                    totalMinorPence = paidTotalPence,
-                    explicitFinalPaidMinorPence = paidTotalPence,
-                    userConfirmedSummary = true,
-                    needsReview = false,
-                    canSave = canSave,
-                    reviewWarning = if (!canSave) currentDraft.reviewWarning else null
-                )
-            )
-        }
+        editDraft { it.recomputeWithPaidTotal(paidTotalPence) }
+    }
+
+    fun updatePurchaseDate(isoDate: String) {
+        editDraft { it.withUserEdits(purchasedAt = isoDate) }
     }
 
     fun deleteItemDraft(itemId: String) {
-        _uiState.update { state ->
-            val currentDraft = state.draft ?: return@update state
-            val remainingItems = currentDraft.items.filter { it.id != itemId }
-            val newCalculatedSum = remainingItems.sumOf { it.lineAmountMinorPence }
-            val grossTarget = currentDraft.explicitGrossTotalMinorPence ?: currentDraft.calculatedItemsSumMinorPence
-            val isReconciled = newCalculatedSum == grossTarget
-            val needsReview = (currentDraft.expectedItemCount != null && remainingItems.size != currentDraft.expectedItemCount) || !isReconciled
-            val warningText = if (needsReview) {
-                if (currentDraft.expectedItemCount != null && remainingItems.size != currentDraft.expectedItemCount) {
-                    val finalPaidStr = if (currentDraft.totalMinorPence != null) "£%.2f".format(currentDraft.totalMinorPence / 100.0) else "Not detected"
-                    "Only ${remainingItems.size} of ${currentDraft.expectedItemCount} item lines were recognized. Your receipt spend ($finalPaidStr) can still be saved."
-                } else {
-                    "Discrepancy of £${"%.2f".format(Math.abs(grossTarget - newCalculatedSum) / 100.0)} detected between receipt total and items sum."
-                }
-            } else null
+        editDraft { draft -> draft.withUserEdits(items = draft.items.filter { it.id != itemId }) }
+    }
 
-            state.copy(
-                draft = currentDraft.copy(
-                    items = remainingItems,
-                    itemCount = remainingItems.size,
-                    calculatedItemsSumMinorPence = newCalculatedSum,
-                    isReconciled = isReconciled,
-                    needsReview = needsReview,
-                    reviewWarning = warningText
-                )
-            )
+    private fun editDraft(edit: (ReceiptSpendDraft) -> ReceiptSpendDraft) {
+        _uiState.update { state ->
+            val draft = state.draft ?: return@update state
+            state.copy(draft = edit(draft), errorMessage = null)
         }
     }
 
@@ -317,9 +319,5 @@ class ReceiptSpendViewModel @Inject constructor(
 
     fun resetSaveSuccess() {
         _uiState.update { it.copy(isSaveSuccess = false) }
-    }
-
-    private fun ReceiptSpendDraft.linesMatch(updated: ReceiptSpendItemDraft): List<ReceiptSpendItemDraft> {
-        return items.map { if (it.id == updated.id) updated else it }
     }
 }

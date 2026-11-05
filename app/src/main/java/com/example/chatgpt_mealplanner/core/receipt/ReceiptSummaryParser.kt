@@ -134,14 +134,13 @@ object ReceiptSummaryParser {
     }
 
     private fun parseDate(fullText: String): Pair<String?, Boolean> {
-        val dateMatch = Regex("""\b([0-2]?[0-9]|3[01])[/.-]([0]?[1-9]|1[0-2])[/.-](20\d{2}|\d{2})\b""").find(fullText)
-        if (dateMatch != null) {
-            val day = dateMatch.groupValues[1].padStart(2, '0')
-            val month = dateMatch.groupValues[2].padStart(2, '0')
-            var year = dateMatch.groupValues[3]
-            if (year.length == 2) year = "20$year"
-            return Pair("$year-$month-$day", false)
+        val validDate = Regex("""\b(\d{1,2})[/.-](\d{1,2})[/.-](20\d{2}|\d{2})\b""").findAll(fullText).firstNotNullOfOrNull { match ->
+            val (day, month, year) = match.destructured
+            runCatching {
+                java.time.LocalDate.of(if (year.length == 2) 2000 + year.toInt() else year.toInt(), month.toInt(), day.toInt())
+            }.getOrNull()
         }
+        if (validDate != null) return Pair(validDate.toString(), false)
         return Pair(null, true) // Date needs user confirmation!
     }
 
