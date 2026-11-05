@@ -875,7 +875,50 @@ class EndToEndAiRecipeReliabilityTest {
         )
     }
 
-    @Test
+@Test
+    fun followUpMessage_canSeeTheRecipeCardShownBefore() = runTest(testDispatcher) {
+        val sent = mutableListOf<AiProviderRequest>()
+        val provider = object : MealPlannerAiProvider {
+            override suspend fun send(request: AiProviderRequest): AiProviderResponse {
+                sent.add(request)
+                return if (sent.size == 1) {
+                    AiProviderResponse.ToolCalls(
+                        providerContinuationToken = "t",
+                        calls = listOf(
+                            AiToolCall("c1", "offer_add_planned_meal", """{"title":"Shakshuka","servings":2,"ingredients":[{"displayName":"Eggs","quantity":4,"unit":"UNIT"}],"instructions":"Poach the eggs in the sauce."}""")
+                        )
+                    )
+                } else {
+                    AiProviderResponse.FinalResponse("Add more chilli.")
+                }
+            }
+            override suspend fun continueWithToolResults(request: AiContinueWithToolsRequest) =
+                AiProviderResponse.FinalResponse("Here you go")
+        }
+        val orchestrator = AiMealPlannerOrchestrator(
+            provider = provider,
+            contextBuilder = contextBuilder,
+            toolDispatcher = aiToolDispatcher,
+            recipeValidator = RecipeValidator(inventoryDao, mealDao),
+            intentResolver = intentResolver,
+            chatRepository = chatRepository,
+            pendingMutationStore = pendingMutationStore,
+            activeProposalStore = activeProposalStore
+        )
+
+        orchestrator.processUserMessage("default_conversation", "suggest a recipe for dinner")
+        orchestrator.processUserMessage("default_conversation", "make it spicier")
+
+        val assistantTurns = sent[1].messages.filter { it.role == "assistant" }
+        assertEquals(1, assistantTurns.size)
+        val card = assistantTurns.single().content
+        assertTrue(card, card.contains("Shakshuka"))
+        assertTrue(card, card.contains("Eggs: 4.0 UNIT"))
+        assertTrue(card, card.contains("Poach the eggs in the sauce."))
+        assertTrue(sent[1].messages.none { it.content.isBlank() })
+    }
+
+        @Test
     fun structuredRepair_setsForcedOfferTool() = runTest(testDispatcher) {
         val capturedRequests = mutableListOf<AiProviderRequest>()
         var callCount = 0

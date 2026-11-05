@@ -150,12 +150,12 @@ class AiMealPlannerOrchestrator @Inject constructor(
         val contextPayloadJson = contextBuilder.buildContextPayloadJson(conversationId)
 
         val historicalMessages = try {
-            chatRepository.getMessagesForConversation(conversationId).takeLast(20).map { message ->
+            chatRepository.getMessagesForConversation(conversationId).takeLast(20).mapNotNull { message ->
                 // Persist a concise summary for the user, but send the full internal prompt to Gemini.
                 if (message.id == userMsgId && message.role.equals("USER", ignoreCase = true)) {
                     AiChatMessage(role = "user", content = userMessageText)
                 } else {
-                    AiChatMessage(role = message.role.lowercase(), content = message.content)
+                    historyTextFor(message)?.let { AiChatMessage(role = message.role.lowercase(), content = it) }
                 }
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
@@ -623,6 +623,40 @@ class AiMealPlannerOrchestrator @Inject constructor(
             }
         }
     }
+
+    /**
+     * A recipe card is stored with empty text because the app draws it from its payload. Gemini
+     * still has to read it, or "make it spicier" and "option 2" refer to nothing.
+     */
+    private fun historyTextFor(message: ChatMessageEntity): String? =
+        message.content.takeIf { it.isNotBlank() }
+            ?: message.structuredPayloadJson?.let(::describeProposalCard)
+
+    private fun describeProposalCard(payloadJson: String): String? {
+        val payload = runCatching { historyJson.decodeFromString<ProposalMessagePayload>(payloadJson) }.getOrNull()
+            ?: return null
+        val meals = listOfNotNull(payload.singleMeal).ifEmpty { payload.meals }.map { it.proposal }
+        if (meals.isEmpty()) return null
+        val saved = if (payload.state == "PENDING") "not saved yet" else "state: ${payload.state}"
+        return buildString {
+            appendLine("[Shown to the user as a card, $saved]")
+            meals.forEachIndexed { index, meal ->
+                if (meals.size > 1) append("Option ${index + 1}: ")
+                appendLine("${meal.title} (${meal.servings} servings)${meal.suggestedDate?.let { " for $it" }.orEmpty()}")
+                appendLine("Ingredients:")
+                meal.ingredients.forEach { ingredient ->
+                    val optional = if (ingredient.optional) " (optional)" else ""
+                    appendLine("- ${ingredient.displayName}: ${ingredient.quantity} ${ingredient.unit}$optional")
+                }
+                if (meal.steps.isNotEmpty()) {
+                    appendLine("Method:")
+                    meal.steps.forEach { appendLine("${it.order}. ${it.instruction}") }
+                }
+            }
+        }.trim()
+    }
+
+    private val historyJson = Json { ignoreUnknownKeys = true }
 
     private suspend fun saveAssistantMessage(conversationId: String, text: String) {
         val assistantMsgId = "msg_${System.currentTimeMillis()}"
