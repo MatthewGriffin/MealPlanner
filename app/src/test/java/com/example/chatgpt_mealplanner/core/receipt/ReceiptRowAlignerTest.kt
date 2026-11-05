@@ -101,6 +101,41 @@ class ReceiptRowAlignerTest {
     }
 
     @Test
+    fun productsContainingTillCodeLetters_areKept() {
+        assertEquals(
+            listOf("SEASHORE ROCK" to 100L, "CHORE GLOVES" to 200L),
+            itemsFrom("ASDA", "SEASHORE ROCK 1.00", "CHORE GLOVES 2.00", "TOTAL 3.00")
+        )
+    }
+
+    @Test
+    fun rowFusedWithTillCodes_isRecoveredOnAnyProductWhenTheTotalProvesIt() {
+        val draft = fusedRowDraft(confidence = 0.4f, total = "TOTAL 3.50")
+
+        assertEquals(listOf("MILK" to 200L, "CHIPS" to 150L), draft.items.map { it.normalizedDescription to it.lineAmountMinorPence })
+        assertEquals(true, draft.isReconciled)
+    }
+
+    @Test
+    fun rowFusedWithTillCodes_isDroppedWithoutProof() {
+        val lowConfidenceWrongTotal = fusedRowDraft(confidence = 0.4f, total = "TOTAL 9.00")
+        val highConfidenceRightTotal = fusedRowDraft(confidence = 0.9f, total = "TOTAL 3.50")
+
+        assertEquals(listOf("MILK"), lowConfidenceWrongTotal.items.map { it.normalizedDescription })
+        assertEquals(listOf("MILK"), highConfidenceRightTotal.items.map { it.normalizedDescription })
+    }
+
+    private fun fusedRowDraft(confidence: Float, total: String): ReceiptSpendDraft {
+        val rows = listOf(
+            line("ASDA", 100, 100),
+            line("MILK 2.00", 100, 140),
+            line("CHIPS7K2HQ X9PL 91.50", 100, 180).copy(confidence = confidence),
+            line(total, 100, 220)
+        ).mapIndexed { i, l -> l.copy(lineIndex = i) }
+        return ReceiptSpendParser.parseOcrResult(ReceiptOcrResult(rows, "ASDA 27/09/2026"), null)
+    }
+
+    @Test
     fun loyaltyHeaders_doNotEndTheItemList() {
         assertEquals(
             listOf("MILK" to 200L),

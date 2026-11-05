@@ -215,7 +215,7 @@ object ReceiptMoneyParser {
 
 object ReceiptSpendParser {
 
-    const val RECEIPT_PARSER_VERSION = "spatial-v9-corrupted-row-recovery"
+    const val RECEIPT_PARSER_VERSION = "spatial-v10-deskew"
 
     fun parseOcrResult(rawOcrResult: ReceiptOcrResult, sourceImagePath: String?): ReceiptSpendDraft {
         val ocrResult = ReceiptDeskew.straighten(rawOcrResult)
@@ -260,15 +260,7 @@ object ReceiptSpendParser {
         val consumedPriceLines = mutableSetOf<Int>()
         val consumedDescriptionLines = mutableSetOf<Int>()
 
-        data class CorruptedRowCandidate(
-            val lineIndex: Int,
-            val rawText: String,
-            val cleanDesc: String,
-            val rawPriceToken: String,
-            val rawPence: Long,
-            val recoveredPence: Long
-        )
-        var proposedCorruptedCandidate: CorruptedRowCandidate? = null
+        val tillCodeRowCandidates = mutableListOf<TillCodeRowCandidate>()
 
         ocrResult.lines.forEachIndexed { lineIdx, ocrLine ->
             if (lineIdx in consumedDescriptionLines || lineIdx in consumedPriceLines) {
@@ -288,28 +280,10 @@ object ReceiptSpendParser {
                 return@forEachIndexed
             }
 
-            // Check if line contains till/store code metadata with low confidence (confidence < 0.6f)
-            val isTillMetadataCorruptedProductRow = ocrLine.confidence < 0.6f &&
-                    normLine.startsWith("WEDGES") &&
-                    (normLine.contains("03HORE") || normLine.contains("J3GH") || normLine.contains("0N03"))
-
-            if (isTillMetadataCorruptedProductRow) {
-                val rawPriceToken = ocrLine.elements.lastOrNull()?.text ?: ""
-                val rawPence = ReceiptMoneyParser.parseRightAlignedAmountPence(rawPriceToken) ?: 9240L
-                val recoveredPence = 240L // Alternate candidate: leading digit '9' treated as corrupted currency symbol
-                val cleanDesc = ocrLine.text.takeWhile { !it.isDigit() }.trim()
-
-                val candidateObj = CorruptedRowCandidate(
-                    lineIndex = lineIdx,
-                    rawText = ocrLine.text,
-                    cleanDesc = if (cleanDesc.isNotBlank()) cleanDesc else "WEDGES",
-                    rawPriceToken = rawPriceToken,
-                    rawPence = rawPence,
-                    recoveredPence = recoveredPence
-                )
-                proposedCorruptedCandidate = candidateObj
-
-                safeLog("[CORRUPTED_ROW_ANALYSIS] line=$lineIdx, rawText=\"${ocrLine.text}\", rawPriceToken=\"$rawPriceToken\", descriptionCandidate=\"${candidateObj.cleanDesc}\", rawPrice=${rawPence}p, alternateCurrencyPrefixCandidate=${recoveredPence}p, signals=[LOW_CONFIDENCE, TILL_CODE_GARBAGE, PURCHASE_REGION], decision=PROPOSE_CANDIDATE")
+            if (isFusedWithTillCodes(normLine)) {
+                val candidate = tillCodeRowCandidate(lineIdx, ocrLine)
+                if (candidate != null) tillCodeRowCandidates.add(candidate)
+                safeLog("[ITEM_REJECTED] Line $lineIdx \"${ocrLine.text}\" REJECTED: FUSED_WITH_TILL_CODES, recoverable=${candidate != null}")
                 return@forEachIndexed
             }
 
@@ -443,33 +417,28 @@ object ReceiptSpendParser {
             else -> null
         }
 
-        // Evaluate Proposed Corrupted Row Candidate (e.g. Line 31 WEDGES 240p) if adding 240p enables 100% exact gross reconciliation
-        if (proposedCorruptedCandidate != null && grossTarget != null) {
-            val cand = proposedCorruptedCandidate!!
-            val sumWithCandidate = recognisedGrossItemSpend + cand.recoveredPence
-            val projectedOverage = sumWithCandidate - grossTarget
-
-            if (projectedOverage == 2000L || sumWithCandidate == grossTarget) {
-                consumedDescriptionLines.add(cand.lineIndex)
-                consumedPriceLines.add(cand.lineIndex)
-
-                val normDesc = ReceiptDescriptionNormalizer.normalize(cand.cleanDesc)
-                val category = ReceiptSpendCategory.classifyDescription(normDesc).name
-
-                items.add(
-                    ReceiptSpendItemDraft(
-                        rawDescription = cand.rawText,
-                        normalizedDescription = normDesc,
-                        lineAmountMinorPence = cand.recoveredPence,
-                        quantity = 1,
-                        unitPriceMinorPence = cand.recoveredPence,
-                        category = category,
-                        isDiscount = false
-                    )
+        // A row fused with till codes only counts if its corrected price makes the receipt add up.
+        if (grossTarget != null) {
+            tillCodeRowCandidates.forEach { candidate ->
+                val normDesc = ReceiptDescriptionNormalizer.normalize(candidate.description)
+                val recovered = ReceiptSpendItemDraft(
+                    rawDescription = candidate.rawText,
+                    normalizedDescription = normDesc,
+                    lineAmountMinorPence = candidate.recoveredPence,
+                    quantity = 1,
+                    unitPriceMinorPence = candidate.recoveredPence,
+                    category = ReceiptSpendCategory.classifyDescription(normDesc).name,
+                    isDiscount = false
                 )
-
-                recognisedGrossItemSpend = items.sumOf { it.lineAmountMinorPence }
-                safeLog("[RECOVERED_ITEM] description=\"$normDesc\", amount=${cand.recoveredPence}, sourceLine=${cand.lineIndex}, rawPriceToken=\"${cand.rawPriceToken}\", recovery=\"LEADING_DIGIT_AS_CORRUPTED_CURRENCY_SYMBOL\", evidence=[LOW_CONFIDENCE, TILL_CODE_GARBAGE, RECONCILIATION_EXACT_MATCH]")
+                val withCandidate = items + recovered
+                val sum = withCandidate.sumOf { it.lineAmountMinorPence }
+                val addsUp = sum == grossTarget ||
+                    (sum > grossTarget && correctMisreadCurrencySymbols(withCandidate, rawPriceTokens, grossTarget) != null)
+                if (addsUp) {
+                    items.add(recovered)
+                    recognisedGrossItemSpend = sum
+                    safeLog("[RECOVERED_ITEM] description=\"$normDesc\", amount=${candidate.recoveredPence}, sourceLine=${candidate.lineIndex}")
+                }
             }
         }
 
@@ -550,11 +519,9 @@ object ReceiptSpendParser {
         rawPriceTokens: Map<String, String>,
         grossTarget: Long
     ): List<ReceiptSpendItemDraft>? {
-        val unsymbolisedPrice = Regex("""^(\d)(\d{1,2})\.(\d{2})$""")
         val candidates = items.mapNotNull { item ->
-            val match = unsymbolisedPrice.find(rawPriceTokens[item.id]?.trim().orEmpty()) ?: return@mapNotNull null
-            val (_, pounds, pence) = match.destructured
-            item to pounds.toLong() * 100L + pence.toLong()
+            val corrected = withoutLeadingDigit(rawPriceTokens[item.id].orEmpty()) ?: return@mapNotNull null
+            item to corrected
         }
         if (candidates.isEmpty() || candidates.size > 12) return null
 
@@ -570,6 +537,40 @@ object ReceiptSpendParser {
         return items.map { item ->
             replacements[item.id]?.let { item.copy(lineAmountMinorPence = it, unitPriceMinorPence = it) } ?: item
         }
+    }
+
+    private class TillCodeRowCandidate(
+        val lineIndex: Int,
+        val rawText: String,
+        val description: String,
+        val recoveredPence: Long
+    )
+
+    private val digitInsideLetters = Regex("""[A-Z][0-9]+[A-Z]""")
+
+    /**
+     * A blurred row can merge with the till codes printed beside it, as in "WEDGES0N03HORE J3GH 92.40".
+     * One odd word can be a misread product (BR0CC0LI), so it takes two.
+     */
+    private fun isFusedWithTillCodes(normText: String): Boolean =
+        normText.split(' ').count { digitInsideLetters.containsMatchIn(it) } >= 2
+
+    /** Only a low-confidence row can be recovered: its name is the text before the first digit, its price without the misread pound sign. */
+    private fun tillCodeRowCandidate(lineIndex: Int, line: ReceiptOcrLine): TillCodeRowCandidate? {
+        if (line.confidence >= 0.6f) return null
+        val recoveredPence = withoutLeadingDigit(line.text.trim().substringAfterLast(' ')) ?: return null
+        val description = line.text.takeWhile { !it.isDigit() }.trim()
+        if (description.count { it.isLetter() } < 2) return null
+        return TillCodeRowCandidate(lineIndex, line.text, description, recoveredPence)
+    }
+
+    private val unsymbolisedPrice = Regex("""^(\d)(\d{1,2})[.,](\d{2})$""")
+
+    /** The price if a pound sign was misread as its first digit: "92.40" gives 240p. */
+    private fun withoutLeadingDigit(token: String): Long? {
+        val match = unsymbolisedPrice.find(token.trim()) ?: return null
+        val (_, pounds, pence) = match.destructured
+        return pounds.toLong() * 100L + pence.toLong()
     }
 
     private fun safeLog(msg: String) {

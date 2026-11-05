@@ -6,7 +6,7 @@ object ReceiptDescriptionNormalizer {
         "subtotal", "sub total", "total", "balance", "savings", "discount", "multibuy", "promo",
         "cashier", "operator", "receipt", "order no", "transaction", "thank you", "visit us",
         "mastercard", "apple pay", "contactless", "approved", "coupon", "refund",
-        "bag charge", "carrier bag", "store #", "st#", "hore", "j3gh"
+        "bag charge", "carrier bag", "store #", "st#"
     )
 
     // Short words must match whole, so STILL WATER, OREGANO and HOTEL CHOCOLAT stay products.
