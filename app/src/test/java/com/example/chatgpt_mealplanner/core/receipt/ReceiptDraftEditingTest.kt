@@ -87,7 +87,7 @@ class ReceiptDraftEditingTest {
 
     @Test
     fun deletingPhantomItem_recalculatesSoTheDashboardTotalsStayCorrect() {
-        val draft = parsed("ASDA", "MILK 2.00", "2 X 3.00", "TOTAL 2.00")
+        val draft = parsed("ASDA", "MILK 2.00", "SMUDGED ROW 3.00", "TOTAL 2.00")
         assertEquals(2, draft.items.size)
 
         val edited = draft.withUserEdits(items = draft.items.take(1))

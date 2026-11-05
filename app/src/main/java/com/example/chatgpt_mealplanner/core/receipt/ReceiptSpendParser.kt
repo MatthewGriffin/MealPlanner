@@ -70,7 +70,7 @@ data class ReceiptSpendDraft(
             grossTargetPence = gross,
             savingsPence = explicitSavingsMinorPence,
             recognisedGrossPence = recognisedGross,
-            itemCount = items.size,
+            itemCount = items.sumOf { it.quantity },
             expectedItemCount = expectedItemCount,
             summaryArithmeticValid = summaryValid
         )
@@ -184,9 +184,9 @@ object ReceiptMoneyInput {
 }
 
 object ReceiptMoneyParser {
-    // Matches £3.74, 3.74, -£3.60, -3.60, C12.00, L2.40, e38.88, g4.00
-    private val rightPriceRegex = Regex("""(-?)\s*(?:[£CLe gqPS$€]\s*|\b)([0-9]{1,3})\.([0-9]{2})(?:\s+[A-Z*])?$""", RegexOption.IGNORE_CASE)
-    private val generalMoneyRegex = Regex("""(-?)\s*(?:[£CLe gqPS$€]\s*|\b)([0-9]{1,3})\.([0-9]{2})""", RegexOption.IGNORE_CASE)
+    // Matches £3.74, 3.74, 3,74, -£3.60, -3.60, C12.00, L2.40, e38.88, g4.00
+    private val rightPriceRegex = Regex("""(-?)\s*(?:[£CLe gqPS$€]\s*|\b)([0-9]{1,3})[.,]([0-9]{2})(?:\s+[A-Z*])?$""", RegexOption.IGNORE_CASE)
+    private val generalMoneyRegex = Regex("""(-?)\s*(?:[£CLe gqPS$€]\s*|\b)([0-9]{1,3})[.,]([0-9]{2})(?!\d)""", RegexOption.IGNORE_CASE)
 
     fun parseAmountPence(text: String): Long? {
         if (text.contains("%")) {
@@ -215,9 +215,10 @@ object ReceiptMoneyParser {
 
 object ReceiptSpendParser {
 
-    const val RECEIPT_PARSER_VERSION = "spatial-v9-corrupted-row-recovery"
+    const val RECEIPT_PARSER_VERSION = "spatial-v10-deskew"
 
-    fun parseOcrResult(ocrResult: ReceiptOcrResult, sourceImagePath: String?): ReceiptSpendDraft {
+    fun parseOcrResult(rawOcrResult: ReceiptOcrResult, sourceImagePath: String?): ReceiptSpendDraft {
+        val ocrResult = ReceiptDeskew.straighten(rawOcrResult)
         safeLog("[PARSER_ENTRY] Version=$RECEIPT_PARSER_VERSION, Total lines=${ocrResult.lines.size}")
 
         // 1. ISOLATED RECEIPT SUMMARY PARSER (Independent from product item OCR)
@@ -259,15 +260,10 @@ object ReceiptSpendParser {
         val consumedPriceLines = mutableSetOf<Int>()
         val consumedDescriptionLines = mutableSetOf<Int>()
 
-        data class CorruptedRowCandidate(
-            val lineIndex: Int,
-            val rawText: String,
-            val cleanDesc: String,
-            val rawPriceToken: String,
-            val rawPence: Long,
-            val recoveredPence: Long
-        )
-        var proposedCorruptedCandidate: CorruptedRowCandidate? = null
+        val tillCodeRowCandidates = mutableListOf<TillCodeRowCandidate>()
+        val subLines = mutableListOf<Pair<Int, ReceiptSubLine>>()
+        val itemLineIndexes = mutableMapOf<String, Int>()
+        var unpricedDescription: Pair<Int, ReceiptOcrLine>? = null
 
         ocrResult.lines.forEachIndexed { lineIdx, ocrLine ->
             if (lineIdx in consumedDescriptionLines || lineIdx in consumedPriceLines) {
@@ -287,28 +283,39 @@ object ReceiptSpendParser {
                 return@forEachIndexed
             }
 
-            // Check if line contains till/store code metadata with low confidence (confidence < 0.6f)
-            val isTillMetadataCorruptedProductRow = ocrLine.confidence < 0.6f &&
-                    normLine.startsWith("WEDGES") &&
-                    (normLine.contains("03HORE") || normLine.contains("J3GH") || normLine.contains("0N03"))
+            val subLine = ReceiptSubLineParser.parse(ocrLine.text)
+            if (subLine != null) {
+                // A detail row printed above its product has that product's price on the next row.
+                val described = unpricedDescription?.takeUnless {
+                    nextRowPrice(ocrResult.lines, alignment, lineIdx) == subLine.linePricePence
+                }
+                if (described != null) {
+                    // The product's only price is on this detail row.
+                    val normDesc = ReceiptDescriptionNormalizer.normalize(described.second.text)
+                    val item = ReceiptSpendItemDraft(
+                        rawDescription = described.second.text,
+                        normalizedDescription = normDesc,
+                        lineAmountMinorPence = subLine.linePricePence,
+                        quantity = subLine.quantity,
+                        unitPriceMinorPence = subLine.unitPricePence ?: subLine.linePricePence,
+                        category = ReceiptSpendCategory.classifyDescription(normDesc).name,
+                        isDiscount = false
+                    )
+                    itemLineIndexes[item.id] = described.first
+                    items.add(item)
+                    unpricedDescription = null
+                } else {
+                    subLines += lineIdx to subLine
+                }
+                safeLog("[SUB_LINE] Line $lineIdx \"${ocrLine.text}\" quantity=${subLine.quantity}, line=${subLine.linePricePence}p")
+                return@forEachIndexed
+            }
+            if (!ReceiptRowAligner.isPriceOnly(ocrLine.text)) unpricedDescription = null
 
-            if (isTillMetadataCorruptedProductRow) {
-                val rawPriceToken = ocrLine.elements.lastOrNull()?.text ?: ""
-                val rawPence = ReceiptMoneyParser.parseRightAlignedAmountPence(rawPriceToken) ?: 9240L
-                val recoveredPence = 240L // Alternate candidate: leading digit '9' treated as corrupted currency symbol
-                val cleanDesc = ocrLine.text.takeWhile { !it.isDigit() }.trim()
-
-                val candidateObj = CorruptedRowCandidate(
-                    lineIndex = lineIdx,
-                    rawText = ocrLine.text,
-                    cleanDesc = if (cleanDesc.isNotBlank()) cleanDesc else "WEDGES",
-                    rawPriceToken = rawPriceToken,
-                    rawPence = rawPence,
-                    recoveredPence = recoveredPence
-                )
-                proposedCorruptedCandidate = candidateObj
-
-                safeLog("[CORRUPTED_ROW_ANALYSIS] line=$lineIdx, rawText=\"${ocrLine.text}\", rawPriceToken=\"$rawPriceToken\", descriptionCandidate=\"${candidateObj.cleanDesc}\", rawPrice=${rawPence}p, alternateCurrencyPrefixCandidate=${recoveredPence}p, signals=[LOW_CONFIDENCE, TILL_CODE_GARBAGE, PURCHASE_REGION], decision=PROPOSE_CANDIDATE")
+            if (isFusedWithTillCodes(normLine)) {
+                val candidate = tillCodeRowCandidate(lineIdx, ocrLine)
+                if (candidate != null) tillCodeRowCandidates.add(candidate)
+                safeLog("[ITEM_REJECTED] Line $lineIdx \"${ocrLine.text}\" REJECTED: FUSED_WITH_TILL_CODES, recoverable=${candidate != null}")
                 return@forEachIndexed
             }
 
@@ -348,7 +355,7 @@ object ReceiptSpendParser {
                     candidate.left < ocrLine.left &&
                     candidate.confidence > ocrLine.confidence &&
                     ReceiptDescriptionNormalizer.normalize(candidate.text).contains(Regex("[A-Za-z]")) &&
-                    !ReceiptDescriptionNormalizer.isNonProductLine(candidate.text)
+                    !ReceiptDescriptionNormalizer.isNonProductLine(ReceiptDescriptionNormalizer.normalize(candidate.text))
                 }
 
                 if (cleanLeftCandidate != null) {
@@ -381,6 +388,7 @@ object ReceiptSpendParser {
             val pricePence = matchedPricePence
             if (pricePence == null) {
                 safeLog("[ITEM_REJECTED] Line $lineIdx \"${ocrLine.text}\" REJECTED: NO_PRICE_CANDIDATE")
+                if (normLine.count { it.isLetter() } >= 2) unpricedDescription = lineIdx to ocrLine
                 return@forEachIndexed
             }
 
@@ -407,7 +415,7 @@ object ReceiptSpendParser {
                 rawDescString
             }
 
-            cleanDesc = cleanDesc.replace(Regex("""-?\s*[£$€]?\s*(?<![A-Za-z])[CLegqPS]?[0-9]+\.[0-9]{2}(?:\s+[A-Z*])?\s*$""", RegexOption.IGNORE_CASE), "").trim()
+            cleanDesc = cleanDesc.replace(Regex("""-?\s*[£$€]?\s*(?<![A-Za-z])[CLegqPS]?[0-9]+[.,][0-9]{2}(?:\s+[A-Z*])?\s*$""", RegexOption.IGNORE_CASE), "").trim()
             val normDesc = ReceiptDescriptionNormalizer.normalize(cleanDesc)
 
             if (normDesc.isBlank() || !normDesc.contains(Regex("[A-Za-z]")) || normDesc.length < 2 || ReceiptDescriptionNormalizer.isNonProductLine(normDesc)) {
@@ -429,6 +437,7 @@ object ReceiptSpendParser {
                 isDiscount = false
             )
             rawPriceTokens[newItem.id] = rawPriceToken
+            itemLineIndexes[newItem.id] = lineIdx
             items.add(newItem)
         }
 
@@ -442,33 +451,28 @@ object ReceiptSpendParser {
             else -> null
         }
 
-        // Evaluate Proposed Corrupted Row Candidate (e.g. Line 31 WEDGES 240p) if adding 240p enables 100% exact gross reconciliation
-        if (proposedCorruptedCandidate != null && grossTarget != null) {
-            val cand = proposedCorruptedCandidate!!
-            val sumWithCandidate = recognisedGrossItemSpend + cand.recoveredPence
-            val projectedOverage = sumWithCandidate - grossTarget
-
-            if (projectedOverage == 2000L || sumWithCandidate == grossTarget) {
-                consumedDescriptionLines.add(cand.lineIndex)
-                consumedPriceLines.add(cand.lineIndex)
-
-                val normDesc = ReceiptDescriptionNormalizer.normalize(cand.cleanDesc)
-                val category = ReceiptSpendCategory.classifyDescription(normDesc).name
-
-                items.add(
-                    ReceiptSpendItemDraft(
-                        rawDescription = cand.rawText,
-                        normalizedDescription = normDesc,
-                        lineAmountMinorPence = cand.recoveredPence,
-                        quantity = 1,
-                        unitPriceMinorPence = cand.recoveredPence,
-                        category = category,
-                        isDiscount = false
-                    )
+        // A row fused with till codes only counts if its corrected price makes the receipt add up.
+        if (grossTarget != null) {
+            tillCodeRowCandidates.forEach { candidate ->
+                val normDesc = ReceiptDescriptionNormalizer.normalize(candidate.description)
+                val recovered = ReceiptSpendItemDraft(
+                    rawDescription = candidate.rawText,
+                    normalizedDescription = normDesc,
+                    lineAmountMinorPence = candidate.recoveredPence,
+                    quantity = 1,
+                    unitPriceMinorPence = candidate.recoveredPence,
+                    category = ReceiptSpendCategory.classifyDescription(normDesc).name,
+                    isDiscount = false
                 )
-
-                recognisedGrossItemSpend = items.sumOf { it.lineAmountMinorPence }
-                safeLog("[RECOVERED_ITEM] description=\"$normDesc\", amount=${cand.recoveredPence}, sourceLine=${cand.lineIndex}, rawPriceToken=\"${cand.rawPriceToken}\", recovery=\"LEADING_DIGIT_AS_CORRUPTED_CURRENCY_SYMBOL\", evidence=[LOW_CONFIDENCE, TILL_CODE_GARBAGE, RECONCILIATION_EXACT_MATCH]")
+                val withCandidate = items + recovered
+                val sum = withCandidate.sumOf { it.lineAmountMinorPence }
+                val addsUp = sum == grossTarget ||
+                    (sum > grossTarget && correctMisreadCurrencySymbols(withCandidate, rawPriceTokens, grossTarget) != null)
+                if (addsUp) {
+                    items.add(recovered)
+                    recognisedGrossItemSpend = sum
+                    safeLog("[RECOVERED_ITEM] description=\"$normDesc\", amount=${candidate.recoveredPence}, sourceLine=${candidate.lineIndex}")
+                }
             }
         }
 
@@ -484,6 +488,8 @@ object ReceiptSpendParser {
             }
         }
 
+        applySubLineQuantities(items, itemLineIndexes, subLines)
+
         val review = evaluateReceiptReview(
             retailerId = summary.retailerId,
             purchasedAt = summary.purchasedAt,
@@ -492,7 +498,7 @@ object ReceiptSpendParser {
             grossTargetPence = grossTarget,
             savingsPence = summary.savingsMinorPence,
             recognisedGrossPence = recognisedGrossItemSpend,
-            itemCount = items.size,
+            itemCount = items.sumOf { it.quantity },
             expectedItemCount = expectedItemCountFromReceipt,
             summaryArithmeticValid = summary.summaryArithmeticValid
         )
@@ -549,11 +555,9 @@ object ReceiptSpendParser {
         rawPriceTokens: Map<String, String>,
         grossTarget: Long
     ): List<ReceiptSpendItemDraft>? {
-        val unsymbolisedPrice = Regex("""^(\d)(\d{1,2})\.(\d{2})$""")
         val candidates = items.mapNotNull { item ->
-            val match = unsymbolisedPrice.find(rawPriceTokens[item.id]?.trim().orEmpty()) ?: return@mapNotNull null
-            val (_, pounds, pence) = match.destructured
-            item to pounds.toLong() * 100L + pence.toLong()
+            val corrected = withoutLeadingDigit(rawPriceTokens[item.id].orEmpty()) ?: return@mapNotNull null
+            item to corrected
         }
         if (candidates.isEmpty() || candidates.size > 12) return null
 
@@ -571,6 +575,70 @@ object ReceiptSpendParser {
         }
     }
 
+    private fun nextRowPrice(lines: List<ReceiptOcrLine>, alignment: ReceiptRowAlignment, afterIndex: Int): Long? {
+        val next = (afterIndex + 1 until lines.size).firstOrNull { !ReceiptRowAligner.isPriceOnly(lines[it].text) } ?: return null
+        return ReceiptMoneyParser.parseRightAlignedAmountPence(lines[next].text)
+            ?: alignment.priceLineFor[next]?.let { ReceiptMoneyParser.parseRightAlignedAmountPence(lines[it].text) }
+    }
+
+    /**
+     * Gives a product its quantity from the detail row next to it, preferring the row above. The
+     * prices have to agree, so a detail row can't change an unrelated product. A row that fits
+     * nothing adds nothing, and any mismatch stays visible in the review.
+     */
+    private fun applySubLineQuantities(
+        items: MutableList<ReceiptSpendItemDraft>,
+        itemLineIndexes: Map<String, Int>,
+        subLines: List<Pair<Int, ReceiptSubLine>>
+    ) {
+        subLines.forEach { (lineIndex, subLine) ->
+            val ordered = items.indices.sortedBy { itemLineIndexes[items[it].id] ?: Int.MAX_VALUE }
+            val above = ordered.lastOrNull { (itemLineIndexes[items[it].id] ?: Int.MAX_VALUE) < lineIndex }
+            val below = ordered.firstOrNull { (itemLineIndexes[items[it].id] ?: -1) > lineIndex }
+            val target = listOfNotNull(above, below).firstOrNull {
+                items[it].quantity == 1 && items[it].lineAmountMinorPence == subLine.linePricePence
+            } ?: return@forEach
+            items[target] = items[target].copy(
+                quantity = subLine.quantity,
+                unitPriceMinorPence = subLine.unitPricePence ?: items[target].unitPriceMinorPence
+            )
+        }
+    }
+
+    private class TillCodeRowCandidate(
+        val lineIndex: Int,
+        val rawText: String,
+        val description: String,
+        val recoveredPence: Long
+    )
+
+    private val digitInsideLetters = Regex("""[A-Z][0-9]+[A-Z]""")
+
+    /**
+     * A blurred row can merge with the till codes printed beside it, as in "WEDGES0N03HORE J3GH 92.40".
+     * One odd word can be a misread product (BR0CC0LI), so it takes two.
+     */
+    private fun isFusedWithTillCodes(normText: String): Boolean =
+        normText.split(' ').count { digitInsideLetters.containsMatchIn(it) } >= 2
+
+    /** Only a low-confidence row can be recovered: its name is the text before the first digit, its price without the misread pound sign. */
+    private fun tillCodeRowCandidate(lineIndex: Int, line: ReceiptOcrLine): TillCodeRowCandidate? {
+        if (line.confidence >= 0.6f) return null
+        val recoveredPence = withoutLeadingDigit(line.text.trim().substringAfterLast(' ')) ?: return null
+        val description = line.text.takeWhile { !it.isDigit() }.trim()
+        if (description.count { it.isLetter() } < 2) return null
+        return TillCodeRowCandidate(lineIndex, line.text, description, recoveredPence)
+    }
+
+    private val unsymbolisedPrice = Regex("""^(\d)(\d{1,2})[.,](\d{2})$""")
+
+    /** The price if a pound sign was misread as its first digit: "92.40" gives 240p. */
+    private fun withoutLeadingDigit(token: String): Long? {
+        val match = unsymbolisedPrice.find(token.trim()) ?: return null
+        val (_, pounds, pence) = match.destructured
+        return pounds.toLong() * 100L + pence.toLong()
+    }
+
     private fun safeLog(msg: String) {
         if (!com.example.chatgpt_mealplanner.BuildConfig.DEBUG) return
         try {
@@ -582,7 +650,7 @@ object ReceiptSpendParser {
         val lower = normText.lowercase()
         return lower.startsWith("subtotal") ||
                 lower.startsWith("sub total") ||
-                lower.startsWith("total") ||
+                lower == "total" || lower.startsWith("total ") || lower.startsWith("total:") ||
                 lower.contains("total savings") ||
                 lower.contains("no. items") ||
                 lower.contains("asda rewards") ||
