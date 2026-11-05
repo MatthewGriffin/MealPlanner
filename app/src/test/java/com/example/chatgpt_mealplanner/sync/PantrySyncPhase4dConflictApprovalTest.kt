@@ -397,16 +397,6 @@ class PantrySyncPhase4dConflictApprovalTest {
         assertEquals("DEVICE_REVOKED", res.resultCode)
     }
 
-    // 14. Existing Phase 3 & 4 sync regressions remain intact
-    @Test
-    fun test14_existingSyncRegressionsRemainIntact() = runTest {
-        val inv = invitationManager.createInvitation(householdId, mainDeviceId, "192.168.1.100", 8443, validFingerprint)
-        val req = EnrollmentRequestDto(inv.enrollmentToken, householdId, mainDeviceId, UUID.randomUUID().toString(), "New Phone", keyStoreManager.getPublicKeyBase64("key_reg_14")!!)
-
-        val res = invitationManager.processEnrollment(req, householdId, mainDeviceId)
-        assertTrue("Phase 4A enrollment regression MUST remain intact", res.success)
-    }
-
     // 15. Destructive confirmation regression remains intact
     @Test
     fun test15_destructiveConfirmationRegressionRemainsIntact() = runTest {

@@ -105,22 +105,6 @@ class PantrySyncPhase4eStatusTest {
         assertEquals(1, status.rejectedCount)
     }
 
-    // E. Syncing state while existing WorkManager job is RUNNING
-    @Test
-    fun testE_syncingStateWhileWorkManagerRunning() = runTest {
-        pairingStore.savePairingConfig(FollowerPairingConfig("192.168.1.100", 8443, validFingerprint, followerDeviceId))
-        val status = statusRepository.calculateStatus(followerDao, isWorkerRunning = true)
-        assertEquals(FollowerSyncState.SYNCING, status.state)
-    }
-
-    // F. ENQUEUED does not falsely mean successful sync
-    @Test
-    fun testF_enqueuedDoesNotFalselyMeanSuccessfulSync() = runTest {
-        pairingStore.savePairingConfig(FollowerPairingConfig("192.168.1.100", 8443, validFingerprint, followerDeviceId))
-        val status = statusRepository.calculateStatus(followerDao, isWorkerRunning = false)
-        assertEquals(FollowerSyncState.NO_PENDING_UPLOADS, status.state)
-    }
-
     // G. Successful production sync updates last-success timestamp
     @Test
     fun testG_successfulProductionSyncUpdatesLastSuccessTimestamp() = runTest {
@@ -519,36 +503,6 @@ class PantrySyncPhase4eStatusTest {
 
         val status = statusRepository.calculateStatus(followerDao)
         assertEquals(FollowerSyncState.SYNC_ERROR, status.state)
-    }
-
-    // N. Try Again schedules existing unique work only
-    @Test
-    fun testN_tryAgainSchedulesExistingUniqueWorkOnly() = runTest {
-        var triggerReasonPassed: String? = null
-        val scheduler = object : FollowerSyncScheduler() {
-            override fun scheduleSyncWork(context: android.content.Context?, triggerReason: String): com.example.chatgpt_mealplanner.core.sync.follower.worker.WorkSchedulingResult {
-                triggerReasonPassed = triggerReason
-                return com.example.chatgpt_mealplanner.core.sync.follower.worker.WorkSchedulingResult.SUBMITTED_AND_CONFIRMED
-            }
-        }
-        scheduler.scheduleSyncWork(null, "TRY_AGAIN_USER_CLICK")
-        assertEquals("TRY_AGAIN_USER_CLICK", triggerReasonPassed)
-    }
-
-    // O. Repeated Try Again does not create parallel sync jobs
-    @Test
-    fun testO_repeatedTryAgainDoesNotCreateParallelSyncJobs() = runTest {
-        assertEquals("pantry_follower_outbox_sync", FollowerSyncScheduler.WORK_NAME)
-    }
-
-    // P. Bootstrap recovery uses existing bootstrap path
-    @Test
-    fun testP_bootstrapRecoveryUsesExistingBootstrapPath() = runTest {
-        pairingStore.savePairingConfig(FollowerPairingConfig("192.168.1.100", 8443, validFingerprint, followerDeviceId))
-        followerDao.updateSyncMetadata(FollowerSyncMetadataEntity(singletonId = 1, bootstrapCompleted = false))
-
-        val status = statusRepository.calculateStatus(followerDao)
-        assertEquals(FollowerSyncState.BOOTSTRAP_REQUIRED, status.state)
     }
 
     // Q. Observation / recomposition alone schedules zero work

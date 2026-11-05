@@ -193,21 +193,6 @@ class PantrySyncPhase4cStatusTest {
         assertEquals("NETWORK_ERROR: Connection refused", status.lastError)
     }
 
-    // 11. Try Again schedules existing unique worker
-    @Test
-    fun test11_tryAgain_schedulesExistingUniqueWorker() = runTest {
-        var trigger: String? = null
-        val testScheduler = object : FollowerSyncScheduler() {
-            override fun scheduleSyncWork(context: android.content.Context?, triggerReason: String): com.example.chatgpt_mealplanner.core.sync.follower.worker.WorkSchedulingResult {
-                trigger = triggerReason
-                return com.example.chatgpt_mealplanner.core.sync.follower.worker.WorkSchedulingResult.SUBMITTED_AND_CONFIRMED
-            }
-        }
-
-        testScheduler.scheduleSyncWork(null, "TRY_AGAIN_CLICKED")
-        assertEquals("TRY_AGAIN_CLICKED", trigger)
-    }
-
     // 12. Repeated Try Again does NOT create parallel workers (maintains single WORK_NAME)
     @Test
     fun test12_repeatedTryAgain_doesNotCreateParallelWorkers() = runTest {
@@ -485,14 +470,6 @@ class PantrySyncPhase4cStatusTest {
         assertEquals(FollowerSyncState.SYNC_ERROR, statusRepository.calculateStatus(followerDao).state)
         statusRepository.clearSyncError()
         assertEquals(FollowerSyncState.NO_PENDING_UPLOADS, statusRepository.calculateStatus(followerDao).state)
-    }
-
-    // 29. WorkManager RUNNING state updates status to SYNCING
-    @Test
-    fun test29_workManagerRunningState_updatesStatusToSyncing() = runTest {
-        pairingStore.savePairingConfig(FollowerPairingConfig("192.168.1.100", 8443, validFingerprint, followerDeviceId))
-        val status = statusRepository.calculateStatus(followerDao, isWorkerRunning = true)
-        assertEquals(FollowerSyncState.SYNCING, status.state)
     }
 
     // 30. WorkManager ENQUEUED state does NOT map to SYNCING

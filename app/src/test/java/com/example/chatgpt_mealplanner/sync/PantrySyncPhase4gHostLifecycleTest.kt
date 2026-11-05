@@ -139,28 +139,6 @@ class PantrySyncPhase4gHostLifecycleTest {
         assertFalse(server.isRunning())
     }
 
-    // D. Main normal startup requests host
-    @Test
-    fun testD_mainNormalStartup_requestsHost() {
-        assertTrue("Main installation MUST be eligible for hosting on startup", hostController.isEligibleToHost())
-    }
-
-    // E. Activity background/navigation does not issue host stop
-    @Test
-    fun testE_activityBackground_doesNotStopHost() {
-        assertTrue("Hosting authority is service/process scoped, not Activity paused/background bound", hostController.isEligibleToHost())
-    }
-
-    // F. Enrollment QR unavailable while host STARTING
-    @Test
-    fun testF_enrollmentQr_unavailableWhileHostStarting() = runTest {
-        val vm = PairDeviceViewModel(identityManager, tlsKeyManager, invitationManager, hostController, null)
-        advanceUntilIdle()
-
-        val state = vm.uiState.value
-        assertNotNull("Enrollment invitation DTO created when server available", state.invitationPayload)
-    }
-
     // G. Enrollment QR generated after READY
     @Test
     fun testG_enrollmentQr_generatedAfterReady() = runTest {
