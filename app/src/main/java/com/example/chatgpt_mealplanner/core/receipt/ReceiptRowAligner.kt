@@ -17,7 +17,7 @@ internal data class ReceiptRowAlignment(
  * Distances scale with the photo's row height.
  */
 internal object ReceiptRowAligner {
-    private val priceOnly = Regex("""^-?\s*[£CLegqPS$€]?\s*-?\d{1,3}\.\d{2}\s*[A-Za-z*]?$""", RegexOption.IGNORE_CASE)
+    private val priceOnly = Regex("""^-?\s*[£CLegqPS$€]?\s*-?\d{1,3}[.,]\d{2}\s*[A-Za-z*]?$""", RegexOption.IGNORE_CASE)
 
     fun isPriceOnly(text: String): Boolean = priceOnly.matches(text.trim())
 

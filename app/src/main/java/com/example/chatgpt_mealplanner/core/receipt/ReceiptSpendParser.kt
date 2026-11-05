@@ -184,9 +184,9 @@ object ReceiptMoneyInput {
 }
 
 object ReceiptMoneyParser {
-    // Matches £3.74, 3.74, -£3.60, -3.60, C12.00, L2.40, e38.88, g4.00
-    private val rightPriceRegex = Regex("""(-?)\s*(?:[£CLe gqPS$€]\s*|\b)([0-9]{1,3})\.([0-9]{2})(?:\s+[A-Z*])?$""", RegexOption.IGNORE_CASE)
-    private val generalMoneyRegex = Regex("""(-?)\s*(?:[£CLe gqPS$€]\s*|\b)([0-9]{1,3})\.([0-9]{2})""", RegexOption.IGNORE_CASE)
+    // Matches £3.74, 3.74, 3,74, -£3.60, -3.60, C12.00, L2.40, e38.88, g4.00
+    private val rightPriceRegex = Regex("""(-?)\s*(?:[£CLe gqPS$€]\s*|\b)([0-9]{1,3})[.,]([0-9]{2})(?:\s+[A-Z*])?$""", RegexOption.IGNORE_CASE)
+    private val generalMoneyRegex = Regex("""(-?)\s*(?:[£CLe gqPS$€]\s*|\b)([0-9]{1,3})[.,]([0-9]{2})(?!\d)""", RegexOption.IGNORE_CASE)
 
     fun parseAmountPence(text: String): Long? {
         if (text.contains("%")) {
@@ -382,7 +382,7 @@ object ReceiptSpendParser {
                 rawDescString
             }
 
-            cleanDesc = cleanDesc.replace(Regex("""-?\s*[£$€]?\s*(?<![A-Za-z])[CLegqPS]?[0-9]+\.[0-9]{2}(?:\s+[A-Z*])?\s*$""", RegexOption.IGNORE_CASE), "").trim()
+            cleanDesc = cleanDesc.replace(Regex("""-?\s*[£$€]?\s*(?<![A-Za-z])[CLegqPS]?[0-9]+[.,][0-9]{2}(?:\s+[A-Z*])?\s*$""", RegexOption.IGNORE_CASE), "").trim()
             val normDesc = ReceiptDescriptionNormalizer.normalize(cleanDesc)
 
             if (normDesc.isBlank() || !normDesc.contains(Regex("[A-Za-z]")) || normDesc.length < 2 || ReceiptDescriptionNormalizer.isNonProductLine(normDesc)) {

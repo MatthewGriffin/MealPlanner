@@ -148,6 +148,30 @@ class ReceiptRowAlignerTest {
         assertEquals(listOf("MILK" to 200L, "BREAD" to 300L), itemsFrom("ASDA", "MILK 2.00 A", "BREAD 3.00 B", "TOTAL 5.00"))
     }
 
+    @Test
+    fun commaPrices_areReadLikeDotPrices() {
+        assertEquals(listOf("MILK" to 200L, "BREAD" to 75L), itemsFrom("ASDA", "MILK 2,00", "BREAD £0,75", "TOTAL 2,75"))
+        assertEquals(374L, ReceiptMoneyParser.parseAmountPence("£3,74"))
+        assertEquals(374L, ReceiptMoneyParser.parseRightAlignedAmountPence("3,74 A"))
+        assertEquals(true, ReceiptRowAligner.isPriceOnly("3,74"))
+    }
+
+    @Test
+    fun commaInALongerNumber_isNotAPrice() {
+        assertEquals(null, ReceiptMoneyParser.parseAmountPence("1,234"))
+    }
+
+    @Test
+    fun commaPriceInItsOwnColumn_pairsWithItsDescription() {
+        val lines = listOf(line("ASDA", 100, 60), line("MILK", 100, 100), line("2,00", 800, 102), line("TOTAL", 100, 140), line("2,00", 800, 142))
+            .mapIndexed { i, l -> l.copy(lineIndex = i) }
+
+        val draft = ReceiptSpendParser.parseOcrResult(ReceiptOcrResult(lines, "ASDA 27/09/2026"), null)
+
+        assertEquals(listOf("MILK" to 200L), draft.items.map { it.normalizedDescription to it.lineAmountMinorPence })
+        assertEquals(200L, draft.totalMinorPence)
+    }
+
     /** ML Kit output from a real crumpled Asda receipt photographed on a phone. */
     @Test
     fun realPhonePhoto_readsEveryItemAndReconcilesWithTheTotal() {
