@@ -664,6 +664,13 @@ class GeminiMealPlannerAiProviderTest {
     }
 
     @Test
+    fun boldWordsInAReply_areNotARecipe() {
+        val response = finalReplyFor("You have **milk** and **eggs** in the fridge.")
+
+        assertEquals(null, (response as AiProviderResponse.FinalResponse).proposal)
+    }
+
+    @Test
     fun twoConversations_doNotShareToolCallState() = runBlocking {
         val payloads = mutableListOf<JsonObject>()
         provider.httpCallHandler = { _, payload ->

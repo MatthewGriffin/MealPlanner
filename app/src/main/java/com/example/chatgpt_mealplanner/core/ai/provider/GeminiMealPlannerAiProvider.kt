@@ -813,18 +813,6 @@ class GeminiMealPlannerAiProvider @Inject constructor(
             }
         }
 
-        val titleMatch = Regex("\\*\\*([^*]+)\\*\\*").find(text) ?: Regex("###?\\s*([^\\n]+)").find(text)
-        val extractedTitle = titleMatch?.groupValues?.get(1)?.trim()
-        if (!extractedTitle.isNullOrBlank() && extractedTitle.length in 3..60 && !extractedTitle.equals("Note", ignoreCase = true) && !extractedTitle.equals("Tip", ignoreCase = true)) {
-            return MealProposal(
-                title = extractedTitle,
-                mealType = null,
-                servings = 2,
-                ingredients = emptyList(),
-                reasoningSummary = "Extracted from recipe suggestion"
-            )
-        }
-
         return null
     }
 
