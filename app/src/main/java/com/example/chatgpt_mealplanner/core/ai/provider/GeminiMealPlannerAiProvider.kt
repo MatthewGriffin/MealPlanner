@@ -224,10 +224,11 @@ class GeminiMealPlannerAiProvider @Inject constructor(
         val newHistory = buildJsonArray {
             lastHistory.forEach { add(it) }
 
-            request.toolResults.forEach { res ->
-                add(buildJsonObject {
-                    put("role", "user")
-                    putJsonArray("parts") {
+            // Tool calls made together are answered together, in one message.
+            add(buildJsonObject {
+                put("role", "user")
+                putJsonArray("parts") {
+                    request.toolResults.forEach { res ->
                         add(buildJsonObject {
                             putJsonObject("functionResponse") {
                                 put("name", res.toolName)
@@ -241,8 +242,8 @@ class GeminiMealPlannerAiProvider @Inject constructor(
                             }
                         })
                     }
-                })
-            }
+                }
+            })
         }
 
         val payloadBuilder = { _: String ->

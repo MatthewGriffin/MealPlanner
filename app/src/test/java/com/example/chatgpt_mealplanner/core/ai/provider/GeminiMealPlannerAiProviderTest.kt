@@ -555,6 +555,31 @@ class GeminiMealPlannerAiProviderTest {
     }
 
     @Test
+    fun toolCallsMadeTogether_areAnsweredInOneMessage() = runBlocking {
+        val payloads = mutableListOf<JsonObject>()
+        provider.httpCallHandler = { _, payload ->
+            payloads.add(payload)
+            Pair(200, if (payloads.size == 1) toolCallBody else makeSuccessBody("Done"))
+        }
+
+        provider.send(recipeRequest())
+        provider.continueWithToolResults(
+            inventoryResult().copy(
+                toolResults = listOf(
+                    AiToolResult(toolCallId = "c1", toolName = "get_usable_inventory", success = true, payloadJson = "{}"),
+                    AiToolResult(toolCallId = "c2", toolName = "get_use_soon_items", success = true, payloadJson = "{}")
+                )
+            )
+        )
+
+        val contents = payloads[1]["contents"]!!.jsonArray
+        val answer = contents.last().jsonObject
+        assertEquals("model", contents[contents.size - 2].jsonObject["role"]!!.jsonPrimitive.content)
+        assertEquals("user", answer["role"]!!.jsonPrimitive.content)
+        assertEquals(2, answer["parts"]!!.jsonArray.size)
+    }
+
+    @Test
     fun twoConversations_doNotShareToolCallState() = runBlocking {
         val payloads = mutableListOf<JsonObject>()
         provider.httpCallHandler = { _, payload ->
