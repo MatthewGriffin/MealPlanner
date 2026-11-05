@@ -8,6 +8,7 @@ import com.example.chatgpt_mealplanner.core.database.dao.InventoryDao
 import com.example.chatgpt_mealplanner.core.database.dao.ReceiptSpendDao
 import com.example.chatgpt_mealplanner.core.database.dao.ShoppingDao
 import com.example.chatgpt_mealplanner.core.model.DomainResult
+import com.example.chatgpt_mealplanner.core.receipt.ReceiptOcrException
 import com.example.chatgpt_mealplanner.core.receipt.ReceiptOcrService
 import com.example.chatgpt_mealplanner.core.receipt.ReceiptSpendCategory
 import com.example.chatgpt_mealplanner.core.receipt.ReceiptSpendDraft
@@ -197,8 +198,10 @@ class ReceiptSpendViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 rethrowIfCancelled()
-                android.util.Log.i("AI_MEALPLANNER", "[RECEIPT_SCAN_PROCESSING_ERROR] exception=${e.javaClass.simpleName} message=\"${e.message}\"")
-                _uiState.update { it.copy(isScanning = false, errorMessage = "Failed to process receipt image: ${e.localizedMessage}") }
+                android.util.Log.e("AI_MEALPLANNER", "[RECEIPT_SCAN_PROCESSING_ERROR]", e)
+                val message = (e as? ReceiptOcrException)?.message
+                    ?: "Failed to process receipt image: ${e.localizedMessage}"
+                _uiState.update { it.copy(isScanning = false, errorMessage = message) }
             } finally {
                 onFinished()
             }
