@@ -148,6 +148,12 @@ class ReceiptRowAlignerTest {
         assertEquals(listOf("MILK" to 200L, "BREAD" to 300L), itemsFrom("ASDA", "MILK 2.00 A", "BREAD 3.00 B", "TOTAL 5.00"))
     }
 
+    private fun itemDetailsFrom(vararg rows: String): List<Triple<String, Long, Int>> {
+        val lines = rows.mapIndexed { i, text -> line(text, 100, 100 + i * 40).copy(lineIndex = i) }
+        return ReceiptSpendParser.parseOcrResult(ReceiptOcrResult(lines, rows.joinToString("\n")), null)
+            .items.map { Triple(it.normalizedDescription, it.lineAmountMinorPence, it.quantity) }
+    }
+
     @Test
     fun commaPrices_areReadLikeDotPrices() {
         assertEquals(listOf("MILK" to 200L, "BREAD" to 75L), itemsFrom("ASDA", "MILK 2,00", "BREAD £0,75", "TOTAL 2,75"))
@@ -212,6 +218,14 @@ class ReceiptRowAlignerTest {
     }
 
     @Test
+    fun multibuyDetailAboveOrBelow_setsQuantityWithoutAddingAnItem() {
+        val expected = listOf(Triple("MILK", 300L, 2), Triple("BREAD", 100L, 1))
+
+        assertEquals(expected, itemDetailsFrom("ASDA", "MILK 3.00", "2 X 1.50", "BREAD 1.00", "TOTAL 4.00"))
+        assertEquals(expected, itemDetailsFrom("ASDA", "2 x £1.50", "MILK 3.00", "BREAD 1.00", "TOTAL 4.00"))
+    }
+
+    @Test
     fun productsNearSummaryWords_areNotReadAsTheTotal() {
         val draft = ReceiptSpendParser.parseOcrResult(
             ReceiptOcrResult(
@@ -224,6 +238,74 @@ class ReceiptRowAlignerTest {
         assertEquals(300L, draft.totalMinorPence)
         assertEquals(300L, draft.explicitGrossTotalMinorPence)
         assertEquals(true, draft.isReconciled)
+    }
+
+    @Test
+    fun priceOnlyOnTheDetailRow_belongsToTheDescriptionAboveIt() {
+        val expected = listOf(Triple("MILK", 300L, 2), Triple("BREAD", 100L, 1))
+
+        assertEquals(expected, itemDetailsFrom("ASDA", "MILK", "2 X 1.50", "BREAD 1.00", "TOTAL 4.00"))
+        assertEquals(expected, itemDetailsFrom("ASDA", "MILK", "2 @ 1.50 3.00", "BREAD 1.00", "TOTAL 4.00"))
+    }
+
+    @Test
+    fun weighedDetailRows_giveThePriceButNotAQuantity() {
+        val expected = listOf(Triple("BANANAS", 73L, 1), Triple("BREAD", 100L, 1))
+
+        assertEquals(expected, itemDetailsFrom("ASDA", "BANANAS", "0.812 KG @ £0.90/KG", "BREAD 1.00", "TOTAL 1.73"))
+        assertEquals(expected, itemDetailsFrom("ASDA", "BANANAS", "0.812kg @ 0.90/kg 0.73", "BREAD 1.00", "TOTAL 1.73"))
+        assertEquals(expected, itemDetailsFrom("ASDA", "BANANAS 0.73", "0.812 KG @ £0.90/KG", "BREAD 1.00", "TOTAL 1.73"))
+        assertEquals(expected, itemDetailsFrom("ASDA", "BANANAS", "812G X 0.90/KG", "BREAD 1.00", "TOTAL 1.73"))
+    }
+
+    @Test
+    fun detailRowInTheTextColumn_doesNotTakeThePriceFromItsProduct() {
+        val lines = listOf(
+            line("ASDA", 100, 60),
+            line("BANANAS", 100, 100), line("0.73", 800, 100),
+            line("0.812 KG @ £0.90/KG", 100, 140),
+            line("BREAD", 100, 180), line("1.00", 800, 180),
+            line("TOTAL", 100, 220), line("1.73", 800, 220)
+        ).mapIndexed { i, l -> l.copy(lineIndex = i) }
+
+        val draft = ReceiptSpendParser.parseOcrResult(ReceiptOcrResult(lines, "ASDA 27/09/2026"), null)
+
+        assertEquals(listOf("BANANAS" to 73L, "BREAD" to 100L), draft.items.map { it.normalizedDescription to it.lineAmountMinorPence })
+        assertEquals(true, draft.isReconciled)
+    }
+
+    @Test
+    fun detailRowThatFitsNoProduct_addsNothingAndChangesNothing() {
+        assertEquals(
+            listOf(Triple("MILK", 200L, 1)),
+            itemDetailsFrom("ASDA", "MILK 2.00", "2 X 1.50", "TOTAL 2.00")
+        )
+    }
+
+    @Test
+    fun itemsSoldCount_countsEachUnitOfAMultibuy() {
+        val draft = ReceiptSpendParser.parseOcrResult(
+            ReceiptOcrResult(
+                listOf("ASDA", "MILK 3.00", "2 X 1.50", "TOTAL 3.00", "NO. ITEMS SOLD 2").mapIndexed { i, t -> line(t, 100, 100 + i * 40).copy(lineIndex = i) },
+                "ASDA 27/09/2026"
+            ),
+            null
+        )
+
+        assertEquals(1, draft.itemCount)
+        assertEquals(2, draft.expectedItemCount)
+        assertEquals(true, draft.isReconciled)
+    }
+
+    @Test
+    fun recordedPrice_isPerUnitOnAMultibuy() {
+        val item = ReceiptSpendParser.parseOcrResult(
+            ReceiptOcrResult(listOf(line("MILK 3.00", 100, 100), line("2 X 1.50", 100, 140)), "ASDA"),
+            null
+        ).items.single()
+
+        assertEquals(150L, item.unitPriceMinorPence)
+        assertEquals(300L, item.lineAmountMinorPence)
     }
 
     /** ML Kit output from a real crumpled Asda receipt photographed on a phone. */

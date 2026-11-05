@@ -25,7 +25,8 @@ internal object ReceiptRowAligner {
         val prices = lines.indices.filter { isPriceOnly(lines[it].text) }.sortedBy { lines[it].centerY }
         val descriptions = lines.indices.filter { i ->
             i !in prices && lines[i].text.count { it.isLetter() } >= 2 &&
-                ReceiptMoneyParser.parseRightAlignedAmountPence(lines[i].text) == null
+                ReceiptMoneyParser.parseRightAlignedAmountPence(lines[i].text) == null &&
+                ReceiptSubLineParser.parse(lines[i].text) == null
         }.sortedBy { lines[it].centerY }
 
         val pitch = medianGap(prices.map { lines[it].centerY })

@@ -70,7 +70,7 @@ data class ReceiptSpendDraft(
             grossTargetPence = gross,
             savingsPence = explicitSavingsMinorPence,
             recognisedGrossPence = recognisedGross,
-            itemCount = items.size,
+            itemCount = items.sumOf { it.quantity },
             expectedItemCount = expectedItemCount,
             summaryArithmeticValid = summaryValid
         )
@@ -261,6 +261,9 @@ object ReceiptSpendParser {
         val consumedDescriptionLines = mutableSetOf<Int>()
 
         val tillCodeRowCandidates = mutableListOf<TillCodeRowCandidate>()
+        val subLines = mutableListOf<Pair<Int, ReceiptSubLine>>()
+        val itemLineIndexes = mutableMapOf<String, Int>()
+        var unpricedDescription: Pair<Int, ReceiptOcrLine>? = null
 
         ocrResult.lines.forEachIndexed { lineIdx, ocrLine ->
             if (lineIdx in consumedDescriptionLines || lineIdx in consumedPriceLines) {
@@ -279,6 +282,35 @@ object ReceiptSpendParser {
                 safeLog("[ITEM_REJECTED] Line $lineIdx \"${ocrLine.text}\" REJECTED: REGION_END_OR_EXCLUSION_KEYWORD")
                 return@forEachIndexed
             }
+
+            val subLine = ReceiptSubLineParser.parse(ocrLine.text)
+            if (subLine != null) {
+                // A detail row printed above its product has that product's price on the next row.
+                val described = unpricedDescription?.takeUnless {
+                    nextRowPrice(ocrResult.lines, alignment, lineIdx) == subLine.linePricePence
+                }
+                if (described != null) {
+                    // The product's only price is on this detail row.
+                    val normDesc = ReceiptDescriptionNormalizer.normalize(described.second.text)
+                    val item = ReceiptSpendItemDraft(
+                        rawDescription = described.second.text,
+                        normalizedDescription = normDesc,
+                        lineAmountMinorPence = subLine.linePricePence,
+                        quantity = subLine.quantity,
+                        unitPriceMinorPence = subLine.unitPricePence ?: subLine.linePricePence,
+                        category = ReceiptSpendCategory.classifyDescription(normDesc).name,
+                        isDiscount = false
+                    )
+                    itemLineIndexes[item.id] = described.first
+                    items.add(item)
+                    unpricedDescription = null
+                } else {
+                    subLines += lineIdx to subLine
+                }
+                safeLog("[SUB_LINE] Line $lineIdx \"${ocrLine.text}\" quantity=${subLine.quantity}, line=${subLine.linePricePence}p")
+                return@forEachIndexed
+            }
+            if (!ReceiptRowAligner.isPriceOnly(ocrLine.text)) unpricedDescription = null
 
             if (isFusedWithTillCodes(normLine)) {
                 val candidate = tillCodeRowCandidate(lineIdx, ocrLine)
@@ -356,6 +388,7 @@ object ReceiptSpendParser {
             val pricePence = matchedPricePence
             if (pricePence == null) {
                 safeLog("[ITEM_REJECTED] Line $lineIdx \"${ocrLine.text}\" REJECTED: NO_PRICE_CANDIDATE")
+                if (normLine.count { it.isLetter() } >= 2) unpricedDescription = lineIdx to ocrLine
                 return@forEachIndexed
             }
 
@@ -404,6 +437,7 @@ object ReceiptSpendParser {
                 isDiscount = false
             )
             rawPriceTokens[newItem.id] = rawPriceToken
+            itemLineIndexes[newItem.id] = lineIdx
             items.add(newItem)
         }
 
@@ -454,6 +488,8 @@ object ReceiptSpendParser {
             }
         }
 
+        applySubLineQuantities(items, itemLineIndexes, subLines)
+
         val review = evaluateReceiptReview(
             retailerId = summary.retailerId,
             purchasedAt = summary.purchasedAt,
@@ -462,7 +498,7 @@ object ReceiptSpendParser {
             grossTargetPence = grossTarget,
             savingsPence = summary.savingsMinorPence,
             recognisedGrossPence = recognisedGrossItemSpend,
-            itemCount = items.size,
+            itemCount = items.sumOf { it.quantity },
             expectedItemCount = expectedItemCountFromReceipt,
             summaryArithmeticValid = summary.summaryArithmeticValid
         )
@@ -536,6 +572,36 @@ object ReceiptSpendParser {
             .associate { candidates[it].first.id to candidates[it].second }
         return items.map { item ->
             replacements[item.id]?.let { item.copy(lineAmountMinorPence = it, unitPriceMinorPence = it) } ?: item
+        }
+    }
+
+    private fun nextRowPrice(lines: List<ReceiptOcrLine>, alignment: ReceiptRowAlignment, afterIndex: Int): Long? {
+        val next = (afterIndex + 1 until lines.size).firstOrNull { !ReceiptRowAligner.isPriceOnly(lines[it].text) } ?: return null
+        return ReceiptMoneyParser.parseRightAlignedAmountPence(lines[next].text)
+            ?: alignment.priceLineFor[next]?.let { ReceiptMoneyParser.parseRightAlignedAmountPence(lines[it].text) }
+    }
+
+    /**
+     * Gives a product its quantity from the detail row next to it, preferring the row above. The
+     * prices have to agree, so a detail row can't change an unrelated product. A row that fits
+     * nothing adds nothing, and any mismatch stays visible in the review.
+     */
+    private fun applySubLineQuantities(
+        items: MutableList<ReceiptSpendItemDraft>,
+        itemLineIndexes: Map<String, Int>,
+        subLines: List<Pair<Int, ReceiptSubLine>>
+    ) {
+        subLines.forEach { (lineIndex, subLine) ->
+            val ordered = items.indices.sortedBy { itemLineIndexes[items[it].id] ?: Int.MAX_VALUE }
+            val above = ordered.lastOrNull { (itemLineIndexes[items[it].id] ?: Int.MAX_VALUE) < lineIndex }
+            val below = ordered.firstOrNull { (itemLineIndexes[items[it].id] ?: -1) > lineIndex }
+            val target = listOfNotNull(above, below).firstOrNull {
+                items[it].quantity == 1 && items[it].lineAmountMinorPence == subLine.linePricePence
+            } ?: return@forEach
+            items[target] = items[target].copy(
+                quantity = subLine.quantity,
+                unitPriceMinorPence = subLine.unitPricePence ?: items[target].unitPriceMinorPence
+            )
         }
     }
 
