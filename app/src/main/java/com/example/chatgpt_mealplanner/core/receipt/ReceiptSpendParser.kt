@@ -217,7 +217,8 @@ object ReceiptSpendParser {
 
     const val RECEIPT_PARSER_VERSION = "spatial-v9-corrupted-row-recovery"
 
-    fun parseOcrResult(ocrResult: ReceiptOcrResult, sourceImagePath: String?): ReceiptSpendDraft {
+    fun parseOcrResult(rawOcrResult: ReceiptOcrResult, sourceImagePath: String?): ReceiptSpendDraft {
+        val ocrResult = ReceiptDeskew.straighten(rawOcrResult)
         safeLog("[PARSER_ENTRY] Version=$RECEIPT_PARSER_VERSION, Total lines=${ocrResult.lines.size}")
 
         // 1. ISOLATED RECEIPT SUMMARY PARSER (Independent from product item OCR)

@@ -51,11 +51,30 @@ class ReceiptRowAlignerTest {
 
     @Test
     fun tiltedPhotos_keepEveryItemAndTheTotal() {
-        listOf(-2.0, -1.0, -0.5, 0.5, 1.0, 1.5, 2.0).forEach { degrees -> // 3 degrees either way still fails: see HANDOFF.md
+        listOf(-6.0, -5.0, -4.0, -3.0, -2.0, -1.0, -0.5, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 5.0, 6.0).forEach { degrees ->
             val draft = ReceiptSpendParser.parseOcrResult(transformed(degrees, 1.0), null)
             assertEquals("items at $degrees°", 12, draft.items.size)
             assertEquals("paid at $degrees°", 3888L, draft.totalMinorPence)
+            assertEquals("gross at $degrees°", 4248L, draft.explicitGrossTotalMinorPence)
+            assertEquals("savings at $degrees°", 360L, draft.discountMinorPence)
+            assertEquals("reconciled at $degrees°", true, draft.isReconciled)
         }
+    }
+
+    @Test
+    fun tiltEstimate_comesFromWordsOnTheSameLine() {
+        assertEquals(0.0, ReceiptDeskew.estimateSlope(transformed(0.0, 1.0).lines)!!, 0.001)
+        assertEquals(tan(Math.toRadians(3.0)), ReceiptDeskew.estimateSlope(transformed(3.0, 1.0).lines)!!, 0.01)
+        assertEquals(tan(Math.toRadians(-3.0)), ReceiptDeskew.estimateSlope(transformed(-3.0, 1.0).lines)!!, 0.01)
+    }
+
+    @Test
+    fun linesWithoutWordPositions_areLeftWhereTheyAre() {
+        val lines = listOf(line("MILK", 100, 100), line("2.00", 800, 130))
+        val result = ReceiptOcrResult(lines, "MILK\n2.00")
+
+        assertEquals(null, ReceiptDeskew.estimateSlope(lines))
+        assertEquals(result, ReceiptDeskew.straighten(result))
     }
 
     @Test
