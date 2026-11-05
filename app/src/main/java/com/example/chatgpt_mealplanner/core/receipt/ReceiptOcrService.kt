@@ -36,7 +36,11 @@ data class ReceiptOcrResult(
     val fullText: String
 )
 
+/** OCR itself failed, as opposed to a readable image that has no usable text. */
+class ReceiptOcrException(message: String, cause: Throwable) : Exception(message, cause)
+
 interface ReceiptOcrService {
+    /** @throws ReceiptOcrException if the image can't be opened or the text reader fails. */
     suspend fun recognizeTextFromUri(imageUri: Uri): ReceiptOcrResult
 }
 
@@ -114,8 +118,10 @@ class MlKitReceiptOcrService @Inject constructor(
             ReceiptOcrResult(lines = sortedLines, fullText = resultText.text)
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
+        } catch (e: java.io.IOException) {
+            throw ReceiptOcrException("This image couldn't be opened. Please choose another photo.", e)
         } catch (e: Exception) {
-            ReceiptOcrResult(lines = emptyList(), fullText = "")
+            throw ReceiptOcrException("The text reader couldn't process this image. Please try again.", e)
         }
     }
 }

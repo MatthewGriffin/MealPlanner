@@ -16,3 +16,4 @@ local.properties
 .artifacts/
 receipt_ocr_dump.txt
 pantry-copy.tar
+example_receipts/

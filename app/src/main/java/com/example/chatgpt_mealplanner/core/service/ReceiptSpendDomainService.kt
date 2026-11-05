@@ -16,6 +16,7 @@ import com.example.chatgpt_mealplanner.core.database.entity.ReceiptSpendEntity
 import com.example.chatgpt_mealplanner.core.database.entity.ReceiptSpendItemEntity
 import com.example.chatgpt_mealplanner.core.model.DomainError
 import com.example.chatgpt_mealplanner.core.model.DomainResult
+import com.example.chatgpt_mealplanner.core.receipt.DUPLICATE_RECEIPT_WARNING
 import com.example.chatgpt_mealplanner.core.receipt.ReceiptOcrResult
 import com.example.chatgpt_mealplanner.core.receipt.ReceiptSpendDraft
 import com.example.chatgpt_mealplanner.core.receipt.ReceiptSpendParser
@@ -66,7 +67,7 @@ class ReceiptSpendDomainServiceImpl @Inject constructor(
             initialDraft.copy(
                 items = enhancedItems,
                 isProbableDuplicate = true,
-                reviewWarning = "Possible duplicate receipt: A receipt with this retailer, date, and total was already saved."
+                reviewWarning = DUPLICATE_RECEIPT_WARNING
             )
         } else {
             initialDraft.copy(items = enhancedItems)

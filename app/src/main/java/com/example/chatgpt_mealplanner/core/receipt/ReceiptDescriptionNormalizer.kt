@@ -2,6 +2,16 @@ package com.example.chatgpt_mealplanner.core.receipt
 
 object ReceiptDescriptionNormalizer {
 
+    private val nonProductPhrases = listOf(
+        "subtotal", "sub total", "total", "balance", "savings", "discount", "multibuy", "promo",
+        "cashier", "operator", "receipt", "order no", "transaction", "thank you", "visit us",
+        "mastercard", "apple pay", "contactless", "approved", "coupon", "refund",
+        "bag charge", "carrier bag", "store #", "st#", "hore", "j3gh"
+    )
+
+    // Short words must match whole, so STILL WATER, OREGANO and HOTEL CHOCOLAT stay products.
+    private val nonProductWords = Regex("""\b(change|vat|tax|till|store|address|tel|phone|visa|pos|reg)\b""")
+
     fun normalize(rawText: String): String {
         var text = rawText.uppercase().trim()
 
@@ -16,15 +26,6 @@ object ReceiptDescriptionNormalizer {
 
     fun isNonProductLine(normalizedText: String): Boolean {
         val lower = normalizedText.lowercase()
-        val nonProductKeywords = listOf(
-            "subtotal", "sub total", "total", "balance", "balance due", "change",
-            "vat", "tax", "tax rate", "savings", "discount", "multibuy", "promo",
-            "cashier", "operator", "till", "store", "address", "tel", "phone",
-            "receipt", "order no", "transaction", "thank you", "visit us",
-            "card", "visa", "mastercard", "apple pay", "contactless", "approved",
-            "coupon", "refund", "bag charge", "carrier bag",
-            "hore", "j3gh", "mch", "pos", "reg", "st#", "store #"
-        )
-        return nonProductKeywords.any { lower.contains(it) }
+        return nonProductPhrases.any { lower.contains(it) } || nonProductWords.containsMatchIn(lower)
     }
 }

@@ -28,7 +28,16 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SelectableDates
+import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -59,8 +68,13 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.chatgpt_mealplanner.core.receipt.ReceiptSpendCategory
+import com.example.chatgpt_mealplanner.core.receipt.ReceiptSpendItemDraft
 import com.example.chatgpt_mealplanner.core.receipt.ReceiptSpendParser
+import com.example.chatgpt_mealplanner.core.receipt.ReceiptMoneyInput
 import java.io.File
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneOffset
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -171,6 +185,56 @@ fun ReceiptSpendScreen(
                 }
             } else if (uiState.draft != null) {
                 val draft = uiState.draft!!
+                var showDatePicker by remember { mutableStateOf(false) }
+                var showTotalEditor by remember { mutableStateOf(false) }
+                var showAddItem by remember { mutableStateOf(false) }
+                var itemBeingEdited by remember { mutableStateOf<ReceiptSpendItemDraft?>(null) }
+
+                if (showDatePicker) {
+                    ReceiptDatePickerDialog(
+                        initialIsoDate = draft.purchasedAt,
+                        onConfirm = {
+                            viewModel.updatePurchaseDate(it)
+                            showDatePicker = false
+                        },
+                        onDismiss = { showDatePicker = false }
+                    )
+                }
+                if (showTotalEditor) {
+                    ReceiptTotalDialog(
+                        initialPence = draft.totalMinorPence,
+                        onConfirm = {
+                            viewModel.updateSummaryPaidTotal(it)
+                            showTotalEditor = false
+                        },
+                        onDismiss = { showTotalEditor = false }
+                    )
+                }
+                if (showAddItem) {
+                    ReceiptItemDialog(
+                        title = "Add missed item",
+                        initialDescription = "",
+                        initialPence = null,
+                        onConfirm = { description, pence ->
+                            viewModel.addItemDraft(description, pence)
+                            showAddItem = false
+                        },
+                        onDismiss = { showAddItem = false }
+                    )
+                }
+                itemBeingEdited?.let { item ->
+                    ReceiptItemDialog(
+                        title = "Edit item",
+                        initialDescription = item.normalizedDescription,
+                        initialPence = item.lineAmountMinorPence,
+                        onConfirm = { description, pence ->
+                            viewModel.updateItemDetails(item.id, description, pence)
+                            itemBeingEdited = null
+                        },
+                        onDismiss = { itemBeingEdited = null }
+                    )
+                }
+
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
@@ -181,7 +245,16 @@ fun ReceiptSpendScreen(
                         Spacer(modifier = Modifier.height(2.dp))
                         Text("Parser Version: ${ReceiptSpendParser.RECEIPT_PARSER_VERSION}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
                         Spacer(modifier = Modifier.height(4.dp))
-                        Text("Date: ${draft.purchasedAt ?: "Not detected"}", style = MaterialTheme.typography.bodyMedium)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "Date: ${draft.purchasedAt ?: "Not detected"}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.weight(1f)
+                            )
+                            TextButton(onClick = { showDatePicker = true }) {
+                                Text("Change date")
+                            }
+                        }
                         Spacer(modifier = Modifier.height(8.dp))
 
                         Row(
@@ -198,6 +271,9 @@ fun ReceiptSpendScreen(
                                     fontWeight = FontWeight.Bold,
                                     color = if (draft.totalMinorPence != null && draft.totalMinorPence > 0L) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
                                 )
+                                TextButton(onClick = { showTotalEditor = true }) {
+                                    Text("Edit total")
+                                }
                             }
                             Column(horizontalAlignment = Alignment.End) {
                                 Text("Recognised Items: £${"%.2f".format(draft.calculatedItemsSumMinorPence / 100.0)}", style = MaterialTheme.typography.bodySmall)
@@ -205,6 +281,15 @@ fun ReceiptSpendScreen(
                             }
                         }
                     }
+                }
+
+                if (uiState.errorMessage != null) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        uiState.errorMessage!!,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
                 }
 
                 if (draft.reviewWarning != null) {
@@ -224,7 +309,17 @@ fun ReceiptSpendScreen(
 
                 Spacer(modifier = Modifier.height(12.dp))
                 val itemCountText = if (draft.expectedItemCount != null) "Recognised Items (${draft.itemCount} / ${draft.expectedItemCount})" else "Recognised Items (${draft.itemCount})"
-                Text(itemCountText, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        itemCountText,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f)
+                    )
+                    TextButton(onClick = { showAddItem = true }) {
+                        Text("Add item")
+                    }
+                }
                 Spacer(modifier = Modifier.height(4.dp))
 
                 LazyColumn(modifier = Modifier.weight(1f)) {
@@ -240,9 +335,12 @@ fun ReceiptSpendScreen(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(item.normalizedDescription, fontWeight = FontWeight.Bold)
+                                    Text(item.normalizedDescription, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Text("£${"%.2f".format(item.lineAmountMinorPence / 100.0)}")
+                                        IconButton(onClick = { itemBeingEdited = item }) {
+                                            Icon(Icons.Default.Edit, contentDescription = "Edit Line")
+                                        }
                                         IconButton(onClick = { viewModel.deleteItemDraft(item.id) }) {
                                             Icon(Icons.Default.Delete, contentDescription = "Delete Line", tint = MaterialTheme.colorScheme.error)
                                         }
@@ -421,6 +519,13 @@ fun ReceiptSpendScreen(
                         }
                     }
 
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "For the best scan, flatten the receipt, use good light, and keep the phone square to it.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.secondary
+                    )
+
                     if (cameraErrorMessage != null) {
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
@@ -497,4 +602,105 @@ fun ReceiptSpendScreen(
             }
         }
     }
+}
+
+private fun isoDateToUtcMillis(isoDate: String): Long =
+    LocalDate.parse(isoDate).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ReceiptDatePickerDialog(
+    initialIsoDate: String?,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val lastSelectableMillis = remember { isoDateToUtcMillis(LocalDate.now().toString()) }
+    val pickerState = rememberDatePickerState(
+        initialSelectedDateMillis = initialIsoDate?.let { isoDateToUtcMillis(it) } ?: lastSelectableMillis,
+        selectableDates = object : SelectableDates {
+            override fun isSelectableDate(utcTimeMillis: Long) = utcTimeMillis <= lastSelectableMillis
+        }
+    )
+    DatePickerDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(
+                enabled = pickerState.selectedDateMillis != null,
+                onClick = {
+                    pickerState.selectedDateMillis?.let { millis ->
+                        onConfirm(Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate().toString())
+                    }
+                }
+            ) { Text("OK") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    ) {
+        DatePicker(state = pickerState)
+    }
+}
+
+@Composable
+private fun ReceiptTotalDialog(
+    initialPence: Long?,
+    onConfirm: (Long) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var amountText by remember { mutableStateOf(initialPence?.takeIf { it > 0L }?.let(ReceiptMoneyInput::format).orEmpty()) }
+    val pence = ReceiptMoneyInput.parsePositivePence(amountText)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Amount paid") },
+        text = { ReceiptPriceField(amountText, "Total paid (£)") { amountText = it } },
+        confirmButton = {
+            TextButton(enabled = pence != null, onClick = { pence?.let(onConfirm) }) { Text("Save") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+
+@Composable
+private fun ReceiptItemDialog(
+    title: String,
+    initialDescription: String,
+    initialPence: Long?,
+    onConfirm: (String, Long) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var description by remember { mutableStateOf(initialDescription) }
+    var amountText by remember { mutableStateOf(initialPence?.let(ReceiptMoneyInput::format).orEmpty()) }
+    val pence = ReceiptMoneyInput.parsePositivePence(amountText)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = { description = it },
+                    label = { Text("Item") },
+                    singleLine = true
+                )
+                ReceiptPriceField(amountText, "Price (£)") { amountText = it }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = pence != null && description.isNotBlank(),
+                onClick = { pence?.let { onConfirm(description, it) } }
+            ) { Text("Save") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+
+@Composable
+private fun ReceiptPriceField(value: String, label: String, onValueChange: (String) -> Unit) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(label) },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+        isError = value.isNotBlank() && ReceiptMoneyInput.parsePositivePence(value) == null
+    )
 }

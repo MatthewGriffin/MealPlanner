@@ -44,65 +44,148 @@ data class ReceiptSpendDraft(
     val reviewWarning: String?,
     val fingerprint: String,
     val sourceImagePath: String?,
+    val transactionRef: String? = null,
     val items: List<ReceiptSpendItemDraft>
 ) {
-    fun recomputeWithPaidTotal(newPaidTotalPence: Long): ReceiptSpendDraft {
-        val grossTarget = explicitGrossTotalMinorPence ?: (newPaidTotalPence + explicitSavingsMinorPence)
-        val recognisedGross = recognisedGrossItemSpendMinorPence
-        val unrecognisedGross = maxOf(0L, grossTarget - recognisedGross)
-        val recognisedGrossOverage = maxOf(0L, recognisedGross - grossTarget)
-        val discrepancy = grossTarget - recognisedGross
+    fun recomputeWithPaidTotal(newPaidTotalPence: Long): ReceiptSpendDraft =
+        withUserEdits(paidTotalPence = newPaidTotalPence).copy(userConfirmedSummary = true)
 
-        val isItemCountReconciled = (expectedItemCount == null || items.size == expectedItemCount)
-        val isReconciled = discrepancy == 0L && recognisedGrossOverage == 0L && isItemCountReconciled
-        val summaryValid = (grossTarget - explicitSavingsMinorPence == newPaidTotalPence)
-
-        val needsRev = !isReconciled || dateNeedsConfirmation || !summaryValid || recognisedGrossOverage > 0L
-        val canSv = newPaidTotalPence > 0L && retailerId.isNotBlank() && purchasedAt != null && !dateNeedsConfirmation
-
-        var warningText: String? = null
-        if (dateNeedsConfirmation || purchasedAt == null) {
-            warningText = "Receipt date could not be verified. Please confirm or enter receipt date before saving."
-        } else if (!summaryValid) {
-            warningText = "Summary total arithmetic mismatch (Gross £${"%.2f".format(grossTarget / 100.0)} - Savings £${"%.2f".format(explicitSavingsMinorPence / 100.0)} != Paid £${"%.2f".format(newPaidTotalPence / 100.0)})."
-        } else if (recognisedGrossOverage > 0L) {
-            warningText = "Recognised item lines (£${"%.2f".format(recognisedGross / 100.0)}) exceed receipt gross total (£${"%.2f".format(grossTarget / 100.0)}). Please review items before saving."
-        } else if (expectedItemCount != null && items.size != expectedItemCount) {
-            warningText = "Only ${items.size} of $expectedItemCount item lines were recognized. Your receipt spend (£${"%.2f".format(newPaidTotalPence / 100.0)}) can still be saved."
-        } else if (!isReconciled && grossTarget > 0) {
-            warningText = "Discrepancy of £${"%.2f".format(Math.abs(discrepancy) / 100.0)} detected between gross total (£${"%.2f".format(grossTarget / 100.0)}) and items sum (£${"%.2f".format(recognisedGross / 100.0)}). Your receipt spend can still be saved."
-        }
-
-        val rawFp = "${retailerId}_${purchasedAt ?: "NO_DATE"}_${newPaidTotalPence}"
-        val fp = calculateSha256(rawFp)
+    /** Applies a correction from the review screen and recalculates everything derived from it. */
+    fun withUserEdits(
+        purchasedAt: String? = this.purchasedAt,
+        paidTotalPence: Long? = this.totalMinorPence,
+        items: List<ReceiptSpendItemDraft> = this.items
+    ): ReceiptSpendDraft {
+        val paidChanged = paidTotalPence != totalMinorPence
+        val identityChanged = paidChanged || purchasedAt != this.purchasedAt
+        val gross = if (paidChanged) paidTotalPence?.plus(explicitSavingsMinorPence) else explicitGrossTotalMinorPence
+        val summaryValid = paidChanged || summaryArithmeticValid
+        val recognisedGross = items.filter { !it.isDiscount }.sumOf { it.lineAmountMinorPence }
+        val dateMissing = purchasedAt == null
+        val review = evaluateReceiptReview(
+            retailerId = retailerId,
+            purchasedAt = purchasedAt,
+            dateNeedsConfirmation = dateMissing,
+            paidTotalPence = paidTotalPence,
+            grossTargetPence = gross,
+            savingsPence = explicitSavingsMinorPence,
+            recognisedGrossPence = recognisedGross,
+            itemCount = items.size,
+            expectedItemCount = expectedItemCount,
+            summaryArithmeticValid = summaryValid
+        )
+        val stillProbableDuplicate = isProbableDuplicate && !identityChanged
 
         return copy(
-            totalMinorPence = newPaidTotalPence,
-            explicitFinalPaidMinorPence = newPaidTotalPence,
-            explicitGrossTotalMinorPence = grossTarget,
-            unrecognisedGrossSpendMinorPence = unrecognisedGross,
-            recognisedGrossOverageMinorPence = recognisedGrossOverage,
-            discrepancyMinorPence = discrepancy,
+            purchasedAt = purchasedAt,
+            dateNeedsConfirmation = dateMissing,
+            totalMinorPence = paidTotalPence,
+            explicitFinalPaidMinorPence = paidTotalPence,
+            explicitGrossTotalMinorPence = gross,
+            recognisedGrossItemSpendMinorPence = recognisedGross,
+            unrecognisedGrossSpendMinorPence = review.unrecognisedGrossPence,
+            recognisedGrossOverageMinorPence = review.overagePence,
+            calculatedItemsSumMinorPence = recognisedGross,
+            itemCount = items.size,
+            discrepancyMinorPence = review.discrepancyPence,
             summaryArithmeticValid = summaryValid,
-            isReconciled = isReconciled,
-            needsReview = needsRev,
-            canSave = canSv,
-            userConfirmedSummary = true,
-            reviewWarning = warningText,
-            fingerprint = fp
+            isReconciled = review.isReconciled,
+            needsReview = review.needsReview,
+            canSave = review.canSave,
+            userConfirmedSummary = userConfirmedSummary || paidChanged,
+            isProbableDuplicate = stillProbableDuplicate,
+            reviewWarning = if (stillProbableDuplicate) DUPLICATE_RECEIPT_WARNING else review.warning,
+            fingerprint = receiptFingerprint(retailerId, purchasedAt, paidTotalPence, transactionRef),
+            items = items
         )
     }
+}
 
-    private fun calculateSha256(input: String): String {
-        val md = MessageDigest.getInstance("SHA-256")
-        val digest = md.digest(input.toByteArray(Charsets.UTF_8))
-        return digest.joinToString("") { "%02x".format(it) }
+const val DUPLICATE_RECEIPT_WARNING =
+    "Possible duplicate receipt: A receipt with this retailer, date, and total was already saved."
+
+internal data class ReceiptReviewState(
+    val unrecognisedGrossPence: Long,
+    val overagePence: Long,
+    val discrepancyPence: Long,
+    val isReconciled: Boolean,
+    val needsReview: Boolean,
+    val canSave: Boolean,
+    val warning: String?
+)
+
+private fun pounds(pence: Long): String = "£" + "%.2f".format(java.util.Locale.UK, pence / 100.0)
+
+internal fun evaluateReceiptReview(
+    retailerId: String,
+    purchasedAt: String?,
+    dateNeedsConfirmation: Boolean,
+    paidTotalPence: Long?,
+    grossTargetPence: Long?,
+    savingsPence: Long,
+    recognisedGrossPence: Long,
+    itemCount: Int,
+    expectedItemCount: Int?,
+    summaryArithmeticValid: Boolean
+): ReceiptReviewState {
+    val unrecognised = if (grossTargetPence != null) maxOf(0L, grossTargetPence - recognisedGrossPence) else 0L
+    val overage = if (grossTargetPence != null) maxOf(0L, recognisedGrossPence - grossTargetPence) else 0L
+    val discrepancy = if (grossTargetPence != null) grossTargetPence - recognisedGrossPence else 0L
+    val itemCountMatches = expectedItemCount == null || itemCount == expectedItemCount
+    val isReconciled = discrepancy == 0L && overage == 0L && itemCountMatches
+    val paidMissing = paidTotalPence == null || paidTotalPence == 0L
+    val dateMissing = dateNeedsConfirmation || purchasedAt == null
+
+    val warning = when {
+        paidMissing ->
+            "We couldn't detect the amount paid. Please review or enter the receipt total before saving."
+        dateMissing ->
+            "Receipt date could not be verified. Please confirm or enter receipt date before saving."
+        !summaryArithmeticValid ->
+            "Summary total arithmetic mismatch (Gross ${pounds(grossTargetPence ?: 0L)} - Savings ${pounds(savingsPence)} != Paid ${pounds(paidTotalPence!!)}). Please confirm totals before saving."
+        overage > 0L ->
+            "Recognised item lines (${pounds(recognisedGrossPence)}) exceed receipt gross total (${pounds(grossTargetPence!!)}). Please review items before saving."
+        !itemCountMatches ->
+            "Only $itemCount of $expectedItemCount item lines were recognized. Your receipt spend (${pounds(paidTotalPence!!)}) can still be saved."
+        !isReconciled && grossTargetPence != null && grossTargetPence > 0L ->
+            "Discrepancy of ${pounds(kotlin.math.abs(discrepancy))} detected between gross total (${pounds(grossTargetPence)}) and items sum (${pounds(recognisedGrossPence)}). Your receipt spend can still be saved."
+        else -> null
     }
+
+    return ReceiptReviewState(
+        unrecognisedGrossPence = unrecognised,
+        overagePence = overage,
+        discrepancyPence = discrepancy,
+        isReconciled = isReconciled,
+        needsReview = paidMissing || !isReconciled || dateMissing || !summaryArithmeticValid || overage > 0L,
+        canSave = !paidMissing && retailerId.isNotBlank() && !dateMissing,
+        warning = warning
+    )
+}
+
+internal fun receiptFingerprint(retailerId: String, purchasedAt: String?, paidTotalPence: Long?, transactionRef: String?): String {
+    val raw = "${retailerId}_${purchasedAt ?: "NO_DATE"}_${paidTotalPence ?: "NO_PAID"}_${transactionRef ?: "NO_REF"}"
+    return MessageDigest.getInstance("SHA-256")
+        .digest(raw.toByteArray(Charsets.UTF_8))
+        .joinToString("") { "%02x".format(it) }
+}
+
+/** Reads an amount typed by the user, such as "3.74", "£3.74" or "3,7". */
+object ReceiptMoneyInput {
+    private val amount = Regex("""\d{1,5}(\.\d{1,2})?""")
+
+    fun parsePositivePence(text: String): Long? {
+        val cleaned = text.trim().removePrefix("£").trim().replace(',', '.')
+        if (!amount.matches(cleaned)) return null
+        return java.math.BigDecimal(cleaned).movePointRight(2).longValueExact().takeIf { it > 0L }
+    }
+
+    fun format(pence: Long): String = "%.2f".format(java.util.Locale.UK, pence / 100.0)
 }
 
 object ReceiptMoneyParser {
     // Matches £3.74, 3.74, -£3.60, -3.60, C12.00, L2.40, e38.88, g4.00
-    private val rightPriceRegex = Regex("""(-?)\s*(?:[£CLe gqPS$€]\s*|\b)([0-9]{1,3})\.([0-9]{2})$""", RegexOption.IGNORE_CASE)
+    private val rightPriceRegex = Regex("""(-?)\s*(?:[£CLe gqPS$€]\s*|\b)([0-9]{1,3})\.([0-9]{2})(?:\s+[A-Z*])?$""", RegexOption.IGNORE_CASE)
     private val generalMoneyRegex = Regex("""(-?)\s*(?:[£CLe gqPS$€]\s*|\b)([0-9]{1,3})\.([0-9]{2})""", RegexOption.IGNORE_CASE)
 
     fun parseAmountPence(text: String): Long? {
@@ -142,6 +225,7 @@ object ReceiptSpendParser {
         safeLog("[SUMMARY_RESULT] Retailer=${summary.retailerId}, Paid=${summary.finalPaidTotalMinorPence}, Gross=${summary.grossTotalMinorPence}, Savings=${summary.savingsMinorPence}")
 
         val items = mutableListOf<ReceiptSpendItemDraft>()
+        val rawPriceTokens = mutableMapOf<String, String>()
 
         var expectedItemCountFromReceipt: Int? = null
         var taxSummaryStartY = Int.MAX_VALUE
@@ -171,6 +255,7 @@ object ReceiptSpendParser {
         val hardExclusionLimitY = minOf(taxSummaryStartY, paymentRegionStartY)
 
         // 2. Spatial Two-Column Product Line Reconstruction Engine
+        val alignment = ReceiptRowAligner.align(ocrResult.lines)
         val consumedPriceLines = mutableSetOf<Int>()
         val consumedDescriptionLines = mutableSetOf<Int>()
 
@@ -232,6 +317,12 @@ object ReceiptSpendParser {
                 return@forEachIndexed
             }
 
+            // A price alone can sit above its description in a tilted photo. Leave it for that
+            // description unless a higher-confidence neighbour needs it (handled below).
+            if (lineIdx in alignment.priceOnlyLines && lineIdx in alignment.priceLineFor.values) {
+                return@forEachIndexed
+            }
+
             // Case A: Price is on the same line
             val elems = if (ocrLine.elements.isNotEmpty()) ocrLine.elements.sortedBy { it.left } else listOf(ReceiptOcrElement(ocrLine.text, ocrLine.left, ocrLine.top, ocrLine.right, ocrLine.bottom, ocrLine.centerY))
             val lastElem = elems.lastOrNull() ?: return@forEachIndexed
@@ -243,6 +334,7 @@ object ReceiptSpendParser {
 
             var matchedPricePence: Long? = directPricePence
             var rawDescString = ocrLine.text
+            var rawPriceToken = lastElem.text
             var isPreferredDescription = false
 
             if (directPricePence != null) {
@@ -252,7 +344,7 @@ object ReceiptSpendParser {
                     idx !in consumedPriceLines &&
                     idx != lineIdx &&
                     candidate.centerY < hardExclusionLimitY &&
-                    Math.abs(candidate.centerY - ocrLine.centerY) <= 18 &&
+                    Math.abs(candidate.centerY - ocrLine.centerY) <= maxOf(18, alignment.rowTolerance) &&
                     candidate.left < ocrLine.left &&
                     candidate.confidence > ocrLine.confidence &&
                     ReceiptDescriptionNormalizer.normalize(candidate.text).contains(Regex("[A-Za-z]")) &&
@@ -272,24 +364,15 @@ object ReceiptSpendParser {
                 }
             } else {
                 // Case B: Price is on a separate line spatially aligned on the right (Two-Column Pairing)
-                val candidatePriceLine = ocrResult.lines.mapIndexed { idx, candidate -> Pair(idx, candidate) }.firstOrNull { (idx, candidate) ->
-                    val deltaY = Math.abs(candidate.centerY - ocrLine.centerY)
-                    val rightAligned = candidate.left > (ocrLine.left + 50)
-                    val hasPrice = ReceiptMoneyParser.parseRightAlignedAmountPence(candidate.text) != null
-
-                    idx !in consumedPriceLines &&
-                    idx !in consumedDescriptionLines &&
-                    idx != lineIdx &&
-                    candidate.centerY < hardExclusionLimitY &&
-                    deltaY <= 18 &&
-                    rightAligned &&
-                    hasPrice
-                }
+                val candidatePriceLine = alignment.priceLineFor[lineIdx]
+                    ?.takeIf { it !in consumedPriceLines && ocrResult.lines[it].centerY < hardExclusionLimitY }
+                    ?.let { Pair(it, ocrResult.lines[it]) }
 
                 if (candidatePriceLine != null) {
                     consumedPriceLines.add(candidatePriceLine.first)
                     consumedDescriptionLines.add(lineIdx)
                     matchedPricePence = ReceiptMoneyParser.parseRightAlignedAmountPence(candidatePriceLine.second.text)
+                    rawPriceToken = candidatePriceLine.second.text
                     rawDescString = ocrLine.text
                     safeLog("[SPATIAL_PAIR_SUCCESS] Paired Line $lineIdx \"${ocrLine.text}\" with Line ${candidatePriceLine.first} \"${candidatePriceLine.second.text}\" -> price=${matchedPricePence}p")
                 }
@@ -324,7 +407,7 @@ object ReceiptSpendParser {
                 rawDescString
             }
 
-            cleanDesc = cleanDesc.replace(Regex("""-?\s*[£CLe gqPS$€]?\s*[0-9]+\.[0-9]{2}\s*$""", RegexOption.IGNORE_CASE), "").trim()
+            cleanDesc = cleanDesc.replace(Regex("""-?\s*[£$€]?\s*(?<![A-Za-z])[CLegqPS]?[0-9]+\.[0-9]{2}(?:\s+[A-Z*])?\s*$""", RegexOption.IGNORE_CASE), "").trim()
             val normDesc = ReceiptDescriptionNormalizer.normalize(cleanDesc)
 
             if (normDesc.isBlank() || !normDesc.contains(Regex("[A-Za-z]")) || normDesc.length < 2 || ReceiptDescriptionNormalizer.isNonProductLine(normDesc)) {
@@ -336,17 +419,17 @@ object ReceiptSpendParser {
 
             safeLog("[ITEM_ACCEPTED] Line $lineIdx -> desc=\"$normDesc\", amount=${amountPence}p, category=$category")
 
-            items.add(
-                ReceiptSpendItemDraft(
-                    rawDescription = rawDescString,
-                    normalizedDescription = normDesc,
-                    lineAmountMinorPence = amountPence,
-                    quantity = 1,
-                    unitPriceMinorPence = amountPence,
-                    category = category,
-                    isDiscount = false
-                )
+            val newItem = ReceiptSpendItemDraft(
+                rawDescription = rawDescString,
+                normalizedDescription = normDesc,
+                lineAmountMinorPence = amountPence,
+                quantity = 1,
+                unitPriceMinorPence = amountPence,
+                category = category,
+                isDiscount = false
             )
+            rawPriceTokens[newItem.id] = rawPriceToken
+            items.add(newItem)
         }
 
         var recognisedGrossItemSpend = items.sumOf { it.lineAmountMinorPence }
@@ -391,58 +474,36 @@ object ReceiptSpendParser {
 
         safeLog("[RECONCILIATION_BEFORE] itemCount=${items.size}, sum=${recognisedGrossItemSpend}p, grossTarget=$grossTarget, delta=${recognisedGrossItemSpend - (grossTarget ?: 0L)}p")
 
-        // Contextual Reconciliation Price Recovery:
-        // Apply correction ONLY if overage == 2000p (exact £20 symbol corruption error)
         if (grossTarget != null && recognisedGrossItemSpend > grossTarget) {
-            val overage = recognisedGrossItemSpend - grossTarget
-            if (overage == 2000L) {
-                val candidateItemIndex = items.indexOfFirst { item -> item.lineAmountMinorPence > 2000L }
-                if (candidateItemIndex != -1) {
-                    val candidateItem = items[candidateItemIndex]
-                    val originalPrice = candidateItem.lineAmountMinorPence
-                    val correctedPrice = originalPrice - 2000L
-                    safeLog("[PRICE_RECOVERY_CANDIDATE] index=$candidateItemIndex, desc=\"${candidateItem.normalizedDescription}\", original=${originalPrice}p, candidateCorrected=${correctedPrice}p, sumAfterCorrection=${recognisedGrossItemSpend - 2000L}p, grossTarget=$grossTarget")
-
-                    items[candidateItemIndex] = candidateItem.copy(
-                        lineAmountMinorPence = correctedPrice,
-                        unitPriceMinorPence = correctedPrice
-                    )
-                    recognisedGrossItemSpend = items.sumOf { it.lineAmountMinorPence }
-                    safeLog("[PRICE_RECOVERY_APPLIED] description=\"${candidateItem.normalizedDescription}\", original=${originalPrice}p, corrected=${correctedPrice}p, reason=EXACT_GROSS_RECONCILIATION")
-                }
-            } else {
-                safeLog("[PRICE_RECOVERY_REJECTED] overage=${overage}p != 2000p")
+            val corrected = correctMisreadCurrencySymbols(items, rawPriceTokens, grossTarget)
+            if (corrected != null) {
+                items.clear()
+                items.addAll(corrected)
+                recognisedGrossItemSpend = items.sumOf { it.lineAmountMinorPence }
+                safeLog("[PRICE_RECOVERY_APPLIED] sum=$recognisedGrossItemSpend grossTarget=$grossTarget")
             }
         }
 
-        val unrecognisedGross = if (grossTarget != null) maxOf(0L, grossTarget - recognisedGrossItemSpend) else 0L
-        val recognisedGrossOverage = if (grossTarget != null) maxOf(0L, recognisedGrossItemSpend - grossTarget) else 0L
-        val discrepancy = if (grossTarget != null) grossTarget - recognisedGrossItemSpend else 0L
-
-        val isItemCountReconciled = (expectedItemCountFromReceipt == null || items.size == expectedItemCountFromReceipt)
-        val isReconciled = discrepancy == 0L && recognisedGrossOverage == 0L && isItemCountReconciled
-
-        val needsReview = finalPaidTotal == null || finalPaidTotal == 0L || !isReconciled || summary.dateNeedsConfirmation || !summary.summaryArithmeticValid || recognisedGrossOverage > 0L
-
-        val canSave = finalPaidTotal != null && finalPaidTotal > 0L && summary.retailerId.isNotBlank() && summary.purchasedAt != null && !summary.dateNeedsConfirmation
-
-        var reviewWarningText: String? = null
-        if (finalPaidTotal == null || finalPaidTotal == 0L) {
-            reviewWarningText = "We couldn't detect the amount paid. Please review or enter the receipt total before saving."
-        } else if (summary.dateNeedsConfirmation || summary.purchasedAt == null) {
-            reviewWarningText = "Receipt date could not be verified. Please confirm or enter receipt date before saving."
-        } else if (!summary.summaryArithmeticValid) {
-            reviewWarningText = "Summary total arithmetic mismatch (Gross £${"%.2f".format((grossTarget ?: 0L) / 100.0)} - Savings £${"%.2f".format(summary.savingsMinorPence / 100.0)} != Paid £${"%.2f".format(finalPaidTotal / 100.0)}). Please confirm totals before saving."
-        } else if (recognisedGrossOverage > 0L && grossTarget != null) {
-            reviewWarningText = "Recognised item lines (£${"%.2f".format(recognisedGrossItemSpend / 100.0)}) exceed receipt gross total (£${"%.2f".format(grossTarget / 100.0)}). Please review items before saving."
-        } else if (expectedItemCountFromReceipt != null && items.size != expectedItemCountFromReceipt) {
-            reviewWarningText = "Only ${items.size} of $expectedItemCountFromReceipt item lines were recognized. Your receipt spend (£${"%.2f".format(finalPaidTotal / 100.0)}) can still be saved."
-        } else if (!isReconciled && grossTarget != null && grossTarget > 0) {
-            reviewWarningText = "Discrepancy of £${"%.2f".format(Math.abs(discrepancy) / 100.0)} detected between gross total (£${"%.2f".format(grossTarget / 100.0)}) and items sum (£${"%.2f".format(recognisedGrossItemSpend / 100.0)}). Your receipt spend can still be saved."
-        }
-
-        val rawFingerprint = "${summary.retailerId}_${summary.purchasedAt ?: "NO_DATE"}_${finalPaidTotal ?: "NO_PAID"}_${summary.transactionRef ?: "NO_REF"}"
-        val fingerprint = calculateSha256(rawFingerprint)
+        val review = evaluateReceiptReview(
+            retailerId = summary.retailerId,
+            purchasedAt = summary.purchasedAt,
+            dateNeedsConfirmation = summary.dateNeedsConfirmation,
+            paidTotalPence = finalPaidTotal,
+            grossTargetPence = grossTarget,
+            savingsPence = summary.savingsMinorPence,
+            recognisedGrossPence = recognisedGrossItemSpend,
+            itemCount = items.size,
+            expectedItemCount = expectedItemCountFromReceipt,
+            summaryArithmeticValid = summary.summaryArithmeticValid
+        )
+        val unrecognisedGross = review.unrecognisedGrossPence
+        val recognisedGrossOverage = review.overagePence
+        val discrepancy = review.discrepancyPence
+        val isReconciled = review.isReconciled
+        val needsReview = review.needsReview
+        val canSave = review.canSave
+        val reviewWarningText = review.warning
+        val fingerprint = receiptFingerprint(summary.retailerId, summary.purchasedAt, finalPaidTotal, summary.transactionRef)
 
         safeLog("[FINAL_RECEIPT_RESULT] parserVersion=$RECEIPT_PARSER_VERSION, itemCount=${items.size}, recognisedGross=$recognisedGrossItemSpend, grossTarget=$grossTarget, savings=${summary.savingsMinorPence}, finalPaid=$finalPaidTotal, overage=$recognisedGrossOverage, unrecognisedGross=$unrecognisedGross, isReconciled=$isReconciled, canSave=$canSave")
         items.forEachIndexed { idx, item ->
@@ -472,8 +533,42 @@ object ReceiptSpendParser {
             reviewWarning = reviewWarningText,
             fingerprint = fingerprint,
             sourceImagePath = sourceImagePath,
+            transactionRef = summary.transactionRef,
             items = items
         )
+    }
+
+    /**
+     * OCR can read a pound sign as a digit, so "£2.40" becomes "22.40" or "12.40". A price with no
+     * currency symbol may have one leading digit dropped, but only if exactly one combination of
+     * those corrections makes the items equal the receipt total. Otherwise nothing changes and the
+     * mismatch stays visible for the user to review.
+     */
+    private fun correctMisreadCurrencySymbols(
+        items: List<ReceiptSpendItemDraft>,
+        rawPriceTokens: Map<String, String>,
+        grossTarget: Long
+    ): List<ReceiptSpendItemDraft>? {
+        val unsymbolisedPrice = Regex("""^(\d)(\d{1,2})\.(\d{2})$""")
+        val candidates = items.mapNotNull { item ->
+            val match = unsymbolisedPrice.find(rawPriceTokens[item.id]?.trim().orEmpty()) ?: return@mapNotNull null
+            val (_, pounds, pence) = match.destructured
+            item to pounds.toLong() * 100L + pence.toLong()
+        }
+        if (candidates.isEmpty() || candidates.size > 12) return null
+
+        val total = items.sumOf { it.lineAmountMinorPence }
+        val solutions = (1 until (1 shl candidates.size)).filter { mask ->
+            val saved = candidates.indices.filter { mask and (1 shl it) != 0 }
+                .sumOf { candidates[it].first.lineAmountMinorPence - candidates[it].second }
+            total - saved == grossTarget
+        }
+        val mask = solutions.singleOrNull() ?: return null
+        val replacements = candidates.indices.filter { mask and (1 shl it) != 0 }
+            .associate { candidates[it].first.id to candidates[it].second }
+        return items.map { item ->
+            replacements[item.id]?.let { item.copy(lineAmountMinorPence = it, unitPriceMinorPence = it) } ?: item
+        }
     }
 
     private fun safeLog(msg: String) {
@@ -499,21 +594,13 @@ object ReceiptSpendParser {
     private fun isHardExclusionLine(normText: String): Boolean {
         val lower = normText.lowercase()
         return lower.contains("tax summary") ||
-                lower.contains("card") ||
+                lower == "card" || lower.startsWith("card ") ||
                 lower.contains("visa") ||
                 lower.contains("mastercard") ||
                 lower.contains("contactless") ||
                 lower.contains("payment approved") ||
                 lower.contains("pan seq") ||
                 lower.contains("auth code") ||
-                lower.contains("trx id") ||
-                lower.contains("mid ") ||
-                lower.contains("aid ")
-    }
-
-    private fun calculateSha256(input: String): String {
-        val md = MessageDigest.getInstance("SHA-256")
-        val digest = md.digest(input.toByteArray(Charsets.UTF_8))
-        return digest.joinToString("") { "%02x".format(it) }
+                lower.contains("trx id")
     }
 }

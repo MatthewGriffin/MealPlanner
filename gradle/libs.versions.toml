@@ -21,7 +21,7 @@ mockito = "5.11.0"
 mockitoKotlin = "5.2.1"
 camerax = "1.4.1"
 mlkitBarcode = "17.3.0"
-mlkitTextRecognition = "19.0.1"
+mlkitTextRecognition = "16.0.1"
 retrofit = "2.11.0"
 okhttp = "4.12.0"
 kotlinxSerialization = "1.8.0"
@@ -60,7 +60,7 @@ androidx-camera-view = { group = "androidx.camera", name = "camera-view", versio
 
 # ML Kit
 mlkit-barcode-scanning = { group = "com.google.mlkit", name = "barcode-scanning", version.ref = "mlkitBarcode" }
-mlkit-text-recognition = { group = "com.google.android.gms", name = "play-services-mlkit-text-recognition", version.ref = "mlkitTextRecognition" }
+mlkit-text-recognition = { group = "com.google.mlkit", name = "text-recognition", version.ref = "mlkitTextRecognition" }
 
 # Networking & Serialization
 retrofit-core = { group = "com.squareup.retrofit2", name = "retrofit", version.ref = "retrofit" }

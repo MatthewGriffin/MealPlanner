@@ -28,6 +28,9 @@ object ReceiptSummaryParser {
         var cardPaymentPence: Long? = null
 
         val lines = ocrResult.lines
+        val alignment = ReceiptRowAligner.align(lines)
+        fun alignedAmount(lineIndex: Int): Long? =
+            alignment.priceLineFor[lineIndex]?.let { ReceiptMoneyParser.parseAmountPence(lines[it].text) }
 
         // 1. Savings / Discount Detection via Bidirectional Spatial Proximity (deltaY <= 30px)
         val savingsLabelLine = lines.firstOrNull {
@@ -40,13 +43,14 @@ object ReceiptSummaryParser {
             if (amountInLabel != null && amountInLabel != 0L) {
                 explicitSavingsPence = Math.abs(amountInLabel)
             } else {
+                alignedAmount(lines.indexOf(savingsLabelLine))?.let { explicitSavingsPence = Math.abs(it) }
                 // Search bidirectionally (before or after label) for discount price token within deltaY <= 30px
                 val nearbySavingsLine = lines.firstOrNull { line ->
                     line != savingsLabelLine &&
                     Math.abs(line.centerY - savingsLabelLine.centerY) <= 30 &&
                     ReceiptMoneyParser.parseAmountPence(line.text) != null
                 }
-                if (nearbySavingsLine != null) {
+                if (explicitSavingsPence == 0L && nearbySavingsLine != null) {
                     val parsedSav = ReceiptMoneyParser.parseAmountPence(nearbySavingsLine.text)
                     if (parsedSav != null) {
                         explicitSavingsPence = Math.abs(parsedSav)
@@ -68,14 +72,17 @@ object ReceiptSummaryParser {
                         Math.abs(l.centerY - line.centerY) <= 24 &&
                         ReceiptMoneyParser.parseAmountPence(l.text) != null
                     }
-                    if (nearbyCardLine != null) {
-                        cardPaymentPence = ReceiptMoneyParser.parseAmountPence(nearbyCardLine.text)
+                    val cardAmount = alignedAmount(index)
+                        ?: nearbyCardLine?.let { ReceiptMoneyParser.parseAmountPence(it.text) }
+                    if (cardAmount != null) {
+                        cardPaymentPence = cardAmount
                     }
                 }
             }
 
             if (norm.startsWith("TOTAL") || norm.startsWith("BALANCE") || norm.contains("AMOUNT PAID") || norm.contains("BALANCE DUE")) {
                 val parsedTotal = ReceiptMoneyParser.parseAmountPence(line.text)
+                    ?: alignedAmount(index)
                     ?: lines.firstOrNull { l -> Math.abs(l.centerY - line.centerY) <= 24 && ReceiptMoneyParser.parseAmountPence(l.text) != null }?.let { ReceiptMoneyParser.parseAmountPence(it.text) }
 
                 if (parsedTotal != null && parsedTotal > 0) {
@@ -134,14 +141,13 @@ object ReceiptSummaryParser {
     }
 
     private fun parseDate(fullText: String): Pair<String?, Boolean> {
-        val dateMatch = Regex("""\b([0-2]?[0-9]|3[01])[/.-]([0]?[1-9]|1[0-2])[/.-](20\d{2}|\d{2})\b""").find(fullText)
-        if (dateMatch != null) {
-            val day = dateMatch.groupValues[1].padStart(2, '0')
-            val month = dateMatch.groupValues[2].padStart(2, '0')
-            var year = dateMatch.groupValues[3]
-            if (year.length == 2) year = "20$year"
-            return Pair("$year-$month-$day", false)
+        val validDate = Regex("""\b(\d{1,2})[/.-](\d{1,2})[/.-](20\d{2}|\d{2})\b""").findAll(fullText).firstNotNullOfOrNull { match ->
+            val (day, month, year) = match.destructured
+            runCatching {
+                java.time.LocalDate.of(if (year.length == 2) 2000 + year.toInt() else year.toInt(), month.toInt(), day.toInt())
+            }.getOrNull()
         }
+        if (validDate != null) return Pair(validDate.toString(), false)
         return Pair(null, true) // Date needs user confirmation!
     }
 
