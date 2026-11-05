@@ -17,6 +17,9 @@ data class ReceiptSummaryResult(
 
 object ReceiptSummaryParser {
 
+    // Whole words, so products such as TOTALLY NUTS and BALANCED MUESLI aren't read as totals.
+    private val totalLabel = Regex("""^(TOTAL|BALANCE)\b""")
+
     fun parseSummary(ocrResult: ReceiptOcrResult): ReceiptSummaryResult {
         val retailerId = detectRetailer(ocrResult.fullText)
         val (purchasedAt, dateNeedsConfirmation) = parseDate(ocrResult.fullText)
@@ -80,7 +83,7 @@ object ReceiptSummaryParser {
                 }
             }
 
-            if (norm.startsWith("TOTAL") || norm.startsWith("BALANCE") || norm.contains("AMOUNT PAID") || norm.contains("BALANCE DUE")) {
+            if (totalLabel.containsMatchIn(norm) || norm.contains("AMOUNT PAID") || norm.contains("BALANCE DUE")) {
                 val parsedTotal = ReceiptMoneyParser.parseAmountPence(line.text)
                     ?: alignedAmount(index)
                     ?: lines.firstOrNull { l -> Math.abs(l.centerY - line.centerY) <= 24 && ReceiptMoneyParser.parseAmountPence(l.text) != null }?.let { ReceiptMoneyParser.parseAmountPence(it.text) }

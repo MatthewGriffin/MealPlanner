@@ -323,7 +323,7 @@ object ReceiptSpendParser {
                     candidate.left < ocrLine.left &&
                     candidate.confidence > ocrLine.confidence &&
                     ReceiptDescriptionNormalizer.normalize(candidate.text).contains(Regex("[A-Za-z]")) &&
-                    !ReceiptDescriptionNormalizer.isNonProductLine(candidate.text)
+                    !ReceiptDescriptionNormalizer.isNonProductLine(ReceiptDescriptionNormalizer.normalize(candidate.text))
                 }
 
                 if (cleanLeftCandidate != null) {
@@ -584,7 +584,7 @@ object ReceiptSpendParser {
         val lower = normText.lowercase()
         return lower.startsWith("subtotal") ||
                 lower.startsWith("sub total") ||
-                lower.startsWith("total") ||
+                lower == "total" || lower.startsWith("total ") || lower.startsWith("total:") ||
                 lower.contains("total savings") ||
                 lower.contains("no. items") ||
                 lower.contains("asda rewards") ||

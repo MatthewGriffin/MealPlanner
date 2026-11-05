@@ -172,6 +172,60 @@ class ReceiptRowAlignerTest {
         assertEquals(200L, draft.totalMinorPence)
     }
 
+    @Test
+    fun misreadTotalLabels_stillEndTheItemsAndGiveTheTotal() {
+        listOf("T0TAL", "TOTA1", "IOTAL", "TOTAI", "TOTALL:", "T0TAL:", "TOTL").forEach { label ->
+            val draft = ReceiptSpendParser.parseOcrResult(
+                ReceiptOcrResult(
+                    listOf(line("ASDA", 100, 60), line("MILK 2.00", 100, 100), line("$label 2.00", 100, 140)).mapIndexed { i, l -> l.copy(lineIndex = i) },
+                    "ASDA 27/09/2026"
+                ),
+                null
+            )
+            assertEquals(label, listOf("MILK"), draft.items.map { it.normalizedDescription })
+            assertEquals(label, 200L, draft.totalMinorPence)
+        }
+    }
+
+    @Test
+    fun misreadSavingsLabel_isReadAsSavings() {
+        val draft = ReceiptSpendParser.parseOcrResult(
+            ReceiptOcrResult(
+                listOf(line("ASDA", 100, 60), line("MILK 3.00", 100, 100), line("T0TAL 3.00", 100, 140), line("T0TAL 5AV1NGS 1.00", 100, 180), line("TOTA1 2.00", 100, 220))
+                    .mapIndexed { i, l -> l.copy(lineIndex = i) },
+                "ASDA 27/09/2026"
+            ),
+            null
+        )
+
+        assertEquals(100L, draft.discountMinorPence)
+        assertEquals(200L, draft.totalMinorPence)
+        assertEquals(300L, draft.explicitGrossTotalMinorPence)
+    }
+
+    @Test
+    fun productsNearSummaryWords_keepTheirNames() {
+        assertEquals(
+            listOf("TOTALLY NUTS" to 100L, "BALANCED MUESLI" to 200L),
+            itemsFrom("ASDA", "TOTALLY NUTS 1.00", "BALANCED MUESLI 2.00", "TOTAL 3.00")
+        )
+    }
+
+    @Test
+    fun productsNearSummaryWords_areNotReadAsTheTotal() {
+        val draft = ReceiptSpendParser.parseOcrResult(
+            ReceiptOcrResult(
+                listOf("ASDA", "BALANCED MUESLI 2.00", "TOTALLY NUTS 1.00", "TOTAL 3.00").mapIndexed { i, t -> line(t, 100, 100 + i * 40).copy(lineIndex = i) },
+                "ASDA 27/09/2026"
+            ),
+            null
+        )
+
+        assertEquals(300L, draft.totalMinorPence)
+        assertEquals(300L, draft.explicitGrossTotalMinorPence)
+        assertEquals(true, draft.isReconciled)
+    }
+
     /** ML Kit output from a real crumpled Asda receipt photographed on a phone. */
     @Test
     fun realPhonePhoto_readsEveryItemAndReconcilesWithTheTotal() {
