@@ -804,9 +804,6 @@ class EndToEndAiRecipeReliabilityTest {
         collectJob.cancel()
     }
 
-    @Test
-    fun structuredOfferRepairInProgress_doesNotExposeRetry() = runTest(testDispatcher) {
-        var callCount = 0
     // Requirement 11 & 12 Complete Test Suite (Tests 1 - 20)
 
     @Test
@@ -1082,33 +1079,24 @@ class EndToEndAiRecipeReliabilityTest {
         assertTrue("Chat display instructions MUST use snapshot instructions", assistantText.contains("Heat 15 ml oil over medium heat. Add the onion..."))
         assertFalse("Provider prose 'Sauté onions gently' MUST NOT override structured instructions", assistantText.contains("Sauté onions gently"))
 
-        // Requirement 13 & 14 & 15: Confirmation persists same structured values to Room DB & Recipe Details domain model
+        // Requirement 13 & 14 & 15: Typed confirmation points to the card's Save meal action, saves
+        // nothing, and the restored card still carries the structured snapshot values.
         val confirmResult = orchestrator.processUserMessage("default_conversation", "yes")
         assertTrue(confirmResult is AiOrchestrationResult.Final)
+        assertTrue((confirmResult as AiOrchestrationResult.Final).assistantText.contains("Save meal"))
+        assertEquals(0, mealDao.getUpcomingPlannedMeals("2000-01-01", "2099-12-31").size)
 
-        val upcomingMeals = mealDao.getUpcomingPlannedMeals("2000-01-01", "2099-12-31")
-        assertEquals(1, upcomingMeals.size)
-
-        val savedMealWithIngs = upcomingMeals.first()
-        assertEquals("Test Curry", savedMealWithIngs.meal.title)
-
-        // Requirement 14: Confirmed Meal.instructions in Room DB equals snapshot instructions
-        assertEquals("Heat 15 ml oil over medium heat. Add the onion...", savedMealWithIngs.meal.instructions)
-
-        // Requirement 13: Confirmed MealIngredientEntity in Room DB equals snapshot values
-        assertEquals(1, savedMealWithIngs.ingredients.size)
-        val savedIng = savedMealWithIngs.ingredients.first()
-        assertEquals("onion", savedIng.displayName)
-        assertEquals(1.0, savedIng.plannedQuantity, 0.001)
-        assertEquals(com.example.chatgpt_mealplanner.core.model.QuantityUnit.UNIT, savedIng.plannedUnit)
-
-        // Requirement 15: Recipe Details domain data equals confirmed snapshot values
-        assertEquals("Test Curry", savedMealWithIngs.meal.title)
-        assertEquals("Heat 15 ml oil over medium heat. Add the onion...", savedMealWithIngs.meal.instructions)
+        val restoredProposal = confirmResult.validatedProposal?.proposal
+        assertEquals("Test Curry", restoredProposal?.title)
+        assertEquals("Heat 15 ml oil over medium heat. Add the onion...", restoredProposal?.steps?.singleOrNull()?.instruction)
+        val restoredIngredient = restoredProposal?.ingredients?.singleOrNull()
+        assertEquals("onion", restoredIngredient?.displayName)
+        assertEquals(1.0, restoredIngredient?.quantity ?: 0.0, 0.001)
+        assertEquals("UNIT", restoredIngredient?.unit)
     }
 
     @Test
-    fun confirmationAfterProcessDeathUsesPendingSnapshot() = runTest(testDispatcher) {
+    fun typedYesAfterProcessDeath_restoresPendingSnapshotWithoutSaving() = runTest(testDispatcher) {
         val pending = PendingAiMutation.AddPlannedMeal(
             title = "Durable Shakshuka",
             date = "2026-10-02",
@@ -1151,11 +1139,12 @@ class EndToEndAiRecipeReliabilityTest {
         val confirmResult = newOrchestrator.processUserMessage("default_conversation", "yes")
         assertTrue(confirmResult is AiOrchestrationResult.Final)
 
-        val meals = mealDao.getUpcomingPlannedMeals("2000-01-01", "2099-12-31")
-        assertEquals(1, meals.size)
-        val meal = meals.first()
-        assertEquals("Durable Shakshuka", meal.meal.title)
-        assertEquals("Cook eggs in tomato sauce.", meal.meal.instructions)
+        assertEquals(0, mealDao.getUpcomingPlannedMeals("2000-01-01", "2099-12-31").size)
+        assertNotNull(pendingMutationStore.getPendingMutation("default_conversation"))
+
+        val restoredProposal = (confirmResult as AiOrchestrationResult.Final).validatedProposal?.proposal
+        assertEquals("Durable Shakshuka", restoredProposal?.title)
+        assertEquals("Cook eggs in tomato sauce.", restoredProposal?.steps?.singleOrNull()?.instruction)
     }
 
     @Test
@@ -1317,5 +1306,4 @@ class EndToEndAiRecipeReliabilityTest {
         val res = aiToolDispatcher.executeToolCall("default_conversation", authCtx, manualCall)
         assertTrue("Explicit manual shopping request must succeed", res.success)
     }
-}
 }
