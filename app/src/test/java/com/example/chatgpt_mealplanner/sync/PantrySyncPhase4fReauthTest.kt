@@ -637,14 +637,65 @@ class PantrySyncPhase4fReauthTest {
     // V. Network failure leaves follower revoked
     @Test
     fun testV_networkFailure_leavesFollowerRevoked() = runTest {
+        val closedPort = java.net.ServerSocket(0).use { it.localPort }
+
+        val res = reauthClient.performReauthorization(localReauthInvitation(closedPort, validFingerprint))
+
+        assertEquals("NETWORK_ERROR", (res as ReauthorizationClientResult.Failure).errorCode)
         assertTrue(pairingStore.isRevoked())
     }
 
     // W. Malformed response leaves follower revoked
     @Test
     fun testW_malformedResponse_leavesFollowerRevoked() = runTest {
-        assertTrue(pairingStore.isRevoked())
+        val tls = TestPantryTlsKeyManager()
+        val keyStore = tls.getOrCreateMainTlsKeyStore(householdId)
+        val keyManagers = javax.net.ssl.KeyManagerFactory.getInstance(javax.net.ssl.KeyManagerFactory.getDefaultAlgorithm())
+            .apply { init(keyStore, tls.getTlsPassword()) }.keyManagers
+        val sslContext = javax.net.ssl.SSLContext.getInstance("TLS").apply { init(keyManagers, null, null) }
+
+        sslContext.serverSocketFactory.createServerSocket(0).use { serverSocket ->
+            kotlin.concurrent.thread {
+                serverSocket.accept().use { socket ->
+                    val input = socket.getInputStream().bufferedReader(Charsets.ISO_8859_1)
+                    var contentLength = 0
+                    while (true) {
+                        val line = input.readLine() ?: break
+                        if (line.isEmpty()) break
+                        if (line.startsWith("Content-Length:", ignoreCase = true)) {
+                            contentLength = line.substringAfter(':').trim().toInt()
+                        }
+                    }
+                    repeat(contentLength) { input.read() }
+                    socket.getOutputStream().apply {
+                        write("HTTP/1.1 200 OK\r\nContent-Length: 8\r\nConnection: close\r\n\r\nnot json".toByteArray())
+                        flush()
+                    }
+                }
+            }
+
+            val res = reauthClient.performReauthorization(
+                localReauthInvitation(serverSocket.localPort, tls.getCertificateFingerprint(keyStore))
+            )
+
+            assertTrue(res is ReauthorizationClientResult.Failure)
+            assertTrue(pairingStore.isRevoked())
+        }
     }
+
+    private fun localReauthInvitation(port: Int, fingerprint: String) =
+        com.example.chatgpt_mealplanner.sync.contract.QrInvitationPayloadDto(
+            protocolVersion = 1,
+            purpose = "REAUTHORIZE_EXISTING_DEVICE",
+            householdId = householdId,
+            mainDeviceId = mainDeviceId,
+            targetDeviceId = followerDeviceId,
+            host = "127.0.0.1",
+            port = port,
+            tlsCertificateFingerprint = fingerprint,
+            enrollmentToken = "token_local_reauth",
+            expiresAt = System.currentTimeMillis() + 300000L
+        )
 
     // X. Concurrent duplicate completion gives exactly one activation
     @Test
