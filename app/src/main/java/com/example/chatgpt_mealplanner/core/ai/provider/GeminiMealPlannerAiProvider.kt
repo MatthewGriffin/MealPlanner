@@ -37,6 +37,7 @@ import java.net.InetAddress
 import java.net.SocketTimeoutException
 import java.net.URL
 import java.net.UnknownHostException
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 import javax.net.ssl.SSLHandshakeException
@@ -80,12 +81,17 @@ class GeminiMealPlannerAiProvider @Inject constructor(
 
     private val json = Json { ignoreUnknownKeys = true }
 
+    /**
+     * generateContent keeps nothing between requests, so a follow-up after a tool call has to
+     * resend the rules, context and tools as well as the history.
+     */
     private data class GeminiContinuationState(
-        val conversationId: String,
-        val historyContents: JsonArray
+        val historyContents: JsonArray,
+        val systemInstruction: JsonObject? = null,
+        val tools: JsonArray? = null
     )
 
-    private var activeContinuationState: GeminiContinuationState? = null
+    private val continuationStates = ConcurrentHashMap<String, GeminiContinuationState>()
 
     override suspend fun testConnection(): AiProviderResponse = withContext(ioDispatcher) {
         val activeKey = getEffectiveApiKey()
@@ -168,16 +174,19 @@ class GeminiMealPlannerAiProvider @Inject constructor(
             }
         } else null
 
+        val systemInstruction = buildJsonObject {
+            putJsonArray("parts") {
+                add(buildJsonObject {
+                    put("text", "${request.systemPrompt}\n\nContext:\n${request.contextPayloadJson}")
+                })
+            }
+        }
+        continuationStates[request.conversationId] = GeminiContinuationState(contentsArray, systemInstruction, toolsArray)
+
         val payloadBuilder = { _: String ->
             buildJsonObject {
                 put("contents", contentsArray)
-                put("systemInstruction", buildJsonObject {
-                    putJsonArray("parts") {
-                        add(buildJsonObject {
-                            put("text", "${request.systemPrompt}\n\nContext:\n${request.contextPayloadJson}")
-                        })
-                    }
-                })
+                put("systemInstruction", systemInstruction)
                 if (toolsArray != null) {
                     put("tools", toolsArray)
                 }
@@ -209,7 +218,8 @@ class GeminiMealPlannerAiProvider @Inject constructor(
             return@withContext AiProviderResponse.Error("NO_API_KEY", "No Gemini API key supplied.")
         }
 
-        val lastHistory = activeContinuationState?.historyContents ?: buildJsonArray {}
+        val state = continuationStates[request.conversationId]
+        val lastHistory = state?.historyContents ?: buildJsonArray {}
 
         val newHistory = buildJsonArray {
             lastHistory.forEach { add(it) }
@@ -238,6 +248,15 @@ class GeminiMealPlannerAiProvider @Inject constructor(
         val payloadBuilder = { _: String ->
             buildJsonObject {
                 put("contents", newHistory)
+                state?.systemInstruction?.let { put("systemInstruction", it) }
+                state?.tools?.let { tools ->
+                    put("tools", tools)
+                    if (!request.allowMoreToolCalls) {
+                        putJsonObject("toolConfig") {
+                            putJsonObject("functionCallingConfig") { put("mode", "NONE") }
+                        }
+                    }
+                }
             }
         }
 
@@ -502,7 +521,12 @@ class GeminiMealPlannerAiProvider @Inject constructor(
                 historyContents.forEach { add(it) }
                 add(contentObj)
             }
-            activeContinuationState = GeminiContinuationState(conversationId, nextHistory)
+            val state = continuationStates[conversationId] ?: GeminiContinuationState(nextHistory)
+            if (toolCalls.isEmpty()) {
+                continuationStates.remove(conversationId)
+            } else {
+                continuationStates[conversationId] = state.copy(historyContents = nextHistory)
+            }
         }
 
         safeLog("[GEMINI_HTTP] phase=request_complete, toolCallsCount=${toolCalls.size}, textLength=${textResponse.length}, elapsedMs=${System.currentTimeMillis() - startTime}")

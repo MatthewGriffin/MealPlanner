@@ -92,7 +92,9 @@ data class AiProviderRequest(
 data class AiContinueWithToolsRequest(
     val conversationId: String,
     val providerContinuationToken: String?,
-    val toolResults: List<AiToolResult>
+    val toolResults: List<AiToolResult>,
+    /** False on the last allowed round, so the model has to answer in text. */
+    val allowMoreToolCalls: Boolean = true
 )
 
 sealed interface AiProviderResponse {

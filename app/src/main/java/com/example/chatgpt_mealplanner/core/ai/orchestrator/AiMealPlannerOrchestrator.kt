@@ -282,7 +282,9 @@ class AiMealPlannerOrchestrator @Inject constructor(
             val continueRequest = AiContinueWithToolsRequest(
                 conversationId = conversationId,
                 providerContinuationToken = continuationToken,
-                toolResults = toolResults
+                toolResults = toolResults,
+                // Going over the round limit is an error, so the last allowed round must end in an answer.
+                allowMoreToolCalls = roundCount < maxRoundsForRequest
             )
 
             providerResponse = provider.continueWithToolResults(continueRequest)
@@ -341,7 +343,7 @@ class AiMealPlannerOrchestrator @Inject constructor(
                         repairResults.add(r)
                     }
                     repairContinuation = provider.continueWithToolResults(
-                        AiContinueWithToolsRequest(conversationId, repairToken, repairResults)
+                        AiContinueWithToolsRequest(conversationId, repairToken, repairResults, allowMoreToolCalls = repairRound < 2)
                     )
                 }
                 if (repairContinuation is AiProviderResponse.FinalResponse) {

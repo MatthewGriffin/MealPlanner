@@ -482,6 +482,94 @@ class GeminiMealPlannerAiProviderTest {
         assertTrue(lastContent.toString().contains("delete_inventory_item"))
     }
 
+    private val toolCallBody = """
+        {"candidates":[{"content":{"role":"model","parts":[
+          {"functionCall":{"name":"get_usable_inventory","args":{}}}
+        ]}}]}
+    """.trimIndent()
+
+    private fun recipeRequest(conversationId: String = "conv1", forcedTool: String? = null) = AiProviderRequest(
+        conversationId = conversationId,
+        systemPrompt = "RULES_$conversationId",
+        contextPayloadJson = "{}",
+        contextPayload = AiContextPayload(),
+        messages = listOf(AiChatMessage("user", "dinner?")),
+        availableTools = listOf(AiToolId.GET_USABLE_INVENTORY, AiToolId.OFFER_ADD_PLANNED_MEAL),
+        forcedToolName = forcedTool
+    )
+
+    private fun inventoryResult(conversationId: String = "conv1", allowMoreToolCalls: Boolean = true) = AiContinueWithToolsRequest(
+        conversationId = conversationId,
+        providerContinuationToken = conversationId,
+        toolResults = listOf(
+            AiToolResult(toolCallId = "c1", toolName = "get_usable_inventory", success = true, payloadJson = "{}")
+        ),
+        allowMoreToolCalls = allowMoreToolCalls
+    )
+
+    @Test
+    fun followUpAfterToolCall_keepsTheRulesContextAndTools() = runBlocking {
+        val payloads = mutableListOf<JsonObject>()
+        provider.httpCallHandler = { _, payload ->
+            payloads.add(payload)
+            Pair(200, if (payloads.size == 1) toolCallBody else makeSuccessBody("Done"))
+        }
+
+        provider.send(recipeRequest())
+        provider.continueWithToolResults(inventoryResult())
+
+        assertEquals(payloads[0]["systemInstruction"], payloads[1]["systemInstruction"])
+        assertEquals(payloads[0]["tools"], payloads[1]["tools"])
+        assertTrue(payloads[1]["tools"].toString().contains("offer_add_planned_meal"))
+        assertFalse(payloads[1].containsKey("toolConfig"))
+    }
+
+    @Test
+    fun followUpAfterForcedToolCall_doesNotForceTheToolAgain() = runBlocking {
+        val payloads = mutableListOf<JsonObject>()
+        provider.httpCallHandler = { _, payload ->
+            payloads.add(payload)
+            Pair(200, if (payloads.size == 1) toolCallBody else makeSuccessBody("Done"))
+        }
+
+        provider.send(recipeRequest(forcedTool = "offer_add_planned_meal"))
+        provider.continueWithToolResults(inventoryResult())
+
+        assertTrue(payloads[0].containsKey("toolConfig"))
+        assertFalse(payloads[1].containsKey("toolConfig"))
+    }
+
+    @Test
+    fun lastAllowedRound_tellsTheModelToAnswerInText() = runBlocking {
+        val payloads = mutableListOf<JsonObject>()
+        provider.httpCallHandler = { _, payload ->
+            payloads.add(payload)
+            Pair(200, if (payloads.size == 1) toolCallBody else makeSuccessBody("Done"))
+        }
+
+        provider.send(recipeRequest())
+        provider.continueWithToolResults(inventoryResult(allowMoreToolCalls = false))
+
+        assertEquals("NONE", payloads[1]["toolConfig"]!!.jsonObject["functionCallingConfig"]!!.jsonObject["mode"]!!.jsonPrimitive.content)
+        assertTrue(payloads[1].containsKey("tools"))
+    }
+
+    @Test
+    fun twoConversations_doNotShareToolCallState() = runBlocking {
+        val payloads = mutableListOf<JsonObject>()
+        provider.httpCallHandler = { _, payload ->
+            payloads.add(payload)
+            Pair(200, if (payloads.size <= 2) toolCallBody else makeSuccessBody("Done"))
+        }
+
+        provider.send(recipeRequest("first"))
+        provider.send(recipeRequest("second"))
+        provider.continueWithToolResults(inventoryResult("first"))
+
+        assertTrue(payloads[2]["systemInstruction"].toString().contains("RULES_first"))
+        assertFalse(payloads[2]["systemInstruction"].toString().contains("RULES_second"))
+    }
+
     @Test
     fun provider_forcedTool_serializesGeminiToolConfig() = runBlocking {
         var capturedPayload: JsonObject? = null
