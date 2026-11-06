@@ -186,7 +186,12 @@ data class ShoppingSummaryContextDto(
 data class UserPreferencesSummaryDto(
     val householdSize: Int = 2,
     val preferFrozenVegetables: Boolean = true,
-    val preferGarlicPowderOverFresh: Boolean = true
+    val preferGarlicPowderOverFresh: Boolean = true,
+    val allergies: List<String> = emptyList(),
+    val diets: List<String> = emptyList(),
+    val dislikes: List<String> = emptyList(),
+    val equipment: List<String> = emptyList(),
+    val skillLevel: String? = null
 )
 
 @Serializable

@@ -928,6 +928,26 @@ val MIGRATION_22_23 = object : Migration(22, 23) {
     }
 }
 
+val MIGRATION_23_24 = object : Migration(23, 24) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `cooking_preferences` (
+                `id` INTEGER NOT NULL,
+                `allergiesJson` TEXT NOT NULL,
+                `dietsJson` TEXT NOT NULL,
+                `dislikesJson` TEXT NOT NULL,
+                `equipmentJson` TEXT NOT NULL,
+                `householdSize` INTEGER NOT NULL,
+                `skillLevel` TEXT,
+                `updatedAt` INTEGER NOT NULL,
+                PRIMARY KEY(`id`)
+            )
+            """.trimIndent()
+        )
+    }
+}
+
 const val MAIN_DATABASE_NAME = "pantry_planner.db"
 
 val ALL_MIGRATIONS = arrayOf(
@@ -952,7 +972,8 @@ val ALL_MIGRATIONS = arrayOf(
     MIGRATION_19_20,
     MIGRATION_20_21,
     MIGRATION_21_22,
-    MIGRATION_22_23
+    MIGRATION_22_23,
+    MIGRATION_23_24
 )
 
 @Database(
@@ -988,9 +1009,10 @@ val ALL_MIGRATIONS = arrayOf(
         com.example.chatgpt_mealplanner.core.database.entity.SyncPendingApprovalEntity::class,
         com.example.chatgpt_mealplanner.core.database.entity.MealChangeRequestEntity::class,
         UserStoreEntity::class,
-        PurchasePriceObservationEntity::class
+        PurchasePriceObservationEntity::class,
+        com.example.chatgpt_mealplanner.core.database.entity.CookingPreferencesEntity::class
     ],
-    version = 23,
+    version = 24,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -1005,6 +1027,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun stapleRuleDao(): StapleRuleDao
     abstract fun chatDao(): ChatDao
     abstract fun purchasePriceDao(): PurchasePriceDao
+    abstract fun cookingPreferencesDao(): com.example.chatgpt_mealplanner.core.database.dao.CookingPreferencesDao
     abstract fun receiptDao(): ReceiptDao
     abstract fun receiptSpendDao(): ReceiptSpendDao
     abstract fun householdIdentityDao(): com.example.chatgpt_mealplanner.core.database.dao.HouseholdIdentityDao

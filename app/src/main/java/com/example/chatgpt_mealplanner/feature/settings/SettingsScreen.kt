@@ -223,6 +223,14 @@ fun SettingsScreen(
         Spacer(modifier = Modifier.height(24.dp))
 
         // RETAIL SECTION
+        // Only the main phone uses the AI, so followers have nothing to set here.
+        if (uiState.isMainRole) {
+            Text("Cooking", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(8.dp))
+            CookingPreferencesSection()
+            Spacer(modifier = Modifier.height(24.dp))
+        }
+
         Text("Retail & Shopping", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(4.dp))
         Text(

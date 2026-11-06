@@ -2,6 +2,7 @@ package com.example.chatgpt_mealplanner.core.ai.validation
 
 import com.example.chatgpt_mealplanner.contract.MealProposal
 import com.example.chatgpt_mealplanner.contract.ProposedIngredient
+import com.example.chatgpt_mealplanner.contract.UserPreferencesSummaryDto
 
 /**
  * Checks a recipe while Gemini can still fix it. A problem stops the card. A query only tells
@@ -31,16 +32,23 @@ object RecipeOfferChecks {
         return normalized in vagueIngredientNames
     }
 
-    fun problems(proposal: MealProposal): List<String> = proposal.ingredients.flatMap { ingredient ->
+    fun problems(
+        proposal: MealProposal,
+        preferences: UserPreferencesSummaryDto = UserPreferencesSummaryDto()
+    ): List<String> = proposal.ingredients.flatMap { ingredient ->
         listOfNotNull(
             "Ingredient '${ingredient.displayName}' is too vague to shop for. Name the specific ingredient or blend."
                 .takeIf { isVague(ingredient.displayName) },
             "Ingredient '${ingredient.displayName}' needs a quantity greater than 0."
                 .takeIf { ingredient.quantity <= 0.0 }
-        )
+        ) + DietaryRules.conflicts(ingredient.displayName, preferences)
     }
 
-    fun queries(proposal: MealProposal, method: String): List<String> {
+    fun queries(
+        proposal: MealProposal,
+        method: String,
+        preferences: UserPreferencesSummaryDto = UserPreferencesSummaryDto()
+    ): List<String> {
         val methodText = method.lowercase()
         val unused = proposal.ingredients
             .filter { !it.optional && !isUsedIn(it.displayName, methodText) }
@@ -48,7 +56,10 @@ object RecipeOfferChecks {
         val oversized = proposal.ingredients
             .filter { gramsOrMl(it)?.let { amount -> amount / proposal.servings.coerceAtLeast(1) > MOST_GRAMS_OR_ML_PER_SERVING } == true }
             .map { "'${it.displayName}' looks like too much for ${proposal.servings} servings (${it.quantity} ${it.unit})." }
-        return unused + oversized
+        val disliked = proposal.ingredients
+            .filter { DietaryRules.isDisliked(it.displayName, preferences) }
+            .map { "'${it.displayName}' is something this household dislikes." }
+        return unused + oversized + disliked
     }
 
     private fun isUsedIn(ingredientName: String, methodText: String): Boolean {

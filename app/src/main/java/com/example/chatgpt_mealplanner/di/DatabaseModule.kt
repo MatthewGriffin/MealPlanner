@@ -105,6 +105,18 @@ object DatabaseModule {
     }
 
     @Provides
+    @Singleton
+    fun provideCookingPreferencesDao(database: AppDatabase): com.example.chatgpt_mealplanner.core.database.dao.CookingPreferencesDao {
+        return database.cookingPreferencesDao()
+    }
+
+    @Provides
+    @Singleton
+    fun provideCookingPreferencesSource(
+        store: com.example.chatgpt_mealplanner.core.repository.CookingPreferencesStore
+    ): com.example.chatgpt_mealplanner.core.repository.CookingPreferencesSource = store
+
+    @Provides
     fun provideReceiptDao(database: AppDatabase): ReceiptDao {
         return database.receiptDao()
     }

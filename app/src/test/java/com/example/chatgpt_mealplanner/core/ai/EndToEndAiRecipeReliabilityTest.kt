@@ -879,7 +879,114 @@ class EndToEndAiRecipeReliabilityTest {
         )
     }
 
-private fun offerArgs(ingredient: String, method: String, quantity: Int = 200) =
+private val milkAllergyAndNoCoriander = com.example.chatgpt_mealplanner.contract.UserPreferencesSummaryDto(
+        householdSize = 4,
+        allergies = listOf("Milk"),
+        diets = listOf("Vegetarian"),
+        dislikes = listOf("coriander"),
+        equipment = listOf("air fryer"),
+        skillLevel = "Beginner"
+    )
+
+    private fun dispatcherWith(preferences: com.example.chatgpt_mealplanner.contract.UserPreferencesSummaryDto) = AiToolDispatcher(
+        inventoryDomainService = inventoryDomainService,
+        mealDomainService = mealDomainService,
+        shoppingDomainService = shoppingDomainService,
+        activeProposalStore = activeProposalStore,
+        pendingMutationStore = pendingMutationStore,
+        chatDao = chatDao,
+        inventoryDao = inventoryDao,
+        leftoverDao = leftoverDao,
+        shoppingDao = shoppingDao,
+        mealDao = mealDao,
+        cookingPreferences = { preferences }
+    )
+
+    @Test
+    fun allergenInARecipe_isSentBackAndNeverBecomesACard() = runTest(testDispatcher) {
+        val call = AiToolCall("c1", "offer_add_planned_meal", offerArgs("double cream", "Stir in the cream."))
+
+        val result = dispatcherWith(milkAllergyAndNoCoriander)
+            .executeToolCall("default_conversation", ActionAuthorizationContext("m1"), call)
+
+        assertFalse(result.success)
+        assertTrue(result.errorMessage!!, result.errorMessage!!.contains("conflicts with the Milk allergy"))
+        assertNull(pendingMutationStore.getPendingMutation("default_conversation"))
+    }
+
+    @Test
+    fun meatInAVegetarianHousehold_isSentBack() = runTest(testDispatcher) {
+        val call = AiToolCall("c1", "offer_add_planned_meal", offerArgs("chicken breast", "Roast the chicken."))
+
+        val result = dispatcherWith(milkAllergyAndNoCoriander)
+            .executeToolCall("default_conversation", ActionAuthorizationContext("m1"), call)
+
+        assertFalse(result.success)
+        assertTrue(result.errorMessage!!, result.errorMessage!!.contains("Vegetarian diet"))
+    }
+
+    @Test
+    fun dislikedIngredient_keepsTheCardAndTellsGemini() = runTest(testDispatcher) {
+        val call = AiToolCall("c1", "offer_add_planned_meal", offerArgs("fresh coriander", "Scatter over the coriander."))
+
+        val result = dispatcherWith(milkAllergyAndNoCoriander)
+            .executeToolCall("default_conversation", ActionAuthorizationContext("m1"), call)
+
+        assertTrue(result.success)
+        assertTrue(result.payloadJson, result.payloadJson.contains("dislikes"))
+    }
+
+    @Test
+    fun directSaveWithAnAllergen_isRefused() = runTest(testDispatcher) {
+        val call = AiToolCall(
+            "c1",
+            "add_planned_meal",
+            """{"title":"Creamy Pasta","servings":2,"date":"2026-11-10","mealType":"DINNER","ingredients":[{"displayName":"double cream","quantity":200,"unit":"MILLILITRE"}],"instructions":"Stir in the cream."}"""
+        )
+        val authorised = ActionAuthorizationContext("m1", listOf(AuthorizedMutationScope.AddPlannedMealScope("m1")))
+
+        val result = dispatcherWith(milkAllergyAndNoCoriander).executeToolCall("default_conversation", authorised, call)
+
+        assertFalse(result.errorMessage ?: "no error", result.success)
+        assertTrue(result.errorMessage!!, result.errorMessage!!.contains("conflicts with the Milk allergy"))
+        assertTrue(mealDao.getUpcomingPlannedMeals("2000-01-01", "2099-12-31").none { it.meal.title == "Creamy Pasta" })
+    }
+
+    @Test
+    fun mealPlanWithAnAllergen_cannotBeSaved() = runTest(testDispatcher) {
+        val validator = RecipeValidator(inventoryDao, mealDao) { milkAllergyAndNoCoriander }
+        val meal = com.example.chatgpt_mealplanner.contract.MealProposal(
+            title = "Creamy Pasta",
+            ingredients = listOf(com.example.chatgpt_mealplanner.contract.ProposedIngredient(displayName = "double cream", quantity = 200.0, unit = "MILLILITRE")),
+            reasoningSummary = ""
+        )
+
+        val validated = validator.validateProposal(meal)
+
+        assertFalse(validated.canBeSaved())
+        assertTrue(validated.issues.toString(), validated.issues.single().contains("Milk allergy"))
+    }
+
+    @Test
+    fun geminiContext_carriesPreferencesAndHouseholdSize() = runTest(testDispatcher) {
+        val builder = AiContextBuilder(
+            inventoryDao = inventoryDao,
+            mealDao = mealDao,
+            leftoverDao = leftoverDao,
+            shoppingDao = shoppingDao,
+            activeProposalStore = activeProposalStore,
+            pendingMutationStore = pendingMutationStore,
+            cookingPreferences = { milkAllergyAndNoCoriander }
+        )
+
+        val json = builder.buildContextPayloadJson("default_conversation")
+
+        listOf("\"householdSize\":4", "Milk", "Vegetarian", "coriander", "air fryer", "Beginner").forEach {
+            assertTrue(it, json.contains(it))
+        }
+    }
+
+    private fun offerArgs(ingredient: String, method: String, quantity: Int = 200) =
         """{"title":"Stew","servings":2,"ingredients":[{"displayName":"$ingredient","quantity":$quantity,"unit":"GRAM"}],"steps":[{"instruction":"$method"}]}"""
 
     /** Runs offers in order, as if Gemini were replying to each tool result, and returns what it was told. */
