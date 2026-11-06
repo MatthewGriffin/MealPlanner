@@ -20,6 +20,52 @@ class DietaryRulesTest {
     private fun assertAllowed(preferences: UserPreferencesSummaryDto, vararg ingredients: String) =
         ingredients.forEach { assertFalse("$it should not conflict", hits(it, preferences)) }
 
+    private fun recipe(title: String = "Baked Rice", servings: Int = 2, vararg ingredients: Triple<String, Double, String>) =
+        com.example.chatgpt_mealplanner.contract.MealProposal(
+            title = title,
+            servings = servings,
+            ingredients = ingredients.map {
+                com.example.chatgpt_mealplanner.contract.ProposedIngredient(displayName = it.first, quantity = it.second, unit = it.third)
+            },
+            reasoningSummary = ""
+        )
+
+    private val rice = Triple("Basmati rice", 150.0, "GRAM")
+
+    private fun queries(method: String, recipe: com.example.chatgpt_mealplanner.contract.MealProposal = recipe(ingredients = arrayOf(rice))) =
+        com.example.chatgpt_mealplanner.core.ai.validation.RecipeOfferChecks.queries(recipe, method).joinToString(" ")
+
+    @Test
+    fun realMistakesFromGemini_areQueried() {
+        assertTrue(queries("Boil the rice over medium heat (160°C).").contains("hob heat"))
+        assertTrue(queries("Boil the rice over a medium-high heat 180°C.").contains("hob heat"))
+        assertTrue(queries("Boil the rice with 4g ground cumin.").contains("spoons"))
+        assertTrue(queries("Boil the rice in salted water.").contains("uses salt"))
+        assertTrue(queries("Boil the rice, then add a pinch of pepper.").contains("uses pepper"))
+        assertTrue(queries("Boil the rice.", recipe("Rice or Noodles", ingredients = arrayOf(rice))).contains("Name one dish"))
+        assertTrue(queries("Roast the chicken.", recipe("Roast Chicken", ingredients = arrayOf(Triple("Chicken thighs", 600.0, "GRAM")))).contains("a lot for 2"))
+    }
+
+    @Test
+    fun goodRecipeWording_isNotQueried() {
+        assertEquals("", queries("Preheat the oven to 200°C (180°C fan). Bake the rice for 20 minutes over a medium heat until tender."))
+        assertEquals("", queries("Bake the rice with 150g stock until a thermometer reads 75°C in the centre."))
+        assertEquals(
+            "",
+            queries(
+                "Roast the chicken.",
+                recipe("Roast Chicken", ingredients = arrayOf(Triple("Chicken thighs", 400.0, "GRAM")))
+            )
+        )
+        assertEquals(
+            "",
+            queries(
+                "Boil the rice in salted water.",
+                recipe(ingredients = arrayOf(rice, Triple("Fine sea salt", 3.0, "GRAM")))
+            )
+        )
+    }
+
     @Test
     fun milkAllergy() {
         assertCaught(allergy("Milk"), "Double cream", "mature cheddar", "Butter", "Greek yoghurt", "whole milk", "Ghee")

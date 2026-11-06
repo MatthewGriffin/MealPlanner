@@ -79,6 +79,9 @@ object DietaryRules {
         "kosher" to listOf(pork, crustaceans, molluscs)
     )
 
+    fun isMeatOrFish(ingredientName: String): Boolean =
+        ingredientName.lowercase().let { meat.matches(it) || fish.matches(it) }
+
     /** Each allergy or diet this ingredient breaks, written for Gemini and the recipe card. */
     fun conflicts(ingredientName: String, preferences: UserPreferencesSummaryDto): List<String> {
         val ingredient = ingredientName.lowercase()

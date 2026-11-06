@@ -23,6 +23,11 @@ object RecipeOfferChecks {
     )
 
     private const val MOST_GRAMS_OR_ML_PER_SERVING = 1000.0
+    private const val MOST_MEAT_OR_FISH_GRAMS_PER_SERVING = 250.0
+
+    private val hobTemperature = Regex("""\b(?:low|medium|high|heat)\b[^.]{0,12}\(?\d{2,3}\s?°c""")
+    private val smallWeight = Regex("""\b(?:\d|1[0-4])\s?g\b(?!\s*\))""")
+    private val commonIngredients = listOf("salt", "pepper", "butter", "garlic", "sugar", "flour")
 
     fun isVague(ingredientName: String): Boolean {
         val normalized = ingredientName.lowercase()
@@ -59,7 +64,23 @@ object RecipeOfferChecks {
         val disliked = proposal.ingredients
             .filter { DietaryRules.isDisliked(it.displayName, preferences) }
             .map { "'${it.displayName}' is something this household dislikes." }
-        return unused + oversized + disliked
+        return unused + oversized + disliked + cookabilityQueries(proposal, methodText)
+    }
+
+    /** Mistakes seen in real Gemini recipes that make a recipe harder to follow. */
+    private fun cookabilityQueries(proposal: MealProposal, methodText: String): List<String> {
+        val listed = proposal.ingredients.joinToString(" ") { it.displayName.lowercase() }
+        val servings = proposal.servings.coerceAtLeast(1)
+        return listOfNotNull(
+            "Give hob heat as low, medium or high, not a temperature.".takeIf { hobTemperature.containsMatchIn(methodText) },
+            "Write small amounts in the method in spoons, not grams.".takeIf { smallWeight.containsMatchIn(methodText) },
+            "The title offers a choice. Name one dish.".takeIf { " or " in proposal.title.lowercase() }
+        ) + commonIngredients
+            .filter { Regex("\\b$it").containsMatchIn(methodText) && !Regex("\\b$it").containsMatchIn(listed) }
+            .map { "The method uses $it, but it isn't in the ingredients." } +
+            proposal.ingredients
+                .filter { DietaryRules.isMeatOrFish(it.displayName) && (gramsOrMl(it) ?: 0.0) / servings > MOST_MEAT_OR_FISH_GRAMS_PER_SERVING }
+                .map { "'${it.displayName}' is a lot for ${proposal.servings} servings (${it.quantity} ${it.unit}). Use a normal portion even if there is more in stock." }
     }
 
     private fun isUsedIn(ingredientName: String, methodText: String): Boolean {

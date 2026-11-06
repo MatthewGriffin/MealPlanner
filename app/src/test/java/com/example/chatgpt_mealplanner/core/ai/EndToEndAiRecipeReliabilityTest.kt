@@ -987,7 +987,7 @@ private val milkAllergyAndNoCoriander = com.example.chatgpt_mealplanner.contract
     }
 
     private fun offerArgs(ingredient: String, method: String, quantity: Int = 200) =
-        """{"title":"Stew","servings":2,"ingredients":[{"displayName":"$ingredient","quantity":$quantity,"unit":"GRAM"}],"steps":[{"instruction":"$method"}]}"""
+        """{"title":"Hearty Dish","servings":2,"ingredients":[{"displayName":"$ingredient","quantity":$quantity,"unit":"GRAM"}],"steps":[{"instruction":"$method"}]}"""
 
     /** Runs offers in order, as if Gemini were replying to each tool result, and returns what it was told. */
     private suspend fun offerInTurn(vararg offers: String): Pair<List<AiToolResult>, AiOrchestrationResult> {
