@@ -1022,7 +1022,8 @@ class AiMealPlannerOrchestrator @Inject constructor(
     private fun isClarifyingQuestion(replyText: String): Boolean {
         val trimmed = replyText.trim()
         val offersARecipe = trimmed.contains("here is", ignoreCase = true) || trimmed.contains("here's", ignoreCase = true)
-        return trimmed.endsWith("?") && !offersARecipe && stripTrailingOfferQuestion(trimmed) == trimmed
+        // The question doesn't have to come last: "What toppings? You have cheddar in the fridge."
+        return "?" in trimmed && !offersARecipe && stripTrailingOfferQuestion(trimmed) == trimmed
     }
 
     private fun stripTrailingOfferQuestion(text: String): String {

@@ -1241,6 +1241,14 @@ private val milkAllergyAndNoCoriander = com.example.chatgpt_mealplanner.contract
     }
 
     @Test
+    fun clarifyingQuestionFollowedByMoreText_isStillShown() = runTest(testDispatcher) {
+        assertAnsweredWithoutRepair(
+            "suggest a pizza recipe with toppings of my choice",
+            "To get this right, what toppings would you prefer? You currently have mature cheddar in the fridge."
+        )
+    }
+
+    @Test
     fun fullRecipeWrittenAsText_isConvertedKeepingTheDraft() = runTest(testDispatcher) {
         val sent = mutableListOf<AiProviderRequest>()
         val draft = "Lemon Chicken\nIngredients: chicken, lemon\nMethod: roast it."
