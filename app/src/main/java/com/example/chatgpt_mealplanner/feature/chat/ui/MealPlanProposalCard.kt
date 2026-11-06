@@ -64,6 +64,14 @@ fun MealPlanProposalCard(
                     color = MaterialTheme.colorScheme.onPrimaryContainer
                 )
                 Text("$owned owned • $toBuy to buy${if (toCheck > 0) " • $toCheck to check" else ""}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                validated.issues.forEach { issue ->
+                    Text(
+                        text = "Can't save yet: $issue",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
                 Spacer(Modifier.height(8.dp))
             }
             Text(
@@ -74,7 +82,7 @@ fun MealPlanProposalCard(
             Spacer(Modifier.height(12.dp))
             Row(Modifier.fillMaxWidth()) {
                 Spacer(Modifier.weight(1f))
-                Button(onClick = { onAccept(validatedMeals.map { it.proposal }) }, enabled = !isSaving) {
+                Button(onClick = { onAccept(validatedMeals.map { it.proposal }) }, enabled = !isSaving && validatedMeals.all { it.canBeSaved() }) {
                     Text(if (isSaving) "Saving…" else "Accept meal plan")
                 }
             }

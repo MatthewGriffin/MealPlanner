@@ -506,7 +506,7 @@ class ChatViewModel @Inject constructor(
                     errorMessageFlow.value = "The planned meal could not be found, so the request was left open."
                     return@launch
                 }
-                val stepText = proposal.steps.sortedBy { it.order }.joinToString("\n") { "${it.order}. ${it.instruction}" }.ifBlank { existingMeal?.instructions }
+                val stepText = proposal.savedInstructions().ifBlank { existingMeal?.instructions }
                 val meal = if (existingMeal != null) {
                     existingMeal.copy(
                         title = proposal.title,
@@ -657,7 +657,7 @@ class ChatViewModel @Inject constructor(
                         leftoverPortions = proposal.leftoverPortions,
                         cookInTwoBatches = proposal.cookInTwoBatches,
                         tags = proposal.tags.mapNotNull { runCatching { MealTag.valueOf(it.uppercase()) }.getOrNull() }.toSet(),
-                        instructions = proposal.steps.sortedBy { it.order }.joinToString("\n") { "${it.order}. ${it.instruction}" }
+                        instructions = proposal.savedInstructions()
                     )
                     val ingredients = proposal.ingredients.map { ingredient ->
                         MealIngredient(

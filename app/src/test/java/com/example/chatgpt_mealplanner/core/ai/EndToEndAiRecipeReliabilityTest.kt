@@ -5,6 +5,7 @@ import com.example.chatgpt_mealplanner.contract.AiOrchestrationResult
 import com.example.chatgpt_mealplanner.contract.AiProviderRequest
 import com.example.chatgpt_mealplanner.contract.AiProviderResponse
 import com.example.chatgpt_mealplanner.contract.AiToolCall
+import com.example.chatgpt_mealplanner.contract.AiToolResult
 import com.example.chatgpt_mealplanner.contract.AiToolId
 import com.example.chatgpt_mealplanner.contract.ActionAuthorizationContext
 import com.example.chatgpt_mealplanner.contract.AuthorizedMutationScope
@@ -184,19 +185,22 @@ class EndToEndAiRecipeReliabilityTest {
 
     // Assertion 1: Offer schema declares instructions
     @Test
-    fun test1_offerSchemaDeclaresInstructions() {
+    fun test1_offerSchemaDeclaresSteps() {
         val method = GeminiMealPlannerAiProvider::class.java.getDeclaredMethod("buildToolDeclarationJson", AiToolId::class.java)
         method.isAccessible = true
         val jsonObj = method.invoke(geminiProvider, AiToolId.OFFER_ADD_PLANNED_MEAL) as kotlinx.serialization.json.JsonObject
 
         val props = jsonObj["parameters"]!!.jsonObject["properties"]!!.jsonObject
-        assertTrue("instructions property must exist in offer schema", props.containsKey("instructions"))
-        assertEquals("STRING", props["instructions"]!!.jsonObject["type"]!!.jsonPrimitive.content)
+        assertEquals("ARRAY", props["steps"]!!.jsonObject["type"]!!.jsonPrimitive.content)
+
+        val addMeal = method.invoke(geminiProvider, AiToolId.ADD_PLANNED_MEAL) as kotlinx.serialization.json.JsonObject
+        val addMealProps = addMeal["parameters"]!!.jsonObject["properties"]!!.jsonObject
+        assertEquals("STRING", addMealProps["instructions"]!!.jsonObject["type"]!!.jsonPrimitive.content)
     }
 
-    // Assertion 2: Required fields include title, servings, ingredients, instructions
+    // Assertion 2: Required fields include title, servings, ingredients, steps
     @Test
-    fun test2_requiredFieldsIncludeTitleServingsIngredientsInstructions() {
+    fun test2_requiredFieldsIncludeTitleServingsIngredientsSteps() {
         val method = GeminiMealPlannerAiProvider::class.java.getDeclaredMethod("buildToolDeclarationJson", AiToolId::class.java)
         method.isAccessible = true
         val jsonObj = method.invoke(geminiProvider, AiToolId.OFFER_ADD_PLANNED_MEAL) as kotlinx.serialization.json.JsonObject
@@ -205,7 +209,7 @@ class EndToEndAiRecipeReliabilityTest {
         assertTrue(requiredArray.contains("title"))
         assertTrue(requiredArray.contains("servings"))
         assertTrue(requiredArray.contains("ingredients"))
-        assertTrue(requiredArray.contains("instructions"))
+        assertTrue(requiredArray.contains("steps"))
     }
 
     // Assertion 3: Empty ingredients -> tool failure
@@ -875,7 +879,218 @@ class EndToEndAiRecipeReliabilityTest {
         )
     }
 
-private fun orchestratorReplying(sent: MutableList<AiProviderRequest>, reply: String) = AiMealPlannerOrchestrator(
+private fun offerArgs(ingredient: String, method: String, quantity: Int = 200) =
+        """{"title":"Stew","servings":2,"ingredients":[{"displayName":"$ingredient","quantity":$quantity,"unit":"GRAM"}],"steps":[{"instruction":"$method"}]}"""
+
+    /** Runs offers in order, as if Gemini were replying to each tool result, and returns what it was told. */
+    private suspend fun offerInTurn(vararg offers: String): Pair<List<AiToolResult>, AiOrchestrationResult> {
+        val results = mutableListOf<AiToolResult>()
+        var next = 0
+        fun nextOffer() = AiProviderResponse.ToolCalls("t", listOf(AiToolCall("c$next", "offer_add_planned_meal", offers[next++])))
+        val orchestrator = AiMealPlannerOrchestrator(
+            provider = object : MealPlannerAiProvider {
+                override suspend fun send(request: AiProviderRequest): AiProviderResponse =
+                    if (next < offers.size) nextOffer() else AiProviderResponse.FinalResponse("Here is a recipe")
+                override suspend fun continueWithToolResults(request: AiContinueWithToolsRequest): AiProviderResponse {
+                    results += request.toolResults
+                    return if (next < offers.size) nextOffer() else AiProviderResponse.FinalResponse("Here you go")
+                }
+            },
+            contextBuilder = contextBuilder,
+            toolDispatcher = aiToolDispatcher,
+            recipeValidator = RecipeValidator(inventoryDao, mealDao),
+            intentResolver = intentResolver,
+            chatRepository = chatRepository,
+            pendingMutationStore = pendingMutationStore,
+            activeProposalStore = activeProposalStore
+        )
+        return results to orchestrator.processUserMessage("default_conversation", "suggest a recipe for dinner")
+    }
+
+    @Test
+    fun vagueIngredient_isSentBackForGeminiToFix() = runTest(testDispatcher) {
+        val (told, result) = offerInTurn(
+            offerArgs("herbs", "Stir in the herbs."),
+            offerArgs("dried oregano", "Stir in the oregano.")
+        )
+
+        assertFalse(told[0].success)
+        assertTrue(told[0].errorMessage!!, told[0].errorMessage!!.contains("'herbs' is too vague"))
+        assertTrue(told[1].success)
+        assertEquals("dried oregano", (result as AiOrchestrationResult.Final).validatedProposal!!.proposal.ingredients.single().displayName)
+    }
+
+    @Test
+    fun vagueIngredient_isNeverAcceptedHoweverOftenItIsOffered() = runTest(testDispatcher) {
+        val (told, _) = offerInTurn(offerArgs("herbs", "Stir in the herbs."), offerArgs("herbs", "Stir in the herbs."))
+
+        assertTrue(told.none { it.success })
+        assertNull(pendingMutationStore.getPendingMutation("default_conversation"))
+    }
+
+    @Test
+    fun ingredientMissingFromTheMethod_keepsTheCardAndTellsGemini() = runTest(testDispatcher) {
+        val (told, result) = offerInTurn(offerArgs("cheddar", "Boil the potatoes."))
+
+        assertTrue(told.single().success)
+        assertTrue(told.single().payloadJson, told.single().payloadJson.contains("not in the method"))
+        assertNotNull((result as AiOrchestrationResult.Final).validatedProposal)
+    }
+
+    @Test
+    fun correctedOfferAfterAQuery_replacesTheCard() = runTest(testDispatcher) {
+        val (_, result) = offerInTurn(
+            offerArgs("cheddar", "Boil the potatoes."),
+            offerArgs("cheddar", "Boil the potatoes, then fold in the cheddar.")
+        )
+
+        val steps = (result as AiOrchestrationResult.Final).validatedProposal!!.proposal.steps
+        assertEquals("Boil the potatoes, then fold in the cheddar.", steps.single().instruction)
+    }
+
+    @Test
+    fun implausibleAmount_isQueried() = runTest(testDispatcher) {
+        val (told, _) = offerInTurn(offerArgs("rice", "Boil the rice.", quantity = 5000))
+
+        assertTrue(told.single().payloadJson, told.single().payloadJson.contains("looks like too much"))
+    }
+
+    @Test
+    fun ingredientNames_matchTheMethodThroughPluralsAndDescriptions() {
+        fun queries(name: String, method: String) = com.example.chatgpt_mealplanner.core.ai.validation.RecipeOfferChecks.queries(
+            com.example.chatgpt_mealplanner.contract.MealProposal(
+                title = "T",
+                ingredients = listOf(com.example.chatgpt_mealplanner.contract.ProposedIngredient(displayName = name, quantity = 1.0, unit = "UNIT")),
+                reasoningSummary = ""
+            ),
+            method
+        )
+
+        assertTrue(queries("tomatoes", "Chop the tomato.").isEmpty())
+        assertTrue(queries("onion", "Fry the onions.").isEmpty())
+        assertTrue(queries("Extra virgin olive oil", "Heat the oil.").isEmpty())
+        assertTrue(queries("water", "Bring to the boil.").isEmpty())
+        assertEquals(1, queries("fresh basil", "Bring to the boil.").size)
+    }
+
+    @Test
+    fun cleanRecipe_isNotQueried() = runTest(testDispatcher) {
+        val (told, _) = offerInTurn(offerArgs("rice", "Boil the rice."))
+
+        assertTrue(told.single().success)
+        assertFalse(told.single().payloadJson, told.single().payloadJson.contains("queries"))
+    }
+
+    @Test
+    fun invalidRecipe_cannotBeSaved() = runTest(testDispatcher) {
+        val validator = RecipeValidator(inventoryDao, mealDao)
+        val proposal = com.example.chatgpt_mealplanner.contract.MealProposal(
+            title = "T",
+            ingredients = listOf(com.example.chatgpt_mealplanner.contract.ProposedIngredient(displayName = "oil", quantity = 10.0, unit = "MILLILITRE")),
+            reasoningSummary = ""
+        )
+
+        assertFalse(validator.validateProposal(proposal).canBeSaved())
+        assertTrue(
+            validator.validateProposal(
+                proposal.copy(ingredients = listOf(proposal.ingredients.single().copy(displayName = "olive oil")))
+            ).canBeSaved()
+        )
+    }
+
+    private val fullOfferArgs = """{"title":"Shakshuka","servings":2,"prepMinutes":10,"cookMinutes":25,"whyThisSuits":"Uses your tomatoes.","equipment":["Deep frying pan"],
+        "ingredients":[{"displayName":"Eggs","quantity":4,"unit":"UNIT"},{"displayName":"Ground cumin","quantity":2,"unit":"GRAM","measure":"1 tsp","substitute":"smoked paprika"},{"displayName":"Coriander","quantity":5,"unit":"GRAM","optional":true}],
+        "steps":[{"instruction":"Fry 1 tsp ground cumin over a medium heat until fragrant.","durationMinutes":2},{"instruction":"Poach the eggs in the sauce until the whites set, then top with coriander.","durationMinutes":8}]}"""
+
+    private suspend fun offeredProposal(pending: Boolean): com.example.chatgpt_mealplanner.contract.ValidatedMealProposal? {
+        val orchestrator = AiMealPlannerOrchestrator(
+            provider = object : MealPlannerAiProvider {
+                override suspend fun send(request: AiProviderRequest) = AiProviderResponse.ToolCalls(
+                    providerContinuationToken = "t",
+                    calls = listOf(AiToolCall("c1", "offer_add_planned_meal", fullOfferArgs))
+                )
+                override suspend fun continueWithToolResults(request: AiContinueWithToolsRequest) =
+                    AiProviderResponse.FinalResponse("Here you go")
+            },
+            contextBuilder = contextBuilder,
+            toolDispatcher = aiToolDispatcher,
+            recipeValidator = RecipeValidator(inventoryDao, mealDao),
+            intentResolver = intentResolver,
+            chatRepository = chatRepository,
+            pendingMutationStore = pendingMutationStore,
+            activeProposalStore = activeProposalStore
+        )
+        val result = orchestrator.processUserMessage("default_conversation", "suggest a recipe for dinner")
+        return if (pending) orchestrator.restorePendingMealProposal("default_conversation")
+        else (result as AiOrchestrationResult.Final).validatedProposal
+    }
+
+    private fun assertFullOfferDetails(proposal: com.example.chatgpt_mealplanner.contract.MealProposal) {
+        assertEquals(35, proposal.totalMinutes())
+        assertEquals("Uses your tomatoes.", proposal.reasoningSummary)
+        assertEquals(listOf("Deep frying pan"), proposal.equipment)
+        assertEquals(listOf(2, 8), proposal.steps.map { it.durationMinutes })
+        val cumin = proposal.ingredients.single { it.displayName == "Ground cumin" }
+        assertEquals("1 tsp", cumin.measure)
+        assertEquals("smoked paprika", cumin.substitute)
+        assertEquals(2.0, cumin.quantity, 0.0)
+        assertEquals("GRAM", cumin.unit)
+        assertTrue(proposal.ingredients.single { it.displayName == "Coriander" }.optional)
+    }
+
+    @Test
+    fun recipeCard_keepsEveryDetailOfTheOffer() = runTest(testDispatcher) {
+        assertFullOfferDetails(offeredProposal(pending = false)!!.proposal)
+    }
+
+    @Test
+    fun recipeDetails_surviveTheAppBeingClosed() = runTest(testDispatcher) {
+        assertFullOfferDetails(offeredProposal(pending = true)!!.proposal)
+    }
+
+    @Test
+    fun recipeCardWithoutATime_doesNotInventOne() {
+        val proposal = com.example.chatgpt_mealplanner.contract.MealProposal(title = "Toast", ingredients = emptyList(), reasoningSummary = "")
+        assertNull(proposal.totalMinutes())
+    }
+
+    @Test
+    fun savedMeal_keepsTimesEquipmentStepsAndSwaps() = runTest(testDispatcher) {
+        assertEquals(
+            """
+            Prep 10 min • Cook 25 min • Equipment: Deep frying pan
+            1. Fry 1 tsp ground cumin over a medium heat until fragrant. (2 min)
+            2. Poach the eggs in the sauce until the whites set, then top with coriander. (8 min)
+            Swap Ground cumin for smoked paprika
+            """.trimIndent(),
+            offeredProposal(pending = false)!!.proposal.savedInstructions()
+        )
+    }
+
+    @Test
+    fun savedMeal_withOnlyStepsLooksTheSameAsBefore() {
+        val proposal = com.example.chatgpt_mealplanner.contract.MealProposal(
+            title = "Toast",
+            ingredients = emptyList(),
+            steps = listOf(com.example.chatgpt_mealplanner.contract.RecipeStep(2, "Butter it"), com.example.chatgpt_mealplanner.contract.RecipeStep(1, "Toast it")),
+            reasoningSummary = ""
+        )
+        assertEquals("1. Toast it\n2. Butter it", proposal.savedInstructions())
+    }
+
+    @Test
+    fun systemPrompt_teachesCookingAndDoesNotForceUkTermsEverywhere() = runTest(testDispatcher) {
+        val sent = mutableListOf<AiProviderRequest>()
+        orchestratorReplying(sent, "You have milk.").processUserMessage("default_conversation", "what is in my fridge?")
+        val prompt = sent.single().systemPrompt
+
+        listOf("RECIPE QUALITY MANDATE", "FOOD SAFETY", "piping hot", "low blood glucose", "strict rule").forEach {
+            assertTrue(it, prompt.contains(it))
+        }
+        assertFalse(prompt.contains("Use plain, specific UK grocery names"))
+    }
+
+    private fun orchestratorReplying(sent: MutableList<AiProviderRequest>, reply: String) = AiMealPlannerOrchestrator(
         provider = object : MealPlannerAiProvider {
             override suspend fun send(request: AiProviderRequest): AiProviderResponse {
                 sent.add(request)

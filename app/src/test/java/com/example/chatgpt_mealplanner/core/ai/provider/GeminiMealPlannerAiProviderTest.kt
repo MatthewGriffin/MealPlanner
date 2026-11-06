@@ -671,6 +671,40 @@ class GeminiMealPlannerAiProviderTest {
     }
 
     @Test
+    fun recipeCardTool_asksForStepsTimesAndKitchenMeasures() = runBlocking {
+        var payload: JsonObject? = null
+        provider.httpCallHandler = { _, p -> payload = p; Pair(200, makeSuccessBody("Done")) }
+
+        provider.send(recipeRequest())
+
+        val declarations = payload!!["tools"]!!.jsonArray[0].jsonObject["functionDeclarations"]!!.jsonArray
+        val offer = declarations.first { it.jsonObject["name"]!!.jsonPrimitive.content == "offer_add_planned_meal" }.jsonObject["parameters"]!!.jsonObject
+        val properties = offer["properties"]!!.jsonObject
+        listOf("steps", "prepMinutes", "cookMinutes", "equipment", "whyThisSuits").forEach { assertTrue(it, properties.containsKey(it)) }
+        assertFalse(properties.containsKey("instructions"))
+        assertTrue(offer["required"].toString().contains("steps"))
+        val ingredient = properties["ingredients"]!!.jsonObject["items"]!!.jsonObject["properties"]!!.jsonObject
+        listOf("measure", "optional", "substitute").forEach { assertTrue(it, ingredient.containsKey(it)) }
+        assertFalse(ingredient["unit"].toString().contains("ITEM"))
+    }
+
+    @Test
+    fun mealPlanJson_keepsTimesMeasuresAndStepLengths() {
+        val plan = """[
+            {"title":"Pasta","suggestedDate":"2026-11-06","mealType":"DINNER","servings":2,"prepMinutes":5,"cookMinutes":15,"whyThisSuits":"Quick.","ingredients":[{"displayName":"Oregano","quantity":1,"unit":"GRAM","measure":"1 tsp","substitute":"basil"}],"steps":[{"order":1,"instruction":"Boil","durationMinutes":10}]},
+            {"title":"Curry","suggestedDate":"2026-11-07","mealType":"DINNER","servings":2,"ingredients":[{"displayName":"Rice","quantity":200,"unit":"GRAM"}],"steps":[{"order":1,"instruction":"Simmer"}]}
+        ]"""
+
+        val first = (finalReplyFor("Your week\nMEAL_PLAN_JSON: $plan") as AiProviderResponse.FinalResponse).mealPlan!!.first()
+
+        assertEquals(20, first.totalMinutes())
+        assertEquals("Quick.", first.reasoningSummary)
+        assertEquals("1 tsp", first.ingredients.single().measure)
+        assertEquals("basil", first.ingredients.single().substitute)
+        assertEquals(10, first.steps.single().durationMinutes)
+    }
+
+        @Test
     fun twoConversations_doNotShareToolCallState() = runBlocking {
         val payloads = mutableListOf<JsonObject>()
         provider.httpCallHandler = { _, payload ->

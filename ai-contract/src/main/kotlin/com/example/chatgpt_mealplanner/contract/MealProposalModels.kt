@@ -26,7 +26,10 @@ data class ProposedIngredient(
     val quantity: Double,
     val unit: String,
     val optional: Boolean = false,
-    val substitutionAllowed: Boolean = true
+    val substitutionAllowed: Boolean = true,
+    /** What the cook measures, such as "1 tsp". Quantity stays in units the shopping maths can use. */
+    val measure: String? = null,
+    val substitute: String? = null
 )
 
 @Serializable
@@ -51,10 +54,34 @@ data class MealProposal(
     val ingredients: List<ProposedIngredient>,
     val steps: List<RecipeStep> = emptyList(),
     val estimatedMinutes: Int? = null,
+    val prepMinutes: Int? = null,
+    val cookMinutes: Int? = null,
+    val equipment: List<String> = emptyList(),
     val mealGoal: MealGoal? = null,
     val reasoningSummary: String,
     val changeSummary: String? = null
-)
+) {
+    /** Null when the recipe gave no time, so a card never shows an invented one. */
+    fun totalMinutes(): Int? =
+        estimatedMinutes ?: listOfNotNull(prepMinutes, cookMinutes).takeIf { it.isNotEmpty() }?.sum()
+
+    fun methodLines(): List<String> = steps.sortedBy { it.order }.map { step ->
+        "${step.order}. ${step.instruction}" + (step.durationMinutes?.let { " ($it min)" } ?: "")
+    }
+
+    /** Planned meals keep one block of text, so the details that have no column of their own go in it. */
+    fun savedInstructions(): String {
+        val summary = listOfNotNull(
+            prepMinutes?.let { "Prep $it min" },
+            cookMinutes?.let { "Cook $it min" },
+            equipment.takeIf { it.isNotEmpty() }?.let { "Equipment: ${it.joinToString(", ")}" }
+        ).joinToString(" • ")
+        val swaps = ingredients.mapNotNull { ingredient ->
+            ingredient.substitute?.takeIf { it.isNotBlank() }?.let { "Swap ${ingredient.displayName} for $it" }
+        }
+        return (listOfNotNull(summary.ifBlank { null }) + methodLines() + swaps).joinToString("\n")
+    }
+}
 
 @Serializable
 data class ValidatedProposedIngredient(
@@ -72,7 +99,9 @@ data class ValidatedMealProposal(
     val status: RecipeValidationStatus,
     val issues: List<String> = emptyList(),
     val warnings: List<String> = emptyList()
-)
+) {
+    fun canBeSaved(): Boolean = status != RecipeValidationStatus.INVALID
+}
 
 @Serializable
 sealed interface AiProposedAction {

@@ -50,7 +50,7 @@ fun MealProposalCard(
             Spacer(modifier = Modifier.height(4.dp))
 
             Text(
-                text = "Servings: ${proposal.servings} • Est. Time: ${proposal.estimatedMinutes ?: 20} mins",
+                text = "Servings: ${proposal.servings}" + (proposal.totalMinutes()?.let { " • About $it mins" } ?: ""),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onPrimaryContainer
             )
@@ -78,12 +78,14 @@ fun MealProposalCard(
             )
             Spacer(modifier = Modifier.height(8.dp))
 
-            Text(
-                text = "Reasoning: ${proposal.reasoningSummary}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onPrimaryContainer
-            )
-            Spacer(modifier = Modifier.height(12.dp))
+            proposal.reasoningSummary.takeIf { it.isNotBlank() }?.let { why ->
+                Text(
+                    text = "Why this suits you: $why",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+            }
 
             Text(
                 text = "Ingredients Pantry Status:",
@@ -106,7 +108,7 @@ fun MealProposalCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "• ${valIng.ingredient.displayName} (${valIng.ingredient.quantity} ${valIng.ingredient.unit})",
+                        text = valIng.ingredient.cardLine(),
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.weight(1f),
                         color = MaterialTheme.colorScheme.onPrimaryContainer
@@ -125,6 +127,46 @@ fun MealProposalCard(
                 }
             }
 
+            if (proposal.equipment.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "You'll need: ${proposal.equipment.joinToString(", ")}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            }
+
+            if (proposal.steps.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "Method:",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                proposal.methodLines().forEach { line ->
+                    Text(
+                        text = line,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                }
+            }
+
+            if (validatedProposal.issues.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                validatedProposal.issues.forEach { issue ->
+                    Text(
+                        text = "Can't save yet: $issue",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+
             if (validatedProposal.warnings.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(8.dp))
                 validatedProposal.warnings.forEach { warning ->
@@ -139,11 +181,18 @@ fun MealProposalCard(
             Spacer(modifier = Modifier.height(16.dp))
             Button(
                 onClick = { onSaveToPlan(proposal) },
-                enabled = !isSaving,
+                enabled = !isSaving && validatedProposal.canBeSaved(),
                 modifier = Modifier.align(Alignment.End)
             ) {
                 Text(if (isSaving) "Saving…" else "Save to Plan")
             }
         }
     }
+}
+
+private fun com.example.chatgpt_mealplanner.contract.ProposedIngredient.cardLine(): String {
+    val amount = listOfNotNull(measure, "$quantity ${unit.lowercase()}").joinToString(", ")
+    val optionalNote = if (optional) ", optional" else ""
+    val swap = substitute?.let { " or $it" }.orEmpty()
+    return "• $displayName ($amount$optionalNote)$swap"
 }
