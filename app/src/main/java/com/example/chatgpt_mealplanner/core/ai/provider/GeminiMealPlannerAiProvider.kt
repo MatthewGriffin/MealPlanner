@@ -543,7 +543,8 @@ class GeminiMealPlannerAiProvider @Inject constructor(
         return if (toolCalls.isNotEmpty()) {
             AiProviderResponse.ToolCalls(
                 providerContinuationToken = conversationId,
-                calls = toolCalls
+                calls = toolCalls,
+                modelId = currentModel
             )
         } else if (textResponse.isNotBlank()) {
             val mealPlan = extractMealPlanFromText(textResponse)

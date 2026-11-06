@@ -1043,6 +1043,60 @@ private val milkAllergyAndNoCoriander = com.example.chatgpt_mealplanner.contract
         return results to orchestrator.processUserMessage("default_conversation", "suggest a recipe for dinner")
     }
 
+    private suspend fun requestsForOffers(userMessage: String, vararg offers: String): Int {
+        var requests = 0
+        var next = 0
+        val orchestrator = AiMealPlannerOrchestrator(
+            provider = object : MealPlannerAiProvider {
+                private fun reply(): AiProviderResponse {
+                    requests++
+                    return if (next < offers.size) {
+                        AiProviderResponse.ToolCalls("t", listOf(AiToolCall("c$next", "offer_add_planned_meal", offers[next++])), modelId = "test-model")
+                    } else {
+                        AiProviderResponse.FinalResponse(text = "Here you go", modelId = "test-model")
+                    }
+                }
+                override suspend fun send(request: AiProviderRequest) = reply()
+                override suspend fun continueWithToolResults(request: AiContinueWithToolsRequest) = reply()
+            },
+            contextBuilder = contextBuilder,
+            toolDispatcher = aiToolDispatcher,
+            recipeValidator = RecipeValidator(inventoryDao, mealDao),
+            intentResolver = intentResolver,
+            chatRepository = chatRepository,
+            pendingMutationStore = pendingMutationStore,
+            activeProposalStore = activeProposalStore
+        )
+        val result = orchestrator.processUserMessage("default_conversation", userMessage) as AiOrchestrationResult.Final
+        assertNotNull(result.validatedProposal)
+        assertEquals("test-model", result.modelId)
+        return requests
+    }
+
+    @Test
+    fun cleanRecipe_takesOneRequest() = runTest(testDispatcher) {
+        assertEquals(1, requestsForOffers("suggest a recipe for dinner", offerArgs("rice", "Boil the rice.")))
+    }
+
+    @Test
+    fun queriedRecipe_getsOneCorrectionThenTheCardStands() = runTest(testDispatcher) {
+        val queried = offerArgs("rice", "Boil the rice in salted water.")
+
+        assertEquals(2, requestsForOffers("suggest a recipe for dinner", queried, offerArgs("rice", "Boil the rice.")))
+    }
+
+    @Test
+    fun recipeStillQueriedAfterItsCorrection_isAcceptedWithoutMoreRequests() = runTest(testDispatcher) {
+        val queried = offerArgs("rice", "Boil the rice in salted water.")
+
+        assertEquals(2, requestsForOffers("suggest a recipe for dinner", queried, queried, queried))
+    }
+
+    @Test
+    fun replacementMeal_stillAsksForTheChangeSummary() = runTest(testDispatcher) {
+        assertEquals(2, requestsForOffers("Prepare a replacement recipe for this meal-change request", offerArgs("rice", "Boil the rice.")))
+    }
+
     @Test
     fun vagueIngredient_isSentBackForGeminiToFix() = runTest(testDispatcher) {
         val (told, result) = offerInTurn(
@@ -1050,9 +1104,8 @@ private val milkAllergyAndNoCoriander = com.example.chatgpt_mealplanner.contract
             offerArgs("dried oregano", "Stir in the oregano.")
         )
 
-        assertFalse(told[0].success)
-        assertTrue(told[0].errorMessage!!, told[0].errorMessage!!.contains("'herbs' is too vague"))
-        assertTrue(told[1].success)
+        assertFalse(told.single().success)
+        assertTrue(told.single().errorMessage!!, told.single().errorMessage!!.contains("'herbs' is too vague"))
         assertEquals("dried oregano", (result as AiOrchestrationResult.Final).validatedProposal!!.proposal.ingredients.single().displayName)
     }
 
@@ -1111,10 +1164,14 @@ private val milkAllergyAndNoCoriander = com.example.chatgpt_mealplanner.contract
 
     @Test
     fun cleanRecipe_isNotQueried() = runTest(testDispatcher) {
-        val (told, _) = offerInTurn(offerArgs("rice", "Boil the rice."))
+        val result = aiToolDispatcher.executeToolCall(
+            "default_conversation",
+            ActionAuthorizationContext("m1"),
+            AiToolCall("c1", "offer_add_planned_meal", offerArgs("rice", "Boil the rice."))
+        )
 
-        assertTrue(told.single().success)
-        assertFalse(told.single().payloadJson, told.single().payloadJson.contains("queries"))
+        assertTrue(result.success)
+        assertFalse(result.payloadJson, result.payloadJson.contains("queries"))
     }
 
     @Test

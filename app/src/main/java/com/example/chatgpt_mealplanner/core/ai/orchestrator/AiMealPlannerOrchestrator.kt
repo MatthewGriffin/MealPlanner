@@ -42,6 +42,9 @@ class AiMealPlannerOrchestrator @Inject constructor(
 ) {
     companion object {
         const val MAX_TOOL_ROUNDS = 8
+
+        /** Gemini gets one chance to correct a queried recipe, then the card stands. */
+        const val MAX_RECIPE_OFFERS = 2
     }
 
     suspend fun processUserMessage(
@@ -223,6 +226,7 @@ class AiMealPlannerOrchestrator @Inject constructor(
         var requestedWritesCount = 0
         var successfulWritesCount = 0
         var failedWritesCount = 0
+        var acceptedOffers = 0
 
         while (providerResponse is AiProviderResponse.ToolCalls) {
             val maxRoundsForRequest = if (mealPlanRequest) 2 else MAX_TOOL_ROUNDS
@@ -275,6 +279,21 @@ class AiMealPlannerOrchestrator @Inject constructor(
                 }
 
                 safeLog("[AI_TOOL_EXECUTION] tool=${call.toolName} executionClass=$executionClass authorized=${res.errorCode != "UNAUTHORIZED"} success=${res.success} mutationCommitted=$isWriteCommitted")
+            }
+
+            val offerResult = toolResults.singleOrNull()?.takeIf { it.toolName == AiToolId.OFFER_ADD_PLANNED_MEAL.toolName && it.success }
+            if (offerResult != null) {
+                acceptedOffers++
+                // The card replaces any text that follows, so asking for it would only spend the
+                // user's limited requests. A replacement meal still needs it for its change summary.
+                val nothingToFix = !offerResult.payloadJson.contains("queries") || acceptedOffers >= MAX_RECIPE_OFFERS
+                if (nothingToFix && !isReplacementRequest(userMessageText)) {
+                    providerResponse = AiProviderResponse.FinalResponse(
+                        text = "",
+                        modelId = (providerResponse as AiProviderResponse.ToolCalls).modelId
+                    )
+                    break
+                }
             }
 
             safeLog("[AI_WRITE_SUMMARY] requestedWrites=$requestedWritesCount successfulWrites=$successfulWritesCount failedWrites=$failedWritesCount plannerMutationCommitted=$plannerMutationCommitted shoppingMutationCommitted=$shoppingMutationCommitted")
@@ -415,8 +434,7 @@ class AiMealPlannerOrchestrator @Inject constructor(
                     // The displayed recipe is formatted from this pending snapshot. Build the
                     // card and Save action from that same source so wording cannot drift between
                     // what the user reviewed and what is persisted.
-                    val replacementRequest = userMessageText.contains("replacement recipe", ignoreCase = true) ||
-                        userMessageText.contains("meal-change request", ignoreCase = true)
+                    val replacementRequest = isReplacementRequest(userMessageText)
                     val modelChangeSummary = finalRes.proposal?.changeSummary?.takeIf { it.isNotBlank() }
                         ?: if (replacementRequest) {
                             finalRes.text.lineSequence()
@@ -1008,9 +1026,13 @@ class AiMealPlannerOrchestrator @Inject constructor(
         return asksForNewRecipe(userMessageText) && !isClarifyingQuestion(replyText)
     }
 
+    private fun isReplacementRequest(userMessageText: String): Boolean =
+        userMessageText.contains("replacement recipe", ignoreCase = true) ||
+            userMessageText.contains("meal-change request", ignoreCase = true)
+
     private fun asksForNewRecipe(userMessageText: String): Boolean {
         val lower = intentTextWithoutNegatedGenerationInstructions(userMessageText)
-        if (lower.contains("replacement recipe") || lower.contains("meal-change request")) return true
+        if (isReplacementRequest(userMessageText)) return true
         if (recipeAboutExisting.containsMatchIn(lower)) return false
         return recipeRequest.containsMatchIn(lower) || whatToCook.containsMatchIn(lower)
     }
