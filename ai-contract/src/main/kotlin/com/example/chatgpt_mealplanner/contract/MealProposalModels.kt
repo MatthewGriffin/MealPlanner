@@ -99,7 +99,9 @@ data class ValidatedMealProposal(
     val status: RecipeValidationStatus,
     val issues: List<String> = emptyList(),
     val warnings: List<String> = emptyList()
-)
+) {
+    fun canBeSaved(): Boolean = status != RecipeValidationStatus.INVALID
+}
 
 @Serializable
 sealed interface AiProposedAction {

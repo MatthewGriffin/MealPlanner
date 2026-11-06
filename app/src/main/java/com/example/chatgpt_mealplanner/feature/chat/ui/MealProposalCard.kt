@@ -155,6 +155,18 @@ fun MealProposalCard(
                 }
             }
 
+            if (validatedProposal.issues.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                validatedProposal.issues.forEach { issue ->
+                    Text(
+                        text = "Can't save yet: $issue",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+
             if (validatedProposal.warnings.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(8.dp))
                 validatedProposal.warnings.forEach { warning ->
@@ -169,7 +181,7 @@ fun MealProposalCard(
             Spacer(modifier = Modifier.height(16.dp))
             Button(
                 onClick = { onSaveToPlan(proposal) },
-                enabled = !isSaving,
+                enabled = !isSaving && validatedProposal.canBeSaved(),
                 modifier = Modifier.align(Alignment.End)
             ) {
                 Text(if (isSaving) "Saving…" else "Save to Plan")

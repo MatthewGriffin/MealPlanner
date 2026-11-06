@@ -608,6 +608,14 @@ class AiToolDispatcher @Inject constructor(
             equipment = parseStringArray(argsJson, "equipment"),
             reasoningSummary = extractStringArg(argsJson, "whyThisSuits").orEmpty()
         )
+
+        val checks = com.example.chatgpt_mealplanner.core.ai.validation.RecipeOfferChecks
+        val problems = checks.problems(proposal)
+        if (problems.isNotEmpty()) {
+            logDiagnostic("OFFER_CAPTURE", "conversationId=\"$conversationId\" stored=false reason=\"OFFER_NEEDS_CHANGES\"")
+            return DomainResult.Failure(DomainError.TransactionFailed("OFFER_NEEDS_CHANGES: ${problems.joinToString(" ")} Call offer_add_planned_meal again with these fixed."))
+        }
+        val queries = checks.queries(proposal, instructionsStr)
         activeProposalStore.setActiveProposal(conversationId, proposal)
         logDiagnostic("PROPOSAL_CAPTURE", "conversationId=\"$conversationId\" title=\"${proposal.title}\" mealType=\"${proposal.mealType}\" suggestedDate=\"${proposal.suggestedDate}\" ingredientCount=${proposal.ingredients.size} stored=true")
 
@@ -632,6 +640,10 @@ class AiToolDispatcher @Inject constructor(
             put("mealType", mealType.name)
             put("servings", servings)
             put("ingredientCount", parsedIngs.size)
+            if (queries.isNotEmpty()) {
+                put("queries", queries.joinToString(" "))
+                put("nextStep", "The card has been created. If a query is a real mistake, call offer_add_planned_meal again with the corrected recipe to replace it.")
+            }
         }.toString()
 
         return DomainResult.Success(AiToolPayload.TextPayload(payload))

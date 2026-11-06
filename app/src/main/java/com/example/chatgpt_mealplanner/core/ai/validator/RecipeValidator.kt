@@ -47,18 +47,7 @@ class RecipeValidator @Inject constructor(
 
         proposal.ingredients.forEach { ing ->
             val parsedUnit = parseQuantityUnit(ing.unit)
-            val normalizedIngredientName = ing.displayName
-                .lowercase()
-                .replace(Regex("[^a-z0-9]+"), " ")
-                .trim()
-                .replace(Regex("\\s+"), " ")
-            val vagueIngredientNames = setOf(
-                "herb", "herbs", "spice", "spices", "seasoning", "seasonings",
-                "vegetable", "vegetables", "greens", "meat", "protein",
-                "sauce", "oil", "garnish", "garnishes", "toppings",
-                "herbs to taste", "spices to taste", "seasoning to taste"
-            )
-            if (normalizedIngredientName in vagueIngredientNames) {
+            if (com.example.chatgpt_mealplanner.core.ai.validation.RecipeOfferChecks.isVague(ing.displayName)) {
                 issues.add("Ingredient '${ing.displayName}' is too vague to shop for. Name the specific ingredient or blend.")
             }
             if (ing.quantity <= 0.0) {
