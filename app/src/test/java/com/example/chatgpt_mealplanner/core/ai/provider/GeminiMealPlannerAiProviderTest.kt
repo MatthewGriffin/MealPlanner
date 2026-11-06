@@ -19,6 +19,7 @@ import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.putJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
@@ -480,6 +481,209 @@ class GeminiMealPlannerAiProviderTest {
         val lastContent = contents.last().jsonObject
         assertTrue(lastContent.toString().contains("functionResponse"))
         assertTrue(lastContent.toString().contains("delete_inventory_item"))
+    }
+
+    private val toolCallBody = """
+        {"candidates":[{"content":{"role":"model","parts":[
+          {"functionCall":{"name":"get_usable_inventory","args":{}}}
+        ]}}]}
+    """.trimIndent()
+
+    private fun recipeRequest(conversationId: String = "conv1", forcedTool: String? = null) = AiProviderRequest(
+        conversationId = conversationId,
+        systemPrompt = "RULES_$conversationId",
+        contextPayloadJson = "{}",
+        contextPayload = AiContextPayload(),
+        messages = listOf(AiChatMessage("user", "dinner?")),
+        availableTools = listOf(AiToolId.GET_USABLE_INVENTORY, AiToolId.OFFER_ADD_PLANNED_MEAL),
+        forcedToolName = forcedTool
+    )
+
+    private fun inventoryResult(conversationId: String = "conv1", allowMoreToolCalls: Boolean = true) = AiContinueWithToolsRequest(
+        conversationId = conversationId,
+        providerContinuationToken = conversationId,
+        toolResults = listOf(
+            AiToolResult(toolCallId = "c1", toolName = "get_usable_inventory", success = true, payloadJson = "{}")
+        ),
+        allowMoreToolCalls = allowMoreToolCalls
+    )
+
+    @Test
+    fun followUpAfterToolCall_keepsTheRulesContextAndTools() = runBlocking {
+        val payloads = mutableListOf<JsonObject>()
+        provider.httpCallHandler = { _, payload ->
+            payloads.add(payload)
+            Pair(200, if (payloads.size == 1) toolCallBody else makeSuccessBody("Done"))
+        }
+
+        provider.send(recipeRequest())
+        provider.continueWithToolResults(inventoryResult())
+
+        assertEquals(payloads[0]["systemInstruction"], payloads[1]["systemInstruction"])
+        assertEquals(payloads[0]["tools"], payloads[1]["tools"])
+        assertTrue(payloads[1]["tools"].toString().contains("offer_add_planned_meal"))
+        assertFalse(payloads[1].containsKey("toolConfig"))
+    }
+
+    @Test
+    fun followUpAfterForcedToolCall_doesNotForceTheToolAgain() = runBlocking {
+        val payloads = mutableListOf<JsonObject>()
+        provider.httpCallHandler = { _, payload ->
+            payloads.add(payload)
+            Pair(200, if (payloads.size == 1) toolCallBody else makeSuccessBody("Done"))
+        }
+
+        provider.send(recipeRequest(forcedTool = "offer_add_planned_meal"))
+        provider.continueWithToolResults(inventoryResult())
+
+        assertTrue(payloads[0].containsKey("toolConfig"))
+        assertFalse(payloads[1].containsKey("toolConfig"))
+    }
+
+    @Test
+    fun lastAllowedRound_tellsTheModelToAnswerInText() = runBlocking {
+        val payloads = mutableListOf<JsonObject>()
+        provider.httpCallHandler = { _, payload ->
+            payloads.add(payload)
+            Pair(200, if (payloads.size == 1) toolCallBody else makeSuccessBody("Done"))
+        }
+
+        provider.send(recipeRequest())
+        provider.continueWithToolResults(inventoryResult(allowMoreToolCalls = false))
+
+        assertEquals("NONE", payloads[1]["toolConfig"]!!.jsonObject["functionCallingConfig"]!!.jsonObject["mode"]!!.jsonPrimitive.content)
+        assertTrue(payloads[1].containsKey("tools"))
+    }
+
+    @Test
+    fun toolCallsMadeTogether_areAnsweredInOneMessage() = runBlocking {
+        val payloads = mutableListOf<JsonObject>()
+        provider.httpCallHandler = { _, payload ->
+            payloads.add(payload)
+            Pair(200, if (payloads.size == 1) toolCallBody else makeSuccessBody("Done"))
+        }
+
+        provider.send(recipeRequest())
+        provider.continueWithToolResults(
+            inventoryResult().copy(
+                toolResults = listOf(
+                    AiToolResult(toolCallId = "c1", toolName = "get_usable_inventory", success = true, payloadJson = "{}"),
+                    AiToolResult(toolCallId = "c2", toolName = "get_use_soon_items", success = true, payloadJson = "{}")
+                )
+            )
+        )
+
+        val contents = payloads[1]["contents"]!!.jsonArray
+        val answer = contents.last().jsonObject
+        assertEquals("model", contents[contents.size - 2].jsonObject["role"]!!.jsonPrimitive.content)
+        assertEquals("user", answer["role"]!!.jsonPrimitive.content)
+        assertEquals(2, answer["parts"]!!.jsonArray.size)
+    }
+
+    private fun candidateBody(finishReason: String, text: String) = buildJsonObject {
+        putJsonArray("candidates") {
+            add(buildJsonObject {
+                put("finishReason", finishReason)
+                putJsonObject("content") {
+                    put("role", "model")
+                    putJsonArray("parts") { add(buildJsonObject { put("text", text) }) }
+                }
+            })
+        }
+    }.toString()
+
+    private fun errorCodeFor(body: String): String? {
+        provider.httpCallHandler = { _, _ -> Pair(200, body) }
+        return (runBlocking { provider.send(recipeRequest()) } as? AiProviderResponse.Error)?.code
+    }
+
+    @Test
+    fun cutOffReply_isRefusedInsteadOfShownAsFinished() {
+        assertEquals("RESPONSE_TRUNCATED", errorCodeFor(candidateBody("MAX_TOKENS", "Here is half a rec")))
+    }
+
+    @Test
+    fun blockedReplies_sayWhatHappened() {
+        assertEquals("RESPONSE_BLOCKED", errorCodeFor(candidateBody("SAFETY", "text")))
+        assertEquals("RESPONSE_BLOCKED", errorCodeFor(candidateBody("SOME_NEW_REASON", "text")))
+        assertEquals("RESPONSE_BLOCKED", errorCodeFor("""{"promptFeedback":{"blockReason":"SAFETY"}}"""))
+    }
+
+    @Test
+    fun malformedToolCall_isRetriedThenFallsBack() = runBlocking {
+        val models = mutableListOf<String>()
+        provider.httpCallHandler = { url, _ ->
+            models.add(url.substringAfter("/models/").substringBefore(":"))
+            Pair(200, if (models.size < 3) candidateBody("MALFORMED_FUNCTION_CALL", "") else makeSuccessBody("Fine"))
+        }
+
+        val response = provider.send(recipeRequest())
+
+        assertEquals(GEMINI_SECONDARY_MODEL, models.last())
+        assertTrue(response is AiProviderResponse.FinalResponse)
+    }
+
+    @Test
+    fun normallyFinishedReply_isAccepted() {
+        assertEquals(null, errorCodeFor(candidateBody("STOP", "Dinner idea")))
+    }
+
+    private fun finalReplyFor(text: String): AiProviderResponse {
+        provider.httpCallHandler = { _, _ -> Pair(200, candidateBody("STOP", text)) }
+        return runBlocking { provider.send(recipeRequest()) }
+    }
+
+    private val validPlanJson = """[
+        {"title":"Pasta","suggestedDate":"2026-11-06","mealType":"DINNER","servings":2,"ingredients":[{"displayName":"Penne","quantity":200,"unit":"GRAM"}],"steps":[{"order":1,"instruction":"Boil"}]},
+        {"title":"Curry","suggestedDate":"2026-11-07","mealType":"DINNER","servings":2,"ingredients":[{"displayName":"Rice","quantity":200,"unit":"GRAM"}],"steps":[{"order":1,"instruction":"Simmer"}]}
+    ]"""
+
+    @Test
+    fun unreadableMealPlanJson_isNeverShownToTheUser() {
+        val response = finalReplyFor("Your week:\nMonday: Pasta\nMEAL_PLAN_JSON: [{\"title\":\"Pasta")
+
+        val final = response as AiProviderResponse.FinalResponse
+        assertEquals("Your week:\nMonday: Pasta", final.text)
+        assertEquals(null, final.mealPlan)
+    }
+
+    @Test
+    fun replyThatIsOnlyUnreadableMealPlanJson_isAnError() {
+        val response = finalReplyFor("MEAL_PLAN_JSON: [{\"title\":\"Pasta")
+
+        assertEquals("RESPONSE_INVALID", (response as AiProviderResponse.Error).code)
+    }
+
+    @Test
+    fun mealPlanJsonInACodeFence_isStillRead() {
+        val response = finalReplyFor("Your week\nMEAL_PLAN_JSON:\n```json\n$validPlanJson\n```")
+
+        val final = response as AiProviderResponse.FinalResponse
+        assertEquals(listOf("Pasta", "Curry"), final.mealPlan?.map { it.title })
+        assertEquals("Your week", final.text)
+    }
+
+    @Test
+    fun boldWordsInAReply_areNotARecipe() {
+        val response = finalReplyFor("You have **milk** and **eggs** in the fridge.")
+
+        assertEquals(null, (response as AiProviderResponse.FinalResponse).proposal)
+    }
+
+    @Test
+    fun twoConversations_doNotShareToolCallState() = runBlocking {
+        val payloads = mutableListOf<JsonObject>()
+        provider.httpCallHandler = { _, payload ->
+            payloads.add(payload)
+            Pair(200, if (payloads.size <= 2) toolCallBody else makeSuccessBody("Done"))
+        }
+
+        provider.send(recipeRequest("first"))
+        provider.send(recipeRequest("second"))
+        provider.continueWithToolResults(inventoryResult("first"))
+
+        assertTrue(payloads[2]["systemInstruction"].toString().contains("RULES_first"))
+        assertFalse(payloads[2]["systemInstruction"].toString().contains("RULES_second"))
     }
 
     @Test

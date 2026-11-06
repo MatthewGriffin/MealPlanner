@@ -37,6 +37,7 @@ import java.net.InetAddress
 import java.net.SocketTimeoutException
 import java.net.URL
 import java.net.UnknownHostException
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 import javax.net.ssl.SSLHandshakeException
@@ -45,6 +46,9 @@ const val GEMINI_PRIMARY_MODEL = "gemini-3.6-flash"
 const val GEMINI_SECONDARY_MODEL = "gemini-3.5-flash-lite"
 const val GEMINI_MODEL_ID = GEMINI_PRIMARY_MODEL
 const val GLOBAL_TIMEOUT_CAP_MS = 120_000L
+private const val MEAL_PLAN_MARKER = "MEAL_PLAN_JSON:"
+private const val BLOCKED_MESSAGE = "Gemini declined to answer this. Please try rewording your request."
+private const val INVALID_MESSAGE = "Gemini returned a reply the app couldn't use. Please tap Retry."
 
 val GEMINI_MODEL_CHAIN = listOf(
     GEMINI_PRIMARY_MODEL,
@@ -80,12 +84,17 @@ class GeminiMealPlannerAiProvider @Inject constructor(
 
     private val json = Json { ignoreUnknownKeys = true }
 
+    /**
+     * generateContent keeps nothing between requests, so a follow-up after a tool call has to
+     * resend the rules, context and tools as well as the history.
+     */
     private data class GeminiContinuationState(
-        val conversationId: String,
-        val historyContents: JsonArray
+        val historyContents: JsonArray,
+        val systemInstruction: JsonObject? = null,
+        val tools: JsonArray? = null
     )
 
-    private var activeContinuationState: GeminiContinuationState? = null
+    private val continuationStates = ConcurrentHashMap<String, GeminiContinuationState>()
 
     override suspend fun testConnection(): AiProviderResponse = withContext(ioDispatcher) {
         val activeKey = getEffectiveApiKey()
@@ -168,16 +177,19 @@ class GeminiMealPlannerAiProvider @Inject constructor(
             }
         } else null
 
+        val systemInstruction = buildJsonObject {
+            putJsonArray("parts") {
+                add(buildJsonObject {
+                    put("text", "${request.systemPrompt}\n\nContext:\n${request.contextPayloadJson}")
+                })
+            }
+        }
+        continuationStates[request.conversationId] = GeminiContinuationState(contentsArray, systemInstruction, toolsArray)
+
         val payloadBuilder = { _: String ->
             buildJsonObject {
                 put("contents", contentsArray)
-                put("systemInstruction", buildJsonObject {
-                    putJsonArray("parts") {
-                        add(buildJsonObject {
-                            put("text", "${request.systemPrompt}\n\nContext:\n${request.contextPayloadJson}")
-                        })
-                    }
-                })
+                put("systemInstruction", systemInstruction)
                 if (toolsArray != null) {
                     put("tools", toolsArray)
                 }
@@ -209,15 +221,17 @@ class GeminiMealPlannerAiProvider @Inject constructor(
             return@withContext AiProviderResponse.Error("NO_API_KEY", "No Gemini API key supplied.")
         }
 
-        val lastHistory = activeContinuationState?.historyContents ?: buildJsonArray {}
+        val state = continuationStates[request.conversationId]
+        val lastHistory = state?.historyContents ?: buildJsonArray {}
 
         val newHistory = buildJsonArray {
             lastHistory.forEach { add(it) }
 
-            request.toolResults.forEach { res ->
-                add(buildJsonObject {
-                    put("role", "user")
-                    putJsonArray("parts") {
+            // Tool calls made together are answered together, in one message.
+            add(buildJsonObject {
+                put("role", "user")
+                putJsonArray("parts") {
+                    request.toolResults.forEach { res ->
                         add(buildJsonObject {
                             putJsonObject("functionResponse") {
                                 put("name", res.toolName)
@@ -231,13 +245,22 @@ class GeminiMealPlannerAiProvider @Inject constructor(
                             }
                         })
                     }
-                })
-            }
+                }
+            })
         }
 
         val payloadBuilder = { _: String ->
             buildJsonObject {
                 put("contents", newHistory)
+                state?.systemInstruction?.let { put("systemInstruction", it) }
+                state?.tools?.let { tools ->
+                    put("tools", tools)
+                    if (!request.allowMoreToolCalls) {
+                        putJsonObject("toolConfig") {
+                            putJsonObject("functionCallingConfig") { put("mode", "NONE") }
+                        }
+                    }
+                }
             }
         }
 
@@ -297,7 +320,7 @@ class GeminiMealPlannerAiProvider @Inject constructor(
 
                 val isQuota = errCode == "HTTP_429" || errCode == "API_QUOTA_EXCEEDED"
                 val isCapacity = errCode == "HTTP_503" || errCode == "GEMINI_BUSY"
-                val isRetryableTransient = errCode == "HTTP_502" || errCode == "HTTP_504" || errCode == "HTTP_500" || errCode == "READ_TIMEOUT" || errCode == "CONNECT_TIMEOUT"
+                val isRetryableTransient = errCode == "RESPONSE_INVALID" || errCode == "HTTP_502" || errCode == "HTTP_504" || errCode == "HTTP_500" || errCode == "READ_TIMEOUT" || errCode == "CONNECT_TIMEOUT"
                 val isModelSpecific404 = errCode == "HTTP_404" && (
                     response.message.contains("is not found", ignoreCase = true) ||
                     response.message.contains("not supported for generateContent", ignoreCase = true) ||
@@ -465,10 +488,14 @@ class GeminiMealPlannerAiProvider @Inject constructor(
         val candidates = responseObj["candidates"]?.jsonArray
 
         if (candidates.isNullOrEmpty()) {
+            if (responseObj["promptFeedback"]?.jsonObject?.containsKey("blockReason") == true) {
+                return AiProviderResponse.Error("RESPONSE_BLOCKED", BLOCKED_MESSAGE)
+            }
             return AiProviderResponse.Error("EMPTY_RESPONSE", "No response candidates returned from Gemini API.")
         }
 
         val firstCandidate = candidates.first().jsonObject
+        unusableFinish(firstCandidate["finishReason"]?.jsonPrimitive?.content)?.let { return it }
         val contentObj = firstCandidate["content"]?.jsonObject
         val partsArray = contentObj?.get("parts")?.jsonArray
 
@@ -502,7 +529,12 @@ class GeminiMealPlannerAiProvider @Inject constructor(
                 historyContents.forEach { add(it) }
                 add(contentObj)
             }
-            activeContinuationState = GeminiContinuationState(conversationId, nextHistory)
+            val state = continuationStates[conversationId] ?: GeminiContinuationState(nextHistory)
+            if (toolCalls.isEmpty()) {
+                continuationStates.remove(conversationId)
+            } else {
+                continuationStates[conversationId] = state.copy(historyContents = nextHistory)
+            }
         }
 
         safeLog("[GEMINI_HTTP] phase=request_complete, toolCallsCount=${toolCalls.size}, textLength=${textResponse.length}, elapsedMs=${System.currentTimeMillis() - startTime}")
@@ -514,7 +546,11 @@ class GeminiMealPlannerAiProvider @Inject constructor(
             )
         } else if (textResponse.isNotBlank()) {
             val mealPlan = extractMealPlanFromText(textResponse)
-            val userFacingText = if (mealPlan != null) textResponse.substringBefore("MEAL_PLAN_JSON:").trim() else textResponse
+            // The JSON is for the app. If it can't be read, the user still shouldn't see it.
+            val userFacingText = textResponse.substringBefore(MEAL_PLAN_MARKER).trim()
+            if (userFacingText.isBlank() && mealPlan == null) {
+                return AiProviderResponse.Error("RESPONSE_INVALID", INVALID_MESSAGE)
+            }
             val proposal = if (mealPlan == null) extractMealProposalFromText(textResponse) else null
             AiProviderResponse.FinalResponse(
                 text = userFacingText,
@@ -526,6 +562,18 @@ class GeminiMealPlannerAiProvider @Inject constructor(
         } else {
             AiProviderResponse.Error("EMPTY_RESPONSE", "Gemini API returned an empty response.")
         }
+    }
+
+    /** Only a reply that finished normally can be trusted to be complete. */
+    private fun unusableFinish(finishReason: String?): AiProviderResponse.Error? = when (finishReason) {
+        null, "STOP", "FINISH_REASON_UNSPECIFIED" -> null
+        "MAX_TOKENS" -> AiProviderResponse.Error(
+            "RESPONSE_TRUNCATED",
+            "Gemini's reply was cut off before it finished, so it wasn't used. Please tap Retry."
+        )
+        "MALFORMED_FUNCTION_CALL", "UNEXPECTED_TOOL_CALL", "TOO_MANY_TOOL_CALLS" ->
+            AiProviderResponse.Error("RESPONSE_INVALID", INVALID_MESSAGE)
+        else -> AiProviderResponse.Error("RESPONSE_BLOCKED", BLOCKED_MESSAGE)
     }
 
     private fun extractGeminiErrorMessage(responseText: String): String {
@@ -698,9 +746,11 @@ class GeminiMealPlannerAiProvider @Inject constructor(
     }
 
     private fun extractMealPlanFromText(text: String): List<MealProposal>? {
-        if (!text.contains("MEAL_PLAN_JSON:")) return null
+        if (!text.contains(MEAL_PLAN_MARKER)) return null
         return try {
-            val array = json.parseToJsonElement(text.substringAfter("MEAL_PLAN_JSON:").trim()).jsonArray
+            val planJson = text.substringAfter(MEAL_PLAN_MARKER).trim()
+                .removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
+            val array = json.parseToJsonElement(planJson).jsonArray
             val meals = array.map { element ->
                 val obj = element.jsonObject
                 MealProposal(
@@ -761,18 +811,6 @@ class GeminiMealPlannerAiProvider @Inject constructor(
             } catch (_: Throwable) {
                 null
             }
-        }
-
-        val titleMatch = Regex("\\*\\*([^*]+)\\*\\*").find(text) ?: Regex("###?\\s*([^\\n]+)").find(text)
-        val extractedTitle = titleMatch?.groupValues?.get(1)?.trim()
-        if (!extractedTitle.isNullOrBlank() && extractedTitle.length in 3..60 && !extractedTitle.equals("Note", ignoreCase = true) && !extractedTitle.equals("Tip", ignoreCase = true)) {
-            return MealProposal(
-                title = extractedTitle,
-                mealType = null,
-                servings = 2,
-                ingredients = emptyList(),
-                reasoningSummary = "Extracted from recipe suggestion"
-            )
         }
 
         return null

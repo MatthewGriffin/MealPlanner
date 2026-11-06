@@ -732,7 +732,7 @@ class EndToEndAiRecipeReliabilityTest {
         val collectJob = launch { viewModel.uiState.collect {} }
         testScheduler.advanceUntilIdle()
 
-        viewModel.onEvent(ChatUiEvent.UpdateMessageText("give me a new recipe for dinner"))
+        viewModel.onEvent(ChatUiEvent.UpdateMessageText("what is in my fridge?"))
         viewModel.onEvent(ChatUiEvent.SendMessage)
         testScheduler.runCurrent()
 
@@ -875,7 +875,122 @@ class EndToEndAiRecipeReliabilityTest {
         )
     }
 
+private fun orchestratorReplying(sent: MutableList<AiProviderRequest>, reply: String) = AiMealPlannerOrchestrator(
+        provider = object : MealPlannerAiProvider {
+            override suspend fun send(request: AiProviderRequest): AiProviderResponse {
+                sent.add(request)
+                return AiProviderResponse.FinalResponse(reply)
+            }
+            override suspend fun continueWithToolResults(request: AiContinueWithToolsRequest) =
+                AiProviderResponse.FinalResponse("Done")
+        },
+        contextBuilder = contextBuilder,
+        toolDispatcher = aiToolDispatcher,
+        recipeValidator = RecipeValidator(inventoryDao, mealDao),
+        intentResolver = intentResolver,
+        chatRepository = chatRepository,
+        pendingMutationStore = pendingMutationStore,
+        activeProposalStore = activeProposalStore
+    )
+
+    private suspend fun assertAnsweredWithoutRepair(userMessage: String, reply: String) {
+        val sent = mutableListOf<AiProviderRequest>()
+
+        val result = orchestratorReplying(sent, reply).processUserMessage("default_conversation", userMessage)
+
+        assertEquals(userMessage, 1, sent.size)
+        assertTrue(userMessage, result is AiOrchestrationResult.Final)
+        assertEquals(userMessage, reply, (result as AiOrchestrationResult.Final).assistantText)
+    }
+
     @Test
+    fun adviceMentioningARecipe_isAnsweredAsAdvice() = runTest(testDispatcher) {
+        assertAnsweredWithoutRepair("how long does this recipe keep?", "This recipe keeps for 3 days in the fridge.")
+    }
+
+    @Test
+    fun questionsWithoutARecipeRequest_keepTheirAnswer() = runTest(testDispatcher) {
+        assertAnsweredWithoutRepair("what is in my fridge?", "You have **milk**, and this method of storing it is fine.")
+    }
+
+    @Test
+    fun clarifyingQuestionBeforeARecipe_isShownToTheUser() = runTest(testDispatcher) {
+        assertAnsweredWithoutRepair("suggest a pizza recipe", "Which toppings would you like on your pizza?")
+    }
+
+    @Test
+    fun fullRecipeWrittenAsText_isConvertedKeepingTheDraft() = runTest(testDispatcher) {
+        val sent = mutableListOf<AiProviderRequest>()
+        val draft = "Lemon Chicken\nIngredients: chicken, lemon\nMethod: roast it."
+
+        orchestratorReplying(sent, draft).processUserMessage("default_conversation", "show me something nice to try")
+
+        assertEquals(2, sent.size)
+        assertEquals("offer_add_planned_meal", sent[1].forcedToolName)
+        val assistantDraft = sent[1].messages[sent[1].messages.size - 2]
+        assertEquals("assistant", assistantDraft.role)
+        assertEquals(draft, assistantDraft.content)
+        assertTrue(sent[1].messages.last().content.contains("keep that same dish"))
+    }
+
+    @Test
+    fun recipeRequestsAnsweredInProse_stillGetACardAttempt() = runTest(testDispatcher) {
+        listOf(
+            "give me a recipe for lunch",
+            "what can I cook tonight?",
+            "any new dinner ideas?",
+            "Please prepare a replacement recipe for this meal-change request"
+        ).forEach { userMessage ->
+            val sent = mutableListOf<AiProviderRequest>()
+            orchestratorReplying(sent, "A nice tomato pasta would work.").processUserMessage("default_conversation", userMessage)
+            assertEquals(userMessage, "offer_add_planned_meal", sent.getOrNull(1)?.forcedToolName)
+        }
+    }
+
+    @Test
+    fun followUpMessage_canSeeTheRecipeCardShownBefore() = runTest(testDispatcher) {
+        val sent = mutableListOf<AiProviderRequest>()
+        val provider = object : MealPlannerAiProvider {
+            override suspend fun send(request: AiProviderRequest): AiProviderResponse {
+                sent.add(request)
+                return if (sent.size == 1) {
+                    AiProviderResponse.ToolCalls(
+                        providerContinuationToken = "t",
+                        calls = listOf(
+                            AiToolCall("c1", "offer_add_planned_meal", """{"title":"Shakshuka","servings":2,"ingredients":[{"displayName":"Eggs","quantity":4,"unit":"UNIT"}],"instructions":"Poach the eggs in the sauce."}""")
+                        )
+                    )
+                } else {
+                    AiProviderResponse.FinalResponse("Add more chilli.")
+                }
+            }
+            override suspend fun continueWithToolResults(request: AiContinueWithToolsRequest) =
+                AiProviderResponse.FinalResponse("Here you go")
+        }
+        val orchestrator = AiMealPlannerOrchestrator(
+            provider = provider,
+            contextBuilder = contextBuilder,
+            toolDispatcher = aiToolDispatcher,
+            recipeValidator = RecipeValidator(inventoryDao, mealDao),
+            intentResolver = intentResolver,
+            chatRepository = chatRepository,
+            pendingMutationStore = pendingMutationStore,
+            activeProposalStore = activeProposalStore
+        )
+
+        orchestrator.processUserMessage("default_conversation", "suggest a recipe for dinner")
+        orchestrator.processUserMessage("default_conversation", "make it spicier")
+
+        val assistantTurns = sent[1].messages.filter { it.role == "assistant" }
+        assertEquals(1, assistantTurns.size)
+        val card = assistantTurns.single().content
+        assertTrue(card, card.contains("Shakshuka"))
+        assertTrue(card, card.contains("Eggs: 4.0 UNIT"))
+        assertTrue(card, card.contains("Poach the eggs in the sauce."))
+        assertTrue(sent[1].messages.none { it.content.isBlank() })
+    }
+
+        @Test
     fun structuredRepair_setsForcedOfferTool() = runTest(testDispatcher) {
         val capturedRequests = mutableListOf<AiProviderRequest>()
         var callCount = 0

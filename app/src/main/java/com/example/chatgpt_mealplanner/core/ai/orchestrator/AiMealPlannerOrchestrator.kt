@@ -150,12 +150,12 @@ class AiMealPlannerOrchestrator @Inject constructor(
         val contextPayloadJson = contextBuilder.buildContextPayloadJson(conversationId)
 
         val historicalMessages = try {
-            chatRepository.getMessagesForConversation(conversationId).takeLast(20).map { message ->
+            chatRepository.getMessagesForConversation(conversationId).takeLast(20).mapNotNull { message ->
                 // Persist a concise summary for the user, but send the full internal prompt to Gemini.
                 if (message.id == userMsgId && message.role.equals("USER", ignoreCase = true)) {
                     AiChatMessage(role = "user", content = userMessageText)
                 } else {
-                    AiChatMessage(role = message.role.lowercase(), content = message.content)
+                    historyTextFor(message)?.let { AiChatMessage(role = message.role.lowercase(), content = it) }
                 }
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
@@ -282,7 +282,9 @@ class AiMealPlannerOrchestrator @Inject constructor(
             val continueRequest = AiContinueWithToolsRequest(
                 conversationId = conversationId,
                 providerContinuationToken = continuationToken,
-                toolResults = toolResults
+                toolResults = toolResults,
+                // Going over the round limit is an error, so the last allowed round must end in an answer.
+                allowMoreToolCalls = roundCount < maxRoundsForRequest
             )
 
             providerResponse = provider.continueWithToolResults(continueRequest)
@@ -307,21 +309,22 @@ class AiMealPlannerOrchestrator @Inject constructor(
         val finalResponseText = (providerResponse as? AiProviderResponse.FinalResponse)?.text ?: ""
         // Honour the user's explicit request even if Gemini formats its answer as one recipe.
         val responseIsMultiMealPlan = mealPlanRequest || isMultiMealResponse(finalResponseText)
-        val textSuggestsRecipeProposal = finalResponseText.contains("recipe", ignoreCase = true) ||
-                finalResponseText.contains("ingredients", ignoreCase = true) ||
-                finalResponseText.contains("instructions", ignoreCase = true) ||
-                finalResponseText.contains("method", ignoreCase = true) ||
-                (providerResponse as? AiProviderResponse.FinalResponse)?.proposal != null
+        val replyNeedsRecipeCard = needsRecipeCard(
+            userMessageText = userMessageText,
+            replyText = finalResponseText,
+            replyHasIngredients = (providerResponse as? AiProviderResponse.FinalResponse)?.proposal?.ingredients?.isNotEmpty() == true
+        )
 
-        if (!isRetailProductSearchOnlyRequest(userMessageText) && !responseIsMultiMealPlan && isEligibleProposalIntent && textSuggestsRecipeProposal && !hasOfferCaptured && !plannerMutationCommitted && providerResponse is AiProviderResponse.FinalResponse) {
+        if (!isRetailProductSearchOnlyRequest(userMessageText) && !responseIsMultiMealPlan && isEligibleProposalIntent && replyNeedsRecipeCard && !hasOfferCaptured && !plannerMutationCommitted && providerResponse is AiProviderResponse.FinalResponse) {
             safeLog("[STRUCTURED_OFFER_REPAIR] needed=true attempt=1")
 
             val repairRequest = request.copy(
                 forcedToolName = AiToolId.OFFER_ADD_PLANNED_MEAL.toolName,
-                messages = request.messages + listOf(
+                messages = request.messages + listOfNotNull(
+                    finalResponseText.takeIf { it.isNotBlank() }?.let { AiChatMessage(role = "assistant", content = it) },
                     AiChatMessage(
                         role = "user",
-                        content = "[STRUCTURED_OFFER_REPAIR] The structured recipe offer was rejected because ingredients or instructions were missing or empty. Call 'offer_add_planned_meal' again now with COMPLETE recipe parameters: title, servings, all ingredients array, and complete cooking instructions."
+                        content = "[STRUCTURED_OFFER_REPAIR] Your last reply did not create a recipe card. Call 'offer_add_planned_meal' now. If your reply contained a recipe, keep that same dish, ingredients, quantities and method. Fill in anything missing so the title, servings, ingredients and cooking instructions are complete."
                     )
                 )
             )
@@ -341,7 +344,7 @@ class AiMealPlannerOrchestrator @Inject constructor(
                         repairResults.add(r)
                     }
                     repairContinuation = provider.continueWithToolResults(
-                        AiContinueWithToolsRequest(conversationId, repairToken, repairResults)
+                        AiContinueWithToolsRequest(conversationId, repairToken, repairResults, allowMoreToolCalls = repairRound < 2)
                     )
                 }
                 if (repairContinuation is AiProviderResponse.FinalResponse) {
@@ -357,7 +360,7 @@ class AiMealPlannerOrchestrator @Inject constructor(
 
             safeLog("[STRUCTURED_OFFER_REPAIR] needed=true attempt=1 result=${if (repairSucceeded) "SUCCESS" else "FAILED"} pendingCreated=$repairSucceeded")
 
-            if (!repairSucceeded && isEligibleProposalIntent && textSuggestsRecipeProposal) {
+            if (!repairSucceeded) {
                 safeLog("[STRUCTURED_OFFER_REPAIR] Failed to obtain valid offer after repair. Returning explicit failure response.")
                 return AiOrchestrationResult.Error(
                     code = "INVALID_STRUCTURED_OFFER",
@@ -621,6 +624,40 @@ class AiMealPlannerOrchestrator @Inject constructor(
             }
         }
     }
+
+    /**
+     * A recipe card is stored with empty text because the app draws it from its payload. Gemini
+     * still has to read it, or "make it spicier" and "option 2" refer to nothing.
+     */
+    private fun historyTextFor(message: ChatMessageEntity): String? =
+        message.content.takeIf { it.isNotBlank() }
+            ?: message.structuredPayloadJson?.let(::describeProposalCard)
+
+    private fun describeProposalCard(payloadJson: String): String? {
+        val payload = runCatching { historyJson.decodeFromString<ProposalMessagePayload>(payloadJson) }.getOrNull()
+            ?: return null
+        val meals = listOfNotNull(payload.singleMeal).ifEmpty { payload.meals }.map { it.proposal }
+        if (meals.isEmpty()) return null
+        val saved = if (payload.state == "PENDING") "not saved yet" else "state: ${payload.state}"
+        return buildString {
+            appendLine("[Shown to the user as a card, $saved]")
+            meals.forEachIndexed { index, meal ->
+                if (meals.size > 1) append("Option ${index + 1}: ")
+                appendLine("${meal.title} (${meal.servings} servings)${meal.suggestedDate?.let { " for $it" }.orEmpty()}")
+                appendLine("Ingredients:")
+                meal.ingredients.forEach { ingredient ->
+                    val optional = if (ingredient.optional) " (optional)" else ""
+                    appendLine("- ${ingredient.displayName}: ${ingredient.quantity} ${ingredient.unit}$optional")
+                }
+                if (meal.steps.isNotEmpty()) {
+                    appendLine("Method:")
+                    meal.steps.forEach { appendLine("${it.order}. ${it.instruction}") }
+                }
+            }
+        }.trim()
+    }
+
+    private val historyJson = Json { ignoreUnknownKeys = true }
 
     private suspend fun saveAssistantMessage(conversationId: String, text: String) {
         val assistantMsgId = "msg_${System.currentTimeMillis()}"
@@ -948,6 +985,36 @@ class AiMealPlannerOrchestrator @Inject constructor(
         sb.append("\n\nReview this recipe card and select **Save meal** when you're ready. No changes have been saved yet.")
 
         return sb.toString().trim()
+    }
+
+    /**
+     * The repair step is only for a reply that holds a recipe, or for a recipe request answered in
+     * prose. Advice that mentions a recipe stays as it is, and so does the clarifying question the
+     * system prompt asks for before a recipe with an unresolved choice.
+     */
+    private fun needsRecipeCard(userMessageText: String, replyText: String, replyHasIngredients: Boolean): Boolean {
+        val reply = replyText.lowercase()
+        val hasIngredientList = reply.contains("ingredient")
+        val hasMethod = listOf("method", "instructions", "directions", "steps").any(reply::contains)
+        if (replyHasIngredients || (hasIngredientList && hasMethod)) return true
+        return asksForNewRecipe(userMessageText) && !isClarifyingQuestion(replyText)
+    }
+
+    private fun asksForNewRecipe(userMessageText: String): Boolean {
+        val lower = intentTextWithoutNegatedGenerationInstructions(userMessageText)
+        if (lower.contains("replacement recipe") || lower.contains("meal-change request")) return true
+        if (recipeAboutExisting.containsMatchIn(lower)) return false
+        return recipeRequest.containsMatchIn(lower) || whatToCook.containsMatchIn(lower)
+    }
+
+    private val recipeAboutExisting = Regex("""\b(this|that|my|saved|same)\s+(recipe|recipes|meal|dinner|lunch|breakfast)\b""")
+    private val recipeRequest = Regex("""\b(give|suggest|recommend|want|need|find|show|get|create|generate|make|write|another|new|different|ideas?)\b.*\b(recipes?|meals?|dinner|lunch|breakfast|supper|tea)\b""")
+    private val whatToCook = Regex("""\bwhat(?:'s| is| can| should| shall)?\s+(?:(?:i|we)\s+(?:cook|make|eat|have)|for\s+(?:dinner|lunch|breakfast|supper|tea))\b""")
+
+    private fun isClarifyingQuestion(replyText: String): Boolean {
+        val trimmed = replyText.trim()
+        val offersARecipe = trimmed.contains("here is", ignoreCase = true) || trimmed.contains("here's", ignoreCase = true)
+        return trimmed.endsWith("?") && !offersARecipe && stripTrailingOfferQuestion(trimmed) == trimmed
     }
 
     private fun stripTrailingOfferQuestion(text: String): String {
