@@ -4,6 +4,8 @@ import com.example.chatgpt_mealplanner.core.database.dao.ChatDao
 import com.example.chatgpt_mealplanner.core.database.entity.PendingAiMutationEntity
 import com.example.chatgpt_mealplanner.core.model.MealIngredient
 import com.example.chatgpt_mealplanner.core.model.MealType
+import com.example.chatgpt_mealplanner.contract.MealProposal
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import javax.inject.Inject
@@ -25,6 +27,8 @@ sealed interface PendingAiMutation {
         val servings: Int = 2,
         val ingredients: List<MealIngredient> = emptyList(),
         val instructions: String? = null,
+        /** The recipe details the planned meal has no fields for. */
+        val offer: MealProposal? = null,
         val sourceUserMessageId: String = "",
         override val state: PendingMutationState = PendingMutationState.AWAITING_CONFIRMATION,
         override val createdAt: Long = System.currentTimeMillis()
@@ -50,6 +54,13 @@ sealed interface PendingAiMutation {
         override val createdAt: Long = System.currentTimeMillis()
     ) : PendingAiMutation
 }
+
+/** Older rows hold only the ingredient list, and still load. */
+@Serializable
+private data class StoredMealOffer(
+    val ingredients: List<MealIngredient>,
+    val offer: MealProposal
+)
 
 @Singleton
 class PendingMutationStore @Inject constructor(
@@ -90,7 +101,8 @@ class PendingMutationStore @Inject constructor(
                 createdAt = entity.createdAt
             )
             else -> {
-                val ings = runCatching {
+                val stored = runCatching { json.decodeFromString<StoredMealOffer>(entity.ingredientsJson) }.getOrNull()
+                val ings = stored?.ingredients ?: runCatching {
                     json.decodeFromString<List<MealIngredient>>(entity.ingredientsJson)
                 }.getOrDefault(emptyList())
 
@@ -101,6 +113,7 @@ class PendingMutationStore @Inject constructor(
                     servings = entity.servings,
                     ingredients = ings,
                     instructions = entity.instructions,
+                    offer = stored?.offer,
                     sourceUserMessageId = entity.sourceUserMessageId,
                     state = state,
                     createdAt = entity.createdAt
@@ -133,7 +146,9 @@ class PendingMutationStore @Inject constructor(
                 date = mutation.date,
                 mealType = mutation.mealType?.name,
                 servings = mutation.servings,
-                ingredientsJson = json.encodeToString(mutation.ingredients),
+                ingredientsJson = mutation.offer
+                    ?.let { json.encodeToString(StoredMealOffer(mutation.ingredients, it)) }
+                    ?: json.encodeToString(mutation.ingredients),
                 instructions = mutation.instructions,
                 sourceUserMessageId = mutation.sourceUserMessageId,
                 createdAt = mutation.createdAt

@@ -324,7 +324,7 @@ class AiMealPlannerOrchestrator @Inject constructor(
                     finalResponseText.takeIf { it.isNotBlank() }?.let { AiChatMessage(role = "assistant", content = it) },
                     AiChatMessage(
                         role = "user",
-                        content = "[STRUCTURED_OFFER_REPAIR] Your last reply did not create a recipe card. Call 'offer_add_planned_meal' now. If your reply contained a recipe, keep that same dish, ingredients, quantities and method. Fill in anything missing so the title, servings, ingredients and cooking instructions are complete."
+                        content = "[STRUCTURED_OFFER_REPAIR] Your last reply did not create a recipe card. Call 'offer_add_planned_meal' now. If your reply contained a recipe, keep that same dish, ingredients, quantities and method. Fill in anything missing so the title, servings, ingredients and method steps are complete."
                     )
                 )
             )
@@ -646,12 +646,13 @@ class AiMealPlannerOrchestrator @Inject constructor(
                 appendLine("${meal.title} (${meal.servings} servings)${meal.suggestedDate?.let { " for $it" }.orEmpty()}")
                 appendLine("Ingredients:")
                 meal.ingredients.forEach { ingredient ->
+                    val measure = ingredient.measure?.let { " ($it)" }.orEmpty()
                     val optional = if (ingredient.optional) " (optional)" else ""
-                    appendLine("- ${ingredient.displayName}: ${ingredient.quantity} ${ingredient.unit}$optional")
+                    appendLine("- ${ingredient.displayName}: ${ingredient.quantity} ${ingredient.unit}$measure$optional")
                 }
                 if (meal.steps.isNotEmpty()) {
                     appendLine("Method:")
-                    meal.steps.forEach { appendLine("${it.order}. ${it.instruction}") }
+                    meal.methodLines().forEach { appendLine(it) }
                 }
             }
         }.trim()
@@ -934,15 +935,22 @@ class AiMealPlannerOrchestrator @Inject constructor(
             immediatePortions = pending.servings,
             leftoverPortions = 0,
             ingredients = pending.ingredients.map { ingredient ->
+                val offered = pending.offer?.ingredients?.firstOrNull { it.displayName == ingredient.displayName }
                 com.example.chatgpt_mealplanner.contract.ProposedIngredient(
                     canonicalIngredientId = ingredient.canonicalIngredientId,
                     displayName = ingredient.displayName,
                     quantity = ingredient.plannedQuantity,
-                    unit = ingredient.plannedUnit.name
+                    unit = ingredient.plannedUnit.name,
+                    optional = ingredient.optional,
+                    measure = offered?.measure,
+                    substitute = offered?.substitute
                 )
             },
-            steps = steps,
-            reasoningSummary = "Structured recipe offer"
+            steps = pending.offer?.steps?.takeIf { it.isNotEmpty() } ?: steps,
+            prepMinutes = pending.offer?.prepMinutes,
+            cookMinutes = pending.offer?.cookMinutes,
+            equipment = pending.offer?.equipment.orEmpty(),
+            reasoningSummary = pending.offer?.reasoningSummary.orEmpty()
         )
     }
 
@@ -1175,7 +1183,7 @@ class AiMealPlannerOrchestrator @Inject constructor(
         Write every recipe the way an experienced home cook would teach it, so that someone following it exactly gets a good result first time.
         1. FLAVOUR: Build a dish that tastes finished. Balance salt, fat, acid, sweetness and heat, include contrasting texture where it suits the dish, and say when to season and when to taste and adjust. Use techniques that add flavour, such as browning properly or toasting spices, when they suit the dish.
         2. METHOD: Put preparation before cooking and steps in the order they really happen, so that components finish together. Give one stage per step. For each cooking step state the heat level or oven temperature in °C, the time, and what to look for when it is ready (for example "until the edges are golden" or "until a knife slides in easily"). Include preheating, resting and draining when needed. Spell out every ingredient's use: an ingredient list and a method must agree, apart from water.
-        3. QUANTITIES: Scale every quantity to the stated servings, using realistic portions (as a guide per person: 125-200 g meat or fish, 75-100 g dried pasta, 60-80 g dried rice). Keep strong seasonings in proportion.
+        3. QUANTITIES: Scale every quantity to the stated servings, using realistic portions (as a guide per person: 125-200 g meat or fish, 75-100 g dried pasta, 60-80 g dried rice). Keep strong seasonings in proportion. Give each ingredient's quantity as GRAM or MILLILITRE, or as UNIT, TIN or similar for whole items, because the app does its stock and shopping sums in those units. For small amounts also set measure to what the cook actually uses, such as "1 tsp" with 2 GRAM, and use that spoon amount in the method. Mention a good swap in substitute where one exists.
         4. TIME: Give honest prepMinutes and cookMinutes for a home cook, including chopping and heating up. Never understate them to make a recipe look quick.
         5. FOOD SAFETY: Say how to tell that chicken, turkey, pork, sausages and mince are cooked through, and give 75°C in the centre as the safe temperature when it helps. Never suggest undercooking them. Boil dried kidney beans hard for at least 10 minutes. When a recipe makes leftovers, say to cool them quickly and refrigerate them within 2 hours, use them within 2 days, and reheat them until piping hot. Cooked rice is stricter: cool it within 1 hour and use it within 1 day.
         6. VARIETY AND PREFERENCES: Follow the preferences in the context unless they would make the dish worse. Use recentCookedMeals and upcomingPlannedMeals to avoid repeating a dish, or the same main ingredient and cuisine, on neighbouring days unless the user asks for it.
@@ -1197,7 +1205,7 @@ class AiMealPlannerOrchestrator @Inject constructor(
         3. Manual shopping tool 'add_manual_shopping_item' remains available for explicitly non-meal user items (e.g. 'add kitchen towels to my shopping list').
 
         STRUCTURED WHOLE-PLAN OUTPUT:
-        Whenever the response contains multiple planned meals, append a valid JSON array at the very end using the exact prefix MEAL_PLAN_JSON:. Each object must include title, suggestedDate in YYYY-MM-DD format, mealType, servings, ingredients (objects with displayName, quantity, unit, optional, substitutionAllowed), and steps (objects with order and instruction). Every meal needs complete ingredients and cooking instructions. Do not wrap the JSON in markdown fences and put nothing after it. This structured payload drives the app's single Accept meal plan card; never call offer_add_planned_meal for each meal in a multi-meal plan.
+        Whenever the response contains multiple planned meals, append a valid JSON array at the very end using the exact prefix MEAL_PLAN_JSON:. Each object must include title, suggestedDate in YYYY-MM-DD format, mealType, servings, prepMinutes, cookMinutes, whyThisSuits, ingredients (objects with displayName, quantity, unit, measure, optional, substitutionAllowed, substitute), and steps (objects with order, instruction and durationMinutes). Every meal needs complete ingredients and cooking instructions. Do not wrap the JSON in markdown fences and put nothing after it. This structured payload drives the app's single Accept meal plan card; never call offer_add_planned_meal for each meal in a multi-meal plan.
 
         MEAL-PLAN WORKFLOW (DISTINCT FROM A SINGLE RECIPE):
         1. Treat requests to generate, create, suggest, or adjust a meal plan/menu for multiple days as a menu-level workflow. Present the complete plan as a readable day-by-day list and ask whether the user wants adjustments or wants to choose a meal to expand.
@@ -1211,7 +1219,7 @@ class AiMealPlannerOrchestrator @Inject constructor(
         RECIPE PROPOSAL AND ADD OFFER MANDATE:
         1. Before creating a recipe card, inspect the proposed ingredients for unresolved user choices that affect what must be bought or how the dish is made. If a recipe idea depends on a choice such as "toppings of choice", ask one concise clarifying question listing sensible options and WAIT for the user's answer before calling 'offer_add_planned_meal'. Do not put vague placeholders such as "toppings of choice" into an ingredient name or combine them with a real ingredient (for example, never output "Heavy cream, toppings of choice"). Once the user answers, include the selected ingredients in the recipe; if the user declines to choose, omit the optional choice and keep the recipe complete.
         2. Optional garnish that does not materially affect shopping or preparation may simply be omitted or clearly marked optional; do not interrupt the user for trivial garnish choices.
-        3. When suggesting a single recipe or meal idea, invoke 'offer_add_planned_meal' with complete parameters (title, optional date YYYY-MM-DD, optional mealType, servings, all ingredients, and complete cooking instructions).
+        3. When suggesting a single recipe or meal idea, invoke 'offer_add_planned_meal' with complete parameters (title, optional date YYYY-MM-DD, optional mealType, servings, prepMinutes, cookMinutes, equipment, whyThisSuits, all ingredients, and every method stage as its own entry in steps).
            - Calling 'offer_add_planned_meal' DOES NOT modify the database or save the meal; it creates the recipe card shown by the app.
            - Do not ask whether to add the recipe or tell the user to confirm it in chat. The card has an explicit **Save meal** action.
            - If a valid offer is created, provide a short helpful summary; the app renders the recipe details and Save action.

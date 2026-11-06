@@ -566,7 +566,9 @@ class AiToolDispatcher @Inject constructor(
             return DomainResult.Failure(DomainError.TransactionFailed("OFFER_INGREDIENTS_EMPTY"))
         }
 
-        val instructionsStr = extractStringArg(argsJson, "instructions")?.trim()
+        val steps = parseRecipeSteps(argsJson)
+        val instructionsStr = steps.takeIf { it.isNotEmpty() }?.joinToString("\n") { it.instruction }
+            ?: extractStringArg(argsJson, "instructions")?.trim()
         if (instructionsStr.isNullOrBlank()) {
             logDiagnostic("OFFER_CAPTURE", "conversationId=\"$conversationId\" stored=false reason=\"OFFER_INSTRUCTIONS_EMPTY\"")
             return DomainResult.Failure(DomainError.TransactionFailed("OFFER_INSTRUCTIONS_EMPTY"))
@@ -581,6 +583,7 @@ class AiToolDispatcher @Inject constructor(
         )
         val date = slotRes.date
         val mealType = slotRes.mealType
+        val ingredientDetails = parseIngredientDetails(argsJson)
 
         val proposal = com.example.chatgpt_mealplanner.contract.MealProposal(
             title = extractedTitle,
@@ -588,14 +591,22 @@ class AiToolDispatcher @Inject constructor(
             suggestedDate = date,
             servings = servings,
             ingredients = parsedIngs.map {
+                val details = ingredientDetails[it.displayName]
                 com.example.chatgpt_mealplanner.contract.ProposedIngredient(
                     canonicalIngredientId = it.canonicalIngredientId,
                     displayName = it.displayName,
                     quantity = it.plannedQuantity,
-                    unit = it.plannedUnit.name
+                    unit = it.plannedUnit.name,
+                    optional = it.optional,
+                    measure = details?.first,
+                    substitute = details?.second
                 )
             },
-            reasoningSummary = "Offered Meal"
+            steps = steps,
+            prepMinutes = extractDoubleArg(argsJson, "prepMinutes")?.toInt()?.takeIf { it >= 0 },
+            cookMinutes = extractDoubleArg(argsJson, "cookMinutes")?.toInt()?.takeIf { it >= 0 },
+            equipment = parseStringArray(argsJson, "equipment"),
+            reasoningSummary = extractStringArg(argsJson, "whyThisSuits").orEmpty()
         )
         activeProposalStore.setActiveProposal(conversationId, proposal)
         logDiagnostic("PROPOSAL_CAPTURE", "conversationId=\"$conversationId\" title=\"${proposal.title}\" mealType=\"${proposal.mealType}\" suggestedDate=\"${proposal.suggestedDate}\" ingredientCount=${proposal.ingredients.size} stored=true")
@@ -607,6 +618,7 @@ class AiToolDispatcher @Inject constructor(
             servings = servings,
             ingredients = parsedIngs,
             instructions = instructionsStr,
+            offer = proposal,
             sourceUserMessageId = "",
             state = com.example.chatgpt_mealplanner.core.ai.pending.PendingMutationState.AWAITING_CONFIRMATION
         )
@@ -755,6 +767,38 @@ class AiToolDispatcher @Inject constructor(
         }
     }
 
+    private fun jsonArrayArg(argsJson: String, key: String): List<kotlinx.serialization.json.JsonElement> = try {
+        ((json.parseToJsonElement(argsJson) as? kotlinx.serialization.json.JsonObject)?.get(key)
+            as? kotlinx.serialization.json.JsonArray).orEmpty()
+    } catch (_: Exception) {
+        emptyList()
+    }
+
+    private fun kotlinx.serialization.json.JsonObject.text(key: String): String? =
+        (this[key] as? kotlinx.serialization.json.JsonPrimitive)?.content?.trim()?.ifBlank { null }
+
+    private fun parseRecipeSteps(argsJson: String): List<com.example.chatgpt_mealplanner.contract.RecipeStep> =
+        jsonArrayArg(argsJson, "steps")
+            .mapNotNull { (it as? kotlinx.serialization.json.JsonObject) }
+            .mapNotNull { step ->
+                step.text("instruction")?.let { it to step.text("durationMinutes")?.toDoubleOrNull()?.toInt()?.takeIf { minutes -> minutes > 0 } }
+            }
+            .mapIndexed { index, (instruction, minutes) ->
+                com.example.chatgpt_mealplanner.contract.RecipeStep(order = index + 1, instruction = instruction, durationMinutes = minutes)
+            }
+
+    private fun parseStringArray(argsJson: String, key: String): List<String> =
+        jsonArrayArg(argsJson, key).mapNotNull { (it as? kotlinx.serialization.json.JsonPrimitive)?.content?.trim()?.ifBlank { null } }
+
+    /** Each ingredient's kitchen measure and suggested swap, by name. */
+    private fun parseIngredientDetails(argsJson: String): Map<String, Pair<String?, String?>> =
+        jsonArrayArg(argsJson, "ingredients")
+            .mapNotNull { it as? kotlinx.serialization.json.JsonObject }
+            .mapNotNull { ingredient ->
+                ingredient.text("displayName")?.let { it to (ingredient.text("measure") to ingredient.text("substitute")) }
+            }
+            .toMap()
+
     private fun parseIngredientsArray(argsJson: String, mealId: String): List<com.example.chatgpt_mealplanner.core.model.MealIngredient> {
         return try {
             val root = json.parseToJsonElement(argsJson) as? kotlinx.serialization.json.JsonObject ?: return emptyList()
@@ -777,7 +821,7 @@ class AiToolDispatcher @Inject constructor(
                     displayName = displayName,
                     plannedQuantity = qty,
                     plannedUnit = unit,
-                    optional = false
+                    optional = (obj["optional"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.toBooleanStrictOrNull() ?: false
                 )
             }
         } catch (_: Exception) {

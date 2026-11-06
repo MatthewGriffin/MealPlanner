@@ -184,19 +184,22 @@ class EndToEndAiRecipeReliabilityTest {
 
     // Assertion 1: Offer schema declares instructions
     @Test
-    fun test1_offerSchemaDeclaresInstructions() {
+    fun test1_offerSchemaDeclaresSteps() {
         val method = GeminiMealPlannerAiProvider::class.java.getDeclaredMethod("buildToolDeclarationJson", AiToolId::class.java)
         method.isAccessible = true
         val jsonObj = method.invoke(geminiProvider, AiToolId.OFFER_ADD_PLANNED_MEAL) as kotlinx.serialization.json.JsonObject
 
         val props = jsonObj["parameters"]!!.jsonObject["properties"]!!.jsonObject
-        assertTrue("instructions property must exist in offer schema", props.containsKey("instructions"))
-        assertEquals("STRING", props["instructions"]!!.jsonObject["type"]!!.jsonPrimitive.content)
+        assertEquals("ARRAY", props["steps"]!!.jsonObject["type"]!!.jsonPrimitive.content)
+
+        val addMeal = method.invoke(geminiProvider, AiToolId.ADD_PLANNED_MEAL) as kotlinx.serialization.json.JsonObject
+        val addMealProps = addMeal["parameters"]!!.jsonObject["properties"]!!.jsonObject
+        assertEquals("STRING", addMealProps["instructions"]!!.jsonObject["type"]!!.jsonPrimitive.content)
     }
 
-    // Assertion 2: Required fields include title, servings, ingredients, instructions
+    // Assertion 2: Required fields include title, servings, ingredients, steps
     @Test
-    fun test2_requiredFieldsIncludeTitleServingsIngredientsInstructions() {
+    fun test2_requiredFieldsIncludeTitleServingsIngredientsSteps() {
         val method = GeminiMealPlannerAiProvider::class.java.getDeclaredMethod("buildToolDeclarationJson", AiToolId::class.java)
         method.isAccessible = true
         val jsonObj = method.invoke(geminiProvider, AiToolId.OFFER_ADD_PLANNED_MEAL) as kotlinx.serialization.json.JsonObject
@@ -205,7 +208,7 @@ class EndToEndAiRecipeReliabilityTest {
         assertTrue(requiredArray.contains("title"))
         assertTrue(requiredArray.contains("servings"))
         assertTrue(requiredArray.contains("ingredients"))
-        assertTrue(requiredArray.contains("instructions"))
+        assertTrue(requiredArray.contains("steps"))
     }
 
     // Assertion 3: Empty ingredients -> tool failure
@@ -875,7 +878,87 @@ class EndToEndAiRecipeReliabilityTest {
         )
     }
 
-@Test
+private val fullOfferArgs = """{"title":"Shakshuka","servings":2,"prepMinutes":10,"cookMinutes":25,"whyThisSuits":"Uses your tomatoes.","equipment":["Deep frying pan"],
+        "ingredients":[{"displayName":"Eggs","quantity":4,"unit":"UNIT"},{"displayName":"Ground cumin","quantity":2,"unit":"GRAM","measure":"1 tsp","substitute":"smoked paprika"},{"displayName":"Coriander","quantity":5,"unit":"GRAM","optional":true}],
+        "steps":[{"instruction":"Fry 1 tsp ground cumin over a medium heat until fragrant.","durationMinutes":2},{"instruction":"Poach the eggs in the sauce until the whites set, then top with coriander.","durationMinutes":8}]}"""
+
+    private suspend fun offeredProposal(pending: Boolean): com.example.chatgpt_mealplanner.contract.ValidatedMealProposal? {
+        val orchestrator = AiMealPlannerOrchestrator(
+            provider = object : MealPlannerAiProvider {
+                override suspend fun send(request: AiProviderRequest) = AiProviderResponse.ToolCalls(
+                    providerContinuationToken = "t",
+                    calls = listOf(AiToolCall("c1", "offer_add_planned_meal", fullOfferArgs))
+                )
+                override suspend fun continueWithToolResults(request: AiContinueWithToolsRequest) =
+                    AiProviderResponse.FinalResponse("Here you go")
+            },
+            contextBuilder = contextBuilder,
+            toolDispatcher = aiToolDispatcher,
+            recipeValidator = RecipeValidator(inventoryDao, mealDao),
+            intentResolver = intentResolver,
+            chatRepository = chatRepository,
+            pendingMutationStore = pendingMutationStore,
+            activeProposalStore = activeProposalStore
+        )
+        val result = orchestrator.processUserMessage("default_conversation", "suggest a recipe for dinner")
+        return if (pending) orchestrator.restorePendingMealProposal("default_conversation")
+        else (result as AiOrchestrationResult.Final).validatedProposal
+    }
+
+    private fun assertFullOfferDetails(proposal: com.example.chatgpt_mealplanner.contract.MealProposal) {
+        assertEquals(35, proposal.totalMinutes())
+        assertEquals("Uses your tomatoes.", proposal.reasoningSummary)
+        assertEquals(listOf("Deep frying pan"), proposal.equipment)
+        assertEquals(listOf(2, 8), proposal.steps.map { it.durationMinutes })
+        val cumin = proposal.ingredients.single { it.displayName == "Ground cumin" }
+        assertEquals("1 tsp", cumin.measure)
+        assertEquals("smoked paprika", cumin.substitute)
+        assertEquals(2.0, cumin.quantity, 0.0)
+        assertEquals("GRAM", cumin.unit)
+        assertTrue(proposal.ingredients.single { it.displayName == "Coriander" }.optional)
+    }
+
+    @Test
+    fun recipeCard_keepsEveryDetailOfTheOffer() = runTest(testDispatcher) {
+        assertFullOfferDetails(offeredProposal(pending = false)!!.proposal)
+    }
+
+    @Test
+    fun recipeDetails_surviveTheAppBeingClosed() = runTest(testDispatcher) {
+        assertFullOfferDetails(offeredProposal(pending = true)!!.proposal)
+    }
+
+    @Test
+    fun recipeCardWithoutATime_doesNotInventOne() {
+        val proposal = com.example.chatgpt_mealplanner.contract.MealProposal(title = "Toast", ingredients = emptyList(), reasoningSummary = "")
+        assertNull(proposal.totalMinutes())
+    }
+
+    @Test
+    fun savedMeal_keepsTimesEquipmentStepsAndSwaps() = runTest(testDispatcher) {
+        assertEquals(
+            """
+            Prep 10 min • Cook 25 min • Equipment: Deep frying pan
+            1. Fry 1 tsp ground cumin over a medium heat until fragrant. (2 min)
+            2. Poach the eggs in the sauce until the whites set, then top with coriander. (8 min)
+            Swap Ground cumin for smoked paprika
+            """.trimIndent(),
+            offeredProposal(pending = false)!!.proposal.savedInstructions()
+        )
+    }
+
+    @Test
+    fun savedMeal_withOnlyStepsLooksTheSameAsBefore() {
+        val proposal = com.example.chatgpt_mealplanner.contract.MealProposal(
+            title = "Toast",
+            ingredients = emptyList(),
+            steps = listOf(com.example.chatgpt_mealplanner.contract.RecipeStep(2, "Butter it"), com.example.chatgpt_mealplanner.contract.RecipeStep(1, "Toast it")),
+            reasoningSummary = ""
+        )
+        assertEquals("1. Toast it\n2. Butter it", proposal.savedInstructions())
+    }
+
+    @Test
     fun systemPrompt_teachesCookingAndDoesNotForceUkTermsEverywhere() = runTest(testDispatcher) {
         val sent = mutableListOf<AiProviderRequest>()
         orchestratorReplying(sent, "You have milk.").processUserMessage("default_conversation", "what is in my fridge?")

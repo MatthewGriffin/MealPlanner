@@ -25,6 +25,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -600,7 +601,31 @@ class GeminiMealPlannerAiProvider @Inject constructor(
                             putJsonObject("date") { put("type", "STRING"); put("description", "Date in YYYY-MM-DD format (e.g. 2026-09-30)") }
                             putJsonObject("mealType") { put("type", "STRING"); put("description", "Meal type: BREAKFAST, LUNCH, DINNER, or SNACK") }
                             putJsonObject("servings") { put("type", "NUMBER"); put("description", "Number of servings (default 2)") }
-                            putJsonObject("instructions") { put("type", "STRING"); put("description", "Complete step-by-step cooking instructions for the recipe") }
+                            if (tool == AiToolId.OFFER_ADD_PLANNED_MEAL) {
+                                putJsonObject("prepMinutes") { put("type", "NUMBER"); put("description", "Honest preparation time in minutes") }
+                                putJsonObject("cookMinutes") { put("type", "NUMBER"); put("description", "Honest cooking time in minutes") }
+                                putJsonObject("whyThisSuits") { put("type", "STRING"); put("description", "One short, specific reason this recipe suits this user today") }
+                                putJsonObject("equipment") {
+                                    put("type", "ARRAY")
+                                    put("description", "Pans, trays and tools needed")
+                                    putJsonObject("items") { put("type", "STRING") }
+                                }
+                                putJsonObject("steps") {
+                                    put("type", "ARRAY")
+                                    put("description", "Every method stage, in the order it happens")
+                                    put("minItems", 1)
+                                    putJsonObject("items") {
+                                        put("type", "OBJECT")
+                                        putJsonObject("properties") {
+                                            putJsonObject("instruction") { put("type", "STRING"); put("description", "One stage, with heat or oven temperature, time and how to tell it is ready") }
+                                            putJsonObject("durationMinutes") { put("type", "NUMBER"); put("description", "Minutes this stage takes") }
+                                        }
+                                        putJsonArray("required") { add("instruction") }
+                                    }
+                                }
+                            } else {
+                                putJsonObject("instructions") { put("type", "STRING"); put("description", "Complete step-by-step cooking instructions for the recipe") }
+                            }
                             putJsonObject("ingredients") {
                                 put("type", "ARRAY")
                                 put("description", "List of required ingredients for the meal")
@@ -610,7 +635,10 @@ class GeminiMealPlannerAiProvider @Inject constructor(
                                     putJsonObject("properties") {
                                         putJsonObject("displayName") { put("type", "STRING"); put("description", "Ingredient display name") }
                                         putJsonObject("quantity") { put("type", "NUMBER"); put("description", "Quantity needed") }
-                                        putJsonObject("unit") { put("type", "STRING"); put("description", "Unit (e.g. GRAM, MILLILITRE, PACK, ITEM)") }
+                                        putJsonObject("unit") { put("type", "STRING"); put("description", "One of GRAM, KILOGRAM, MILLILITRE, LITRE, UNIT, PACK, TIN, BOTTLE, BAG, SLICE or PORTION. Use GRAM or MILLILITRE for small amounts, not spoons") }
+                                        putJsonObject("measure") { put("type", "STRING"); put("description", "Kitchen measure for small amounts, such as 1 tsp, matching the method") }
+                                        putJsonObject("optional") { put("type", "BOOLEAN"); put("description", "True if the dish works without it") }
+                                        putJsonObject("substitute") { put("type", "STRING"); put("description", "A good swap if there is one") }
                                         putJsonObject("canonicalIngredientId") { put("type", "STRING"); put("description", "Optional canonical ingredient ID") }
                                     }
                                     putJsonArray("required") {
@@ -682,7 +710,7 @@ class GeminiMealPlannerAiProvider @Inject constructor(
                             add("title")
                             add("servings")
                             add("ingredients")
-                            add("instructions")
+                            add(if (tool == AiToolId.OFFER_ADD_PLANNED_MEAL) "steps" else "instructions")
                         }
                     }
                     else -> {}
@@ -767,17 +795,24 @@ class GeminiMealPlannerAiProvider @Inject constructor(
                             unit = ingredient["unit"]?.jsonPrimitive?.content
                                 ?: ingredient["plannedUnit"]?.jsonPrimitive?.content ?: "ITEM",
                             optional = ingredient["optional"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false,
-                            substitutionAllowed = ingredient["substitutionAllowed"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: true
+                            substitutionAllowed = ingredient["substitutionAllowed"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: true,
+                            measure = ingredient["measure"]?.jsonPrimitive?.contentOrNull?.ifBlank { null },
+                            substitute = ingredient["substitute"]?.jsonPrimitive?.contentOrNull?.ifBlank { null }
                         )
                     } ?: emptyList(),
                     steps = obj["steps"]?.jsonArray?.mapIndexed { index, stepElement ->
                         val step = stepElement.jsonObject
                         com.example.chatgpt_mealplanner.contract.RecipeStep(
                             order = step["order"]?.jsonPrimitive?.content?.toIntOrNull() ?: index + 1,
-                            instruction = step["instruction"]?.jsonPrimitive?.content ?: ""
+                            instruction = step["instruction"]?.jsonPrimitive?.content ?: "",
+                            durationMinutes = step["durationMinutes"]?.jsonPrimitive?.content?.toDoubleOrNull()?.toInt()
                         )
                     } ?: emptyList(),
-                    reasoningSummary = obj["reasoningSummary"]?.jsonPrimitive?.content ?: "Part of the proposed weekly plan"
+                    prepMinutes = obj["prepMinutes"]?.jsonPrimitive?.content?.toDoubleOrNull()?.toInt(),
+                    cookMinutes = obj["cookMinutes"]?.jsonPrimitive?.content?.toDoubleOrNull()?.toInt(),
+                    reasoningSummary = obj["whyThisSuits"]?.jsonPrimitive?.contentOrNull
+                        ?: obj["reasoningSummary"]?.jsonPrimitive?.contentOrNull
+                        ?: "Part of the proposed weekly plan"
                 )
             }
             meals.takeIf { it.size > 1 && it.all { meal -> meal.title.isNotBlank() && meal.suggestedDate != null && meal.ingredients.isNotEmpty() && meal.steps.isNotEmpty() } }
