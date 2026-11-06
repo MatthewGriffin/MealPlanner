@@ -50,6 +50,10 @@ class RecipeValidator @Inject constructor(
 
         proposal.ingredients.forEach { ing ->
             issues.addAll(com.example.chatgpt_mealplanner.core.ai.validation.DietaryRules.conflicts(ing.displayName, preferences))
+            ing.substitute?.let { swap ->
+                com.example.chatgpt_mealplanner.core.ai.validation.DietaryRules.conflicts(swap, preferences)
+                    .forEach { warnings.add("Don't use the suggested swap: $it") }
+            }
             if (com.example.chatgpt_mealplanner.core.ai.validation.DietaryRules.isDisliked(ing.displayName, preferences)) {
                 warnings.add("'${ing.displayName}' is on your dislikes list.")
             }

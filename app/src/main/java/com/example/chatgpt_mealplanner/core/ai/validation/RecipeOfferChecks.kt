@@ -46,7 +46,8 @@ object RecipeOfferChecks {
                 .takeIf { isVague(ingredient.displayName) },
             "Ingredient '${ingredient.displayName}' needs a quantity greater than 0."
                 .takeIf { ingredient.quantity <= 0.0 }
-        ) + DietaryRules.conflicts(ingredient.displayName, preferences)
+        ) + DietaryRules.conflicts(ingredient.displayName, preferences) +
+            ingredient.substitute.orEmpty().let { swap -> DietaryRules.conflicts(swap, preferences) }
     }
 
     fun queries(

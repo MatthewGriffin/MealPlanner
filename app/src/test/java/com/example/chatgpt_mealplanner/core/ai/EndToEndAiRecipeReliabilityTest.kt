@@ -915,6 +915,35 @@ private val milkAllergyAndNoCoriander = com.example.chatgpt_mealplanner.contract
     }
 
     @Test
+    fun allergenSuggestedAsASwap_isSentBack() = runTest(testDispatcher) {
+        val call = AiToolCall(
+            "c1",
+            "offer_add_planned_meal",
+            """{"title":"Hearty Dish","servings":2,"ingredients":[{"displayName":"olive oil","quantity":15,"unit":"MILLILITRE","substitute":"butter"}],"steps":[{"instruction":"Heat the oil."}]}"""
+        )
+
+        val result = dispatcherWith(milkAllergyAndNoCoriander)
+            .executeToolCall("default_conversation", ActionAuthorizationContext("m1"), call)
+
+        assertFalse(result.success)
+        assertTrue(result.errorMessage!!, result.errorMessage!!.contains("'butter' conflicts with the Milk allergy"))
+    }
+
+    @Test
+    fun allergenSwapInAMealPlan_warnsButDoesNotBlock() = runTest(testDispatcher) {
+        val validated = RecipeValidator(inventoryDao, mealDao) { milkAllergyAndNoCoriander }.validateProposal(
+            com.example.chatgpt_mealplanner.contract.MealProposal(
+                title = "Hearty Dish",
+                ingredients = listOf(com.example.chatgpt_mealplanner.contract.ProposedIngredient(displayName = "olive oil", quantity = 15.0, unit = "MILLILITRE", substitute = "butter")),
+                reasoningSummary = ""
+            )
+        )
+
+        assertTrue(validated.canBeSaved())
+        assertTrue(validated.warnings.toString(), validated.warnings.single().contains("Don't use the suggested swap"))
+    }
+
+    @Test
     fun meatInAVegetarianHousehold_isSentBack() = runTest(testDispatcher) {
         val call = AiToolCall("c1", "offer_add_planned_meal", offerArgs("chicken breast", "Roast the chicken."))
 
