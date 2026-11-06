@@ -875,7 +875,19 @@ class EndToEndAiRecipeReliabilityTest {
         )
     }
 
-private fun orchestratorReplying(sent: MutableList<AiProviderRequest>, reply: String) = AiMealPlannerOrchestrator(
+@Test
+    fun systemPrompt_teachesCookingAndDoesNotForceUkTermsEverywhere() = runTest(testDispatcher) {
+        val sent = mutableListOf<AiProviderRequest>()
+        orchestratorReplying(sent, "You have milk.").processUserMessage("default_conversation", "what is in my fridge?")
+        val prompt = sent.single().systemPrompt
+
+        listOf("RECIPE QUALITY MANDATE", "FOOD SAFETY", "piping hot", "low blood glucose", "strict rule").forEach {
+            assertTrue(it, prompt.contains(it))
+        }
+        assertFalse(prompt.contains("Use plain, specific UK grocery names"))
+    }
+
+    private fun orchestratorReplying(sent: MutableList<AiProviderRequest>, reply: String) = AiMealPlannerOrchestrator(
         provider = object : MealPlannerAiProvider {
             override suspend fun send(request: AiProviderRequest): AiProviderResponse {
                 sent.add(request)
