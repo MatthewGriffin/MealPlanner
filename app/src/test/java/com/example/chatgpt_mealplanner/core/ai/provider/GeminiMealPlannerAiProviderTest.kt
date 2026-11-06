@@ -671,6 +671,25 @@ class GeminiMealPlannerAiProviderTest {
     }
 
     @Test
+    fun mealPlanInACodeFenceWithoutTheMarker_isStillRead() {
+        val response = finalReplyFor("Your week\n\n***\n\n```json\n$validPlanJson\n```")
+
+        val final = response as AiProviderResponse.FinalResponse
+        assertEquals(listOf("Pasta", "Curry"), final.mealPlan?.map { it.title })
+        assertEquals("Your week", final.text)
+    }
+
+    @Test
+    fun otherCodeFencesInAReply_areLeftAlone() {
+        val reply = "Try this:\n```json\n[1, 2]\n```"
+
+        val final = finalReplyFor(reply) as AiProviderResponse.FinalResponse
+
+        assertEquals(null, final.mealPlan)
+        assertEquals(reply, final.text)
+    }
+
+    @Test
     fun recipeCardTool_asksForStepsTimesAndKitchenMeasures() = runBlocking {
         var payload: JsonObject? = null
         provider.httpCallHandler = { _, p -> payload = p; Pair(200, makeSuccessBody("Done")) }
