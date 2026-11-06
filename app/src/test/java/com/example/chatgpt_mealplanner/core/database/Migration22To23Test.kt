@@ -95,7 +95,7 @@ class Migration22To23Test {
             .build()
         try {
             val opened = database.openHelper.writableDatabase
-            assertEquals(23, opened.version)
+            assertEquals(ALL_MIGRATIONS.last().endVersion, opened.version)
 
             val tables = opened.query("SELECT name FROM sqlite_master WHERE type = 'table'").use { cursor ->
                 buildSet { while (cursor.moveToNext()) add(cursor.getString(0)) }
