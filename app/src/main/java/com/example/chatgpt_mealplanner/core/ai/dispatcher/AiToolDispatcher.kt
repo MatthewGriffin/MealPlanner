@@ -58,6 +58,8 @@ class AiToolDispatcher @Inject constructor(
     private val chatDao: ChatDao,
     private val pendingMutationStore: com.example.chatgpt_mealplanner.core.ai.pending.PendingMutationStore,
     private val activeProposalStore: com.example.chatgpt_mealplanner.core.ai.proposal.ActiveProposalStore,
+    private val cookingPreferences: com.example.chatgpt_mealplanner.core.repository.CookingPreferencesSource =
+        com.example.chatgpt_mealplanner.core.repository.NoCookingPreferences,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -610,12 +612,13 @@ class AiToolDispatcher @Inject constructor(
         )
 
         val checks = com.example.chatgpt_mealplanner.core.ai.validation.RecipeOfferChecks
-        val problems = checks.problems(proposal)
+        val preferences = cookingPreferences.current()
+        val problems = checks.problems(proposal, preferences)
         if (problems.isNotEmpty()) {
             logDiagnostic("OFFER_CAPTURE", "conversationId=\"$conversationId\" stored=false reason=\"OFFER_NEEDS_CHANGES\"")
             return DomainResult.Failure(DomainError.TransactionFailed("OFFER_NEEDS_CHANGES: ${problems.joinToString(" ")} Call offer_add_planned_meal again with these fixed."))
         }
-        val queries = checks.queries(proposal, instructionsStr)
+        val queries = checks.queries(proposal, instructionsStr, preferences)
         activeProposalStore.setActiveProposal(conversationId, proposal)
         logDiagnostic("PROPOSAL_CAPTURE", "conversationId=\"$conversationId\" title=\"${proposal.title}\" mealType=\"${proposal.mealType}\" suggestedDate=\"${proposal.suggestedDate}\" ingredientCount=${proposal.ingredients.size} stored=true")
 
@@ -686,6 +689,14 @@ class AiToolDispatcher @Inject constructor(
             parsedIngs.isNotEmpty() -> parsedIngs
             pending?.ingredients?.isNotEmpty() == true -> pending.ingredients
             else -> proposalIngs
+        }
+
+        val preferences = cookingPreferences.current()
+        val conflicts = ingredientsList.flatMap {
+            com.example.chatgpt_mealplanner.core.ai.validation.DietaryRules.conflicts(it.displayName, preferences)
+        }
+        if (conflicts.isNotEmpty()) {
+            return DomainResult.Failure(DomainError.TransactionFailed("MEAL_NEEDS_CHANGES: ${conflicts.joinToString(" ")} The meal was not added. Tell the user why and offer a safe alternative."))
         }
 
         val existingUpcoming = mealDao.getUpcomingPlannedMeals("2000-01-01", "2099-12-31")

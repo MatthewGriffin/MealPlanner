@@ -20,12 +20,15 @@ import javax.inject.Singleton
 @Singleton
 class RecipeValidator @Inject constructor(
     private val inventoryDao: InventoryDao,
-    private val mealDao: MealDao
+    private val mealDao: MealDao,
+    private val cookingPreferences: com.example.chatgpt_mealplanner.core.repository.CookingPreferencesSource =
+        com.example.chatgpt_mealplanner.core.repository.NoCookingPreferences
 ) {
 
     suspend fun validateProposal(proposal: MealProposal): ValidatedMealProposal {
         val issues = mutableListOf<String>()
         val warnings = mutableListOf<String>()
+        val preferences = cookingPreferences.current()
 
         if (proposal.servings <= 0) {
             issues.add("Servings must be greater than 0.")
@@ -46,6 +49,10 @@ class RecipeValidator @Inject constructor(
         var shoppingNeeded = false
 
         proposal.ingredients.forEach { ing ->
+            issues.addAll(com.example.chatgpt_mealplanner.core.ai.validation.DietaryRules.conflicts(ing.displayName, preferences))
+            if (com.example.chatgpt_mealplanner.core.ai.validation.DietaryRules.isDisliked(ing.displayName, preferences)) {
+                warnings.add("'${ing.displayName}' is on your dislikes list.")
+            }
             val parsedUnit = parseQuantityUnit(ing.unit)
             if (com.example.chatgpt_mealplanner.core.ai.validation.RecipeOfferChecks.isVague(ing.displayName)) {
                 issues.add("Ingredient '${ing.displayName}' is too vague to shop for. Name the specific ingredient or blend.")

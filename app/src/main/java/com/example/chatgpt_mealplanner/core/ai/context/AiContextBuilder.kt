@@ -5,7 +5,6 @@ import com.example.chatgpt_mealplanner.contract.InventorySummaryContextDto
 import com.example.chatgpt_mealplanner.contract.LeftoverContextDto
 import com.example.chatgpt_mealplanner.contract.RecentMealContextDto
 import com.example.chatgpt_mealplanner.contract.ShoppingSummaryContextDto
-import com.example.chatgpt_mealplanner.contract.UserPreferencesSummaryDto
 import com.example.chatgpt_mealplanner.core.database.dao.InventoryDao
 import com.example.chatgpt_mealplanner.core.database.dao.LeftoverDao
 import com.example.chatgpt_mealplanner.core.database.dao.MealDao
@@ -28,7 +27,9 @@ class AiContextBuilder @Inject constructor(
     private val leftoverDao: LeftoverDao,
     private val shoppingDao: ShoppingDao,
     private val activeProposalStore: com.example.chatgpt_mealplanner.core.ai.proposal.ActiveProposalStore,
-    private val pendingMutationStore: com.example.chatgpt_mealplanner.core.ai.pending.PendingMutationStore
+    private val pendingMutationStore: com.example.chatgpt_mealplanner.core.ai.pending.PendingMutationStore,
+    private val cookingPreferences: com.example.chatgpt_mealplanner.core.repository.CookingPreferencesSource =
+        com.example.chatgpt_mealplanner.core.repository.NoCookingPreferences
 ) {
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -135,11 +136,13 @@ class AiContextBuilder @Inject constructor(
         val pendingMutation = if (conversationId.isNotBlank()) pendingMutationStore.getPendingMutation(conversationId) else null
         val pendingTitle = (pendingMutation as? com.example.chatgpt_mealplanner.core.ai.pending.PendingAiMutation.AddPlannedMeal)?.title
 
+        val preferences = cookingPreferences.current()
+
         return AiContextPayload(
             currentDate = todayStr,
             dayOfWeek = dayOfWeek,
-            householdSize = 2,
-            preferences = UserPreferencesSummaryDto(),
+            householdSize = preferences.householdSize,
+            preferences = preferences,
             recentCookedMeals = recentCookedDtos,
             upcomingPlannedMeals = upcomingPlannedDtos,
             availableLeftovers = leftoverDtos,
