@@ -388,6 +388,8 @@ class AiMealPlannerOrchestrator @Inject constructor(
             }
         }
 
+        correctedMealPlan(request, providerResponse, userMessageText)?.let { providerResponse = it }
+
         return when (providerResponse) {
             is AiProviderResponse.FinalResponse -> {
                 val finalRes = providerResponse as AiProviderResponse.FinalResponse
@@ -647,6 +649,34 @@ class AiMealPlannerOrchestrator @Inject constructor(
      * A recipe card is stored with empty text because the app draws it from its payload. Gemini
      * still has to read it, or "make it spicier" and "option 2" refer to nothing.
      */
+    /**
+     * One invalid meal stops the whole plan being saved, so Gemini gets one chance to fix it. Returns
+     * null to keep the original plan, whose card explains why it can't be saved.
+     */
+    private suspend fun correctedMealPlan(
+        request: AiProviderRequest,
+        response: AiProviderResponse,
+        userMessageText: String
+    ): AiProviderResponse.FinalResponse? {
+        val reply = response as? AiProviderResponse.FinalResponse ?: return null
+        val plan = reply.mealPlan?.takeIf { it.size > 1 } ?: return null
+        if (isRetailProductSearchOnlyRequest(userMessageText)) return null
+        val problems = plan.flatMap { recipeValidator.validateProposal(it).issues }.distinct()
+        if (problems.isEmpty()) return null
+
+        safeLog("[MEAL_PLAN_CORRECTION] problems=${problems.size}")
+        val correction = provider.send(
+            request.copy(
+                availableTools = emptyList(),
+                messages = request.messages + AiChatMessage(role = "assistant", content = reply.text) + AiChatMessage(
+                    role = "user",
+                    content = "[MEAL_PLAN_CORRECTION] The app can't save that plan: ${problems.joinToString(" ")} Replace the meals that break these rules, then send the whole plan again in the same format, including MEAL_PLAN_JSON."
+                )
+            )
+        ) as? AiProviderResponse.FinalResponse
+        return correction?.takeIf { (it.mealPlan?.size ?: 0) > 1 }
+    }
+
     private fun historyTextFor(message: ChatMessageEntity): String? =
         message.content.takeIf { it.isNotBlank() }
             ?: message.structuredPayloadJson?.let(::describeProposalCard)

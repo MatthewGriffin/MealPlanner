@@ -996,6 +996,84 @@ private val milkAllergyAndNoCoriander = com.example.chatgpt_mealplanner.contract
         assertTrue(validated.issues.toString(), validated.issues.single().contains("Milk allergy"))
     }
 
+    private fun planMeal(title: String, ingredient: String) = com.example.chatgpt_mealplanner.contract.MealProposal(
+        title = title,
+        ingredients = listOf(com.example.chatgpt_mealplanner.contract.ProposedIngredient(displayName = ingredient, quantity = 200.0, unit = "GRAM")),
+        reasoningSummary = ""
+    )
+
+    private val chickenPlan = listOf(planMeal("Chicken Stew", "chicken thighs"), planMeal("Rice Bowl", "basmati rice"))
+    private val vegetarianPlan = listOf(planMeal("Bean Stew", "butter beans"), planMeal("Rice Bowl", "basmati rice"))
+
+    /** Sends each reply in order for a plan request, and returns the result with the requests made. */
+    private suspend fun planRequest(vararg replies: AiProviderResponse): Pair<AiOrchestrationResult.Final, List<AiProviderRequest>> {
+        val requests = mutableListOf<AiProviderRequest>()
+        val orchestrator = AiMealPlannerOrchestrator(
+            provider = object : MealPlannerAiProvider {
+                override suspend fun send(request: AiProviderRequest): AiProviderResponse {
+                    requests += request
+                    return replies[requests.size - 1]
+                }
+                override suspend fun continueWithToolResults(request: AiContinueWithToolsRequest) =
+                    AiProviderResponse.FinalResponse("Done")
+            },
+            contextBuilder = contextBuilder,
+            toolDispatcher = aiToolDispatcher,
+            recipeValidator = RecipeValidator(inventoryDao, mealDao) { milkAllergyAndNoCoriander },
+            intentResolver = intentResolver,
+            chatRepository = chatRepository,
+            pendingMutationStore = pendingMutationStore,
+            activeProposalStore = activeProposalStore
+        )
+        val result = orchestrator.processUserMessage("default_conversation", "create a meal plan with dinners for the next 3 days")
+        return (result as AiOrchestrationResult.Final) to requests
+    }
+
+    @Test
+    fun mealPlanThatBreaksADiet_getsOneCorrection() = runTest(testDispatcher) {
+        val (result, requests) = planRequest(
+            AiProviderResponse.FinalResponse("Chicken plan", mealPlan = chickenPlan),
+            AiProviderResponse.FinalResponse("Vegetarian plan", mealPlan = vegetarianPlan)
+        )
+
+        assertEquals(vegetarianPlan, result.mealPlan)
+        assertEquals(2, requests.size)
+        assertTrue(requests[1].availableTools.isEmpty())
+        val correction = requests[1].messages.last().content
+        assertTrue(correction, correction.contains("'chicken thighs' conflicts with the Vegetarian diet."))
+    }
+
+    @Test
+    fun mealPlanStillBreakingADiet_isNotRetriedAgain() = runTest(testDispatcher) {
+        val (result, requests) = planRequest(
+            AiProviderResponse.FinalResponse("Chicken plan", mealPlan = chickenPlan),
+            AiProviderResponse.FinalResponse("Chicken plan again", mealPlan = chickenPlan)
+        )
+
+        assertEquals(chickenPlan, result.mealPlan)
+        assertEquals(2, requests.size)
+    }
+
+    @Test
+    fun failedMealPlanCorrection_keepsTheOriginalPlan() = runTest(testDispatcher) {
+        val (result, requests) = planRequest(
+            AiProviderResponse.FinalResponse("Chicken plan", mealPlan = chickenPlan),
+            AiProviderResponse.Error("RATE_LIMITED", "Busy")
+        )
+
+        assertEquals(chickenPlan, result.mealPlan)
+        assertEquals("Chicken plan", result.assistantText)
+        assertEquals(2, requests.size)
+    }
+
+    @Test
+    fun mealPlanWithinTheRules_takesOneRequest() = runTest(testDispatcher) {
+        val (result, requests) = planRequest(AiProviderResponse.FinalResponse("Plan", mealPlan = vegetarianPlan))
+
+        assertEquals(vegetarianPlan, result.mealPlan)
+        assertEquals(1, requests.size)
+    }
+
     @Test
     fun geminiContext_carriesPreferencesAndHouseholdSize() = runTest(testDispatcher) {
         val builder = AiContextBuilder(
