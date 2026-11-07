@@ -2,8 +2,6 @@ package com.example.chatgpt_mealplanner.feature.scanner.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -28,7 +26,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -54,8 +51,9 @@ import com.example.chatgpt_mealplanner.core.model.FoodCategory
 import com.example.chatgpt_mealplanner.core.model.QuantityConfidence
 import com.example.chatgpt_mealplanner.core.model.QuantityUnit
 import com.example.chatgpt_mealplanner.core.model.StorageLocation
+import com.example.chatgpt_mealplanner.feature.inventory.ui.EnumDropdownSelector
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProductConfirmationScreen(
     barcode: String?,
@@ -233,33 +231,23 @@ fun ProductConfirmationScreen(
                 )
             }
 
-            Text("Storage Location", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                StorageLocation.entries.forEach { loc ->
-                    FilterChip(
-                        selected = selectedLocation == loc,
-                        onClick = { selectedLocation = loc },
-                        label = { Text(loc.displayName) }
-                    )
-                }
-            }
+            EnumDropdownSelector(
+                label = "Storage Location",
+                options = StorageLocation.entries.toTypedArray(),
+                selectedOption = selectedLocation,
+                onOptionSelected = { selectedLocation = it },
+                modifier = Modifier.fillMaxWidth(),
+                optionLabel = { it.displayName }
+            )
 
-            Text("Category", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                FoodCategory.entries.forEach { cat ->
-                    FilterChip(
-                        selected = selectedCategory == cat,
-                        onClick = { selectedCategory = cat },
-                        label = { Text(cat.displayName) }
-                    )
-                }
-            }
+            EnumDropdownSelector(
+                label = "Category",
+                options = FoodCategory.entries.toTypedArray(),
+                selectedOption = selectedCategory,
+                onOptionSelected = { selectedCategory = it },
+                modifier = Modifier.fillMaxWidth(),
+                optionLabel = { it.displayName }
+            )
 
             OutlinedTextField(
                 value = useByDateText,

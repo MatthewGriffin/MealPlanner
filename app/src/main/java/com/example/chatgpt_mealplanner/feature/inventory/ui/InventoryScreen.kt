@@ -7,8 +7,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -40,7 +38,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -457,7 +454,6 @@ fun AddEditItemDialog(
     )
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun CorrectionDialog(
     item: InventoryItem,
@@ -481,19 +477,13 @@ fun CorrectionDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
-                Text("Unit", style = MaterialTheme.typography.labelMedium)
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    QuantityUnit.entries.forEach { unit ->
-                        FilterChip(
-                            selected = selectedUnit == unit,
-                            onClick = { selectedUnit = unit },
-                            label = { Text(unit.name) }
-                        )
-                    }
-                }
+                EnumDropdownSelector(
+                    label = "Unit",
+                    options = QuantityUnit.entries.toTypedArray(),
+                    selectedOption = selectedUnit,
+                    onOptionSelected = { selectedUnit = it },
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
         },
         confirmButton = {
