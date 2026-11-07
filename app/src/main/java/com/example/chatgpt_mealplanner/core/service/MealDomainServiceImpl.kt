@@ -126,13 +126,17 @@ class MealDomainServiceImpl @Inject constructor(
             )
         }
 
+        // A rating belongs to the dish, so it survives an edit but not a different recipe.
+        val sameDish = newMeal.title.trim().equals(existing.meal.title.trim(), ignoreCase = true)
         val updatedMeal = newMeal.copy(
             id = oldMealId,
             date = if (preserveSchedule) existing.meal.date else newMeal.date,
             mealType = if (preserveSchedule) existing.meal.mealType else newMeal.mealType,
             status = existing.meal.status,
             createdAt = existing.meal.createdAt,
-            updatedAt = System.currentTimeMillis()
+            updatedAt = System.currentTimeMillis(),
+            rating = existing.meal.rating.takeIf { sameDish },
+            ratedAt = existing.meal.ratedAt.takeIf { sameDish }
         )
         val validationError = validatePortionInvariants(updatedMeal)
         if (validationError != null) return@runInDomainTransaction validationError

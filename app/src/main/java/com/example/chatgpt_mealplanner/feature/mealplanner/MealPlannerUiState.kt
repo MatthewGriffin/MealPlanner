@@ -38,6 +38,8 @@ internal fun requestsForExistingMealIds(
 ): List<MealChangeRequestEntity> = requests.filter { it.mealId in existingMealIds }
 
 sealed interface MealPlannerUiEvent {
+    /** A null rating clears it. */
+    data class RateMeal(val mealId: String, val rating: com.example.chatgpt_mealplanner.core.model.MealRating?) : MealPlannerUiEvent
     data class SelectDate(val date: String) : MealPlannerUiEvent
     data class SelectTab(val tab: MealPlannerTab) : MealPlannerUiEvent
     object RequestAddMeal : MealPlannerUiEvent

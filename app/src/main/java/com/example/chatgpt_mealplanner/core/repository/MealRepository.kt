@@ -12,6 +12,7 @@ interface MealRepository {
     suspend fun getMealWithIngredients(mealId: String): MealWithIngredients?
     suspend fun insertMealWithIngredients(meal: Meal, ingredients: List<MealIngredient>)
     suspend fun updateMeal(meal: Meal)
+    suspend fun setMealRating(mealId: String, rating: com.example.chatgpt_mealplanner.core.model.MealRating?)
     suspend fun updateMealIngredients(mealId: String, ingredients: List<MealIngredient>)
     suspend fun deleteMeal(mealId: String)
     suspend fun getRecentCookedMeals(daysLookback: Int): List<MealWithIngredients>

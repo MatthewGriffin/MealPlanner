@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -27,8 +28,26 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.chatgpt_mealplanner.core.model.MealRating
 import com.example.chatgpt_mealplanner.core.util.formatQuantityAndUnit
+import com.example.chatgpt_mealplanner.feature.mealplanner.MealPlannerUiEvent
 import com.example.chatgpt_mealplanner.feature.mealplanner.MealPlannerViewModel
+
+@Composable
+internal fun MealRatingChips(rating: MealRating?, onRate: (MealRating?) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FilterChip(
+            selected = rating == MealRating.UP,
+            onClick = { onRate(MealRating.UP.takeUnless { rating == it }) },
+            label = { Text("👍 Liked it") }
+        )
+        FilterChip(
+            selected = rating == MealRating.DOWN,
+            onClick = { onRate(MealRating.DOWN.takeUnless { rating == it }) },
+            label = { Text("👎 Not for us") }
+        )
+    }
+}
 
 @Composable
 fun RecipeDetailsScreen(
@@ -115,6 +134,14 @@ fun RecipeDetailsScreen(
                             style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    // A follower's meals come from the main phone, which holds the ratings.
+                    if (!uiState.isFollower) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        MealRatingChips(
+                            rating = meal.rating,
+                            onRate = { viewModel.onEvent(MealPlannerUiEvent.RateMeal(meal.id, it)) }
                         )
                     }
                 }

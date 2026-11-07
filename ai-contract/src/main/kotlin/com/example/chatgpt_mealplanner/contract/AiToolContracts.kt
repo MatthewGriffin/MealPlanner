@@ -208,7 +208,9 @@ data class AiContextPayload(
     val lowStockStaples: List<InventorySummaryContextDto> = emptyList(),
     val activeShoppingList: List<ShoppingSummaryContextDto> = emptyList(),
     val activeProposalTitle: String? = null,
-    val pendingMutationTitle: String? = null
+    val pendingMutationTitle: String? = null,
+    val likedMeals: List<String> = emptyList(),
+    val dislikedMeals: List<String> = emptyList()
 )
 
 @Serializable

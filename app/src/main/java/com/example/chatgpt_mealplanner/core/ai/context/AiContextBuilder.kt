@@ -137,6 +137,10 @@ class AiContextBuilder @Inject constructor(
         val pendingTitle = (pendingMutation as? com.example.chatgpt_mealplanner.core.ai.pending.PendingAiMutation.AddPlannedMeal)?.title
 
         val preferences = cookingPreferences.current()
+        // The newest rating of a title counts, because a meal can be saved and rated more than once.
+        val ratings = mealDao.getRatedMealTitles(MAX_RATINGS_READ).distinctBy { it.title.trim().lowercase() }
+        fun ratedTitles(rating: com.example.chatgpt_mealplanner.core.model.MealRating) =
+            ratings.filter { it.rating == rating }.map { it.title }.take(MAX_RATED_TITLES_SENT)
 
         return AiContextPayload(
             currentDate = todayStr,
@@ -151,8 +155,15 @@ class AiContextBuilder @Inject constructor(
             lowStockStaples = lowDtos,
             activeShoppingList = activeShoppingDtos,
             activeProposalTitle = activeProposal?.title,
-            pendingMutationTitle = pendingTitle
+            pendingMutationTitle = pendingTitle,
+            likedMeals = ratedTitles(com.example.chatgpt_mealplanner.core.model.MealRating.UP),
+            dislikedMeals = ratedTitles(com.example.chatgpt_mealplanner.core.model.MealRating.DOWN)
         )
+    }
+
+    private companion object {
+        const val MAX_RATINGS_READ = 200
+        const val MAX_RATED_TITLES_SENT = 15
     }
 
     suspend fun buildContextPayloadJson(conversationId: String = ""): String {

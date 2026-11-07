@@ -88,8 +88,10 @@ class MealPlannerViewModel @Inject constructor(
 
     private val availableLeftoversFlow = leftoverRepository.observeAvailableLeftovers()
 
-    private val recentCookedMealsFlow = flow {
-        emit(mealRepository.getRecentCookedMeals(14))
+    private val recentCookedRefreshFlow = MutableStateFlow(0)
+
+    private val recentCookedMealsFlow = recentCookedRefreshFlow.flatMapLatest {
+        flow { emit(mealRepository.getRecentCookedMeals(14)) }
     }
 
     private val allChangeRequestsFlow = mealChangeRequestRepository.observeAllRequests()
@@ -195,6 +197,7 @@ class MealPlannerViewModel @Inject constructor(
     fun onEvent(event: MealPlannerUiEvent) {
         when (event) {
             is MealPlannerUiEvent.SelectDate -> selectedDateFlow.value = event.date
+            is MealPlannerUiEvent.RateMeal -> rateMeal(event.mealId, event.rating)
             is MealPlannerUiEvent.SelectTab -> activeTabFlow.value = event.tab
             is MealPlannerUiEvent.RequestAddMeal -> {
                 mealToAddOrEditFlow.value = null
@@ -247,6 +250,13 @@ class MealPlannerViewModel @Inject constructor(
                     userMessageFlow.value = formatDomainError(result.error)
                 }
             }
+        }
+    }
+
+    private fun rateMeal(mealId: String, rating: com.example.chatgpt_mealplanner.core.model.MealRating?) {
+        viewModelScope.launch {
+            mealRepository.setMealRating(mealId, rating)
+            recentCookedRefreshFlow.value++
         }
     }
 

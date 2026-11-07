@@ -35,6 +35,12 @@ enum class MealTag {
 }
 
 @kotlinx.serialization.Serializable
+enum class MealRating {
+    UP,
+    DOWN
+}
+
+@kotlinx.serialization.Serializable
 data class Meal(
     val id: String,
     val date: String, // ISO-8601 Date (YYYY-MM-DD)
@@ -51,7 +57,9 @@ data class Meal(
     val notes: String? = null,
     val cookedAt: Long? = null,
     val createdAt: Long = System.currentTimeMillis(),
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    val rating: MealRating? = null,
+    val ratedAt: Long? = null
 )
 
 @kotlinx.serialization.Serializable
