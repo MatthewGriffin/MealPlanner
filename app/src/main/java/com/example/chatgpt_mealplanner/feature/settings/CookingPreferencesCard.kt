@@ -2,8 +2,7 @@ package com.example.chatgpt_mealplanner.feature.settings
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -11,7 +10,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
-import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -19,6 +23,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -32,7 +39,6 @@ fun CookingPreferencesSection(viewModel: CookingPreferencesViewModel = hiltViewM
     CookingPreferencesCard(state = state, onChange = viewModel::update, onSave = viewModel::save)
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun CookingPreferencesCard(
     state: CookingPreferencesUiState,
@@ -44,8 +50,7 @@ fun CookingPreferencesCard(
             Text("Cooking Preferences", fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(8.dp))
 
-            Label("Allergies")
-            ChoiceChips(DietaryRules.ALLERGIES, state.allergies) { allergy ->
+            MultiChoiceDropdown("Allergies", DietaryRules.ALLERGIES, state.allergies) { allergy ->
                 onChange { it.copy(allergies = it.allergies.toggled(allergy)) }
             }
             Field("Other allergies, separated by commas", state.otherAllergies) { text ->
@@ -59,8 +64,7 @@ fun CookingPreferencesCard(
             )
             Spacer(Modifier.height(12.dp))
 
-            Label("Diet")
-            ChoiceChips(DietaryRules.DIETS, state.diets) { diet ->
+            MultiChoiceDropdown("Diet", DietaryRules.DIETS, state.diets) { diet ->
                 onChange { it.copy(diets = it.diets.toggled(diet)) }
             }
             Spacer(Modifier.height(4.dp))
@@ -83,10 +87,7 @@ fun CookingPreferencesCard(
             }
             Spacer(Modifier.height(12.dp))
 
-            Label("Cooking skill")
-            ChoiceChips(CookingPreferencesUiState.SKILL_LEVELS, setOfNotNull(state.skillLevel)) { level ->
-                onChange { it.copy(skillLevel = level.takeUnless { _ -> it.skillLevel == level }) }
-            }
+            SkillDropdown(state.skillLevel) { level -> onChange { it.copy(skillLevel = level) } }
             Spacer(Modifier.height(4.dp))
             Field("Special equipment, such as air fryer, separated by commas", state.equipment) { text ->
                 onChange { it.copy(equipment = text) }
@@ -117,18 +118,71 @@ private fun Field(label: String, value: String, onValueChange: (String) -> Unit)
     )
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+/** Stays open after each tick, because several answers are normal here. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ChoiceChips(options: List<String>, selected: Set<String>, onToggle: (String) -> Unit) {
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+private fun MultiChoiceDropdown(label: String, options: List<String>, selected: Set<String>, onToggle: (String) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    DropdownField(
+        label = label,
+        value = selected.sortedBy { options.indexOf(it) }.joinToString(", ").ifEmpty { "None" },
+        expanded = expanded,
+        onExpandedChange = { expanded = it }
+    ) {
         options.forEach { option ->
-            FilterChip(
-                selected = option in selected,
-                onClick = { onToggle(option) },
-                label = { Text(option) }
+            DropdownMenuItem(
+                text = { Text(option) },
+                leadingIcon = { Checkbox(checked = option in selected, onCheckedChange = null) },
+                onClick = { onToggle(option) }
             )
         }
     }
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SkillDropdown(selected: String?, onSelect: (String?) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    DropdownField(
+        label = "Cooking skill",
+        value = selected ?: NOT_SET,
+        expanded = expanded,
+        onExpandedChange = { expanded = it }
+    ) {
+        (listOf(null) + CookingPreferencesUiState.SKILL_LEVELS).forEach { level ->
+            DropdownMenuItem(
+                text = { Text(level ?: NOT_SET) },
+                onClick = {
+                    onSelect(level)
+                    expanded = false
+                }
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DropdownField(
+    label: String,
+    value: String,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    items: @Composable ColumnScope.() -> Unit
+) {
+    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = onExpandedChange) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text(label) },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
+        )
+        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { onExpandedChange(false) }, content = items)
+    }
+}
+
+private const val NOT_SET = "Not set"
 
 private fun Set<String>.toggled(value: String): Set<String> = if (value in this) this - value else this + value
