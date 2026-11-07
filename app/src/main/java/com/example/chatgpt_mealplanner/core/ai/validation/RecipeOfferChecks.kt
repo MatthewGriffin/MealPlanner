@@ -5,9 +5,9 @@ import com.example.chatgpt_mealplanner.contract.ProposedIngredient
 import com.example.chatgpt_mealplanner.contract.UserPreferencesSummaryDto
 
 /**
- * Checks a recipe while Gemini can still fix it. A problem stops the card. A query only tells
- * Gemini, because a check on words can be wrong about a correct recipe and the user shouldn't lose
- * the card over it.
+ * Checks a recipe while Gemini can still fix it. A problem stops the card. A query goes to Gemini
+ * and, if it's still there after the corrections, shows as a warning. A check on words can be wrong
+ * about a correct recipe, so the user shouldn't lose the card over it.
  */
 object RecipeOfferChecks {
     private val vagueIngredientNames = setOf(
@@ -70,7 +70,12 @@ object RecipeOfferChecks {
         proposal: MealProposal,
         method: String,
         preferences: UserPreferencesSummaryDto = UserPreferencesSummaryDto()
-    ): List<String> {
+    ): List<String> = warnings(proposal, method) + proposal.ingredients
+        .filter { DietaryRules.isDisliked(it.displayName, preferences) }
+        .map { "'${it.displayName}' is something this household dislikes." }
+
+    /** The queries that don't depend on the household. The card words its own dislikes warning. */
+    fun warnings(proposal: MealProposal, method: String): List<String> {
         val methodText = method.lowercase()
         val unused = proposal.ingredients
             .filter { !it.optional && !isUsedIn(it.displayName, methodText) }
@@ -78,10 +83,7 @@ object RecipeOfferChecks {
         val oversized = proposal.ingredients
             .filter { gramsOrMl(it)?.let { amount -> amount / proposal.servings.coerceAtLeast(1) > MOST_GRAMS_OR_ML_PER_SERVING } == true }
             .map { "'${it.displayName}' looks like too much for ${proposal.servings} servings (${it.quantity} ${it.unit})." }
-        val disliked = proposal.ingredients
-            .filter { DietaryRules.isDisliked(it.displayName, preferences) }
-            .map { "'${it.displayName}' is something this household dislikes." }
-        return unused + oversized + disliked + cookabilityQueries(proposal, methodText)
+        return unused + oversized + cookabilityQueries(proposal, methodText)
     }
 
     /** Mistakes seen in real Gemini recipes that make a recipe harder to follow. */

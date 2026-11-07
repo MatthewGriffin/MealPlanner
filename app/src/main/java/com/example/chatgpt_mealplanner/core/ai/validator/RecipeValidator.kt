@@ -25,6 +25,16 @@ class RecipeValidator @Inject constructor(
         com.example.chatgpt_mealplanner.core.repository.NoCookingPreferences
 ) {
 
+    /** What Gemini should fix. A recipe with no steps has no method for the wording checks to read. */
+    suspend fun correctionsNeeded(proposal: MealProposal): List<String> {
+        val preferences = cookingPreferences.current()
+        val checks = com.example.chatgpt_mealplanner.core.ai.validation.RecipeOfferChecks
+        val queries = if (proposal.steps.isEmpty()) emptyList() else checks.queries(proposal, proposal.methodText(), preferences)
+        return (checks.problems(proposal, preferences) + queries).distinct()
+    }
+
+    private fun MealProposal.methodText() = steps.joinToString("\n") { it.instruction }
+
     suspend fun validateProposal(proposal: MealProposal): ValidatedMealProposal {
         val issues = mutableListOf<String>()
         val warnings = mutableListOf<String>()
@@ -124,6 +134,11 @@ class RecipeValidator @Inject constructor(
                     warnings.add("Garlic powder is owned in inventory. Consider using garlic powder unless fresh garlic materially improves the dish.")
                 }
             }
+        }
+
+        // Whatever Gemini was asked to correct and didn't.
+        if (proposal.steps.isNotEmpty()) {
+            warnings.addAll(com.example.chatgpt_mealplanner.core.ai.validation.RecipeOfferChecks.warnings(proposal, proposal.methodText()))
         }
 
         // Rule check: 14-day repetition penalty

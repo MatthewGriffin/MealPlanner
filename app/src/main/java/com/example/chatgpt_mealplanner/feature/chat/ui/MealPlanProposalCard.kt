@@ -72,6 +72,13 @@ fun MealPlanProposalCard(
                         color = MaterialTheme.colorScheme.error
                     )
                 }
+                validated.warnings.forEach { warning ->
+                    Text(
+                        text = "Warning: $warning",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
                 Spacer(Modifier.height(8.dp))
             }
             Text(

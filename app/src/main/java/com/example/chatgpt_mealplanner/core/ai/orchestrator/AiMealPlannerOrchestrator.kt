@@ -43,8 +43,8 @@ class AiMealPlannerOrchestrator @Inject constructor(
     companion object {
         const val MAX_TOOL_ROUNDS = 8
 
-        /** Gemini gets one chance to correct a queried recipe, then the card stands. */
-        const val MAX_RECIPE_OFFERS = 2
+        /** Times Gemini is asked to fix a recipe or plan. Anything still wrong becomes a warning on the card. */
+        const val MAX_CORRECTION_ATTEMPTS = 3
     }
 
     suspend fun processUserMessage(
@@ -226,11 +226,29 @@ class AiMealPlannerOrchestrator @Inject constructor(
         var requestedWritesCount = 0
         var successfulWritesCount = 0
         var failedWritesCount = 0
-        var acceptedOffers = 0
+        var offerAcceptedThisTurn = false
+        var correctionsAsked = 0
 
-        while (providerResponse is AiProviderResponse.ToolCalls) {
+        while (true) {
+            if (providerResponse !is AiProviderResponse.ToolCalls) {
+                // Gemini can answer a correction in words, which leaves the card as it was.
+                val correction = if (offerAcceptedThisTurn && !mealPlanRequest && correctionsAsked < MAX_CORRECTION_ATTEMPTS) {
+                    askForRecipeCorrection(request, conversationId)
+                } else null
+                if (correction == null) break
+                correctionsAsked++
+                providerResponse = correction
+                continue
+            }
             val maxRoundsForRequest = if (mealPlanRequest) 2 else MAX_TOOL_ROUNDS
             if (roundCount >= maxRoundsForRequest) {
+                if (offerAcceptedThisTurn) {
+                    providerResponse = AiProviderResponse.FinalResponse(
+                        text = "",
+                        modelId = (providerResponse as AiProviderResponse.ToolCalls).modelId
+                    )
+                    break
+                }
                 return AiOrchestrationResult.Error(
                     code = "MAX_TOOL_ROUNDS_EXCEEDED",
                     userFacingMessage = "Exceeded maximum tool execution rounds."
@@ -283,11 +301,12 @@ class AiMealPlannerOrchestrator @Inject constructor(
 
             val offerResult = toolResults.singleOrNull()?.takeIf { it.toolName == AiToolId.OFFER_ADD_PLANNED_MEAL.toolName && it.success }
             if (offerResult != null) {
-                acceptedOffers++
+                offerAcceptedThisTurn = true
                 // The card replaces any text that follows, so asking for it would only spend the
                 // user's limited requests. A replacement meal still needs it for its change summary.
-                val nothingToFix = !offerResult.payloadJson.contains("queries") || acceptedOffers >= MAX_RECIPE_OFFERS
-                if (nothingToFix && !isReplacementRequest(userMessageText)) {
+                val askToFix = offerResult.payloadJson.contains("queries") && correctionsAsked < MAX_CORRECTION_ATTEMPTS
+                if (askToFix) correctionsAsked++
+                if (!askToFix && !isReplacementRequest(userMessageText)) {
                     providerResponse = AiProviderResponse.FinalResponse(
                         text = "",
                         modelId = (providerResponse as AiProviderResponse.ToolCalls).modelId
@@ -306,7 +325,13 @@ class AiMealPlannerOrchestrator @Inject constructor(
                 allowMoreToolCalls = roundCount < maxRoundsForRequest
             )
 
-            providerResponse = provider.continueWithToolResults(continueRequest)
+            val modelBeforeContinuing = (providerResponse as AiProviderResponse.ToolCalls).modelId
+            providerResponse = provider.continueWithToolResults(continueRequest).let { next ->
+                // A failed correction shouldn't cost the user the card they already have.
+                if (next is AiProviderResponse.Error && offerAcceptedThisTurn) {
+                    AiProviderResponse.FinalResponse(text = "", modelId = modelBeforeContinuing)
+                } else next
+            }
         }
 
         val continuationCode = when (providerResponse) {
@@ -649,32 +674,56 @@ class AiMealPlannerOrchestrator @Inject constructor(
      * A recipe card is stored with empty text because the app draws it from its payload. Gemini
      * still has to read it, or "make it spicier" and "option 2" refer to nothing.
      */
+    /** Returns Gemini's next attempt, or null when the card is fine, or Gemini couldn't be reached. */
+    private suspend fun askForRecipeCorrection(request: AiProviderRequest, conversationId: String): AiProviderResponse? {
+        val pending = pendingMutationStore.getPendingMutation(conversationId) as? com.example.chatgpt_mealplanner.core.ai.pending.PendingAiMutation.AddPlannedMeal
+            ?: return null
+        val problems = recipeValidator.correctionsNeeded(proposalFromPendingSnapshot(pending))
+        if (problems.isEmpty()) return null
+
+        safeLog("[RECIPE_CORRECTION] problems=${problems.size}")
+        return provider.send(
+            request.copy(
+                forcedToolName = AiToolId.OFFER_ADD_PLANNED_MEAL.toolName,
+                messages = request.messages + AiChatMessage(role = "assistant", content = formatAppOwnedRecipeProposal(pending)) + AiChatMessage(
+                    role = "user",
+                    content = "[RECIPE_CORRECTION] Fix these in the recipe above: ${problems.joinToString(" ")} Call 'offer_add_planned_meal' now with the whole corrected recipe."
+                )
+            )
+        ).takeUnless { it is AiProviderResponse.Error }
+    }
+
     /**
-     * One invalid meal stops the whole plan being saved, so Gemini gets one chance to fix it. Returns
-     * null to keep the original plan, whose card explains why it can't be saved.
+     * Asks Gemini to fix a plan until nothing is wrong or the attempts run out. The card then warns
+     * about what's left, and can't be saved if a meal breaks an allergy or diet. Returns null to keep
+     * the reply as it is.
      */
     private suspend fun correctedMealPlan(
         request: AiProviderRequest,
         response: AiProviderResponse,
         userMessageText: String
     ): AiProviderResponse.FinalResponse? {
-        val reply = response as? AiProviderResponse.FinalResponse ?: return null
-        val plan = reply.mealPlan?.takeIf { it.size > 1 } ?: return null
-        if (isRetailProductSearchOnlyRequest(userMessageText)) return null
-        val problems = plan.flatMap { recipeValidator.validateProposal(it).issues }.distinct()
-        if (problems.isEmpty()) return null
+        var latest = response as? AiProviderResponse.FinalResponse ?: return null
+        if ((latest.mealPlan?.size ?: 0) <= 1 || isRetailProductSearchOnlyRequest(userMessageText)) return null
+        repeat(MAX_CORRECTION_ATTEMPTS) {
+            val problems = latest.mealPlan.orEmpty().flatMap { meal ->
+                recipeValidator.correctionsNeeded(meal).map { "${meal.title}: $it" }
+            }.distinct()
+            if (problems.isEmpty()) return latest
 
-        safeLog("[MEAL_PLAN_CORRECTION] problems=${problems.size}")
-        val correction = provider.send(
-            request.copy(
-                availableTools = emptyList(),
-                messages = request.messages + AiChatMessage(role = "assistant", content = reply.text) + AiChatMessage(
-                    role = "user",
-                    content = "[MEAL_PLAN_CORRECTION] The app can't save that plan: ${problems.joinToString(" ")} Replace the meals that break these rules, then send the whole plan again in the same format, including MEAL_PLAN_JSON."
+            safeLog("[MEAL_PLAN_CORRECTION] problems=${problems.size}")
+            val correction = provider.send(
+                request.copy(
+                    availableTools = emptyList(),
+                    messages = request.messages + AiChatMessage(role = "assistant", content = latest.text) + AiChatMessage(
+                        role = "user",
+                        content = "[MEAL_PLAN_CORRECTION] Fix these in that plan: ${problems.joinToString(" ")} Replace any meal that breaks an allergy or diet, then send the whole plan again in the same format, including MEAL_PLAN_JSON."
+                    )
                 )
-            )
-        ) as? AiProviderResponse.FinalResponse
-        return correction?.takeIf { (it.mealPlan?.size ?: 0) > 1 }
+            ) as? AiProviderResponse.FinalResponse
+            latest = correction?.takeIf { (it.mealPlan?.size ?: 0) > 1 } ?: return latest
+        }
+        return latest
     }
 
     private fun historyTextFor(message: ChatMessageEntity): String? =
