@@ -838,7 +838,7 @@ class GeminiMealPlannerAiProvider @Inject constructor(
         return withoutJson.trim().removeSuffix("***").trim()
     }
 
-    private val fencedJsonArray = Regex("""```(?:json)?\s*(\[[\s\S]*])\s*```""")
+    private val fencedJsonArray = Regex("""```(?:json)?\s*(\[[\s\S]*])\s*(?:```|$)""")
 
     private fun extractMealProposalFromText(text: String): MealProposal? {
         if (text.contains("PROPOSAL_JSON:")) {
