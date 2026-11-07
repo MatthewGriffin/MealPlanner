@@ -7,8 +7,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -44,7 +42,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -67,6 +64,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.example.chatgpt_mealplanner.feature.inventory.ui.EnumDropdownSelector
 import com.example.chatgpt_mealplanner.core.receipt.ReceiptSpendCategory
 import com.example.chatgpt_mealplanner.core.receipt.ReceiptSpendItemDraft
 import com.example.chatgpt_mealplanner.core.receipt.ReceiptSpendParser
@@ -76,7 +74,7 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
 
-@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReceiptSpendScreen(
     modifier: Modifier = Modifier,
@@ -398,15 +396,10 @@ fun ReceiptSpendScreen(
                                         }
                                     }
                                 }
-                                FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    ReceiptSpendCategory.entries.forEach { cat ->
-                                        FilterChip(
-                                            selected = item.category.equals(cat.name, ignoreCase = true) || item.category.equals(cat.displayName, ignoreCase = true),
-                                            onClick = { viewModel.updateItemDraft(item.copy(category = cat.name)) },
-                                            label = { Text(cat.displayName, style = MaterialTheme.typography.labelSmall) }
-                                        )
-                                    }
-                                }
+                                ReceiptItemCategoryDropdown(
+                                    category = item.category,
+                                    onCategorySelected = { viewModel.updateItemDraft(item.copy(category = it)) }
+                                )
                             }
                         }
                     }
@@ -702,5 +695,17 @@ private fun ReceiptPriceField(value: String, label: String, onValueChange: (Stri
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
         isError = value.isNotBlank() && ReceiptMoneyInput.parsePositivePence(value) == null
+    )
+}
+
+@Composable
+internal fun ReceiptItemCategoryDropdown(category: String, onCategorySelected: (String) -> Unit) {
+    EnumDropdownSelector(
+        label = "Category",
+        options = ReceiptSpendCategory.entries.toTypedArray(),
+        selectedOption = ReceiptSpendCategory.fromName(category),
+        onOptionSelected = { onCategorySelected(it.name) },
+        modifier = Modifier.fillMaxWidth(),
+        optionLabel = { it.displayName }
     )
 }
