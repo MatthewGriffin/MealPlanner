@@ -43,6 +43,7 @@ import com.example.chatgpt_mealplanner.core.model.MealIngredient
 import com.example.chatgpt_mealplanner.core.model.MealType
 import com.example.chatgpt_mealplanner.core.model.MealWithIngredients
 import com.example.chatgpt_mealplanner.core.model.QuantityUnit
+import com.example.chatgpt_mealplanner.feature.inventory.ui.EnumDropdownSelector
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.UUID
@@ -53,6 +54,7 @@ data class EditableIngredient(
     val id: String = source?.id ?: UUID.randomUUID().toString(),
     val displayName: String = source?.displayName ?: "",
     val plannedQuantity: String = source?.plannedQuantity?.toString() ?: "100.0",
+    val plannedUnit: QuantityUnit = source?.plannedUnit ?: QuantityUnit.GRAM,
     val optional: Boolean = source?.optional ?: false
 ) {
     /** Returns null for a row with no name. Fields this dialog doesn't show keep their saved values. */
@@ -67,13 +69,14 @@ data class EditableIngredient(
             mealId = mealId,
             displayName = displayName,
             plannedQuantity = 0.0,
-            plannedUnit = QuantityUnit.GRAM
+            plannedUnit = plannedUnit
         )
         return base.copy(
             mealId = mealId,
             canonicalIngredientId = canonicalId,
             displayName = displayName,
             plannedQuantity = plannedQuantity.toDoubleOrNull() ?: 100.0,
+            plannedUnit = plannedUnit,
             optional = optional
         )
     }
@@ -221,40 +224,47 @@ fun AddEditMealDialog(
                     }
                 }
 
-                LazyColumn(modifier = Modifier.height(200.dp)) {
+                LazyColumn(modifier = Modifier.height(280.dp)) {
                     itemsIndexed(ingredientsList) { index, item ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            OutlinedTextField(
-                                value = item.displayName,
-                                onValueChange = { ingredientsList[index] = item.copy(displayName = it) },
-                                label = { Text("Name") },
-                                singleLine = true,
-                                modifier = Modifier.weight(1.2f)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            OutlinedTextField(
-                                value = item.plannedQuantity,
-                                onValueChange = { ingredientsList[index] = item.copy(plannedQuantity = it) },
-                                label = { Text("Qty") },
-                                singleLine = true,
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                modifier = Modifier.weight(0.8f)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("Opt", style = MaterialTheme.typography.bodySmall)
-                                Checkbox(
-                                    checked = item.optional,
-                                    onCheckedChange = { ingredientsList[index] = item.copy(optional = it) }
+                        // On two lines, because a unit needs more width than the dialog has left on one.
+                        Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                OutlinedTextField(
+                                    value = item.displayName,
+                                    onValueChange = { ingredientsList[index] = item.copy(displayName = it) },
+                                    label = { Text("Name") },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f)
                                 )
+                                IconButton(onClick = { if (ingredientsList.size > 1) ingredientsList.removeAt(index) }) {
+                                    Icon(Icons.Default.Delete, contentDescription = "Remove")
+                                }
                             }
-                            IconButton(onClick = { if (ingredientsList.size > 1) ingredientsList.removeAt(index) }) {
-                                Icon(Icons.Default.Delete, contentDescription = "Remove")
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                OutlinedTextField(
+                                    value = item.plannedQuantity,
+                                    onValueChange = { ingredientsList[index] = item.copy(plannedQuantity = it) },
+                                    label = { Text("Qty") },
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                    modifier = Modifier.weight(0.5f)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                EnumDropdownSelector(
+                                    label = "Unit",
+                                    options = QuantityUnit.entries.toTypedArray(),
+                                    selectedOption = item.plannedUnit,
+                                    onOptionSelected = { ingredientsList[index] = item.copy(plannedUnit = it) },
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text("Opt", style = MaterialTheme.typography.bodySmall)
+                                    Checkbox(
+                                        checked = item.optional,
+                                        onCheckedChange = { ingredientsList[index] = item.copy(optional = it) }
+                                    )
+                                }
                             }
                         }
                     }

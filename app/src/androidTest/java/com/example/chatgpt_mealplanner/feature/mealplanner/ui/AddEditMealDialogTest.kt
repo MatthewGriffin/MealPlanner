@@ -2,9 +2,11 @@ package com.example.chatgpt_mealplanner.feature.mealplanner.ui
 
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isOn
+import androidx.compose.ui.test.isPopup
 import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -129,6 +131,30 @@ class AddEditMealDialogTest {
         assertEquals("RICE", rice.canonicalIngredientId)
         assertEquals(meal.id, rice.mealId)
         assertTrue(meal.id.isNotBlank())
+    }
+
+    @Test
+    fun aNewIngredientsUnitIsChosenFromADropdown() {
+        showDialog(existing = null)
+        field("Meal Title").performTextInput("Eggs on toast")
+        field("Name").performTextInput("Eggs")
+        composeRule.onNodeWithText(QuantityUnit.UNIT.name).assertDoesNotExist()
+
+        composeRule.onNodeWithText("Unit").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNode(hasText(QuantityUnit.UNIT.name) and hasAnyAncestor(isPopup())).performClick()
+        composeRule.waitForIdle()
+
+        assertEquals(QuantityUnit.UNIT, save().second.single().plannedUnit)
+    }
+
+    @Test
+    fun aNewIngredientStillDefaultsToGrams() {
+        showDialog(existing = null)
+        field("Meal Title").performTextInput("Rice bowl")
+        field("Name").performTextInput("Rice")
+
+        assertEquals(QuantityUnit.GRAM, save().second.single().plannedUnit)
     }
 
     @Test
