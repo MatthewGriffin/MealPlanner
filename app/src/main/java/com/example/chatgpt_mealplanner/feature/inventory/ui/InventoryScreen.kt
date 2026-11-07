@@ -44,7 +44,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -523,53 +522,36 @@ fun MergeItemsDialog(
         title = { Text("Merge Inventory Items") },
         text = {
             Column {
-                if (selectedTargetItem == null) {
-                    Text(
-                        text = "Select an item to merge with \"${sourceItem.displayName}\":",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = searchQuery,
-                        onValueChange = { searchQuery = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        placeholder = { Text("Search items to merge...") },
-                        singleLine = true
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    LazyColumn(modifier = Modifier.height(200.dp)) {
-                        items(filteredTargets, key = { it.id }) { target ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        selectedTargetItem = target
-                                        preferredNameOption = sourceItem.displayName
-                                    }
-                                    .padding(vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                RadioButton(
-                                    selected = false,
-                                    onClick = {
-                                        selectedTargetItem = target
-                                        preferredNameOption = sourceItem.displayName
-                                    }
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Column {
-                                    Text(target.displayName, fontWeight = FontWeight.Bold)
-                                    Text(
-                                        "${target.quantity ?: 0.0} ${target.quantityUnit?.name ?: ""}",
-                                        style = MaterialTheme.typography.bodySmall
-                                    )
-                                }
-                            }
-                        }
+                Text(
+                    text = "Select an item to merge with \"${sourceItem.displayName}\":",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("Search items to merge...") },
+                    singleLine = true
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                EnumDropdownSelector(
+                    label = "Merge with",
+                    options = filteredTargets.toTypedArray<InventoryItem?>(),
+                    selectedOption = selectedTargetItem,
+                    onOptionSelected = {
+                        selectedTargetItem = it
+                        preferredNameOption = sourceItem.displayName
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    optionLabel = { item ->
+                        item?.let { "${it.displayName} (${it.quantity ?: 0.0} ${it.quantityUnit?.name ?: ""})".replace(" )", ")") }
+                            ?: "Choose an item"
                     }
-                } else {
-                    val target = selectedTargetItem!!
+                )
+
+                selectedTargetItem?.let { target ->
+                    Spacer(modifier = Modifier.height(12.dp))
                     Text(
                         text = "Merge Preview:",
                         style = MaterialTheme.typography.titleSmall,
@@ -577,21 +559,13 @@ fun MergeItemsDialog(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    Text("Resulting Display Name:", style = MaterialTheme.typography.bodySmall)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        RadioButton(
-                            selected = preferredNameOption == sourceItem.displayName,
-                            onClick = { preferredNameOption = sourceItem.displayName }
-                        )
-                        Text(sourceItem.displayName)
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        RadioButton(
-                            selected = preferredNameOption == target.displayName,
-                            onClick = { preferredNameOption = target.displayName }
-                        )
-                        Text(target.displayName)
-                    }
+                    EnumDropdownSelector(
+                        label = "Resulting Display Name",
+                        options = arrayOf(sourceItem.displayName, target.displayName),
+                        selectedOption = preferredNameOption,
+                        onOptionSelected = { preferredNameOption = it },
+                        modifier = Modifier.fillMaxWidth()
+                    )
 
                     Spacer(modifier = Modifier.height(8.dp))
                     val combinedQty = (sourceItem.quantity ?: 0.0) + (target.quantity ?: 0.0)

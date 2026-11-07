@@ -19,6 +19,7 @@ import com.example.chatgpt_mealplanner.core.model.InventoryItem
 import com.example.chatgpt_mealplanner.core.model.QuantityUnit
 import com.example.chatgpt_mealplanner.core.model.StorageLocation
 import com.example.chatgpt_mealplanner.feature.inventory.ui.CorrectionDialog
+import com.example.chatgpt_mealplanner.feature.inventory.ui.MergeItemsDialog
 import com.example.chatgpt_mealplanner.feature.scanner.ui.ProductConfirmationScreen
 import com.example.chatgpt_mealplanner.feature.spend.ReceiptItemCategoryDropdown
 import org.junit.Assert.assertEquals
@@ -102,6 +103,40 @@ class SelectionDropdownsTest {
         composeRule.waitForIdle()
         assertEquals(StorageLocation.FREEZER, confirmed?.storageLocation)
         assertEquals(FoodCategory.DAIRY_EGGS, confirmed?.category)
+    }
+
+    @Test
+    fun mergeDialog_choosesTheItemAndNameFromDropdowns() {
+        fun item(id: String, name: String) = InventoryItem(
+            id = id,
+            canonicalName = name,
+            displayName = name,
+            category = FoodCategory.DRY_GOODS,
+            storageLocation = StorageLocation.CUPBOARD,
+            quantity = 500.0,
+            quantityUnit = QuantityUnit.GRAM
+        )
+        var merged: Triple<String, String, String>? = null
+        composeRule.setContent {
+            MergeItemsDialog(
+                sourceItem = item("source", "Rice"),
+                availableItems = listOf(item("target", "Basmati"), item("other", "Lentils")),
+                onDismiss = {},
+                onConfirmMerge = { survivor, mergedId, name -> merged = Triple(survivor, mergedId, name) }
+            )
+        }
+        composeRule.onNodeWithText("Basmati", substring = true).assertDoesNotExist()
+        composeRule.onNodeWithText("Confirm Merge").assertDoesNotExist()
+
+        open("Merge with")
+        composeRule.onNode(hasText("Basmati (500.0 GRAM)") and hasAnyAncestor(isPopup())).performClick()
+        composeRule.waitForIdle()
+        open("Resulting Display Name")
+        choose("Basmati")
+        composeRule.onNodeWithText("Confirm Merge").performClick()
+
+        composeRule.waitForIdle()
+        assertEquals(Triple("target", "source", "Basmati"), merged)
     }
 
     @Test
