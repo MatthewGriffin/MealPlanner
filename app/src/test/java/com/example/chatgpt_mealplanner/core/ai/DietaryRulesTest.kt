@@ -51,6 +51,23 @@ class DietaryRulesTest {
     }
 
     @Test
+    fun otherRecipeFieldsSentAsIngredients_areRefused() {
+        val step = "Pat the chicken dry."
+        fun problems(vararg names: String) = com.example.chatgpt_mealplanner.core.ai.validation.RecipeOfferChecks.problems(
+            com.example.chatgpt_mealplanner.contract.MealProposal(
+                title = "Rice",
+                mealType = "DINNER",
+                steps = listOf(com.example.chatgpt_mealplanner.contract.RecipeStep(order = 1, instruction = step)),
+                ingredients = names.map { com.example.chatgpt_mealplanner.contract.ProposedIngredient(displayName = it, quantity = 1.0, unit = "UNIT") },
+                reasoningSummary = "Uses up your rice."
+            )
+        )
+
+        assertEquals(3, problems("DINNER", step, "Uses up your rice.").count { it.contains("isn't an ingredient") })
+        assertEquals(emptyList<String>(), problems("Rice", "Dinner rolls", "Chicken"))
+    }
+
+    @Test
     fun amountsThatArentMainPortions_areNotCalledTooSmall() {
         fun smallQuery(ingredient: Triple<String, Double, String>) = queries("Fry the ${ingredient.first}.", recipe("Dish", ingredients = arrayOf(ingredient)))
         assertFalse(smallQuery(Triple("Pancetta", 100.0, "GRAM")).contains("very little"))

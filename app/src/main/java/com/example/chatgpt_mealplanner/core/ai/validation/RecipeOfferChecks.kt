@@ -42,15 +42,29 @@ object RecipeOfferChecks {
     fun problems(
         proposal: MealProposal,
         preferences: UserPreferencesSummaryDto = UserPreferencesSummaryDto()
-    ): List<String> = proposal.ingredients.flatMap { ingredient ->
+    ): List<String> {
+        // Gemini has sent the meal type, summary and method steps as ingredients, which would end up on the shopping list.
+        val otherFields = (listOf(proposal.mealType, proposal.reasoningSummary) + proposal.steps.map { it.instruction })
+            .map { it.orEmpty().trim().lowercase() }
+            .filter { it.isNotEmpty() }
+            .toSet()
+        return proposal.ingredients.flatMap { ingredient -> ingredientProblems(ingredient, otherFields, preferences) }
+    }
+
+    private fun ingredientProblems(
+        ingredient: ProposedIngredient,
+        otherFields: Set<String>,
+        preferences: UserPreferencesSummaryDto
+    ): List<String> =
         listOfNotNull(
+            "'${ingredient.displayName}' isn't an ingredient. List only food in ingredients, each with its quantity and unit, and put the method in steps."
+                .takeIf { ingredient.displayName.trim().lowercase() in otherFields },
             "Ingredient '${ingredient.displayName}' is too vague to shop for. Name the specific ingredient or blend."
                 .takeIf { isVague(ingredient.displayName) },
             "Ingredient '${ingredient.displayName}' needs a quantity greater than 0."
                 .takeIf { ingredient.quantity <= 0.0 }
         ) + DietaryRules.conflicts(ingredient.displayName, preferences) +
             ingredient.substitute.orEmpty().let { swap -> DietaryRules.conflicts(swap, preferences) }
-    }
 
     fun queries(
         proposal: MealProposal,
