@@ -948,6 +948,13 @@ val MIGRATION_23_24 = object : Migration(23, 24) {
     }
 }
 
+val MIGRATION_24_25 = object : Migration(24, 25) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `meals` ADD COLUMN `rating` TEXT")
+        db.execSQL("ALTER TABLE `meals` ADD COLUMN `ratedAt` INTEGER")
+    }
+}
+
 const val MAIN_DATABASE_NAME = "pantry_planner.db"
 
 val ALL_MIGRATIONS = arrayOf(
@@ -973,7 +980,8 @@ val ALL_MIGRATIONS = arrayOf(
     MIGRATION_20_21,
     MIGRATION_21_22,
     MIGRATION_22_23,
-    MIGRATION_23_24
+    MIGRATION_23_24,
+    MIGRATION_24_25
 )
 
 @Database(
@@ -1012,7 +1020,7 @@ val ALL_MIGRATIONS = arrayOf(
         PurchasePriceObservationEntity::class,
         com.example.chatgpt_mealplanner.core.database.entity.CookingPreferencesEntity::class
     ],
-    version = 24,
+    version = 25,
     exportSchema = true
 )
 @TypeConverters(Converters::class)

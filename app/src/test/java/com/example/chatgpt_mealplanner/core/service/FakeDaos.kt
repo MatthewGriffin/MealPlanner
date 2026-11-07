@@ -242,6 +242,14 @@ class FakeMealDao : MealDao {
     }
     override suspend fun insertMeal(meal: MealEntity) { mealsMap[meal.id] = meal }
     override suspend fun updateMeal(meal: MealEntity) { mealsMap[meal.id] = meal }
+    override suspend fun setRating(mealId: String, rating: com.example.chatgpt_mealplanner.core.model.MealRating?, ratedAt: Long?) {
+        mealsMap[mealId]?.let { mealsMap[mealId] = it.copy(rating = rating, ratedAt = ratedAt) }
+    }
+    override suspend fun getRatedMealTitles(limit: Int) = mealsMap.values
+        .filter { it.rating != null }
+        .sortedByDescending { it.ratedAt }
+        .take(limit)
+        .map { com.example.chatgpt_mealplanner.core.database.entity.RatedMealTitle(it.title, it.rating!!) }
     override suspend fun insertMealIngredients(ingredients: List<MealIngredientEntity>) {
         ingredients.forEach {
             ingredientsMap.getOrPut(it.mealId) { mutableListOf() }.add(it)

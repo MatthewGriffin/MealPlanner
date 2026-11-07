@@ -5,6 +5,7 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 import com.example.chatgpt_mealplanner.core.model.Meal
 import com.example.chatgpt_mealplanner.core.model.MealStatus
+import com.example.chatgpt_mealplanner.core.model.MealRating
 import com.example.chatgpt_mealplanner.core.model.MealTag
 import com.example.chatgpt_mealplanner.core.model.MealType
 
@@ -30,7 +31,15 @@ data class MealEntity(
     val notes: String?,
     val cookedAt: Long?,
     val createdAt: Long,
-    val updatedAt: Long
+    val updatedAt: Long,
+    val rating: MealRating? = null,
+    val ratedAt: Long? = null
+)
+
+/** One saved meal's title and the rating it was given. */
+data class RatedMealTitle(
+    val title: String,
+    val rating: MealRating
 )
 
 fun MealEntity.toDomainModel(): Meal = Meal(
@@ -49,7 +58,9 @@ fun MealEntity.toDomainModel(): Meal = Meal(
     notes = notes,
     cookedAt = cookedAt,
     createdAt = createdAt,
-    updatedAt = updatedAt
+    updatedAt = updatedAt,
+    rating = rating,
+    ratedAt = ratedAt
 )
 
 fun Meal.toEntity(): MealEntity = MealEntity(
@@ -68,5 +79,7 @@ fun Meal.toEntity(): MealEntity = MealEntity(
     notes = notes,
     cookedAt = cookedAt,
     createdAt = createdAt,
-    updatedAt = updatedAt
+    updatedAt = updatedAt,
+    rating = rating,
+    ratedAt = ratedAt
 )

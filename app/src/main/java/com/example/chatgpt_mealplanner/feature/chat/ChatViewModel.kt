@@ -48,6 +48,7 @@ private object UnavailableMealRepository : MealRepository {
     override suspend fun getMealWithIngredients(mealId: String): com.example.chatgpt_mealplanner.core.model.MealWithIngredients? = null
     override suspend fun insertMealWithIngredients(meal: Meal, ingredients: List<MealIngredient>) = error("Meal repository is unavailable")
     override suspend fun updateMeal(meal: Meal) = error("Meal repository is unavailable")
+    override suspend fun setMealRating(mealId: String, rating: com.example.chatgpt_mealplanner.core.model.MealRating?) = error("Meal repository is unavailable")
     override suspend fun updateMealIngredients(mealId: String, ingredients: List<MealIngredient>) = error("Meal repository is unavailable")
     override suspend fun deleteMeal(mealId: String) = error("Meal repository is unavailable")
     override suspend fun getRecentCookedMeals(daysLookback: Int) = emptyList<com.example.chatgpt_mealplanner.core.model.MealWithIngredients>()

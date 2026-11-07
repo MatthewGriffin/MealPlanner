@@ -72,6 +72,29 @@ class MealDomainServiceTest {
     }
 
     @Test
+    fun replaceMeal_keepsTheRatingForTheSameDishAndClearsItForADifferentOne() = runTest {
+        val rice = MealIngredient(
+            id = "i1",
+            mealId = "meal_rated",
+            canonicalIngredientId = "RICE",
+            displayName = "Rice",
+            plannedQuantity = 200.0,
+            plannedUnit = QuantityUnit.GRAM
+        )
+        val original = Meal(id = "meal_rated", date = "2026-10-23", title = "Rice Bowl")
+        service.createPlannedMeal(original, listOf(rice))
+        mealDao.setRating(original.id, com.example.chatgpt_mealplanner.core.model.MealRating.UP, 5L)
+
+        service.replaceMeal(original.id, Meal(id = original.id, date = "2026-10-24", title = "rice bowl", servings = 4), listOf(rice))
+        assertEquals(com.example.chatgpt_mealplanner.core.model.MealRating.UP, mealDao.getMealWithIngredients(original.id)!!.meal.rating)
+
+        service.replaceMeal(original.id, Meal(id = original.id, date = "2026-10-24", title = "Noodle Soup"), listOf(rice))
+        val replaced = mealDao.getMealWithIngredients(original.id)!!.meal
+        assertEquals(null, replaced.rating)
+        assertEquals(null, replaced.ratedAt)
+    }
+
+    @Test
     fun replaceMeal_preservesExistingIdAndScheduledSlotWhenReplacingRecipe() = runTest {
         val original = Meal(
             id = "meal_replace",

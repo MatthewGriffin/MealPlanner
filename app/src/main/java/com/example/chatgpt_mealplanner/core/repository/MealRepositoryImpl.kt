@@ -92,6 +92,10 @@ class MealRepositoryImpl @Inject constructor(
         mealDao.insertMeal(meal.toEntity())
     }
 
+    override suspend fun setMealRating(mealId: String, rating: com.example.chatgpt_mealplanner.core.model.MealRating?) {
+        mealDao.setRating(mealId, rating, rating?.let { System.currentTimeMillis() })
+    }
+
     override suspend fun updateMealIngredients(mealId: String, ingredients: List<MealIngredient>) {
         mealDao.deleteMealIngredients(mealId)
         mealDao.insertMealIngredients(ingredients.map { it.toEntity() })
