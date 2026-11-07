@@ -29,6 +29,7 @@ import com.example.chatgpt_mealplanner.core.service.FakeChatDao
 import com.example.chatgpt_mealplanner.core.service.FakeInventoryBarcodeDao
 import com.example.chatgpt_mealplanner.core.service.FakeInventoryDao
 import com.example.chatgpt_mealplanner.core.service.FakeLeftoverDao
+import com.example.chatgpt_mealplanner.core.database.entity.toEntity
 import com.example.chatgpt_mealplanner.core.service.FakeMealDao
 import com.example.chatgpt_mealplanner.core.service.FakeShoppingDao
 import com.example.chatgpt_mealplanner.core.service.FakeStapleRuleDao
@@ -984,6 +985,39 @@ private val milkAllergyAndNoCoriander = com.example.chatgpt_mealplanner.contract
         listOf("\"householdSize\":4", "Milk", "Vegetarian", "coriander", "air fryer", "Beginner").forEach {
             assertTrue(it, json.contains(it))
         }
+    }
+
+    private suspend fun rated(title: String, rating: com.example.chatgpt_mealplanner.core.model.MealRating, ratedAt: Long) {
+        val id = "rated_${title}_$ratedAt"
+        mealDao.insertMeal(
+            com.example.chatgpt_mealplanner.core.model.Meal(id = id, date = "2026-01-01", title = title).toEntity()
+        )
+        mealDao.setRating(id, rating, ratedAt)
+    }
+
+    @Test
+    fun geminiContext_carriesRatings_withTheNewestRatingOfATitleWinning() = runTest(testDispatcher) {
+        val up = com.example.chatgpt_mealplanner.core.model.MealRating.UP
+        val down = com.example.chatgpt_mealplanner.core.model.MealRating.DOWN
+        rated("Shakshuka", up, 1)
+        rated("Fish Pie", up, 2)
+        rated("Fish pie", down, 3)
+        rated("Lentil Soup", down, 4)
+
+        val context = contextBuilder.buildContextPayload("default_conversation")
+
+        assertEquals(listOf("Shakshuka"), context.likedMeals)
+        assertEquals(listOf("Lentil Soup", "Fish pie"), context.dislikedMeals)
+    }
+
+    @Test
+    fun geminiContext_limitsHowManyRatingsItSends() = runTest(testDispatcher) {
+        repeat(20) { rated("Meal $it", com.example.chatgpt_mealplanner.core.model.MealRating.UP, it.toLong()) }
+
+        val liked = contextBuilder.buildContextPayload("default_conversation").likedMeals
+
+        assertEquals(15, liked.size)
+        assertEquals("Meal 19", liked.first())
     }
 
     private fun offerArgs(ingredient: String, method: String, quantity: Int = 200) =
