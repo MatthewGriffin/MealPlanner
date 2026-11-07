@@ -1346,7 +1346,7 @@ private val milkAllergyAndNoCoriander = com.example.chatgpt_mealplanner.contract
         fun queries(name: String, method: String) = com.example.chatgpt_mealplanner.core.ai.validation.RecipeOfferChecks.queries(
             com.example.chatgpt_mealplanner.contract.MealProposal(
                 title = "T",
-                ingredients = listOf(com.example.chatgpt_mealplanner.contract.ProposedIngredient(displayName = name, quantity = 1.0, unit = "UNIT")),
+                ingredients = listOf(com.example.chatgpt_mealplanner.contract.ProposedIngredient(displayName = name, quantity = 1.0, unit = "GRAM")),
                 reasoningSummary = ""
             ),
             method

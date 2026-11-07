@@ -3,6 +3,8 @@ package com.example.chatgpt_mealplanner.core.ai.validation
 import com.example.chatgpt_mealplanner.contract.MealProposal
 import com.example.chatgpt_mealplanner.contract.ProposedIngredient
 import com.example.chatgpt_mealplanner.contract.UserPreferencesSummaryDto
+import com.example.chatgpt_mealplanner.core.model.QuantityUnit
+import com.example.chatgpt_mealplanner.core.model.quantityUnitOrNull
 
 /**
  * Checks a recipe while Gemini can still fix it. A problem stops the card. A query goes to Gemini
@@ -30,6 +32,9 @@ object RecipeOfferChecks {
     private val smallWeight = Regex("""\b(?:\d|1[0-4])\s?(?:g|grams?)\b(?!\s*\))""")
     private val unitWord = Regex("""\b\d+\s?units?\b""")
     private val commonIngredients = listOf("salt", "pepper", "butter", "garlic", "sugar", "flour")
+
+    // Gemini has sent "Salt: 6 UNIT" and "Olive oil: 15 UNIT". The name has to end with the word, so "Salted butter" can be counted.
+    private val neverCounted = Regex("""\b(?:salt|black pepper|white pepper|cumin|paprika|turmeric|cinnamon|oil|flour|sugar|water)$""")
 
     fun isVague(ingredientName: String): Boolean {
         val normalized = ingredientName.lowercase()
@@ -83,7 +88,18 @@ object RecipeOfferChecks {
         val oversized = proposal.ingredients
             .filter { gramsOrMl(it)?.let { amount -> amount / proposal.servings.coerceAtLeast(1) > MOST_GRAMS_OR_ML_PER_SERVING } == true }
             .map { "'${it.displayName}' looks like too much for ${proposal.servings} servings (${it.quantity} ${it.unit})." }
-        return unused + oversized + cookabilityQueries(proposal, methodText)
+        return unused + oversized + unitQueries(proposal) + cookabilityQueries(proposal, methodText)
+    }
+
+    /** An unknown unit is saved as a count, so these amounts would reach the shopping list wrong. */
+    private fun unitQueries(proposal: MealProposal): List<String> = proposal.ingredients.mapNotNull { ingredient ->
+        val name = ingredient.displayName
+        when (quantityUnitOrNull(ingredient.unit)) {
+            null -> "'$name' has the unit '${ingredient.unit}', which the app can't read. Use one of ${QuantityUnit.entries.joinToString()}."
+            QuantityUnit.UNIT -> "'$name' can't be counted (${ingredient.quantity} ${ingredient.unit}). Use GRAM or MILLILITRE."
+                .takeIf { name.trim().lowercase().let { neverCounted.containsMatchIn(it) && " in " !in it } }
+            else -> null
+        }
     }
 
     /** Mistakes seen in real Gemini recipes that make a recipe harder to follow. */

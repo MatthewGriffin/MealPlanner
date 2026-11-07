@@ -37,6 +37,8 @@ import com.example.chatgpt_mealplanner.core.service.MealDomainServiceImpl
 import com.example.chatgpt_mealplanner.core.service.ShoppingDomainServiceImpl
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -79,12 +81,17 @@ class LiveRecipeEvaluation {
         private fun record(kind: String, response: AiProviderResponse): AiProviderResponse {
             calls++
             trace += "$kind -> " + when (response) {
-                is AiProviderResponse.ToolCalls -> "tools ${response.calls.map { it.toolName }}"
+                is AiProviderResponse.ToolCalls -> "tools ${response.calls.map { it.toolName }}" +
+                    response.calls.mapNotNull { rawIngredients(it.argsJson) }.joinToString("") { "\n    raw ingredients: $it" }
                 is AiProviderResponse.FinalResponse -> "text from ${response.modelId}: ${response.text.take(160).replace('\n', ' ')}"
                 is AiProviderResponse.Error -> "ERROR ${response.code}: ${response.message.take(200)}"
             }
             return response
         }
+
+        /** What the model actually sent, before the app reads units from it. */
+        private fun rawIngredients(argsJson: String): String? =
+            runCatching { Json.parseToJsonElement(argsJson).jsonObject["ingredients"]?.toString() }.getOrNull()
 
         override suspend fun send(request: AiProviderRequest): AiProviderResponse =
             record(if (request.forcedToolName != null) "repair" else "send", real.send(request))

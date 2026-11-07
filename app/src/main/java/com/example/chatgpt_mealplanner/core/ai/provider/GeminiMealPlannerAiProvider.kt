@@ -792,7 +792,7 @@ class GeminiMealPlannerAiProvider @Inject constructor(
                             quantity = ingredient["quantity"]?.jsonPrimitive?.content?.toDoubleOrNull()
                                 ?: ingredient["plannedQuantity"]?.jsonPrimitive?.content?.toDoubleOrNull() ?: return null,
                             unit = ingredient["unit"]?.jsonPrimitive?.content
-                                ?: ingredient["plannedUnit"]?.jsonPrimitive?.content ?: "ITEM",
+                                ?: ingredient["plannedUnit"]?.jsonPrimitive?.content.orEmpty(),
                             optional = ingredient["optional"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false,
                             substitutionAllowed = ingredient["substitutionAllowed"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: true,
                             measure = ingredient["measure"]?.jsonPrimitive?.contentOrNull?.ifBlank { null },

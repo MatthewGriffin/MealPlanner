@@ -100,10 +100,12 @@ enum class QuantityUnit {
     PORTION
 }
 
-fun parseQuantityUnit(rawUnit: String?): QuantityUnit {
-    if (rawUnit.isNullOrBlank()) return QuantityUnit.UNIT
-    val normalized = rawUnit.trim().uppercase()
-    return when (normalized) {
+fun parseQuantityUnit(rawUnit: String?): QuantityUnit = quantityUnitOrNull(rawUnit) ?: QuantityUnit.UNIT
+
+/** Null when the text is missing or isn't a unit the app knows, for callers that need to notice that. */
+fun quantityUnitOrNull(rawUnit: String?): QuantityUnit? {
+    if (rawUnit.isNullOrBlank()) return null
+    return when (rawUnit.trim().uppercase()) {
         "GRAM", "GRAMS", "G" -> QuantityUnit.GRAM
         "KILOGRAM", "KILOGRAMS", "KG" -> QuantityUnit.KILOGRAM
         "MILLILITRE", "MILLILITRES", "ML" -> QuantityUnit.MILLILITRE
@@ -115,11 +117,7 @@ fun parseQuantityUnit(rawUnit: String?): QuantityUnit {
         "BAG", "BAGS" -> QuantityUnit.BAG
         "SLICE", "SLICES" -> QuantityUnit.SLICE
         "PORTION", "PORTIONS" -> QuantityUnit.PORTION
-        else -> try {
-            QuantityUnit.valueOf(normalized)
-        } catch (_: Exception) {
-            QuantityUnit.UNIT
-        }
+        else -> null
     }
 }
 
