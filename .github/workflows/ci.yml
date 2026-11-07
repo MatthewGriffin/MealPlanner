@@ -24,6 +24,39 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      # Robolectric downloads these while the tests run, and a failed download there has failed
+      # dozens of tests at once. Fetch them first, with retries, and keep them between runs.
+      # The versions are the SDK 30 and 35 runtimes that Robolectric 4.14.1 uses for this app's
+      # minSdk and targetSdk. Update them when Robolectric or targetSdk changes.
+      - name: Restore Robolectric Android runtimes
+        id: robolectric-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.m2/repository/org/robolectric/android-all-instrumented
+          key: robolectric-android-all-11-6757853-15-12650502-i7
+
+      - name: Download Robolectric Android runtimes
+        if: steps.robolectric-cache.outputs.cache-hit != 'true'
+        run: |
+          for version in 11-robolectric-6757853-i7 15-robolectric-12650502-i7; do
+            dir=~/.m2/repository/org/robolectric/android-all-instrumented/$version
+            mkdir -p "$dir"
+            for file in pom jar; do
+              name=android-all-instrumented-$version.$file
+              url=https://repo1.maven.org/maven2/org/robolectric/android-all-instrumented/$version/$name
+              curl --fail --silent --show-error --location --retry 5 --retry-all-errors --retry-delay 10 -o "$dir/$name" "$url"
+              curl --fail --silent --show-error --location --retry 5 --retry-all-errors --retry-delay 10 -o "$dir/$name.sha512" "$url.sha512"
+              echo "$(cat "$dir/$name.sha512")  $dir/$name" | sha512sum --check --quiet
+            done
+          done
+
+      - name: Save Robolectric Android runtimes
+        if: steps.robolectric-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.m2/repository/org/robolectric/android-all-instrumented
+          key: ${{ steps.robolectric-cache.outputs.cache-primary-key }}
+
       - name: Run all module unit tests and compile instrumented tests
         run: ./gradlew test :app:compileDebugAndroidTestKotlin --continue
 
