@@ -47,14 +47,37 @@ import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.UUID
 
+// Immutable so that replacing a row in the state list is what redraws it.
 data class EditableIngredient(
-    val id: String = UUID.randomUUID().toString(),
-    var canonicalIngredientId: String = "",
-    var displayName: String = "",
-    var plannedQuantity: String = "100.0",
-    var plannedUnit: QuantityUnit = QuantityUnit.GRAM,
-    var optional: Boolean = false
-)
+    val source: MealIngredient? = null,
+    val id: String = source?.id ?: UUID.randomUUID().toString(),
+    val displayName: String = source?.displayName ?: "",
+    val plannedQuantity: String = source?.plannedQuantity?.toString() ?: "100.0",
+    val optional: Boolean = source?.optional ?: false
+) {
+    /** Returns null for a row with no name. Fields this dialog doesn't show keep their saved values. */
+    fun toMealIngredient(mealId: String): MealIngredient? {
+        if (displayName.isBlank()) return null
+        // A renamed ingredient is a different food, so it must not match the old one's stock.
+        val canonicalId = source?.canonicalIngredientId
+            ?.takeIf { it.isNotBlank() && displayName == source.displayName }
+            ?: displayName.uppercase().replace(" ", "_")
+        val base = source ?: MealIngredient(
+            id = id,
+            mealId = mealId,
+            displayName = displayName,
+            plannedQuantity = 0.0,
+            plannedUnit = QuantityUnit.GRAM
+        )
+        return base.copy(
+            mealId = mealId,
+            canonicalIngredientId = canonicalId,
+            displayName = displayName,
+            plannedQuantity = plannedQuantity.toDoubleOrNull() ?: 100.0,
+            optional = optional
+        )
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -80,16 +103,7 @@ fun AddEditMealDialog(
             if (initialIngredients.isNullOrEmpty()) {
                 add(EditableIngredient())
             } else {
-                addAll(initialIngredients.map {
-                    EditableIngredient(
-                        id = it.id,
-                        canonicalIngredientId = it.canonicalIngredientId ?: "",
-                        displayName = it.displayName,
-                        plannedQuantity = it.plannedQuantity.toString(),
-                        plannedUnit = it.plannedUnit,
-                        optional = it.optional
-                    )
-                })
+                addAll(initialIngredients.map { EditableIngredient(source = it) })
             }
         }
     }
@@ -217,12 +231,7 @@ fun AddEditMealDialog(
                         ) {
                             OutlinedTextField(
                                 value = item.displayName,
-                                onValueChange = {
-                                    item.displayName = it
-                                    if (item.canonicalIngredientId.isBlank()) {
-                                        item.canonicalIngredientId = it.uppercase().replace(" ", "_")
-                                    }
-                                },
+                                onValueChange = { ingredientsList[index] = item.copy(displayName = it) },
                                 label = { Text("Name") },
                                 singleLine = true,
                                 modifier = Modifier.weight(1.2f)
@@ -230,7 +239,7 @@ fun AddEditMealDialog(
                             Spacer(modifier = Modifier.width(4.dp))
                             OutlinedTextField(
                                 value = item.plannedQuantity,
-                                onValueChange = { item.plannedQuantity = it },
+                                onValueChange = { ingredientsList[index] = item.copy(plannedQuantity = it) },
                                 label = { Text("Qty") },
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -241,7 +250,7 @@ fun AddEditMealDialog(
                                 Text("Opt", style = MaterialTheme.typography.bodySmall)
                                 Checkbox(
                                     checked = item.optional,
-                                    onCheckedChange = { item.optional = it }
+                                    onCheckedChange = { ingredientsList[index] = item.copy(optional = it) }
                                 )
                             }
                             IconButton(onClick = { if (ingredientsList.size > 1) ingredientsList.removeAt(index) }) {
@@ -269,31 +278,16 @@ fun AddEditMealDialog(
                         return@Button
                     }
 
-                    val validIngredients = ingredientsList.mapNotNull { ing ->
-                        if (ing.displayName.isBlank()) null
-                        else {
-                            val qty = ing.plannedQuantity.toDoubleOrNull() ?: 100.0
-                            val canonicalId = ing.canonicalIngredientId.ifBlank { ing.displayName.uppercase().replace(" ", "_") }
-                            MealIngredient(
-                                id = ing.id,
-                                mealId = initialMeal?.id ?: "",
-                                canonicalIngredientId = canonicalId,
-                                displayName = ing.displayName,
-                                plannedQuantity = qty,
-                                plannedUnit = ing.plannedUnit,
-                                optional = ing.optional
-                            )
-                        }
-                    }
+                    val mealId = initialMeal?.id ?: UUID.randomUUID().toString()
+                    val finalIngredients = ingredientsList.mapNotNull { it.toMealIngredient(mealId) }
 
-                    if (validIngredients.isEmpty()) {
+                    if (finalIngredients.isEmpty()) {
                         errorMessage = "At least one valid ingredient is required."
                         return@Button
                     }
 
-                    val mealId = initialMeal?.id ?: UUID.randomUUID().toString()
-                    val meal = Meal(
-                        id = mealId,
+                    // Copy an existing meal, so the method, notes and tags survive the edit.
+                    val meal = (initialMeal ?: Meal(id = mealId, date = date, title = title)).copy(
                         date = date,
                         mealType = mealType,
                         title = title,
@@ -302,7 +296,6 @@ fun AddEditMealDialog(
                         immediatePortions = pImm,
                         leftoverPortions = pLeft
                     )
-                    val finalIngredients = validIngredients.map { it.copy(mealId = mealId) }
 
                     onSaveMeal(meal, finalIngredients)
                 }
