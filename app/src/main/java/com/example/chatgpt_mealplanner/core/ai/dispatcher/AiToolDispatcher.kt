@@ -645,7 +645,7 @@ class AiToolDispatcher @Inject constructor(
             put("ingredientCount", parsedIngs.size)
             if (queries.isNotEmpty()) {
                 put("queries", queries.joinToString(" "))
-                put("nextStep", "The card has been created. If a query is a real mistake, call offer_add_planned_meal again with the corrected recipe to replace it.")
+                put("nextStep", "The card has been created, but these need fixing. Call offer_add_planned_meal again with the corrected recipe to replace it.")
             }
         }.toString()
 

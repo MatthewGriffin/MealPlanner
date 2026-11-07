@@ -915,6 +915,35 @@ private val milkAllergyAndNoCoriander = com.example.chatgpt_mealplanner.contract
     }
 
     @Test
+    fun allergenSuggestedAsASwap_isSentBack() = runTest(testDispatcher) {
+        val call = AiToolCall(
+            "c1",
+            "offer_add_planned_meal",
+            """{"title":"Hearty Dish","servings":2,"ingredients":[{"displayName":"olive oil","quantity":15,"unit":"MILLILITRE","substitute":"butter"}],"steps":[{"instruction":"Heat the oil."}]}"""
+        )
+
+        val result = dispatcherWith(milkAllergyAndNoCoriander)
+            .executeToolCall("default_conversation", ActionAuthorizationContext("m1"), call)
+
+        assertFalse(result.success)
+        assertTrue(result.errorMessage!!, result.errorMessage!!.contains("'butter' conflicts with the Milk allergy"))
+    }
+
+    @Test
+    fun allergenSwapInAMealPlan_warnsButDoesNotBlock() = runTest(testDispatcher) {
+        val validated = RecipeValidator(inventoryDao, mealDao) { milkAllergyAndNoCoriander }.validateProposal(
+            com.example.chatgpt_mealplanner.contract.MealProposal(
+                title = "Hearty Dish",
+                ingredients = listOf(com.example.chatgpt_mealplanner.contract.ProposedIngredient(displayName = "olive oil", quantity = 15.0, unit = "MILLILITRE", substitute = "butter")),
+                reasoningSummary = ""
+            )
+        )
+
+        assertTrue(validated.canBeSaved())
+        assertTrue(validated.warnings.toString(), validated.warnings.single().contains("Don't use the suggested swap"))
+    }
+
+    @Test
     fun meatInAVegetarianHousehold_isSentBack() = runTest(testDispatcher) {
         val call = AiToolCall("c1", "offer_add_planned_meal", offerArgs("chicken breast", "Roast the chicken."))
 
@@ -967,6 +996,106 @@ private val milkAllergyAndNoCoriander = com.example.chatgpt_mealplanner.contract
         assertTrue(validated.issues.toString(), validated.issues.single().contains("Milk allergy"))
     }
 
+    private fun planMeal(title: String, ingredient: String) = com.example.chatgpt_mealplanner.contract.MealProposal(
+        title = title,
+        ingredients = listOf(com.example.chatgpt_mealplanner.contract.ProposedIngredient(displayName = ingredient, quantity = 200.0, unit = "GRAM")),
+        reasoningSummary = ""
+    )
+
+    private val chickenPlan = listOf(planMeal("Chicken Stew", "chicken thighs"), planMeal("Rice Bowl", "basmati rice"))
+    private val vegetarianPlan = listOf(planMeal("Bean Stew", "butter beans"), planMeal("Rice Bowl", "basmati rice"))
+
+    /** Sends each reply in order for a plan request, and returns the result with the requests made. */
+    private suspend fun planRequest(vararg replies: AiProviderResponse): Pair<AiOrchestrationResult.Final, List<AiProviderRequest>> {
+        val requests = mutableListOf<AiProviderRequest>()
+        val orchestrator = AiMealPlannerOrchestrator(
+            provider = object : MealPlannerAiProvider {
+                override suspend fun send(request: AiProviderRequest): AiProviderResponse {
+                    requests += request
+                    return replies[requests.size - 1]
+                }
+                override suspend fun continueWithToolResults(request: AiContinueWithToolsRequest) =
+                    AiProviderResponse.FinalResponse("Done")
+            },
+            contextBuilder = contextBuilder,
+            toolDispatcher = aiToolDispatcher,
+            recipeValidator = RecipeValidator(inventoryDao, mealDao) { milkAllergyAndNoCoriander },
+            intentResolver = intentResolver,
+            chatRepository = chatRepository,
+            pendingMutationStore = pendingMutationStore,
+            activeProposalStore = activeProposalStore
+        )
+        val result = orchestrator.processUserMessage("default_conversation", "create a meal plan with dinners for the next 3 days")
+        return (result as AiOrchestrationResult.Final) to requests
+    }
+
+    @Test
+    fun mealPlanThatBreaksADiet_isSentBackToGemini() = runTest(testDispatcher) {
+        val (result, requests) = planRequest(
+            AiProviderResponse.FinalResponse("Chicken plan", mealPlan = chickenPlan),
+            AiProviderResponse.FinalResponse("Vegetarian plan", mealPlan = vegetarianPlan)
+        )
+
+        assertEquals(vegetarianPlan, result.mealPlan)
+        assertEquals(2, requests.size)
+        assertTrue(requests[1].availableTools.isEmpty())
+        val correction = requests[1].messages.last().content
+        assertTrue(correction, correction.contains("'chicken thighs' conflicts with the Vegetarian diet."))
+    }
+
+    @Test
+    fun mealPlanStillBreakingADiet_stopsAfterThreeCorrections() = runTest(testDispatcher) {
+        val chicken = AiProviderResponse.FinalResponse("Chicken plan", mealPlan = chickenPlan)
+        val (result, requests) = planRequest(chicken, chicken, chicken, chicken)
+
+        assertEquals(chickenPlan, result.mealPlan)
+        assertEquals(4, requests.size)
+    }
+
+    @Test
+    fun mealPlan_keepsBeingCorrectedUntilItIsRight() = runTest(testDispatcher) {
+        val chicken = AiProviderResponse.FinalResponse("Chicken plan", mealPlan = chickenPlan)
+        val (result, requests) = planRequest(chicken, chicken, AiProviderResponse.FinalResponse("Vegetarian plan", mealPlan = vegetarianPlan))
+
+        assertEquals(vegetarianPlan, result.mealPlan)
+        assertEquals(3, requests.size)
+    }
+
+    @Test
+    fun mealPlanStillQueried_isCorrectedThenWarnsOnTheMeal() = runTest(testDispatcher) {
+        val stew = planMeal("Big Stew", "lentils").copy(
+            steps = listOf(com.example.chatgpt_mealplanner.contract.RecipeStep(order = 1, instruction = "Simmer the lentils in salted water."))
+        )
+        val queried = AiProviderResponse.FinalResponse("Plan", mealPlan = listOf(stew, planMeal("Rice Bowl", "basmati rice")))
+        val (result, requests) = planRequest(queried, queried, queried, queried)
+
+        assertEquals(4, requests.size)
+        assertTrue(requests[1].messages.last().content, requests[1].messages.last().content.contains("Big Stew: The method uses salt"))
+        val validated = RecipeValidator(inventoryDao, mealDao) { milkAllergyAndNoCoriander }.validateProposal(result.mealPlan!!.first())
+        assertTrue(validated.canBeSaved())
+        assertTrue(validated.warnings.toString(), validated.warnings.any { it.contains("uses salt") })
+    }
+
+    @Test
+    fun failedMealPlanCorrection_keepsTheOriginalPlan() = runTest(testDispatcher) {
+        val (result, requests) = planRequest(
+            AiProviderResponse.FinalResponse("Chicken plan", mealPlan = chickenPlan),
+            AiProviderResponse.Error("RATE_LIMITED", "Busy")
+        )
+
+        assertEquals(chickenPlan, result.mealPlan)
+        assertEquals("Chicken plan", result.assistantText)
+        assertEquals(2, requests.size)
+    }
+
+    @Test
+    fun mealPlanWithinTheRules_takesOneRequest() = runTest(testDispatcher) {
+        val (result, requests) = planRequest(AiProviderResponse.FinalResponse("Plan", mealPlan = vegetarianPlan))
+
+        assertEquals(vegetarianPlan, result.mealPlan)
+        assertEquals(1, requests.size)
+    }
+
     @Test
     fun geminiContext_carriesPreferencesAndHouseholdSize() = runTest(testDispatcher) {
         val builder = AiContextBuilder(
@@ -987,7 +1116,7 @@ private val milkAllergyAndNoCoriander = com.example.chatgpt_mealplanner.contract
     }
 
     private fun offerArgs(ingredient: String, method: String, quantity: Int = 200) =
-        """{"title":"Stew","servings":2,"ingredients":[{"displayName":"$ingredient","quantity":$quantity,"unit":"GRAM"}],"steps":[{"instruction":"$method"}]}"""
+        """{"title":"Hearty Dish","servings":2,"ingredients":[{"displayName":"$ingredient","quantity":$quantity,"unit":"GRAM"}],"steps":[{"instruction":"$method"}]}"""
 
     /** Runs offers in order, as if Gemini were replying to each tool result, and returns what it was told. */
     private suspend fun offerInTurn(vararg offers: String): Pair<List<AiToolResult>, AiOrchestrationResult> {
@@ -1014,6 +1143,123 @@ private val milkAllergyAndNoCoriander = com.example.chatgpt_mealplanner.contract
         return results to orchestrator.processUserMessage("default_conversation", "suggest a recipe for dinner")
     }
 
+    private suspend fun requestsForOffers(userMessage: String, vararg offers: String): Int {
+        var requests = 0
+        var next = 0
+        val orchestrator = AiMealPlannerOrchestrator(
+            provider = object : MealPlannerAiProvider {
+                private fun reply(): AiProviderResponse {
+                    requests++
+                    return if (next < offers.size) {
+                        AiProviderResponse.ToolCalls("t", listOf(AiToolCall("c$next", "offer_add_planned_meal", offers[next++])), modelId = "test-model")
+                    } else {
+                        AiProviderResponse.FinalResponse(text = "Here you go", modelId = "test-model")
+                    }
+                }
+                override suspend fun send(request: AiProviderRequest) = reply()
+                override suspend fun continueWithToolResults(request: AiContinueWithToolsRequest) = reply()
+            },
+            contextBuilder = contextBuilder,
+            toolDispatcher = aiToolDispatcher,
+            recipeValidator = RecipeValidator(inventoryDao, mealDao),
+            intentResolver = intentResolver,
+            chatRepository = chatRepository,
+            pendingMutationStore = pendingMutationStore,
+            activeProposalStore = activeProposalStore
+        )
+        val result = orchestrator.processUserMessage("default_conversation", userMessage) as AiOrchestrationResult.Final
+        assertNotNull(result.validatedProposal)
+        assertEquals("test-model", result.modelId)
+        return requests
+    }
+
+    @Test
+    fun cleanRecipe_takesOneRequest() = runTest(testDispatcher) {
+        assertEquals(1, requestsForOffers("suggest a recipe for dinner", offerArgs("rice", "Boil the rice.")))
+    }
+
+    @Test
+    fun queriedRecipe_isCorrectedThenTheCardStands() = runTest(testDispatcher) {
+        val queried = offerArgs("rice", "Boil the rice in salted water.")
+
+        assertEquals(2, requestsForOffers("suggest a recipe for dinner", queried, offerArgs("rice", "Boil the rice.")))
+    }
+
+    @Test
+    fun recipeStillQueriedAfterThreeCorrections_isAcceptedWithoutMoreRequests() = runTest(testDispatcher) {
+        val queried = offerArgs("rice", "Boil the rice in salted water.")
+
+        assertEquals(4, requestsForOffers("suggest a recipe for dinner", queried, queried, queried, queried, queried))
+    }
+
+    @Test
+    fun correctionAnsweredInWords_isAskedForAgainWithTheRecipe() = runTest(testDispatcher) {
+        val queried = offerArgs("rice", "Boil the rice in salted water.")
+        val fixed = offerArgs("rice", "Boil the rice.")
+        val sent = mutableListOf<AiProviderRequest>()
+        val orchestrator = AiMealPlannerOrchestrator(
+            provider = object : MealPlannerAiProvider {
+                override suspend fun send(request: AiProviderRequest): AiProviderResponse {
+                    sent += request
+                    return AiProviderResponse.ToolCalls("t", listOf(AiToolCall("c${sent.size}", "offer_add_planned_meal", if (sent.size == 1) queried else fixed)))
+                }
+                override suspend fun continueWithToolResults(request: AiContinueWithToolsRequest) = AiProviderResponse.FinalResponse("Here is your recipe")
+            },
+            contextBuilder = contextBuilder,
+            toolDispatcher = aiToolDispatcher,
+            recipeValidator = RecipeValidator(inventoryDao, mealDao),
+            intentResolver = intentResolver,
+            chatRepository = chatRepository,
+            pendingMutationStore = pendingMutationStore,
+            activeProposalStore = activeProposalStore
+        )
+
+        val result = orchestrator.processUserMessage("default_conversation", "suggest a recipe for dinner") as AiOrchestrationResult.Final
+
+        assertEquals(2, sent.size)
+        assertEquals("offer_add_planned_meal", sent[1].forcedToolName)
+        assertTrue(sent[1].messages.last().content, sent[1].messages.last().content.contains("uses salt"))
+        assertTrue(sent[1].messages.dropLast(1).last().content, sent[1].messages.dropLast(1).last().content.contains("salted water"))
+        assertEquals(emptyList<String>(), result.validatedProposal!!.warnings)
+    }
+
+    @Test
+    fun recipeNeverCorrected_warnsOnTheCard() = runTest(testDispatcher) {
+        val (_, result) = offerInTurn(offerArgs("rice", "Boil the rice in salted water."))
+
+        val card = (result as AiOrchestrationResult.Final).validatedProposal!!
+        assertTrue(card.canBeSaved())
+        assertTrue(card.warnings.toString(), card.warnings.any { it.contains("uses salt") })
+    }
+
+    @Test
+    fun geminiFailingDuringACorrection_keepsTheCard() = runTest(testDispatcher) {
+        val orchestrator = AiMealPlannerOrchestrator(
+            provider = object : MealPlannerAiProvider {
+                override suspend fun send(request: AiProviderRequest) = AiProviderResponse.ToolCalls(
+                    "t", listOf(AiToolCall("c1", "offer_add_planned_meal", offerArgs("rice", "Boil the rice in salted water.")))
+                )
+                override suspend fun continueWithToolResults(request: AiContinueWithToolsRequest) = AiProviderResponse.Error("RATE_LIMITED", "Busy")
+            },
+            contextBuilder = contextBuilder,
+            toolDispatcher = aiToolDispatcher,
+            recipeValidator = RecipeValidator(inventoryDao, mealDao),
+            intentResolver = intentResolver,
+            chatRepository = chatRepository,
+            pendingMutationStore = pendingMutationStore,
+            activeProposalStore = activeProposalStore
+        )
+
+        val result = orchestrator.processUserMessage("default_conversation", "suggest a recipe for dinner")
+
+        assertNotNull((result as AiOrchestrationResult.Final).validatedProposal)
+    }
+
+    @Test
+    fun replacementMeal_stillAsksForTheChangeSummary() = runTest(testDispatcher) {
+        assertEquals(2, requestsForOffers("Prepare a replacement recipe for this meal-change request", offerArgs("rice", "Boil the rice.")))
+    }
+
     @Test
     fun vagueIngredient_isSentBackForGeminiToFix() = runTest(testDispatcher) {
         val (told, result) = offerInTurn(
@@ -1021,9 +1267,8 @@ private val milkAllergyAndNoCoriander = com.example.chatgpt_mealplanner.contract
             offerArgs("dried oregano", "Stir in the oregano.")
         )
 
-        assertFalse(told[0].success)
-        assertTrue(told[0].errorMessage!!, told[0].errorMessage!!.contains("'herbs' is too vague"))
-        assertTrue(told[1].success)
+        assertFalse(told.single().success)
+        assertTrue(told.single().errorMessage!!, told.single().errorMessage!!.contains("'herbs' is too vague"))
         assertEquals("dried oregano", (result as AiOrchestrationResult.Final).validatedProposal!!.proposal.ingredients.single().displayName)
     }
 
@@ -1082,10 +1327,14 @@ private val milkAllergyAndNoCoriander = com.example.chatgpt_mealplanner.contract
 
     @Test
     fun cleanRecipe_isNotQueried() = runTest(testDispatcher) {
-        val (told, _) = offerInTurn(offerArgs("rice", "Boil the rice."))
+        val result = aiToolDispatcher.executeToolCall(
+            "default_conversation",
+            ActionAuthorizationContext("m1"),
+            AiToolCall("c1", "offer_add_planned_meal", offerArgs("rice", "Boil the rice."))
+        )
 
-        assertTrue(told.single().success)
-        assertFalse(told.single().payloadJson, told.single().payloadJson.contains("queries"))
+        assertTrue(result.success)
+        assertFalse(result.payloadJson, result.payloadJson.contains("queries"))
     }
 
     @Test
@@ -1238,6 +1487,14 @@ private val milkAllergyAndNoCoriander = com.example.chatgpt_mealplanner.contract
     @Test
     fun clarifyingQuestionBeforeARecipe_isShownToTheUser() = runTest(testDispatcher) {
         assertAnsweredWithoutRepair("suggest a pizza recipe", "Which toppings would you like on your pizza?")
+    }
+
+    @Test
+    fun clarifyingQuestionFollowedByMoreText_isStillShown() = runTest(testDispatcher) {
+        assertAnsweredWithoutRepair(
+            "suggest a pizza recipe with toppings of my choice",
+            "To get this right, what toppings would you prefer? You currently have mature cheddar in the fridge."
+        )
     }
 
     @Test

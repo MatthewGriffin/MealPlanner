@@ -108,7 +108,8 @@ sealed interface AiProviderResponse {
 
     data class ToolCalls(
         val providerContinuationToken: String?,
-        val calls: List<AiToolCall>
+        val calls: List<AiToolCall>,
+        val modelId: String? = null
     ) : AiProviderResponse
 
     data class Error(

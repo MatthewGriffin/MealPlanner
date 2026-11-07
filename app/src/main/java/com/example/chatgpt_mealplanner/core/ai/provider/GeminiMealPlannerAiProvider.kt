@@ -543,12 +543,13 @@ class GeminiMealPlannerAiProvider @Inject constructor(
         return if (toolCalls.isNotEmpty()) {
             AiProviderResponse.ToolCalls(
                 providerContinuationToken = conversationId,
-                calls = toolCalls
+                calls = toolCalls,
+                modelId = currentModel
             )
         } else if (textResponse.isNotBlank()) {
             val mealPlan = extractMealPlanFromText(textResponse)
             // The JSON is for the app. If it can't be read, the user still shouldn't see it.
-            val userFacingText = textResponse.substringBefore(MEAL_PLAN_MARKER).trim()
+            val userFacingText = withoutMealPlanJson(textResponse, mealPlan != null)
             if (userFacingText.isBlank() && mealPlan == null) {
                 return AiProviderResponse.Error("RESPONSE_INVALID", INVALID_MESSAGE)
             }
@@ -774,10 +775,8 @@ class GeminiMealPlannerAiProvider @Inject constructor(
     }
 
     private fun extractMealPlanFromText(text: String): List<MealProposal>? {
-        if (!text.contains(MEAL_PLAN_MARKER)) return null
+        val planJson = mealPlanJsonIn(text) ?: return null
         return try {
-            val planJson = text.substringAfter(MEAL_PLAN_MARKER).trim()
-                .removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
             val array = json.parseToJsonElement(planJson).jsonArray
             val meals = array.map { element ->
                 val obj = element.jsonObject
@@ -820,6 +819,26 @@ class GeminiMealPlannerAiProvider @Inject constructor(
             null
         }
     }
+
+    /** Models don't always use the marker, and sometimes send only a code fence. */
+    private fun mealPlanJsonIn(text: String): String? =
+        if (text.contains(MEAL_PLAN_MARKER)) {
+            text.substringAfter(MEAL_PLAN_MARKER).trim()
+                .removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
+        } else {
+            fencedJsonArray.find(text)?.groupValues?.get(1)
+        }
+
+    private fun withoutMealPlanJson(text: String, planWasRead: Boolean): String {
+        val withoutJson = when {
+            text.contains(MEAL_PLAN_MARKER) -> text.substringBefore(MEAL_PLAN_MARKER)
+            planWasRead -> fencedJsonArray.replace(text, "")
+            else -> text
+        }
+        return withoutJson.trim().removeSuffix("***").trim()
+    }
+
+    private val fencedJsonArray = Regex("""```(?:json)?\s*(\[[\s\S]*])\s*(?:```|$)""")
 
     private fun extractMealProposalFromText(text: String): MealProposal? {
         if (text.contains("PROPOSAL_JSON:")) {

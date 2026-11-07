@@ -42,6 +42,9 @@ class AiMealPlannerOrchestrator @Inject constructor(
 ) {
     companion object {
         const val MAX_TOOL_ROUNDS = 8
+
+        /** Times Gemini is asked to fix a recipe or plan. Anything still wrong becomes a warning on the card. */
+        const val MAX_CORRECTION_ATTEMPTS = 3
     }
 
     suspend fun processUserMessage(
@@ -223,10 +226,29 @@ class AiMealPlannerOrchestrator @Inject constructor(
         var requestedWritesCount = 0
         var successfulWritesCount = 0
         var failedWritesCount = 0
+        var offerAcceptedThisTurn = false
+        var correctionsAsked = 0
 
-        while (providerResponse is AiProviderResponse.ToolCalls) {
+        while (true) {
+            if (providerResponse !is AiProviderResponse.ToolCalls) {
+                // Gemini can answer a correction in words, which leaves the card as it was.
+                val correction = if (offerAcceptedThisTurn && !mealPlanRequest && correctionsAsked < MAX_CORRECTION_ATTEMPTS) {
+                    askForRecipeCorrection(request, conversationId)
+                } else null
+                if (correction == null) break
+                correctionsAsked++
+                providerResponse = correction
+                continue
+            }
             val maxRoundsForRequest = if (mealPlanRequest) 2 else MAX_TOOL_ROUNDS
             if (roundCount >= maxRoundsForRequest) {
+                if (offerAcceptedThisTurn) {
+                    providerResponse = AiProviderResponse.FinalResponse(
+                        text = "",
+                        modelId = (providerResponse as AiProviderResponse.ToolCalls).modelId
+                    )
+                    break
+                }
                 return AiOrchestrationResult.Error(
                     code = "MAX_TOOL_ROUNDS_EXCEEDED",
                     userFacingMessage = "Exceeded maximum tool execution rounds."
@@ -277,6 +299,22 @@ class AiMealPlannerOrchestrator @Inject constructor(
                 safeLog("[AI_TOOL_EXECUTION] tool=${call.toolName} executionClass=$executionClass authorized=${res.errorCode != "UNAUTHORIZED"} success=${res.success} mutationCommitted=$isWriteCommitted")
             }
 
+            val offerResult = toolResults.singleOrNull()?.takeIf { it.toolName == AiToolId.OFFER_ADD_PLANNED_MEAL.toolName && it.success }
+            if (offerResult != null) {
+                offerAcceptedThisTurn = true
+                // The card replaces any text that follows, so asking for it would only spend the
+                // user's limited requests. A replacement meal still needs it for its change summary.
+                val askToFix = offerResult.payloadJson.contains("queries") && correctionsAsked < MAX_CORRECTION_ATTEMPTS
+                if (askToFix) correctionsAsked++
+                if (!askToFix && !isReplacementRequest(userMessageText)) {
+                    providerResponse = AiProviderResponse.FinalResponse(
+                        text = "",
+                        modelId = (providerResponse as AiProviderResponse.ToolCalls).modelId
+                    )
+                    break
+                }
+            }
+
             safeLog("[AI_WRITE_SUMMARY] requestedWrites=$requestedWritesCount successfulWrites=$successfulWritesCount failedWrites=$failedWritesCount plannerMutationCommitted=$plannerMutationCommitted shoppingMutationCommitted=$shoppingMutationCommitted")
 
             val continueRequest = AiContinueWithToolsRequest(
@@ -287,7 +325,13 @@ class AiMealPlannerOrchestrator @Inject constructor(
                 allowMoreToolCalls = roundCount < maxRoundsForRequest
             )
 
-            providerResponse = provider.continueWithToolResults(continueRequest)
+            val modelBeforeContinuing = (providerResponse as AiProviderResponse.ToolCalls).modelId
+            providerResponse = provider.continueWithToolResults(continueRequest).let { next ->
+                // A failed correction shouldn't cost the user the card they already have.
+                if (next is AiProviderResponse.Error && offerAcceptedThisTurn) {
+                    AiProviderResponse.FinalResponse(text = "", modelId = modelBeforeContinuing)
+                } else next
+            }
         }
 
         val continuationCode = when (providerResponse) {
@@ -369,6 +413,8 @@ class AiMealPlannerOrchestrator @Inject constructor(
             }
         }
 
+        correctedMealPlan(request, providerResponse, userMessageText)?.let { providerResponse = it }
+
         return when (providerResponse) {
             is AiProviderResponse.FinalResponse -> {
                 val finalRes = providerResponse as AiProviderResponse.FinalResponse
@@ -415,8 +461,7 @@ class AiMealPlannerOrchestrator @Inject constructor(
                     // The displayed recipe is formatted from this pending snapshot. Build the
                     // card and Save action from that same source so wording cannot drift between
                     // what the user reviewed and what is persisted.
-                    val replacementRequest = userMessageText.contains("replacement recipe", ignoreCase = true) ||
-                        userMessageText.contains("meal-change request", ignoreCase = true)
+                    val replacementRequest = isReplacementRequest(userMessageText)
                     val modelChangeSummary = finalRes.proposal?.changeSummary?.takeIf { it.isNotBlank() }
                         ?: if (replacementRequest) {
                             finalRes.text.lineSequence()
@@ -629,6 +674,58 @@ class AiMealPlannerOrchestrator @Inject constructor(
      * A recipe card is stored with empty text because the app draws it from its payload. Gemini
      * still has to read it, or "make it spicier" and "option 2" refer to nothing.
      */
+    /** Returns Gemini's next attempt, or null when the card is fine, or Gemini couldn't be reached. */
+    private suspend fun askForRecipeCorrection(request: AiProviderRequest, conversationId: String): AiProviderResponse? {
+        val pending = pendingMutationStore.getPendingMutation(conversationId) as? com.example.chatgpt_mealplanner.core.ai.pending.PendingAiMutation.AddPlannedMeal
+            ?: return null
+        val problems = recipeValidator.correctionsNeeded(proposalFromPendingSnapshot(pending))
+        if (problems.isEmpty()) return null
+
+        safeLog("[RECIPE_CORRECTION] problems=${problems.size}")
+        return provider.send(
+            request.copy(
+                forcedToolName = AiToolId.OFFER_ADD_PLANNED_MEAL.toolName,
+                messages = request.messages + AiChatMessage(role = "assistant", content = formatAppOwnedRecipeProposal(pending)) + AiChatMessage(
+                    role = "user",
+                    content = "[RECIPE_CORRECTION] Fix these in the recipe above: ${problems.joinToString(" ")} Call 'offer_add_planned_meal' now with the whole corrected recipe."
+                )
+            )
+        ).takeUnless { it is AiProviderResponse.Error }
+    }
+
+    /**
+     * Asks Gemini to fix a plan until nothing is wrong or the attempts run out. The card then warns
+     * about what's left, and can't be saved if a meal breaks an allergy or diet. Returns null to keep
+     * the reply as it is.
+     */
+    private suspend fun correctedMealPlan(
+        request: AiProviderRequest,
+        response: AiProviderResponse,
+        userMessageText: String
+    ): AiProviderResponse.FinalResponse? {
+        var latest = response as? AiProviderResponse.FinalResponse ?: return null
+        if ((latest.mealPlan?.size ?: 0) <= 1 || isRetailProductSearchOnlyRequest(userMessageText)) return null
+        repeat(MAX_CORRECTION_ATTEMPTS) {
+            val problems = latest.mealPlan.orEmpty().flatMap { meal ->
+                recipeValidator.correctionsNeeded(meal).map { "${meal.title}: $it" }
+            }.distinct()
+            if (problems.isEmpty()) return latest
+
+            safeLog("[MEAL_PLAN_CORRECTION] problems=${problems.size}")
+            val correction = provider.send(
+                request.copy(
+                    availableTools = emptyList(),
+                    messages = request.messages + AiChatMessage(role = "assistant", content = latest.text) + AiChatMessage(
+                        role = "user",
+                        content = "[MEAL_PLAN_CORRECTION] Fix these in that plan: ${problems.joinToString(" ")} Replace any meal that breaks an allergy or diet, then send the whole plan again in the same format, including MEAL_PLAN_JSON."
+                    )
+                )
+            ) as? AiProviderResponse.FinalResponse
+            latest = correction?.takeIf { (it.mealPlan?.size ?: 0) > 1 } ?: return latest
+        }
+        return latest
+    }
+
     private fun historyTextFor(message: ChatMessageEntity): String? =
         message.content.takeIf { it.isNotBlank() }
             ?: message.structuredPayloadJson?.let(::describeProposalCard)
@@ -1008,9 +1105,13 @@ class AiMealPlannerOrchestrator @Inject constructor(
         return asksForNewRecipe(userMessageText) && !isClarifyingQuestion(replyText)
     }
 
+    private fun isReplacementRequest(userMessageText: String): Boolean =
+        userMessageText.contains("replacement recipe", ignoreCase = true) ||
+            userMessageText.contains("meal-change request", ignoreCase = true)
+
     private fun asksForNewRecipe(userMessageText: String): Boolean {
         val lower = intentTextWithoutNegatedGenerationInstructions(userMessageText)
-        if (lower.contains("replacement recipe") || lower.contains("meal-change request")) return true
+        if (isReplacementRequest(userMessageText)) return true
         if (recipeAboutExisting.containsMatchIn(lower)) return false
         return recipeRequest.containsMatchIn(lower) || whatToCook.containsMatchIn(lower)
     }
@@ -1022,7 +1123,8 @@ class AiMealPlannerOrchestrator @Inject constructor(
     private fun isClarifyingQuestion(replyText: String): Boolean {
         val trimmed = replyText.trim()
         val offersARecipe = trimmed.contains("here is", ignoreCase = true) || trimmed.contains("here's", ignoreCase = true)
-        return trimmed.endsWith("?") && !offersARecipe && stripTrailingOfferQuestion(trimmed) == trimmed
+        // The question doesn't have to come last: "What toppings? You have cheddar in the fridge."
+        return "?" in trimmed && !offersARecipe && stripTrailingOfferQuestion(trimmed) == trimmed
     }
 
     private fun stripTrailingOfferQuestion(text: String): String {
@@ -1182,14 +1284,14 @@ class AiMealPlannerOrchestrator @Inject constructor(
         RECIPE QUALITY MANDATE:
         Write every recipe the way an experienced home cook would teach it, so that someone following it exactly gets a good result first time.
         1. FLAVOUR: Build a dish that tastes finished. Balance salt, fat, acid, sweetness and heat, include contrasting texture where it suits the dish, and say when to season and when to taste and adjust. Use techniques that add flavour, such as browning properly or toasting spices, when they suit the dish.
-        2. METHOD: Put preparation before cooking and steps in the order they really happen, so that components finish together. Give one stage per step. For each cooking step state the heat level or oven temperature in °C, the time, and what to look for when it is ready (for example "until the edges are golden" or "until a knife slides in easily"). Include preheating, resting and draining when needed. Spell out every ingredient's use: an ingredient list and a method must agree, apart from water.
-        3. QUANTITIES: Scale every quantity to the stated servings, using realistic portions (as a guide per person: 125-200 g meat or fish, 75-100 g dried pasta, 60-80 g dried rice). Keep strong seasonings in proportion. Give each ingredient's quantity as GRAM or MILLILITRE, or as UNIT, TIN or similar for whole items, because the app does its stock and shopping sums in those units. For small amounts also set measure to what the cook actually uses, such as "1 tsp" with 2 GRAM, and use that spoon amount in the method. Mention a good swap in substitute where one exists.
+        2. METHOD: Put preparation before cooking and steps in the order they really happen, so that components finish together. Give one stage per step. For each cooking step state the heat, the time, and what to look for when it is ready (for example "until the edges are golden" or "until a knife slides in easily"). Give hob heat only as low, medium or high, never as a temperature; use °C only for ovens, with the fan temperature, and for the safe temperature inside food. Include preheating, resting and draining when needed. The ingredient list and the method must agree exactly: list everything the method uses, including salt, pepper and oil, and use everything listed. Only water may be left out. Be decisive: say which cut, size or option to use instead of writing "if applicable". The title must name one dish and only foods that are in the recipe.
+        3. QUANTITIES: Scale every quantity to the stated servings, using realistic portions (as a guide per person: 125-200 g meat or fish, 75-100 g dried pasta, 60-80 g dried rice). Use a normal portion even if there is more in stock: never use everything just because it needs using up. Keep strong seasonings in proportion. Give each ingredient's quantity as GRAM or MILLILITRE, or as UNIT, TIN or similar for whole items, because the app does its stock and shopping sums in those units. Set measure only when a cook would not weigh the amount, such as "1 tsp" with 2 GRAM, "2 tbsp" with 30 MILLILITRE, or "2 cloves" with 2 UNIT. Leave measure empty when the quantity is already how a cook would measure it, such as 150 GRAM or 4 UNIT. Spoon sizes must be realistic: 1 tsp of a ground spice is about 2 g, 1 tsp of salt about 6 g, 1 tbsp of oil 15 ml. In the method, write small amounts the same way as measure ("2 tsp ground cumin", never "4 g ground cumin"). Mention a good swap in substitute only where it would genuinely work.
         4. TIME: Give honest prepMinutes and cookMinutes for a home cook, including chopping and heating up. Never understate them to make a recipe look quick.
         5. FOOD SAFETY: Say how to tell that chicken, turkey, pork, sausages and mince are cooked through, and give 75°C in the centre as the safe temperature when it helps. Never suggest undercooking them. Boil dried kidney beans hard for at least 10 minutes. When a recipe makes leftovers, say to cool them quickly and refrigerate them within 2 hours, use them within 2 days, and reheat them until piping hot. Cooked rice is stricter: cool it within 1 hour and use it within 1 day.
         6. VARIETY AND PREFERENCES: Follow the preferences in the context unless they would make the dish worse. Use recentCookedMeals and upcomingPlannedMeals to avoid repeating a dish, or the same main ingredient and cuisine, on neighbouring days unless the user asks for it.
         7. DIETS AND ALLERGIES: preferences.allergies and preferences.diets in the context, and any allergy, intolerance or diet the user states in chat, are strict rules for every ingredient, including those hidden in stock, sauces and spice blends. Never include a conflicting ingredient, even if the user's inventory contains it. Never guess that a product is safe; when an ingredient often contains an allergen, say to check the label. Avoid preferences.dislikes unless the user asks for that ingredient. If a request cannot be met within these rules, say so and offer the closest safe alternative. The app also checks ingredients and will return any conflict for you to fix.
         8. HEALTH: Do not give medical advice or medication dosing. If the user reports low blood glucose, do not apply low-carb meal planning; tell them to follow their usual treatment plan or contact a health professional.
-        9. SKILL AND EQUIPMENT: Match the techniques and the amount of detail to preferences.skillLevel. If preferences.equipment is not empty, it lists special equipment the household has, such as an air fryer. Use it when it helps. Assume a normal kitchen otherwise.
+        9. SKILL AND EQUIPMENT: Match the recipe to preferences.skillLevel. For a Beginner, choose simple techniques, explain any cooking term, and say exactly what to do and what it should look like. If preferences.equipment is not empty, it lists special equipment the household chose to mention, such as an air fryer. Use it whenever it suits the dish, and say so in whyThisSuits. Assume a normal kitchen otherwise, and list only pans and tools that the method needs, not ordinary items such as a knife or chopping board.
         10. EXPLANATION: In whyThisSuits, give one short, specific reason this recipe suits this user today, such as which stock it uses up. Do not use marketing language or claim stock you cannot see.
 
         Live retailer catalogue search, online price lookup, promotions, branch discovery, and stock lookup are disabled. Do not call 'search_retail_products' to verify ingredient wording or claim that any product, price, or stock status has been checked. Users can record actual purchase prices against shops they define themselves; these are local historical observations, not live quotes. Never invent prices, availability, promotions, or savings. If a recorded price is discussed, qualify it with the recorded date and shop when available. If no recorded price exists, say the price is unknown rather than estimating it.
@@ -1209,7 +1311,7 @@ class AiMealPlannerOrchestrator @Inject constructor(
         Whenever the response contains multiple planned meals, append a valid JSON array at the very end using the exact prefix MEAL_PLAN_JSON:. Each object must include title, suggestedDate in YYYY-MM-DD format, mealType, servings, prepMinutes, cookMinutes, whyThisSuits, ingredients (objects with displayName, quantity, unit, measure, optional, substitutionAllowed, substitute), and steps (objects with order, instruction and durationMinutes). Every meal needs complete ingredients and cooking instructions. Do not wrap the JSON in markdown fences and put nothing after it. This structured payload drives the app's single Accept meal plan card; never call offer_add_planned_meal for each meal in a multi-meal plan.
 
         MEAL-PLAN WORKFLOW (DISTINCT FROM A SINGLE RECIPE):
-        1. Treat requests to generate, create, suggest, or adjust a meal plan/menu for multiple days as a menu-level workflow. Present the complete plan as a readable day-by-day list and ask whether the user wants adjustments or wants to choose a meal to expand.
+        1. Treat requests to generate, create, suggest, or adjust a meal plan/menu for multiple days as a menu-level workflow. Present the complete plan as a readable day-by-day list and ask whether the user wants adjustments or wants to choose a meal to expand. The list and MEAL_PLAN_JSON must describe exactly the same meals, each with one definite title, and no alternatives such as "A or B".
         2. Do NOT call 'offer_add_planned_meal' for any individual meal while responding to a meal-plan request. Do not create a recipe card for the first meal, and do not ask whether the user wants the full recipe for today's meal by default. The plan itself is the response; the user can choose a specific meal to expand in a later message.
         3. Do not save the proposed plan automatically. Only save meals when the user explicitly asks to add/save/schedule the plan, and use the appropriate supported write tools. If the app cannot save the whole plan atomically, explain the supported next step rather than implying all meals were saved.
         4. Do NOT ask whether to regenerate or update the shopping list as a routine follow-up to proposing or accepting a meal plan. Shopping-list regeneration is a separate action; only offer or perform it when the user asks for it or the app's explicit workflow requires it. Finish the meal-plan interaction without an unsolicited shopping-list question.
