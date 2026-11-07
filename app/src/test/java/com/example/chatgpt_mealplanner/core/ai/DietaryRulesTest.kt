@@ -44,6 +44,18 @@ class DietaryRulesTest {
         assertTrue(queries("Boil the rice, then add a pinch of pepper.").contains("uses pepper"))
         assertTrue(queries("Boil the rice.", recipe("Rice or Noodles", ingredients = arrayOf(rice))).contains("Name one dish"))
         assertTrue(queries("Roast the chicken.", recipe("Roast Chicken", ingredients = arrayOf(Triple("Chicken thighs", 600.0, "GRAM")))).contains("a lot for 2"))
+        assertTrue(queries("Fry the chicken.", recipe("Chicken", ingredients = arrayOf(Triple("Chicken thighs", 50.0, "GRAM")))).contains("very little for 2"))
+        assertTrue(queries("Melt 10 gram butter over the rice.").contains("spoons"))
+        assertTrue(queries("Boil the rice with 2 grams ground cumin.").contains("spoons"))
+        assertTrue(queries("Crack 4 unit eggs over the rice.").contains("'4 eggs'"))
+    }
+
+    @Test
+    fun amountsThatArentMainPortions_areNotCalledTooSmall() {
+        fun smallQuery(ingredient: Triple<String, Double, String>) = queries("Fry the ${ingredient.first}.", recipe("Dish", ingredients = arrayOf(ingredient)))
+        assertFalse(smallQuery(Triple("Pancetta", 100.0, "GRAM")).contains("very little"))
+        assertFalse(smallQuery(Triple("Whole chicken", 1.0, "UNIT")).contains("very little"))
+        assertFalse(smallQuery(Triple("Chicken stock", 30.0, "MILLILITRE")).contains("very little"))
     }
 
     @Test

@@ -24,9 +24,11 @@ object RecipeOfferChecks {
 
     private const val MOST_GRAMS_OR_ML_PER_SERVING = 1000.0
     private const val MOST_MEAT_OR_FISH_GRAMS_PER_SERVING = 250.0
+    private const val LEAST_MEAT_OR_FISH_GRAMS_PER_SERVING = 40.0
 
     private val hobTemperature = Regex("""\b(?:low|medium|high|heat)\b[^.]{0,12}\(?\d{2,3}\s?°c""")
-    private val smallWeight = Regex("""\b(?:\d|1[0-4])\s?g\b(?!\s*\))""")
+    private val smallWeight = Regex("""\b(?:\d|1[0-4])\s?(?:g|grams?)\b(?!\s*\))""")
+    private val unitWord = Regex("""\b\d+\s?units?\b""")
     private val commonIngredients = listOf("salt", "pepper", "butter", "garlic", "sugar", "flour")
 
     fun isVague(ingredientName: String): Boolean {
@@ -75,13 +77,18 @@ object RecipeOfferChecks {
         return listOfNotNull(
             "Give hob heat as low, medium or high, not a temperature.".takeIf { hobTemperature.containsMatchIn(methodText) },
             "Write small amounts in the method in spoons, not grams.".takeIf { smallWeight.containsMatchIn(methodText) },
+            "Write whole items in the method by name, such as '4 eggs', not '4 unit eggs'.".takeIf { unitWord.containsMatchIn(methodText) },
             "The title offers a choice. Name one dish.".takeIf { " or " in proposal.title.lowercase() }
         ) + commonIngredients
             .filter { Regex("\\b$it").containsMatchIn(methodText) && !Regex("\\b$it").containsMatchIn(listed) }
             .map { "The method uses $it, but it isn't in the ingredients." } +
             proposal.ingredients
                 .filter { DietaryRules.isMeatOrFish(it.displayName) && (gramsOrMl(it) ?: 0.0) / servings > MOST_MEAT_OR_FISH_GRAMS_PER_SERVING }
-                .map { "'${it.displayName}' is a lot for ${proposal.servings} servings (${it.quantity} ${it.unit}). Use a normal portion even if there is more in stock." }
+                .map { "'${it.displayName}' is a lot for ${proposal.servings} servings (${it.quantity} ${it.unit}). Use a normal portion even if there is more in stock." } +
+            proposal.ingredients
+                .filter { DietaryRules.isMeatOrFish(it.displayName) && it.unit != "MILLILITRE" && it.unit != "LITRE" }
+                .filter { (gramsOrMl(it) ?: Double.MAX_VALUE) / servings < LEAST_MEAT_OR_FISH_GRAMS_PER_SERVING }
+                .map { "'${it.displayName}' is very little for ${proposal.servings} servings (${it.quantity} ${it.unit}). If it's the main ingredient, use a normal portion even if there is less in stock." }
     }
 
     private fun isUsedIn(ingredientName: String, methodText: String): Boolean {
