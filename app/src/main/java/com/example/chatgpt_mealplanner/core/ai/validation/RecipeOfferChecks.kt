@@ -5,6 +5,7 @@ import com.example.chatgpt_mealplanner.contract.ProposedIngredient
 import com.example.chatgpt_mealplanner.contract.UserPreferencesSummaryDto
 import com.example.chatgpt_mealplanner.core.model.QuantityUnit
 import com.example.chatgpt_mealplanner.core.model.quantityUnitOrNull
+import com.example.chatgpt_mealplanner.core.util.formatQuantityAndUnit
 
 /**
  * Checks a recipe while Gemini can still fix it. A problem stops the card. A query goes to Gemini
@@ -75,53 +76,112 @@ object RecipeOfferChecks {
         proposal: MealProposal,
         method: String,
         preferences: UserPreferencesSummaryDto = UserPreferencesSummaryDto()
-    ): List<String> = warnings(proposal, method) + proposal.ingredients
+    ): List<String> = findings(proposal, method).map { it.forGemini } + proposal.ingredients
         .filter { DietaryRules.isDisliked(it.displayName, preferences) }
         .map { "'${it.displayName}' is something this household dislikes." }
 
-    /** The queries that don't depend on the household. The card words its own dislikes warning. */
-    fun warnings(proposal: MealProposal, method: String): List<String> {
+    /**
+     * The same findings as [queries] without the household's dislikes, worded for the card. They show
+     * only after Gemini failed to correct them, so they tell the household what's wrong, not how to write it.
+     */
+    fun warnings(proposal: MealProposal, method: String): List<String> = findings(proposal, method).map { it.forHousehold }
+
+    /** One finding, worded once as an instruction for Gemini and once as a note for the household. */
+    private class Finding(val forGemini: String, val forHousehold: String)
+
+    private fun findings(proposal: MealProposal, method: String): List<Finding> {
         val methodText = method.lowercase()
+        val servings = servingsText(proposal.servings)
         val unused = proposal.ingredients
             .filter { !it.optional && !isUsedIn(it.displayName, methodText) }
-            .map { "'${it.displayName}' is in the ingredients but not in the method." }
+            .map {
+                Finding(
+                    "'${it.displayName}' is in the ingredients but not in the method.",
+                    "The method doesn't say when to use '${it.displayName}'."
+                )
+            }
         val oversized = proposal.ingredients
             .filter { gramsOrMl(it)?.let { amount -> amount / proposal.servings.coerceAtLeast(1) > MOST_GRAMS_OR_ML_PER_SERVING } == true }
-            .map { "'${it.displayName}' looks like too much for ${proposal.servings} servings (${it.quantity} ${it.unit})." }
-        return unused + oversized + unitQueries(proposal) + cookabilityQueries(proposal, methodText)
+            .map {
+                Finding(
+                    "'${it.displayName}' looks like too much for ${proposal.servings} servings (${it.quantity} ${it.unit}).",
+                    "${amountOf(it)} of '${it.displayName}' looks like too much for $servings. Check it before you shop."
+                )
+            }
+        return unused + oversized + unitFindings(proposal) + cookabilityFindings(proposal, methodText)
     }
 
     /** An unknown unit is saved as a count, so these amounts would reach the shopping list wrong. */
-    private fun unitQueries(proposal: MealProposal): List<String> = proposal.ingredients.mapNotNull { ingredient ->
+    private fun unitFindings(proposal: MealProposal): List<Finding> = proposal.ingredients.mapNotNull { ingredient ->
         val name = ingredient.displayName
         when (quantityUnitOrNull(ingredient.unit)) {
-            null -> "'$name' has the unit '${ingredient.unit}', which the app can't read. Use one of ${QuantityUnit.entries.joinToString()}."
-            QuantityUnit.UNIT -> "'$name' can't be counted (${ingredient.quantity} ${ingredient.unit}). Use GRAM or MILLILITRE."
-                .takeIf { name.trim().lowercase().let { neverCounted.containsMatchIn(it) && " in " !in it } }
+            null -> Finding(
+                "'$name' has the unit '${ingredient.unit}', which the app can't read. Use one of ${QuantityUnit.entries.joinToString()}.",
+                "The app can't read the amount of '$name' (${amountOf(ingredient)}), so it will be saved as a count. Check it before you shop."
+            )
+            QuantityUnit.UNIT -> Finding(
+                "'$name' can't be counted (${ingredient.quantity} ${ingredient.unit}). Use GRAM or MILLILITRE.",
+                "'$name' is given as a count (${amountOf(ingredient)}) instead of a weight or volume. Check it before you shop."
+            ).takeIf { name.trim().lowercase().let { neverCounted.containsMatchIn(it) && " in " !in it } }
             else -> null
         }
     }
 
     /** Mistakes seen in real Gemini recipes that make a recipe harder to follow. */
-    private fun cookabilityQueries(proposal: MealProposal, methodText: String): List<String> {
+    private fun cookabilityFindings(proposal: MealProposal, methodText: String): List<Finding> {
         val listed = proposal.ingredients.joinToString(" ") { it.displayName.lowercase() }
         val servings = proposal.servings.coerceAtLeast(1)
+        val servingsText = servingsText(proposal.servings)
         return listOfNotNull(
-            "Give hob heat as low, medium or high, not a temperature.".takeIf { hobTemperature.containsMatchIn(methodText) },
-            "Write small amounts in the method in spoons, not grams.".takeIf { smallWeight.containsMatchIn(methodText) },
-            "Write whole items in the method by name, such as '4 eggs', not '4 unit eggs'.".takeIf { unitWord.containsMatchIn(methodText) },
-            "The title offers a choice. Name one dish.".takeIf { " or " in proposal.title.lowercase() }
+            Finding(
+                "Give hob heat as low, medium or high, not a temperature.",
+                "The method gives hob heat as a temperature. Most hobs are set to low, medium or high."
+            ).takeIf { hobTemperature.containsMatchIn(methodText) },
+            Finding(
+                "Write small amounts in the method in spoons, not grams.",
+                "The method gives some small amounts in grams, so you may need to weigh them."
+            ).takeIf { smallWeight.containsMatchIn(methodText) },
+            Finding(
+                "Write whole items in the method by name, such as '4 eggs', not '4 unit eggs'.",
+                "Where the method says something like '4 unit eggs', it means 4 eggs."
+            ).takeIf { unitWord.containsMatchIn(methodText) },
+            Finding(
+                "The title offers a choice. Name one dish.",
+                "The title offers a choice of dishes, but the recipe may only make one."
+            ).takeIf { " or " in proposal.title.lowercase() }
         ) + commonIngredients
             .filter { Regex("\\b$it").containsMatchIn(methodText) && !Regex("\\b$it").containsMatchIn(listed) }
-            .map { "The method uses $it, but it isn't in the ingredients." } +
+            .map {
+                Finding(
+                    "The method uses $it, but it isn't in the ingredients.",
+                    "The method uses $it, but it isn't in the ingredients, so it won't be on the shopping list."
+                )
+            } +
             proposal.ingredients
                 .filter { DietaryRules.isMeatOrFish(it.displayName) && (gramsOrMl(it) ?: 0.0) / servings > MOST_MEAT_OR_FISH_GRAMS_PER_SERVING }
-                .map { "'${it.displayName}' is a lot for ${proposal.servings} servings (${it.quantity} ${it.unit}). Use a normal portion even if there is more in stock." } +
+                .map {
+                    Finding(
+                        "'${it.displayName}' is a lot for ${proposal.servings} servings (${it.quantity} ${it.unit}). Use a normal portion even if there is more in stock.",
+                        "${amountOf(it)} of '${it.displayName}' is a lot for $servingsText."
+                    )
+                } +
             proposal.ingredients
                 .filter { DietaryRules.isMeatOrFish(it.displayName) && it.unit != "MILLILITRE" && it.unit != "LITRE" }
                 .filter { (gramsOrMl(it) ?: Double.MAX_VALUE) / servings < LEAST_MEAT_OR_FISH_GRAMS_PER_SERVING }
-                .map { "'${it.displayName}' is very little for ${proposal.servings} servings (${it.quantity} ${it.unit}). If it's the main ingredient, use a normal portion even if there is less in stock." }
+                .map {
+                    Finding(
+                        "'${it.displayName}' is very little for ${proposal.servings} servings (${it.quantity} ${it.unit}). If it's the main ingredient, use a normal portion even if there is less in stock.",
+                        "${amountOf(it)} of '${it.displayName}' is very little for $servingsText if it's the main ingredient."
+                    )
+                }
     }
+
+    private fun servingsText(servings: Int) = if (servings == 1) "1 serving" else "$servings servings"
+
+    /** The amount as the household reads it, such as "6 g" or "2 tsp", not "6.0 GRAM". */
+    private fun amountOf(ingredient: ProposedIngredient): String =
+        quantityUnitOrNull(ingredient.unit)?.let { formatQuantityAndUnit(ingredient.quantity, it) }
+            ?: listOf(formatQuantityAndUnit(ingredient.quantity, null), ingredient.unit.trim()).filter { it.isNotEmpty() }.joinToString(" ")
 
     private fun isUsedIn(ingredientName: String, methodText: String): Boolean {
         val words = ingredientName.lowercase().split(Regex("[^a-z]+")).filter { it.length >= 3 }
