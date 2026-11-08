@@ -64,6 +64,9 @@ class GeminiMealPlannerAiProvider @Inject constructor(
 
     private var apiKey: String? = null
 
+    /** The models to try in order. The live evaluation sets one model so its results aren't mixed with the fallback's. */
+    internal var modelChain: List<String> = GEMINI_MODEL_CHAIN
+
     internal var httpCallHandler: ((urlStr: String, payload: JsonObject) -> Pair<Int, String>)? = null
     internal var requestApiKeyObserver: ((apiKey: String) -> Unit)? = null
     internal var delayProvider: (suspend (Long) -> Unit) = { ms ->
@@ -296,8 +299,8 @@ class GeminiMealPlannerAiProvider @Inject constructor(
 
         var lastError: AiProviderResponse.Error? = null
 
-        for (i in GEMINI_MODEL_CHAIN.indices) {
-            val currentModel = GEMINI_MODEL_CHAIN[i]
+        for (i in modelChain.indices) {
+            val currentModel = modelChain[i]
             var modelAttempt = 0
 
             while (modelAttempt < maxPerModelAttempts && globalAttemptCount < maxGlobalAttempts) {
@@ -350,8 +353,8 @@ class GeminiMealPlannerAiProvider @Inject constructor(
                 }
             }
 
-            if (i < GEMINI_MODEL_CHAIN.lastIndex && globalAttemptCount < maxGlobalAttempts) {
-                val nextModel = GEMINI_MODEL_CHAIN[i + 1]
+            if (i < modelChain.lastIndex && globalAttemptCount < maxGlobalAttempts) {
+                val nextModel = modelChain[i + 1]
                 val reason = when {
                     lastError?.code == "HTTP_429" || lastError?.code == "API_QUOTA_EXCEEDED" -> "quota"
                     lastError?.code == "HTTP_404" -> "model_unavailable"
