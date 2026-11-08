@@ -16,6 +16,7 @@ import com.example.chatgpt_mealplanner.core.ai.dispatcher.AiToolDispatcher
 import com.example.chatgpt_mealplanner.core.ai.orchestrator.AiMealPlannerOrchestrator
 import com.example.chatgpt_mealplanner.core.ai.pending.PendingMutationStore
 import com.example.chatgpt_mealplanner.core.ai.proposal.ActiveProposalStore
+import com.example.chatgpt_mealplanner.core.ai.provider.GEMINI_PRIMARY_MODEL
 import com.example.chatgpt_mealplanner.core.ai.provider.GeminiMealPlannerAiProvider
 import com.example.chatgpt_mealplanner.core.ai.provider.MealPlannerAiProvider
 import com.example.chatgpt_mealplanner.core.ai.validation.RecipeOfferChecks
@@ -50,8 +51,16 @@ import java.io.File
  *
  *   am instrument -w -e class ...eval.LiveRecipeEvaluation -e liveGemini true ...
  *
- * Add `-e scenarios allergy-milk,vegan` to run only some. Everything uses a separate in-memory
- * database, so the app's own data isn't touched. The report goes to the app's files directory.
+ * Add `-e scenarios allergy-milk,vegan` to run only some, and `-e model gemini-x` to test another
+ * model. Only that one model is used, with no fallback, so the results are all from it. Everything
+ * uses a separate in-memory database, so the app's own data isn't touched. The report goes to the
+ * app's files directory as `recipe-evaluation-<model>.txt`.
+ *
+ * A rate-limited request is sent again after an exponential backoff, waiting longer if Google
+ * suggests a delay. A daily limit can't be waited out, so the run stops there instead.
+ *
+ * On the free tier each model allows 20 requests a day (November 2026), and refused or timed-out
+ * requests count too. A run covers about 15 scenarios a day on a model that isn't overloaded.
  */
 @RunWith(AndroidJUnit4::class)
 class LiveRecipeEvaluation {
@@ -69,14 +78,38 @@ class LiveRecipeEvaluation {
         val expected: Expected = Expected.CARD
     )
 
-    private class ScenarioOutcome(val id: String, val calls: Int, val models: Set<String>, val failures: List<String>, val rateLimited: Boolean)
+    private class ScenarioOutcome(val id: String, val calls: Int, val models: Set<String>, val failures: List<String>, val rateLimited: Boolean, val rateLimitWaits: Int)
 
     private class Stock(val name: String, val quantity: Double, val unit: QuantityUnit, val status: ItemStatus = ItemStatus.AVAILABLE)
 
-    /** Counts calls and records what each one returned, because the final result hides the path to it. */
+    /**
+     * Counts calls and records what each one returned, because the final result hides the path to it.
+     * Waits out per-minute rate limits, so the rest of the app never sees them.
+     */
     private class TracingProvider(private val real: MealPlannerAiProvider) : MealPlannerAiProvider by real {
         var calls = 0
+        var rateLimitWaits = 0
         val trace = mutableListOf<String>()
+
+        private suspend fun withBackoff(kind: String, call: suspend () -> AiProviderResponse): AiProviderResponse {
+            var backoffMs = FIRST_BACKOFF_MS
+            var attempt = 0
+            while (true) {
+                val response = call()
+                if (response !is AiProviderResponse.Error || response.code !in BACK_OFF_CODES) return record(kind, response)
+                calls++
+                if (cantBeWaitedOut(response.message) || attempt == MAX_RATE_LIMIT_RETRIES) {
+                    trace += "$kind -> ERROR ${response.code}, giving up: ${response.message.take(600)}"
+                    return response
+                }
+                val waitMs = maxOf(backoffMs, suggestedDelayMs(response.message) ?: 0L) + (0..1000).random()
+                trace += "$kind -> limited or busy (${response.code}), waiting ${waitMs / 1000}s before retry ${attempt + 1} of $MAX_RATE_LIMIT_RETRIES"
+                rateLimitWaits++
+                delay(waitMs)
+                backoffMs = (backoffMs * 2).coerceAtMost(MAX_BACKOFF_MS)
+                attempt++
+            }
+        }
 
         private fun record(kind: String, response: AiProviderResponse): AiProviderResponse {
             calls++
@@ -94,13 +127,13 @@ class LiveRecipeEvaluation {
             runCatching { Json.parseToJsonElement(argsJson).jsonObject["ingredients"]?.toString() }.getOrNull()
 
         override suspend fun send(request: AiProviderRequest): AiProviderResponse =
-            record(if (request.forcedToolName != null) "repair" else "send", real.send(request))
+            withBackoff(if (request.forcedToolName != null) "repair" else "send") { real.send(request) }
 
         override suspend fun continueWithToolResults(request: AiContinueWithToolsRequest): AiProviderResponse {
             trace += "tool results: " + request.toolResults.joinToString { result ->
                 "${result.toolName}=${if (result.success) "ok" else "REJECTED"} ${(result.errorMessage ?: result.payloadJson.takeIf { "queries" in it }).orEmpty().take(300)}"
             }
-            return record("continue", real.continueWithToolResults(request))
+            return withBackoff("continue") { real.continueWithToolResults(request) }
         }
     }
 
@@ -110,38 +143,36 @@ class LiveRecipeEvaluation {
         // The prompt takes the home country from the locale, and the emulator's may not match a real user's.
         java.util.Locale.setDefault(java.util.Locale.UK)
         val wanted = arguments.getString("scenarios")?.split(',')?.map { it.trim() }
-        val report = File(context.filesDir, "recipe-evaluation.txt")
+        val model = arguments.getString("model")?.trim()?.takeIf { it.isNotEmpty() } ?: GEMINI_PRIMARY_MODEL
+        val report = File(context.filesDir, "recipe-evaluation-$model.txt")
         val details = StringBuilder()
         val outcomes = mutableListOf<ScenarioOutcome>()
         for (scenario in SCENARIOS.filter { wanted == null || it.id in wanted }) {
             // The free tier limits requests per minute, and hitting that would test the fallback model instead.
             delay(PAUSE_BETWEEN_SCENARIOS_MS)
-            var (text, outcome) = runScenario(scenario)
-            if (outcome.rateLimited) {
-                delay(RATE_LIMIT_WAIT_MS)
-                val retry = runScenario(scenario)
-                text = retry.first
-                outcome = retry.second
-            }
+            val (text, outcome) = runScenario(scenario, model)
             details.append(text)
             outcomes += outcome
+            // Written after each scenario, so a run that stops early still leaves a report.
+            report.writeText(summary(model, outcomes) + details)
             if (outcome.rateLimited) {
-                details.append("\n\nSTOPPED: still rate limited after waiting, so the remaining scenarios were not sent.\n")
+                details.append("\n\nSTOPPED: still rate limited after backing off, or a daily limit was reached, so the remaining scenarios were not sent.\n")
                 break
             }
         }
-        report.writeText(summary(outcomes) + details)
+        report.writeText(summary(model, outcomes) + details)
     }
 
-    private fun summary(outcomes: List<ScenarioOutcome>): String = buildString {
+    private fun summary(model: String, outcomes: List<ScenarioOutcome>): String = buildString {
         val passed = outcomes.count { it.failures.isEmpty() }
-        appendLine("SUMMARY: $passed of ${outcomes.size} scenarios had no findings, ${outcomes.sumOf { it.calls }} model requests")
+        appendLine("MODEL: $model")
+        appendLine("SUMMARY: $passed of ${outcomes.size} scenarios had no findings, ${outcomes.sumOf { it.calls }} model requests, ${outcomes.sumOf { it.rateLimitWaits }} rate-limit waits")
         outcomes.forEach { outcome ->
             appendLine("- ${outcome.id}: ${outcome.calls} requests, ${outcome.models}, ${if (outcome.failures.isEmpty()) "clean" else outcome.failures.joinToString(" | ")}")
         }
     }
 
-    private suspend fun runScenario(scenario: Scenario): Pair<String, ScenarioOutcome> {
+    private suspend fun runScenario(scenario: Scenario, model: String): Pair<String, ScenarioOutcome> {
         val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
         try {
             val now = System.currentTimeMillis()
@@ -149,7 +180,8 @@ class LiveRecipeEvaluation {
             db.inventoryDao().insertItems(scenario.stock.mapIndexed { index, item -> item.toEntity(index, now) })
             val preferences = CookingPreferencesStore(db.cookingPreferencesDao())
             preferences.save(scenario.preferences)
-            val provider = TracingProvider(GeminiMealPlannerAiProvider(GeminiCredentialStore(context)))
+            val gemini = GeminiMealPlannerAiProvider(GeminiCredentialStore(context)).apply { modelChain = listOf(model) }
+            val provider = TracingProvider(gemini)
             val orchestrator = orchestrator(db, provider, preferences)
             val failures = mutableListOf<String>()
             val models = mutableSetOf<String>()
@@ -174,7 +206,7 @@ class LiveRecipeEvaluation {
                 }
                 if (failures.isNotEmpty()) appendLine("FINDINGS: $failures")
             }
-            return text to ScenarioOutcome(scenario.id, provider.calls, models, failures, rateLimited)
+            return text to ScenarioOutcome(scenario.id, provider.calls, models, failures, rateLimited, provider.rateLimitWaits)
         } finally {
             db.close()
         }
@@ -308,7 +340,22 @@ class LiveRecipeEvaluation {
     private companion object {
         const val CONVERSATION = "default_conversation"
         const val PAUSE_BETWEEN_SCENARIOS_MS = 15_000L
-        const val RATE_LIMIT_WAIT_MS = 65_000L
+        const val FIRST_BACKOFF_MS = 5_000L
+        const val MAX_BACKOFF_MS = 120_000L
+        // 5, 10, 20, 40, 80 and 120 s: over four and a half minutes, so a per-minute limit has long reset.
+        const val MAX_RATE_LIMIT_RETRIES = 6
+        val RATE_LIMIT_CODES = setOf("HTTP_429", "API_QUOTA_EXCEEDED")
+        // "This model is currently experiencing high demand" is a 503, and it passes like a rate limit does.
+        val BACK_OFF_CODES = RATE_LIMIT_CODES + setOf("HTTP_503", "GEMINI_BUSY")
+
+        /** Google's 429 names the quota it hit. A per-day one, or a model with no allowance, won't reset by waiting. */
+        fun cantBeWaitedOut(message: String) = Regex("""per ?day|limit:\s*0\b""", RegexOption.IGNORE_CASE).containsMatchIn(message)
+
+        /** Google suggests a wait as "retry in 37.2s", "retryDelay": "37s" or a Retry-After header. */
+        fun suggestedDelayMs(message: String): Long? =
+            listOf(Regex("""retry in ([\d.]+)\s*s""", RegexOption.IGNORE_CASE), Regex(""""retryDelay"\s*:\s*"([\d.]+)s""""), Regex("""Retry-After:\s*([\d.]+)"""))
+                .firstNotNullOfOrNull { it.find(message)?.groupValues?.get(1)?.toDoubleOrNull() }
+                ?.let { (it * 1000).toLong() }
 
         val STANDARD_STOCK = listOf(
             Stock("Chicken thighs", 600.0, QuantityUnit.GRAM, ItemStatus.USE_SOON),

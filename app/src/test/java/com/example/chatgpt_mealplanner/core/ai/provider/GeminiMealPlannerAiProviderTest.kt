@@ -96,6 +96,21 @@ class GeminiMealPlannerAiProviderTest {
     }
 
     @Test
+    fun aSingleModelChain_usesOnlyThatModel_andDoesNotFallBackOn429() = runBlocking {
+        val asked = mutableListOf<String>()
+        provider.modelChain = listOf("gemini-test-model")
+        provider.httpCallHandler = { url, _ ->
+            asked += modelFrom(url)
+            Pair(429, makeErrorBody(429, "Quota exceeded"))
+        }
+
+        val response = provider.send(helloRequest())
+
+        assertEquals(listOf("gemini-test-model"), asked)
+        assertEquals("HTTP_429", (response as AiProviderResponse.Error).code)
+    }
+
+    @Test
     fun geminiProvider_blockingNetworkCall_doesNotExecuteOnMainDispatcher() = runBlocking {
         var executedOffMain = false
         // Test dispatcher override explicitly for off-main verification
