@@ -28,7 +28,8 @@ object DietaryRules {
         "milk|butter|buttermilk|cream|cheese|cheddar|mozzarella|parmesan|parmigiano|feta|halloumi|ricotta|mascarpone|" +
             "yoghurt|yogurt|ghee|whey|creme fraiche|crème fraîche|paneer|custard",
         "$ANIMAL_FREE|(?:dairy|milk)[- ]free\\s+[a-zé ]+|(?:peanut|almond|cashew|nut|cocoa|shea) butter|butter beans?|" +
-            "(?:coconut|oat|soya|soy|almond|rice|hazelnut|cashew|nut) (?:milk|cream|yoghurt|yogurt)|cream of tartar"
+            "(?:coconut|oat|soya|soy|almond|rice|hazelnut|cashew|nut) (?:(?:single|double|whipping|cooking|sour) )?(?:milk|cream|yoghurt|yogurt)|" +
+            "cream of tartar"
     )
     private val eggs = FoodGroup("egg|mayonnaise|mayo|meringue|aioli", "$ANIMAL_FREE|egg[- ]free\\s+[a-zé ]+")
     private val gluten = FoodGroup(
