@@ -99,6 +99,9 @@ class DietaryRulesTest {
     fun milkAllergy() {
         assertCaught(allergy("Milk"), "Double cream", "mature cheddar", "Butter", "Greek yoghurt", "whole milk", "Ghee")
         assertAllowed(allergy("Milk"), "peanut butter", "butter beans", "coconut milk", "oat milk", "cream of tartar", "vegan butter", "butternut squash", "dairy-free spread")
+        // Gemini offered these for a milk allergy in a live run, and the app wrongly refused them.
+        assertAllowed(allergy("Milk"), "Oat single cream alternative", "Soya single cream or coconut cream alternative", "oat cooking cream")
+        assertCaught(allergy("Milk"), "single cream", "double cream", "sour cream")
     }
 
     @Test
