@@ -17,13 +17,30 @@ class RecipeUnitChecksTest {
             "Use the $name."
         )
 
-    private fun List<String>.mentionsUnit() = any { "can't be counted" in it || "can't read" in it }
+    private fun queriesFor(name: String, quantity: Double, unit: String): List<String> =
+        RecipeOfferChecks.queries(
+            MealProposal(title = "Dish", ingredients = listOf(ProposedIngredient(displayName = name, quantity = quantity, unit = unit)), reasoningSummary = "Test"),
+            "Use the $name."
+        )
+
+    private fun List<String>.mentionsUnit() = any { "as a count" in it || "can't read" in it }
 
     @Test
     fun aUnitTheAppCantRead_isQueried() {
+        val queries = queriesFor("Mustard", 1.0, "tsp")
         val warnings = warningsFor("Mustard", 1.0, "tsp")
 
-        assertTrue(warnings.toString(), warnings.any { "'tsp'" in it && "GRAM" in it })
+        assertTrue(queries.toString(), queries.any { "'tsp'" in it && "GRAM" in it })
+        assertEquals(listOf("The app can't read the amount of 'Mustard' (1 tsp), so it will be saved as a count. Check it before you shop."), warnings)
+    }
+
+    @Test
+    fun aNeverCountedFood_isAskedInUnitsButWarnedInPlainWords() {
+        assertTrue(queriesFor("Salt", 6.0, "UNIT").any { "Use GRAM or MILLILITRE" in it })
+        assertEquals(
+            listOf("'Salt' is given as a count (6) instead of a weight or volume. Check it before you shop."),
+            warningsFor("Salt", 6.0, "UNIT")
+        )
     }
 
     @Test
