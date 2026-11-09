@@ -76,7 +76,7 @@ object RecipeOfferChecks {
             "Ingredient '${ingredient.displayName}' needs a quantity greater than 0."
                 .takeIf { ingredient.quantity <= 0.0 }
         ) + DietaryRules.conflicts(ingredient.displayName, preferences) +
-            ingredient.substitute.orEmpty().let { swap -> DietaryRules.conflicts(swap, preferences) }
+            ingredient.substitute.orEmpty().takeUnless(DietaryRules::isLabelAdvice).orEmpty().let { swap -> DietaryRules.conflicts(swap, preferences) }
 
     fun queries(
         proposal: MealProposal,
@@ -84,7 +84,12 @@ object RecipeOfferChecks {
         preferences: UserPreferencesSummaryDto = UserPreferencesSummaryDto()
     ): List<String> = findings(proposal, method).map { it.forModel } + proposal.ingredients
         .filter { DietaryRules.isDisliked(it.displayName, preferences) }
-        .map { "'${it.displayName}' is something this household dislikes." }
+        .map { "'${it.displayName}' is something this household dislikes." } + proposal.ingredients
+        .flatMap { ingredient -> DietaryRules.labelChecksNeeded(ingredient.displayName, preferences).map { ingredient.displayName to it } }
+        .map { (name, allergy) ->
+            "'$name' often contains an allergen without naming it, and this household has a $allergy allergy. " +
+                "Keep it only if a safe version exists, and add the warning to its name, such as '$name (check the label for ${allergy.lowercase()})'."
+        }
 
     /**
      * The same findings as [queries] without the household's dislikes, worded for the card. They show

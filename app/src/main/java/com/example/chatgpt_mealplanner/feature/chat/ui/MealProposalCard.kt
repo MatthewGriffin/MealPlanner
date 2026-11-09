@@ -87,6 +87,15 @@ fun MealProposalCard(
                 Spacer(modifier = Modifier.height(12.dp))
             }
 
+            proposal.source?.takeIf { it.isNotBlank() }?.let { source ->
+                Text(
+                    text = "Based on: $source",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+
             Text(
                 text = "Ingredients Pantry Status:",
                 style = MaterialTheme.typography.bodyMedium,

@@ -86,7 +86,9 @@ data class AiProviderRequest(
     val contextPayload: AiContextPayload,
     val messages: List<AiChatMessage>,
     val availableTools: List<AiToolId>,
-    val forcedToolName: String? = null
+    val forcedToolName: String? = null,
+    /** Lets the model search the web, which costs extra, so only when the user asks for it. */
+    val allowWebSearch: Boolean = false
 )
 
 data class AiContinueWithToolsRequest(

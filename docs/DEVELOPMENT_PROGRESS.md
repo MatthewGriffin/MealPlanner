@@ -348,3 +348,12 @@ The user confirmed meal-plan synchronization now works on both phones.
 - Tool schemas list the units and meal types the app accepts.
 - Tried and dropped: strict tools, because the API allows at most 20 strict tools and 24 optional fields, and strict recipe tools made Haiku send empty or "placeholder" steps. High effort made replies take 31 s instead of 18 and cut off a 3-day plan, because thinking and the answer share the token limit. Effort stays at medium.
 - After the fixes, Haiku at medium effort passed 25 of 25 scenarios for $0.10, with no correction slips or water in any recipe. Dishes still lean on the use-soon chicken and spinach that the test pantry pushes.
+
+
+## Web recipe search on request, and label warnings (2026-11-09)
+
+- Claude can use Anthropic's web search (`web_search_20250305`, at most 2 searches) only when the user asks for a recipe from the web, or an authentic or named one (`WebRecipeIntent`). Ordinary requests and corrections don't search. A searched recipe cost 1.6 to 2.8 cents and took 32 to 48 s live, against about 0.4 cents and 20 s.
+- Claude adapts what it finds to the household's rules in its own words and names the page in `basedOn`. The card shows "Based on: site and URL", and the saved method keeps that line (`MealProposal.source`).
+- Found live: the allergy check refused "Green curry paste (check the label for shrimp paste and fish)" because it named fish, so Claude dropped the warning. A label note no longer counts as the allergen. Products that often hide an allergen (Thai curry pastes, oyster sauce, kimchi and others) now ask Claude to add a label warning, and label advice in a swap is ignored.
+- A question that sets out the options ("Here's what you have…") no longer counts as offering a recipe. If a forced card still fails after a question, the question is shown instead of an error.
+- Live check of all 29 scenarios, including 4 web ones: 28 clean for $0.15. The failure was the question case above, now fixed and re-checked.

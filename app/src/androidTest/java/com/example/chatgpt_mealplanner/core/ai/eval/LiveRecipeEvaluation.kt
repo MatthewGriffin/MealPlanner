@@ -171,9 +171,9 @@ class LiveRecipeEvaluation {
         appendLine("MODEL: $model")
         appendLine("SUMMARY: $passed of ${outcomes.size} scenarios had no findings, ${outcomes.sumOf { it.calls }} model requests, ${outcomes.sumOf { it.rateLimitWaits }} rate-limit waits")
         val all = outcomes.flatMap { it.usage }
-        appendLine("TOKENS: ${tokens(all)}, estimated cost ${dollars(model, all)} in total, ${dollars(model, all, perScenario = outcomes.size)} a scenario")
+        appendLine("TOKENS: ${tokens(all)}, ${all.sumOf { it.webSearches }} web searches, estimated cost ${dollars(model, all)} in total, ${dollars(model, all, perScenario = outcomes.size)} a scenario")
         outcomes.forEach { outcome ->
-            appendLine("- ${outcome.id}: ${outcome.calls} requests, ${dollars(model, outcome.usage)}, ${outcome.models}, ${if (outcome.failures.isEmpty()) "clean" else outcome.failures.joinToString(" | ")}")
+            appendLine("- ${outcome.id}: ${outcome.calls} requests, ${outcome.usage.sumOf { it.webSearches }} searches, ${dollars(model, outcome.usage)}, ${outcome.models}, ${if (outcome.failures.isEmpty()) "clean" else outcome.failures.joinToString(" | ")}")
         }
     }
 
@@ -323,6 +323,7 @@ class LiveRecipeEvaluation {
         appendLine("# ${meal.title} (${meal.servings} servings, ${meal.suggestedDate}, ${meal.mealType})")
         appendLine("Time: prep ${meal.prepMinutes}, cook ${meal.cookMinutes}. Equipment: ${meal.equipment}")
         appendLine("Why: ${meal.reasoningSummary}")
+        meal.source?.let { appendLine("Based on: $it") }
         meal.ingredients.forEach {
             val extras = listOfNotNull(it.measure, "optional".takeIf { _ -> it.optional }, it.substitute?.let { swap -> "swap: $swap" })
             appendLine("- ${it.displayName}: ${it.quantity} ${it.unit} $extras")
@@ -372,9 +373,10 @@ class LiveRecipeEvaluation {
 
         fun dollars(model: String, usage: List<TokenUsage>, perScenario: Int = 1): String {
             val price = PRICES[model] ?: return "unknown cost"
-            val total = usage.sumOf {
+            // Web searches are $10 per 1,000 on top of the tokens.
+            val total = (usage.sumOf {
                 it.input * price[0] + it.output * price[1] + it.cacheRead * price[2] + it.cacheWrite * price[3]
-            } / 1_000_000.0 / perScenario.coerceAtLeast(1)
+            } / 1_000_000.0 + usage.sumOf { it.webSearches } * 0.01) / perScenario.coerceAtLeast(1)
             return "$" + String.format(java.util.Locale.UK, "%.4f", total)
         }
 
@@ -457,7 +459,16 @@ class LiveRecipeEvaluation {
                 "experienced-cook",
                 listOf("suggest an impressive recipe for a dinner party"),
                 UserPreferencesSummaryDto(skillLevel = "Experienced")
-            )
+            ),
+            // Web recipes: only these ask for one, so only these may search. The first is the same dish without searching.
+            Scenario("plain-shawarma", listOf("suggest a chicken shawarma traybake recipe for dinner")),
+            Scenario("web-shawarma", listOf("find me a real recipe for chicken shawarma traybake for dinner")),
+            Scenario(
+                "web-authentic-fish-allergy",
+                listOf("give me an authentic Thai green curry recipe for dinner"),
+                UserPreferencesSummaryDto(allergies = listOf("Fish"))
+            ),
+            Scenario("web-named-chef", listOf("look up Jamie Oliver's chicken pie recipe for dinner"))
         )
     }
 }
