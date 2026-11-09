@@ -16,6 +16,7 @@ import com.anthropic.models.messages.StopReason
 import com.anthropic.models.messages.Tool
 import com.anthropic.models.messages.ToolChoiceAuto
 import com.anthropic.models.messages.ToolChoiceNone
+import com.anthropic.models.messages.TextBlockParam
 import com.anthropic.models.messages.ToolResultBlockParam
 import com.anthropic.models.messages.ToolUnion
 import com.anthropic.models.messages.UserLocation
@@ -102,7 +103,10 @@ class ClaudeMealPlannerAiProvider @Inject constructor(
      * the whole exchange so far, including Claude's own turn exactly as it came back.
      */
     private data class Conversation(
-        val system: String,
+        /** The rules, the same for every request, so they can be read from the cache. */
+        val rules: String,
+        /** This household's context, which changes between requests. */
+        val context: String,
         val tools: List<Tool>,
         val messages: List<MessageParam>,
         val pendingToolUseIds: List<String>,
@@ -135,9 +139,8 @@ class ClaudeMealPlannerAiProvider @Inject constructor(
         val tools = declaredTools.map(::toolDefinition)
         // Forcing a tool isn't allowed on current models, so the instruction goes in the rules instead.
         val forcedTool = request.forcedToolName?.takeIf { name -> declaredTools.any { it.toolName == name } }
-        val system = buildString {
-            append(request.systemPrompt)
-            append("\n\nContext:\n")
+        val context = buildString {
+            append("Context:\n")
             append(request.contextPayloadJson)
             if (forcedTool != null) {
                 append("\n\nAnswer this message by calling the '$forcedTool' tool.")
@@ -145,7 +148,7 @@ class ClaudeMealPlannerAiProvider @Inject constructor(
         }
         val messages = toMessageParams(request.messages)
         conversations.remove(request.conversationId)
-        exchange(key, request.conversationId, Conversation(system, tools, messages, emptyList(), request.allowWebSearch), allowToolCalls = true)
+        exchange(key, request.conversationId, Conversation(request.systemPrompt, context, tools, messages, emptyList(), request.allowWebSearch), allowToolCalls = true)
     }
 
     override suspend fun continueWithToolResults(request: AiContinueWithToolsRequest): AiProviderResponse = withContext(ioDispatcher) {
@@ -197,13 +200,24 @@ class ClaudeMealPlannerAiProvider @Inject constructor(
         MessageCreateParams.builder()
             .model(model)
             .maxTokens(MAX_TOKENS)
-            .system(conversation.system)
+            // The tools and rules are about 80% of every request and never change, so each ends a cached
+            // prefix that any request in the next 5 minutes reads at a tenth of the price. The context
+            // after them changes every time. The top-level breakpoint caches the conversation so far.
+            .systemOfTextBlockParams(
+                listOf(
+                    TextBlockParam.builder().text(conversation.rules).cacheControl(CacheControlEphemeral.builder().build()).build(),
+                    TextBlockParam.builder().text(conversation.context).build()
+                )
+            )
             .messages(conversation.messages)
             .outputConfig(OutputConfig.builder().effort(effort).build())
             // The rules, context and tools repeat on every tool round, so caching them saves most of the cost.
             .cacheControl(CacheControlEphemeral.builder().build())
             .apply {
-                val all = conversation.tools.map { ToolUnion.ofTool(it) } +
+                val ownTools = conversation.tools.mapIndexed { index, tool ->
+                    if (index == conversation.tools.lastIndex) tool.toBuilder().cacheControl(CacheControlEphemeral.builder().build()).build() else tool
+                }
+                val all = ownTools.map { ToolUnion.ofTool(it) } +
                     listOfNotNull(webSearchTool().takeIf { conversation.webSearch }?.let { ToolUnion.ofWebSearchTool20250305(it) })
                 if (all.isNotEmpty()) {
                     tools(all)
