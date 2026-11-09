@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
+import androidx.room.Upsert
 import com.example.chatgpt_mealplanner.core.database.entity.ActiveProposalEntity
 import com.example.chatgpt_mealplanner.core.database.entity.AiToolExecutionLogEntity
 import com.example.chatgpt_mealplanner.core.database.entity.ChatConversationEntity
@@ -34,7 +35,11 @@ interface ChatDao {
     @Query("SELECT * FROM chat_conversations WHERE id = :id")
     suspend fun getConversationById(id: String): ChatConversationEntity?
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    /**
+     * An upsert, not REPLACE: REPLACE deletes the old row first, and the cascade would delete the
+     * conversation's messages and tool logs with it.
+     */
+    @Upsert
     suspend fun insertOrUpdateConversation(conversation: ChatConversationEntity)
 
     @Query("DELETE FROM chat_conversations WHERE id = :id")
