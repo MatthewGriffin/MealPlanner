@@ -338,3 +338,13 @@ The user confirmed meal-plan synchronization now works on both phones.
 - The key is now a Claude key (`ClaudeCredentialStore`). Backups store `claudeApiKey`. Older backups with `geminiApiKey` still restore, and that key is ignored.
 - Tool schemas moved to `ToolSchemas`, and the meal-plan text parsing to `ModelReplyText`. Provider tests run the real SDK against a local `MockWebServer`.
 - The live evaluation takes `-e live true` and reports tokens and an estimated cost for each scenario.
+
+
+## Haiku 5.5 chosen, and recipe quality fixes (2026-11-09)
+
+- Live evaluation of 25 scenarios: Haiku 5.5 cost $0.09 and Sonnet 5.5 $1.55, both about 18 s a turn. Sonnet's recipes were a little richer, but not enough to justify 17 times the cost, so Haiku stays.
+- A clarifying question is no longer replaced by a forced recipe card when it mentions ingredients, steps or stock amounts. A reply needs numbered steps, or a method heading with measured amounts, to count as a written recipe.
+- Corrections left in a method ("add the salt... no: add the pasta") and tap water in the ingredients are sent back for Claude to fix. The prompt also asks for varied dishes, and for 4 servings at a dinner party unless the user says otherwise.
+- Tool schemas list the units and meal types the app accepts.
+- Tried and dropped: strict tools, because the API allows at most 20 strict tools and 24 optional fields, and strict recipe tools made Haiku send empty or "placeholder" steps. High effort made replies take 31 s instead of 18 and cut off a 3-day plan, because thinking and the answer share the token limit. Effort stays at medium.
+- After the fixes, Haiku at medium effort passed 25 of 25 scenarios for $0.10, with no correction slips or water in any recipe. Dishes still lean on the use-soon chicken and spinach that the test pantry pushes.

@@ -1101,9 +1101,28 @@ class AiMealPlannerOrchestrator @Inject constructor(
         val reply = replyText.lowercase()
         val hasIngredientList = reply.contains("ingredient")
         val hasMethod = listOf("method", "instructions", "directions", "steps").any(reply::contains)
-        if (replyHasIngredients || (hasIngredientList && hasMethod)) return true
-        return asksForNewRecipe(userMessageText) && !isClarifyingQuestion(replyText)
+        if (replyHasIngredients) return true
+        // "Pick your toppings first, then I'll write the ingredients and steps" names both, but isn't a recipe.
+        if (isClarifyingQuestion(replyText) && !looksLikeWrittenRecipe(replyText)) return false
+        return (hasIngredientList && hasMethod) || asksForNewRecipe(userMessageText)
     }
+
+    /**
+     * A method means the reply already holds a recipe, whatever else it asks. Measured amounts alone
+     * don't: options to choose from can mention stock, such as "mature cheddar (you have 200 g)".
+     */
+    private fun looksLikeWrittenRecipe(replyText: String): Boolean {
+        val lines = replyText.lines()
+        val hasMethodHeading = lines.any { methodHeading.containsMatchIn(it) }
+        return lines.count { numberedStep.containsMatchIn(it) } >= 3 ||
+            (hasMethodHeading && lines.count { measuredAmount.containsMatchIn(it) } >= 3)
+    }
+
+    private val methodHeading = Regex("""^\W*(?:method|instructions|directions)\W*$""", RegexOption.IGNORE_CASE)
+
+    private val numberedStep = Regex("""^\s*(?:\d+[.)]|step \d+)""", RegexOption.IGNORE_CASE)
+    private val measuredAmount = Regex("""\b\d+(?:\.\d+)?\s?(?:g|kg|ml|l|tbsp|tsp)\b""", RegexOption.IGNORE_CASE)
+    private val askingForAChoice = Regex("""\b(?:pick|choose|tell me|let me know)\b""", RegexOption.IGNORE_CASE)
 
     private fun isReplacementRequest(userMessageText: String): Boolean =
         userMessageText.contains("replacement recipe", ignoreCase = true) ||
@@ -1124,7 +1143,8 @@ class AiMealPlannerOrchestrator @Inject constructor(
         val trimmed = replyText.trim()
         val offersARecipe = trimmed.contains("here is", ignoreCase = true) || trimmed.contains("here's", ignoreCase = true)
         // The question doesn't have to come last: "What toppings? You have cheddar in the fridge."
-        return "?" in trimmed && !offersARecipe && stripTrailingOfferQuestion(trimmed) == trimmed
+        val asks = "?" in trimmed || askingForAChoice.containsMatchIn(trimmed)
+        return asks && !offersARecipe && stripTrailingOfferQuestion(trimmed) == trimmed
     }
 
     private fun stripTrailingOfferQuestion(text: String): String {
@@ -1284,11 +1304,11 @@ class AiMealPlannerOrchestrator @Inject constructor(
         RECIPE QUALITY MANDATE:
         Write every recipe the way an experienced home cook would teach it, so that someone following it exactly gets a good result first time.
         1. FLAVOUR: Build a dish that tastes finished. Balance salt, fat, acid, sweetness and heat, include contrasting texture where it suits the dish, and say when to season and when to taste and adjust. Use techniques that add flavour, such as browning properly or toasting spices, when they suit the dish.
-        2. METHOD: Put preparation before cooking and steps in the order they really happen, so that components finish together. Give one stage per step. For each cooking step state the heat, the time, and what to look for when it is ready (for example "until the edges are golden" or "until a knife slides in easily"). Give hob heat only as low, medium or high, never as a temperature; use °C only for ovens, with the fan temperature, and for the safe temperature inside food. Include preheating, resting and draining when needed. The ingredient list and the method must agree exactly: list everything the method uses, including salt, pepper and oil, and use everything listed. Only water may be left out. Be decisive: say which cut, size or option to use instead of writing "if applicable". The title must name one dish and only foods that are in the recipe.
+        2. METHOD: Put preparation before cooking and steps in the order they really happen, so that components finish together. Give one stage per step. For each cooking step state the heat, the time, and what to look for when it is ready (for example "until the edges are golden" or "until a knife slides in easily"). Give hob heat only as low, medium or high, never as a temperature; use °C only for ovens, with the fan temperature, and for the safe temperature inside food. Include preheating, resting and draining when needed. The ingredient list and the method must agree exactly: list everything the method uses, including salt, pepper and oil, and use everything listed. Never list tap water as an ingredient, because the ingredients become the shopping list; give the amount of water in the method instead. Be decisive: say which cut, size or option to use instead of writing "if applicable". The title must name one dish and only foods that are in the recipe. Write each step as finished text, once: never leave a correction or second thought in it, such as "add the salt... no: add the pasta".
         3. QUANTITIES: Scale every quantity to the stated servings, using realistic portions (as a guide per person: 125-200 g meat or fish, 75-100 g dried pasta, 60-80 g dried rice). Use a normal portion even if there is more in stock: never use everything just because it needs using up. Keep strong seasonings in proportion. Give each ingredient's quantity as GRAM or MILLILITRE, or as UNIT, TIN or similar for whole items, because the app does its stock and shopping sums in those units. Set measure only when a cook would not weigh the amount, such as "1 tsp" with 2 GRAM, "2 tbsp" with 30 MILLILITRE, or "2 cloves" with 2 UNIT. Leave measure empty when the quantity is already how a cook would measure it, such as 150 GRAM or 4 UNIT. Spoon sizes must be realistic: 1 tsp of a ground spice is about 2 g, 1 tsp of salt about 6 g, 1 tbsp of oil 15 ml. In the method, write small amounts the same way as measure ("2 tsp ground cumin", never "4 g ground cumin"). Mention a good swap in substitute only where it would genuinely work.
         4. TIME: Give honest prepMinutes and cookMinutes for a home cook, including chopping and heating up. Never understate them to make a recipe look quick.
         5. FOOD SAFETY: Say how to tell that chicken, turkey, pork, sausages and mince are cooked through, and give 75°C in the centre as the safe temperature when it helps. Never suggest undercooking them. Boil dried kidney beans hard for at least 10 minutes. When a recipe makes leftovers, say to cool them quickly and refrigerate them within 2 hours, use them within 2 days, and reheat them until piping hot. Cooked rice is stricter: cool it within 1 hour and use it within 1 day.
-        6. VARIETY AND PREFERENCES: Follow the preferences in the context unless they would make the dish worse. Use recentCookedMeals and upcomingPlannedMeals to avoid repeating a dish, or the same main ingredient and cuisine, on neighbouring days unless the user asks for it.
+        6. VARIETY AND PREFERENCES: Follow the preferences in the context unless they would make the dish worse. Use recentCookedMeals and upcomingPlannedMeals to avoid repeating a dish, or the same main ingredient and cuisine, on neighbouring days unless the user asks for it. Stock that needs using up is a good reason to include an ingredient, not to build every dish around it or reuse the same flavour combination: first choose a dish that fits what the user asked for (a dinner party should feel special, a soup should be a proper soup), then work the use-soon stock in where it suits. Vary the cuisine, cooking method and seasoning between suggestions. When the user mentions guests, a dinner party or a family meal, cook for that many people: use the number they give, or 4 for a dinner party if they don't say.
         7. DIETS AND ALLERGIES: preferences.allergies and preferences.diets in the context, and any allergy, intolerance or diet the user states in chat, are strict rules for every ingredient, including those hidden in stock, sauces and spice blends. Never include a conflicting ingredient, even if the user's inventory contains it. Never guess that a product is safe; when an ingredient often contains an allergen, say to check the label. Avoid preferences.dislikes unless the user asks for that ingredient. likedMeals and dislikedMeals in the context are meals this household has rated: lean towards the kinds of dish they liked, and don't suggest a disliked meal again unless asked. A rating is about that dish, so it doesn't rule out its ingredients. If a request cannot be met within these rules, say so and offer the closest safe alternative. The app also checks ingredients and will return any conflict for you to fix.
         8. HEALTH: Do not give medical advice or medication dosing. If the user reports low blood glucose, do not apply low-carb meal planning; tell them to follow their usual treatment plan or contact a health professional.
         9. SKILL AND EQUIPMENT: Match the recipe to preferences.skillLevel. For a Beginner, choose simple techniques, explain any cooking term, and say exactly what to do and what it should look like. If preferences.equipment is not empty, it lists special equipment the household chose to mention, such as an air fryer. Use it whenever it suits the dish, and say so in whyThisSuits. Assume a normal kitchen otherwise, and list only pans and tools that the method needs, not ordinary items such as a knife or chopping board.

@@ -83,6 +83,12 @@ class ClaudeMealPlannerAiProvider @Inject constructor(
     internal var maxRetries: Int = 2
     internal var requestTimeout: Duration = Duration.ofSeconds(75)
 
+    /**
+     * Medium, Haiku's default. High was tried live on 2026-11-09: replies took 31 s instead of 18,
+     * and a 3-day plan ran out of room, because thinking and the answer share [MAX_TOKENS].
+     */
+    internal var effort: OutputConfig.Effort = OutputConfig.Effort.MEDIUM
+
     /** Token counts of each reply, for the live evaluation's cost estimate. */
     internal var usageObserver: ((TokenUsage) -> Unit)? = null
 
@@ -172,7 +178,7 @@ class ClaudeMealPlannerAiProvider @Inject constructor(
             .maxTokens(MAX_TOKENS)
             .system(conversation.system)
             .messages(conversation.messages)
-            .outputConfig(OutputConfig.builder().effort(OutputConfig.Effort.MEDIUM).build())
+            .outputConfig(OutputConfig.builder().effort(effort).build())
             // The rules, context and tools repeat on every tool round, so caching them saves most of the cost.
             .cacheControl(CacheControlEphemeral.builder().build())
             .apply {
@@ -192,6 +198,16 @@ class ClaudeMealPlannerAiProvider @Inject constructor(
     }
 
     private fun readReply(message: Message, conversationId: String, conversation: Conversation): AiProviderResponse {
+        // A reply that's cut off or refused is still charged.
+        val usage = message.usage()
+        usageObserver?.invoke(
+            TokenUsage(
+                input = usage.inputTokens(),
+                output = usage.outputTokens(),
+                cacheRead = usage.cacheReadInputTokens().orElse(0L),
+                cacheWrite = usage.cacheCreationInputTokens().orElse(0L)
+            )
+        )
         when (message.stopReason().orElse(null)) {
             StopReason.REFUSAL -> return AiProviderResponse.Error("RESPONSE_BLOCKED", BLOCKED_MESSAGE)
             StopReason.MAX_TOKENS -> return AiProviderResponse.Error(
@@ -205,15 +221,6 @@ class ClaudeMealPlannerAiProvider @Inject constructor(
             else -> Unit
         }
 
-        val usage = message.usage()
-        usageObserver?.invoke(
-            TokenUsage(
-                input = usage.inputTokens(),
-                output = usage.outputTokens(),
-                cacheRead = usage.cacheReadInputTokens().orElse(0L),
-                cacheWrite = usage.cacheCreationInputTokens().orElse(0L)
-            )
-        )
         val toolCalls = message.content().mapNotNull { block -> block.toolUse().orElse(null) }.map { use ->
             AiToolCall(toolCallId = use.id(), toolName = use.name(), argsJson = jsonText(use._input()))
         }
