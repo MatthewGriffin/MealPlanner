@@ -145,6 +145,23 @@ fun MealProposalCard(
                 )
             }
 
+            if (proposal.worthAdding.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "Worth adding (not on your shopping list):",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+                proposal.worthAdding.forEach { idea ->
+                    Text(
+                        text = "• $idea",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+            }
+
             if (proposal.steps.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(

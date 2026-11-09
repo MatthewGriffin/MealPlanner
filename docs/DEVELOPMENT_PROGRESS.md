@@ -357,3 +357,11 @@ The user confirmed meal-plan synchronization now works on both phones.
 - Found live: the allergy check refused "Green curry paste (check the label for shrimp paste and fish)" because it named fish, so Claude dropped the warning. A label note no longer counts as the allergen. Products that often hide an allergen (Thai curry pastes, oyster sauce, kimchi and others) now ask Claude to add a label warning, and label advice in a swap is ignored.
 - A question that sets out the options ("Here's what you have…") no longer counts as offering a recipe. If a forced card still fails after a question, the question is shown instead of an error.
 - Live check of all 29 scenarios, including 4 web ones: 28 clean for $0.15. The failure was the question case above, now fixed and re-checked.
+
+
+## Flavour without prompting, and extras worth adding (2026-11-09)
+
+- The user wants recipes to pick up good additions on their own, from owned stock and as suggestions to buy, without extra prompting.
+- The FLAVOUR rule now asks Claude to look through the stock for things that give a dish character (pastes, sauces, miso, spices, salty cheeses, citrus, herbs, pickles, capers, nuts and seeds), use the few that suit the dish, and give every main dish a finishing touch, such as a sauce, dressing, pickle, crunch, or herbs and citrus at the end.
+- New `worthAdding` on the recipe tool and `MealProposal`: 1 to 3 extras the household doesn't own, each with what it adds. They show on the card as "Worth adding (not on your shopping list)" and are kept in the saved method. They're checked against allergies and diets like ingredients are.
+- Live, on a flavour-rich test pantry: dinner went from miso salmon to sticky gochujang chicken (7 of 15 flavour items), lunch from the same salmon to harissa chicken with lemon yoghurt, and pasta gained crispy capers. The empty-kitchen traybake gained a spice paste, roasted lemon and parsley. Every card had sensible extras, and the nut-allergy dessert's extras were nut-free.

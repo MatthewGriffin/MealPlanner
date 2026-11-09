@@ -212,6 +212,13 @@ class LiveRecipeEvaluation {
                     (outcome as? AiOrchestrationResult.Final)?.modelId?.let { models += it }
                     rateLimited = rateLimited || (outcome as? AiOrchestrationResult.Error).let { it?.code == "HTTP_429" || it?.userFacingMessage?.contains("credit balance", ignoreCase = true) == true }
                     failures += findings(scenario, outcome, isLastTurn = index == scenario.turns.lastIndex)
+                    if (scenario.stock === FLAVOUR_STOCK) {
+                        val final = outcome as? AiOrchestrationResult.Final
+                        val names = (listOfNotNull(final?.validatedProposal?.proposal) + final?.mealPlan.orEmpty())
+                            .flatMap { meal -> meal.ingredients.map { it.displayName.lowercase() } }
+                        val used = FLAVOUR_WORDS.filter { word -> names.any { word in it } }
+                        appendLine("FLAVOUR USED: ${used.size} of ${FLAVOUR_WORDS.size} $used")
+                    }
                 }
                 if (failures.isNotEmpty()) appendLine("FINDINGS: $failures")
             }
@@ -324,6 +331,7 @@ class LiveRecipeEvaluation {
         appendLine("Time: prep ${meal.prepMinutes}, cook ${meal.cookMinutes}. Equipment: ${meal.equipment}")
         appendLine("Why: ${meal.reasoningSummary}")
         meal.source?.let { appendLine("Based on: $it") }
+        meal.worthAdding.forEach { appendLine("Worth adding: $it") }
         meal.ingredients.forEach {
             val extras = listOfNotNull(it.measure, "optional".takeIf { _ -> it.optional }, it.substitute?.let { swap -> "swap: $swap" })
             appendLine("- ${it.displayName}: ${it.quantity} ${it.unit} $extras")
@@ -391,6 +399,38 @@ class LiveRecipeEvaluation {
             Stock("Basmati rice", 1.0, QuantityUnit.KILOGRAM),
             Stock("Olive oil", 500.0, QuantityUnit.MILLILITRE),
             Stock("Ground cumin", 40.0, QuantityUnit.GRAM)
+        )
+
+        /** Plain staples plus the jars and fresh things that make a dish taste of something. Nothing needs using up. */
+        val FLAVOUR_STOCK = listOf(
+            Stock("Chicken thighs", 600.0, QuantityUnit.GRAM),
+            Stock("Salmon fillets", 2.0, QuantityUnit.UNIT),
+            Stock("Spaghetti", 500.0, QuantityUnit.GRAM),
+            Stock("Basmati rice", 1.0, QuantityUnit.KILOGRAM),
+            Stock("Eggs", 6.0, QuantityUnit.UNIT),
+            Stock("Onions", 4.0, QuantityUnit.UNIT),
+            Stock("Broccoli", 1.0, QuantityUnit.UNIT),
+            Stock("Olive oil", 500.0, QuantityUnit.MILLILITRE),
+            Stock("White miso paste", 150.0, QuantityUnit.GRAM),
+            Stock("Harissa paste", 90.0, QuantityUnit.GRAM),
+            Stock("Gochujang", 200.0, QuantityUnit.GRAM),
+            Stock("Soy sauce", 150.0, QuantityUnit.MILLILITRE),
+            Stock("Smoked paprika", 40.0, QuantityUnit.GRAM),
+            Stock("Parmesan", 150.0, QuantityUnit.GRAM),
+            Stock("Feta", 200.0, QuantityUnit.GRAM),
+            Stock("Greek yoghurt", 500.0, QuantityUnit.GRAM),
+            Stock("Lemons", 3.0, QuantityUnit.UNIT),
+            Stock("Fresh coriander", 30.0, QuantityUnit.GRAM),
+            Stock("Capers", 100.0, QuantityUnit.GRAM),
+            Stock("Honey", 340.0, QuantityUnit.GRAM),
+            Stock("Garlic bulb", 1.0, QuantityUnit.UNIT),
+            Stock("Fresh ginger", 80.0, QuantityUnit.GRAM),
+            Stock("Chilli flakes", 30.0, QuantityUnit.GRAM)
+        )
+
+        val FLAVOUR_WORDS = listOf(
+            "miso", "harissa", "gochujang", "soy", "smoked paprika", "parmesan", "feta", "yoghurt", "lemon",
+            "coriander", "caper", "honey", "garlic", "ginger", "chilli"
         )
 
         val SCENARIOS = listOf(
@@ -468,7 +508,11 @@ class LiveRecipeEvaluation {
                 listOf("give me an authentic Thai green curry recipe for dinner"),
                 UserPreferencesSummaryDto(allergies = listOf("Fish"))
             ),
-            Scenario("web-named-chef", listOf("look up Jamie Oliver's chicken pie recipe for dinner"))
+            Scenario("web-named-chef", listOf("look up Jamie Oliver's chicken pie recipe for dinner")),
+            // Flavour: a well-stocked kitchen and plain requests. The report counts the owned flavour items each recipe uses.
+            Scenario("flavour-dinner", listOf("suggest a recipe for dinner"), stock = FLAVOUR_STOCK),
+            Scenario("flavour-lunch", listOf("give me a quick recipe for lunch"), stock = FLAVOUR_STOCK),
+            Scenario("flavour-pasta", listOf("suggest a pasta recipe for dinner"), stock = FLAVOUR_STOCK)
         )
     }
 }

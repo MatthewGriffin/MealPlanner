@@ -93,6 +93,20 @@ class DietaryRulesTest {
     }
 
     @Test
+    fun extrasWorthAdding_mustRespectAllergiesToo() {
+        fun problems(vararg ideas: String) = com.example.chatgpt_mealplanner.core.ai.validation.RecipeOfferChecks.problems(
+            com.example.chatgpt_mealplanner.contract.MealProposal(
+                title = "Rice", ingredients = listOf(com.example.chatgpt_mealplanner.contract.ProposedIngredient(displayName = "Basmati rice", quantity = 150.0, unit = "GRAM")),
+                reasoningSummary = "", worthAdding = ideas.toList()
+            ),
+            allergy("Tree nuts")
+        )
+
+        assertEquals(1, problems("Toasted pine nuts: add crunch", "Fresh mint: brightens it").size)
+        assertTrue(problems("Fresh mint: brightens it, and goes well with nuts").isEmpty())
+    }
+
+    @Test
     fun correctionsLeftInTheMethod_areQueried() {
         // Seen live from claude-haiku-5-5 on 2026-11-09 (quick-lunch).
         assertTrue(queries("Once boiling, add 1 tsp salt... no: add the rice and cook for 10 minutes.").contains("correction"))

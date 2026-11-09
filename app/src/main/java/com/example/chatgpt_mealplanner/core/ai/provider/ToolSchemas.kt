@@ -34,6 +34,11 @@ internal object ToolSchemas {
                     number("prepMinutes", "Honest preparation time in minutes")
                     number("cookMinutes", "Honest cooking time in minutes")
                     string("whyThisSuits", "One short, specific reason this recipe suits this user today")
+                    putJsonObject("worthAdding") {
+                        put("type", "array")
+                        put("description", "1 to 3 optional extras the household doesn't have that would clearly lift this dish, each as the item and what it adds, such as \"Fresh mint: brightens the yoghurt sauce\". Not part of the recipe, and not added to the shopping list")
+                        putJsonObject("items") { put("type", "string") }
+                    }
                     string("basedOn", "Only if the recipe is adapted from a web page you searched: the site name and the page URL, such as \"BBC Good Food: https://...\"")
                     putJsonObject("equipment") {
                         put("type", "array")
