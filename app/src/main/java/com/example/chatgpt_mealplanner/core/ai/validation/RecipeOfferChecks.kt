@@ -30,7 +30,10 @@ object RecipeOfferChecks {
     private const val LEAST_MEAT_OR_FISH_GRAMS_PER_SERVING = 40.0
 
     private val hobTemperature = Regex("""\b(?:low|medium|high|heat)\b[^.]{0,12}\(?\d{2,3}\s?°c""")
-    private val smallWeight = Regex("""\b(?:\d|1[0-4])\s?(?:g|grams?)\b(?!\s*\))""")
+    /** Grams are fine beside a spoon measure, either '1 tsp (5 g)' or '10g cornflour (2 tsp)'. */
+    private val smallWeight = Regex(
+        """\b(?:\d|1[0-4])\s?(?:g|grams?)\b(?!\s*\))(?![^.;()]{0,40}\(\s*[\d/½¼¾.\s]+(?:tsp|tbsp|teaspoons?|tablespoons?)\b)"""
+    )
     private val unitWord = Regex("""\b\d+\s?units?\b""")
     private val commonIngredients = listOf("salt", "pepper", "butter", "garlic", "sugar", "flour")
 
