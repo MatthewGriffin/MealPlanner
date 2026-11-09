@@ -45,4 +45,14 @@ class AiContractTest {
         val older = Json { ignoreUnknownKeys = true }.decodeFromString(MealProposal.serializer(), """{"title":"Old","ingredients":[],"reasoningSummary":""}""")
         assertEquals(null, older.source)
     }
+
+    @Test
+    fun extrasWorthAdding_areKeptWithTheSavedMethod() {
+        val proposal = MealProposal(
+            title = "Pasta", ingredients = emptyList(), steps = listOf(RecipeStep(order = 1, instruction = "Boil")),
+            reasoningSummary = "", worthAdding = listOf("Fresh basil: adds freshness")
+        )
+
+        assertTrue(proposal.savedInstructions().contains("Worth adding: Fresh basil: adds freshness"))
+    }
 }

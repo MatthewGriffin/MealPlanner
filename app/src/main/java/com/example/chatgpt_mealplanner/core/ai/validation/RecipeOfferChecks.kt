@@ -60,7 +60,11 @@ object RecipeOfferChecks {
             .map { it.orEmpty().trim().lowercase() }
             .filter { it.isNotEmpty() }
             .toSet()
-        return proposal.ingredients.flatMap { ingredient -> ingredientProblems(ingredient, otherFields, preferences) }
+        // An extra worth buying has to be safe too, or the household may well buy it.
+        val extras = proposal.worthAdding.filterNot(DietaryRules::isLabelAdvice).flatMap { idea ->
+            DietaryRules.conflicts(idea.substringBefore(':'), preferences).map { "Worth adding: $it" }
+        }
+        return proposal.ingredients.flatMap { ingredient -> ingredientProblems(ingredient, otherFields, preferences) } + extras
     }
 
     private fun ingredientProblems(
