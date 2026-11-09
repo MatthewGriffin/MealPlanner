@@ -89,7 +89,7 @@ fun MealProposalCard(
 
             proposal.source?.takeIf { it.isNotBlank() }?.let { source ->
                 Text(
-                    text = "Based on: $source",
+                    text = com.example.chatgpt_mealplanner.ui.text.withTappableLinks("Based on: $source", MaterialTheme.colorScheme.primary),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onPrimaryContainer
                 )
