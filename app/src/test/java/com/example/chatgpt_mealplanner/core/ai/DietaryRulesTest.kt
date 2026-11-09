@@ -51,6 +51,18 @@ class DietaryRulesTest {
     }
 
     @Test
+    fun gramsBesideASpoonMeasure_areNotQueried() {
+        // Seen live from gemini-3.6-flash on 2026-11-09 (sesame-soya-stir-fry).
+        assertFalse(queries("Whisk 10g cornflour (2 tsp) with the stock.").contains("spoons"))
+        assertFalse(queries("Whisk 2g ground black pepper (1 tsp) into the sauce.").contains("spoons"))
+        assertFalse(queries("Adjust with up to 2g salt (1/2 tsp) if needed.").contains("spoons"))
+        assertFalse(queries("Stir in 1 tsp (5 g) ground cumin.").contains("spoons"))
+        assertFalse(queries("Add 3 g ground cumin (0.5 tsp) to the rice.").contains("spoons"))
+        // A spoon measure in a later sentence doesn't excuse the grams.
+        assertTrue(queries("Add 4g ground cumin. Stir in the oil (1 tbsp).").contains("spoons"))
+    }
+
+    @Test
     fun otherRecipeFieldsSentAsIngredients_areRefused() {
         val step = "Pat the chicken dry."
         fun problems(vararg names: String) = com.example.chatgpt_mealplanner.core.ai.validation.RecipeOfferChecks.problems(
