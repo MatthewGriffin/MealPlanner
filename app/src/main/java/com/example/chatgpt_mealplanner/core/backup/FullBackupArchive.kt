@@ -22,6 +22,8 @@ data class FullBackupManifest(
 /** Credentials can't move with the database because their encryption keys never leave the device. */
 @Serializable
 data class FullBackupSecrets(
+    val claudeApiKey: String? = null,
+    /** Written by versions that used Gemini. Still read so those backups restore, but no longer used. */
     val geminiApiKey: String? = null,
     val tlsKeystoreBase64: String? = null,
     val tlsKeystorePassword: String? = null

@@ -8,7 +8,7 @@ import com.example.chatgpt_mealplanner.core.model.quantityUnitOrNull
 import com.example.chatgpt_mealplanner.core.util.formatQuantityAndUnit
 
 /**
- * Checks a recipe while Gemini can still fix it. A problem stops the card. A query goes to Gemini
+ * Checks a recipe while Claude can still fix it. A problem stops the card. A query goes to Claude
  * and, if it's still there after the corrections, shows as a warning. A check on words can be wrong
  * about a correct recipe, so the user shouldn't lose the card over it.
  */
@@ -37,7 +37,7 @@ object RecipeOfferChecks {
     private val unitWord = Regex("""\b\d+\s?units?\b""")
     private val commonIngredients = listOf("salt", "pepper", "butter", "garlic", "sugar", "flour")
 
-    // Gemini has sent "Salt: 6 UNIT" and "Olive oil: 15 UNIT". The name has to end with the word, so "Salted butter" can be counted.
+    // Claude has sent "Salt: 6 UNIT" and "Olive oil: 15 UNIT". The name has to end with the word, so "Salted butter" can be counted.
     private val neverCounted = Regex("""\b(?:salt|black pepper|white pepper|cumin|paprika|turmeric|cinnamon|oil|flour|sugar|water)$""")
 
     fun isVague(ingredientName: String): Boolean {
@@ -52,7 +52,7 @@ object RecipeOfferChecks {
         proposal: MealProposal,
         preferences: UserPreferencesSummaryDto = UserPreferencesSummaryDto()
     ): List<String> {
-        // Gemini has sent the meal type, summary and method steps as ingredients, which would end up on the shopping list.
+        // Claude has sent the meal type, summary and method steps as ingredients, which would end up on the shopping list.
         val otherFields = (listOf(proposal.mealType, proposal.reasoningSummary) + proposal.steps.map { it.instruction })
             .map { it.orEmpty().trim().lowercase() }
             .filter { it.isNotEmpty() }
@@ -79,18 +79,18 @@ object RecipeOfferChecks {
         proposal: MealProposal,
         method: String,
         preferences: UserPreferencesSummaryDto = UserPreferencesSummaryDto()
-    ): List<String> = findings(proposal, method).map { it.forGemini } + proposal.ingredients
+    ): List<String> = findings(proposal, method).map { it.forModel } + proposal.ingredients
         .filter { DietaryRules.isDisliked(it.displayName, preferences) }
         .map { "'${it.displayName}' is something this household dislikes." }
 
     /**
      * The same findings as [queries] without the household's dislikes, worded for the card. They show
-     * only after Gemini failed to correct them, so they tell the household what's wrong, not how to write it.
+     * only after Claude failed to correct them, so they tell the household what's wrong, not how to write it.
      */
     fun warnings(proposal: MealProposal, method: String): List<String> = findings(proposal, method).map { it.forHousehold }
 
-    /** One finding, worded once as an instruction for Gemini and once as a note for the household. */
-    private class Finding(val forGemini: String, val forHousehold: String)
+    /** One finding, worded once as an instruction for Claude and once as a note for the household. */
+    private class Finding(val forModel: String, val forHousehold: String)
 
     private fun findings(proposal: MealProposal, method: String): List<Finding> {
         val methodText = method.lowercase()
@@ -130,7 +130,7 @@ object RecipeOfferChecks {
         }
     }
 
-    /** Mistakes seen in real Gemini recipes that make a recipe harder to follow. */
+    /** Mistakes seen in real model recipes that make a recipe harder to follow. */
     private fun cookabilityFindings(proposal: MealProposal, methodText: String): List<Finding> {
         val listed = proposal.ingredients.joinToString(" ") { it.displayName.lowercase() }
         val servings = proposal.servings.coerceAtLeast(1)

@@ -28,7 +28,7 @@ class FullBackupArchiveTest {
 
     @Test
     fun everythingSurvivesARoundTrip() {
-        val secrets = FullBackupSecrets("gemini", "dGxz", "password")
+        val secrets = FullBackupSecrets(claudeApiKey = "claude", tlsKeystoreBase64 = "dGxz", tlsKeystorePassword = "password")
         val preferences = mapOf("settings.xml" to "<map/>".toByteArray())
 
         val read = FullBackupArchive.read(

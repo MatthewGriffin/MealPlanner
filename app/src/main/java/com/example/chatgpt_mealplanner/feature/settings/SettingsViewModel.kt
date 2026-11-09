@@ -5,7 +5,7 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.chatgpt_mealplanner.contract.AiProviderResponse
-import com.example.chatgpt_mealplanner.core.ai.provider.GEMINI_MODEL_ID
+import com.example.chatgpt_mealplanner.core.ai.provider.CLAUDE_MODEL_ID
 import com.example.chatgpt_mealplanner.core.ai.provider.MealPlannerAiProvider
 import com.example.chatgpt_mealplanner.core.backup.BackupManager
 import com.example.chatgpt_mealplanner.core.backup.MainEncryptedBackupSaveCoordinator
@@ -243,7 +243,7 @@ class SettingsViewModel @Inject constructor(
             _uiState.update {
                 it.copy(
                     isApiKeyConfigured = false,
-                    credentialStorageError = "Could not access secure Gemini key storage. Your saved key has not been deleted. Details: ${e.localizedMessage ?: e.javaClass.simpleName}"
+                    credentialStorageError = "Could not access secure Claude key storage. Your saved key has not been deleted. Details: ${e.localizedMessage ?: e.javaClass.simpleName}"
                 )
             }
         }
@@ -273,9 +273,9 @@ class SettingsViewModel @Inject constructor(
             checkCredentialStatus()
             _uiState.update { it.copy(connectionTestResult = "Key saved. Tap Test Connection to verify.") }
         } catch (e: Exception) {
-            android.util.Log.e("AI_MEALPLANNER", "[SETTINGS_SAVE_GEMINI_KEY_ERROR]", e)
+            android.util.Log.e("AI_MEALPLANNER", "[SETTINGS_SAVE_CLAUDE_KEY_ERROR]", e)
             _uiState.update {
-                it.copy(connectionTestResult = "Could not save Gemini API key securely: ${e.localizedMessage ?: e.javaClass.simpleName}")
+                it.copy(connectionTestResult = "Could not save Claude API key securely: ${e.localizedMessage ?: e.javaClass.simpleName}")
             }
         }
     }
@@ -286,9 +286,9 @@ class SettingsViewModel @Inject constructor(
             checkCredentialStatus()
             _uiState.update { it.copy(connectionTestResult = "Replacement key saved. Tap Test Connection to verify.") }
         } catch (e: Exception) {
-            android.util.Log.e("AI_MEALPLANNER", "[SETTINGS_REPLACE_GEMINI_KEY_ERROR]", e)
+            android.util.Log.e("AI_MEALPLANNER", "[SETTINGS_REPLACE_CLAUDE_KEY_ERROR]", e)
             _uiState.update {
-                it.copy(connectionTestResult = "Could not replace Gemini API key securely: " + (e.localizedMessage ?: e.javaClass.simpleName))
+                it.copy(connectionTestResult = "Could not replace Claude API key securely: " + (e.localizedMessage ?: e.javaClass.simpleName))
             }
         }
     }
@@ -299,9 +299,9 @@ class SettingsViewModel @Inject constructor(
             checkCredentialStatus()
             _uiState.update { it.copy(connectionTestResult = "Key deleted.") }
         } catch (e: Exception) {
-            android.util.Log.e("AI_MEALPLANNER", "[SETTINGS_DELETE_GEMINI_KEY_ERROR]", e)
+            android.util.Log.e("AI_MEALPLANNER", "[SETTINGS_DELETE_CLAUDE_KEY_ERROR]", e)
             _uiState.update {
-                it.copy(connectionTestResult = "Could not delete Gemini API key securely: ${e.localizedMessage ?: e.javaClass.simpleName}")
+                it.copy(connectionTestResult = "Could not delete Claude API key securely: ${e.localizedMessage ?: e.javaClass.simpleName}")
             }
         }
     }
@@ -311,14 +311,14 @@ class SettingsViewModel @Inject constructor(
         _uiState.update {
             it.copy(
                 isConnectionTestInProgress = true,
-                connectionTestResult = "Testing connection to Gemini API ($GEMINI_MODEL_ID)..."
+                connectionTestResult = "Testing connection to Claude ($CLAUDE_MODEL_ID)..."
             )
         }
         viewModelScope.launch {
             try {
                 val result = provider.testConnection()
                 val resultText = when (result) {
-                    is AiProviderResponse.FinalResponse -> "Connected to Gemini! Model: $GEMINI_MODEL_ID"
+                    is AiProviderResponse.FinalResponse -> result.text
                     is AiProviderResponse.Error -> result.message
                     else -> "Response: ${result.javaClass.simpleName}"
                 }

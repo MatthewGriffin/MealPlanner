@@ -13,7 +13,7 @@ import com.example.chatgpt_mealplanner.core.ai.context.AiContextBuilder
 import com.example.chatgpt_mealplanner.core.ai.context.UserMutationIntentResolver
 import com.example.chatgpt_mealplanner.core.ai.dispatcher.AiToolDispatcher
 import com.example.chatgpt_mealplanner.core.ai.orchestrator.AiMealPlannerOrchestrator
-import com.example.chatgpt_mealplanner.core.ai.provider.GeminiMealPlannerAiProvider
+import com.example.chatgpt_mealplanner.core.ai.provider.ClaudeMealPlannerAiProvider
 import com.example.chatgpt_mealplanner.core.ai.provider.MealPlannerAiProvider
 import com.example.chatgpt_mealplanner.core.ai.validator.RecipeValidator
 import com.example.chatgpt_mealplanner.core.database.entity.AiToolExecutionLogEntity
@@ -370,59 +370,28 @@ class AiOrchestratorIdempotencyTest {
     }
 
     @Test
-    fun networkCalls_remainOffMainAcrossRetries() = runTest {
-        val credentialStore = FakeCredentialStore("test_key")
-        val provider = GeminiMealPlannerAiProvider(credentialStore = credentialStore, ioDispatcher = kotlinx.coroutines.Dispatchers.IO)
-
-        var executedOffMainThread = false
-        provider.httpCallHandler = { _, _ ->
-            if (Thread.currentThread().name != "main") {
-                executedOffMainThread = true
+    fun networkCalls_runOnTheIoDispatcher() = runTest {
+        val server = okhttp3.mockwebserver.MockWebServer().apply { start() }
+        server.enqueue(okhttp3.mockwebserver.MockResponse().setResponseCode(529).setBody("""{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}"""))
+        var dispatched = false
+        val recordingDispatcher = object : kotlinx.coroutines.CoroutineDispatcher() {
+            override fun dispatch(context: kotlin.coroutines.CoroutineContext, block: Runnable) {
+                dispatched = true
+                kotlinx.coroutines.Dispatchers.IO.dispatch(context, block)
             }
-            Pair(503, """{"error":{"code":503,"message":"Service Unavailable"}}""")
+        }
+        val provider = ClaudeMealPlannerAiProvider(FakeCredentialStore("test_key"), recordingDispatcher).apply {
+            baseUrl = server.url("/").toString().removeSuffix("/")
+            maxRetries = 0
         }
 
-        val request = AiProviderRequest(
-            conversationId = "conv_off_main",
-            systemPrompt = "System",
-            contextPayloadJson = "{}",
-            contextPayload = emptyPayload,
-            messages = emptyList(),
-            availableTools = emptyList()
+        val response = provider.send(
+            AiProviderRequest("conv_off_main", "System", "{}", emptyPayload, listOf(com.example.chatgpt_mealplanner.contract.AiChatMessage("user", "Hi")), emptyList())
         )
+        server.shutdown()
 
-        val response = provider.send(request)
-        assertTrue(response is AiProviderResponse.Error)
-        assertNotEquals("NO_API_KEY", (response as AiProviderResponse.Error).code)
-        assertTrue("HTTP calls MUST execute off the main thread", executedOffMainThread)
-    }
-
-    @Test
-    fun persistedCredential_isUsedAcrossRetries() = runTest {
-        val credentialStore = FakeCredentialStore("persisted_key_777")
-        val provider = GeminiMealPlannerAiProvider(credentialStore = credentialStore, ioDispatcher = kotlinx.coroutines.Dispatchers.IO)
-
-        var capturedUrl = ""
-        var capturedKey = ""
-        provider.requestApiKeyObserver = { capturedKey = it }
-        provider.httpCallHandler = { url, _ ->
-            capturedUrl = url
-            Pair(200, """{"candidates":[{"content":{"parts":[{"text":"Success"}]}}]}""")
-        }
-
-        val request = AiProviderRequest(
-            conversationId = "conv_cred",
-            systemPrompt = "System",
-            contextPayloadJson = "{}",
-            contextPayload = emptyPayload,
-            messages = emptyList(),
-            availableTools = emptyList()
-        )
-
-        val response = provider.send(request)
-        assertEquals("persisted_key_777", capturedKey)
-        assertFalse("API key must not be sent in the URL", capturedUrl.contains("persisted_key_777"))
-        assertNotEquals("NO_API_KEY", (response as? AiProviderResponse.Error)?.code)
+        assertEquals("HTTP_529", (response as AiProviderResponse.Error).code)
+        assertTrue("HTTP calls MUST run on the IO dispatcher, not the caller's", dispatched)
     }
 }
 

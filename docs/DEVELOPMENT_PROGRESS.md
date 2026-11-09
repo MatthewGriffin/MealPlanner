@@ -329,3 +329,12 @@ The user confirmed meal-plan synchronization now works on both phones.
 - Continue with AI now opens an editable request dialog prefilled with the Follower's request. The request only enters IN_PROGRESS when Main sends the edited text. Gemini receives a full internal instruction paragraph while chat history shows only “Request change to {meal name} / Request: {request}”. Retry keeps the internal prompt for Gemini and the concise summary for display.
 - A restored proposal linked to the only IN_PROGRESS request reattaches to that request so saving replaces the original meal instead of creating a duplicate.
 - Added a regression proving a meal proposal older than ten minutes remains recoverable. Source changes are committed remotely; run build-and-test.sh to verify compilation and the full test suite. No local files, devices, pairing, or persistent meal/inventory data were modified.
+
+
+## Switched from Gemini to the Claude API (2026-11-09)
+
+- A live evaluation showed Gemini 3.6-flash wrote good, safe recipes, but its free tier wasn't reliable: 20 requests a day per model, 503s, read timeouts and 30 to 160 second replies. 3.8-flash failed every request. The user chose to move everything to Claude instead of paying for Gemini.
+- `ClaudeMealPlannerAiProvider` replaces `GeminiMealPlannerAiProvider`, using the official Anthropic Java SDK. The default model is Claude Haiku 5.5, and Sonnet 5.5 will be compared on the live evaluation for value for cost.
+- The key is now a Claude key (`ClaudeCredentialStore`). Backups store `claudeApiKey`. Older backups with `geminiApiKey` still restore, and that key is ignored.
+- Tool schemas moved to `ToolSchemas`, and the meal-plan text parsing to `ModelReplyText`. Provider tests run the real SDK against a local `MockWebServer`.
+- The live evaluation takes `-e live true` and reports tokens and an estimated cost for each scenario.

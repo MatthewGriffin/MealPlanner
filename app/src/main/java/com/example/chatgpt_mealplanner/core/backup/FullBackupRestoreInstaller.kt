@@ -5,7 +5,7 @@ import androidx.room.Room
 import com.example.chatgpt_mealplanner.core.database.ALL_MIGRATIONS
 import com.example.chatgpt_mealplanner.core.database.AppDatabase
 import com.example.chatgpt_mealplanner.core.database.MAIN_DATABASE_NAME
-import com.example.chatgpt_mealplanner.core.security.GeminiCredentialStore
+import com.example.chatgpt_mealplanner.core.security.ClaudeCredentialStore
 import com.example.chatgpt_mealplanner.core.sync.security.PantryTlsKeyManager
 import kotlinx.serialization.json.Json
 import java.io.File
@@ -94,7 +94,7 @@ object FullBackupRestoreInstaller {
             if (secretsApplied) {
                 "Backup restored. Re-pair any joined phones from Household settings so they can resync."
             } else {
-                "Backup restored, but saved credentials couldn't be restored. Check your Gemini key, and re-pair any joined phones."
+                "Backup restored, but saved credentials couldn't be restored. Check your Claude key, and re-pair any joined phones."
             }
         )
     }
@@ -153,8 +153,9 @@ object FullBackupRestoreInstaller {
 
     private fun applySecretsToDevice(context: Context, secrets: FullBackupSecrets): Boolean {
         var succeeded = true
-        secrets.geminiApiKey?.takeIf { it.isNotBlank() }?.let { key ->
-            succeeded = runCatching { GeminiCredentialStore(context).saveKey(key) }.isSuccess && succeeded
+        // A Gemini key from an older backup is useless to Claude, so it's left out.
+        secrets.claudeApiKey?.takeIf { it.isNotBlank() }?.let { key ->
+            succeeded = runCatching { ClaudeCredentialStore(context).saveKey(key) }.isSuccess && succeeded
         }
         val keystore = secrets.tlsKeystoreBase64
         val password = secrets.tlsKeystorePassword

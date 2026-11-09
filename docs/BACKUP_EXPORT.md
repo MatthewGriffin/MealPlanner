@@ -7,7 +7,7 @@ This is the supported way to move data to another phone, using **Save Encrypted 
 ### What's included
 - The whole main Room database, taken with `VACUUM INTO`, so new tables are included automatically.
 - Non-secret shared preferences.
-- The Gemini API key and the sync TLS identity. Anyone with the file and passphrase can read these.
+- The Claude API key and the sync TLS identity. Backups made while the app used Gemini still restore, but their Gemini key is ignored. Anyone with the file and passphrase can read these.
 
 Follower phones aren't backed up, because they resync from Main.
 

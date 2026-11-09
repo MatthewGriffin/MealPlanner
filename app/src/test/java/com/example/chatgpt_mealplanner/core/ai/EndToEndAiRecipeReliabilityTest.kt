@@ -17,7 +17,8 @@ import com.example.chatgpt_mealplanner.core.ai.pending.PendingAiMutation
 import com.example.chatgpt_mealplanner.core.ai.pending.PendingMutationState
 import com.example.chatgpt_mealplanner.core.ai.pending.PendingMutationStore
 import com.example.chatgpt_mealplanner.core.ai.proposal.ActiveProposalStore
-import com.example.chatgpt_mealplanner.core.ai.provider.GeminiMealPlannerAiProvider
+import com.example.chatgpt_mealplanner.core.ai.provider.ClaudeMealPlannerAiProvider
+import com.example.chatgpt_mealplanner.core.ai.provider.ToolSchemas
 import com.example.chatgpt_mealplanner.core.ai.provider.MealPlannerAiProvider
 import com.example.chatgpt_mealplanner.core.ai.validator.RecipeValidator
 import com.example.chatgpt_mealplanner.core.database.entity.ChatConversationEntity
@@ -87,7 +88,7 @@ class EndToEndAiRecipeReliabilityTest {
     private lateinit var contextBuilder: AiContextBuilder
     private lateinit var pendingMutationStore: PendingMutationStore
     private lateinit var activeProposalStore: ActiveProposalStore
-    private lateinit var geminiProvider: GeminiMealPlannerAiProvider
+    private lateinit var claudeProvider: ClaudeMealPlannerAiProvider
 
     @Before
     fun setup() = runTest(testDispatcher) {
@@ -164,7 +165,7 @@ class EndToEndAiRecipeReliabilityTest {
             pendingMutationStore = pendingMutationStore
         )
 
-        geminiProvider = GeminiMealPlannerAiProvider(
+        claudeProvider = ClaudeMealPlannerAiProvider(
             credentialStore = FakeCredentialStore("test_api_key"),
             ioDispatcher = testDispatcher
         )
@@ -187,26 +188,17 @@ class EndToEndAiRecipeReliabilityTest {
     // Assertion 1: Offer schema declares instructions
     @Test
     fun test1_offerSchemaDeclaresSteps() {
-        val method = GeminiMealPlannerAiProvider::class.java.getDeclaredMethod("buildToolDeclarationJson", AiToolId::class.java)
-        method.isAccessible = true
-        val jsonObj = method.invoke(geminiProvider, AiToolId.OFFER_ADD_PLANNED_MEAL) as kotlinx.serialization.json.JsonObject
+        val props = ToolSchemas.properties(AiToolId.OFFER_ADD_PLANNED_MEAL)
+        assertEquals("array", props["steps"]!!.jsonObject["type"]!!.jsonPrimitive.content)
 
-        val props = jsonObj["parameters"]!!.jsonObject["properties"]!!.jsonObject
-        assertEquals("ARRAY", props["steps"]!!.jsonObject["type"]!!.jsonPrimitive.content)
-
-        val addMeal = method.invoke(geminiProvider, AiToolId.ADD_PLANNED_MEAL) as kotlinx.serialization.json.JsonObject
-        val addMealProps = addMeal["parameters"]!!.jsonObject["properties"]!!.jsonObject
-        assertEquals("STRING", addMealProps["instructions"]!!.jsonObject["type"]!!.jsonPrimitive.content)
+        val addMealProps = ToolSchemas.properties(AiToolId.ADD_PLANNED_MEAL)
+        assertEquals("string", addMealProps["instructions"]!!.jsonObject["type"]!!.jsonPrimitive.content)
     }
 
     // Assertion 2: Required fields include title, servings, ingredients, steps
     @Test
     fun test2_requiredFieldsIncludeTitleServingsIngredientsSteps() {
-        val method = GeminiMealPlannerAiProvider::class.java.getDeclaredMethod("buildToolDeclarationJson", AiToolId::class.java)
-        method.isAccessible = true
-        val jsonObj = method.invoke(geminiProvider, AiToolId.OFFER_ADD_PLANNED_MEAL) as kotlinx.serialization.json.JsonObject
-
-        val requiredArray = jsonObj["parameters"]!!.jsonObject["required"]!!.jsonArray.map { it.jsonPrimitive.content }
+        val requiredArray = ToolSchemas.required(AiToolId.OFFER_ADD_PLANNED_MEAL)
         assertTrue(requiredArray.contains("title"))
         assertTrue(requiredArray.contains("servings"))
         assertTrue(requiredArray.contains("ingredients"))
@@ -2003,7 +1995,7 @@ private val milkAllergyAndNoCoriander = com.example.chatgpt_mealplanner.contract
     @Test
     fun test16_promptForbidsOfferingAutomaticMealShoppingGeneration() {
         val orchestrator = AiMealPlannerOrchestrator(
-            provider = geminiProvider,
+            provider = claudeProvider,
             contextBuilder = contextBuilder,
             toolDispatcher = aiToolDispatcher,
             recipeValidator = RecipeValidator(inventoryDao, mealDao),

@@ -51,7 +51,7 @@ class PantryPhase6Step6cAndroidSafIntegrationTest {
     private class FakeCredentialStore : CredentialStore {
         override fun hasKey(): Boolean = true
         override fun saveKey(key: String) {}
-        override fun loadKey(): String = "gemini-test-key"
+        override fun loadKey(): String = "claude-test-key"
         override fun deleteKey() {}
     }
 
@@ -147,7 +147,7 @@ class PantryPhase6Step6cAndroidSafIntegrationTest {
         assertEquals(FULL_BACKUP_FORMAT, contents.manifest.format)
         assertEquals(database.openHelper.readableDatabase.version, contents.manifest.roomSchemaVersion)
         assertEquals(3000000L, contents.manifest.createdAt)
-        assertEquals("gemini-test-key", contents.secrets.geminiApiKey)
+        assertEquals("claude-test-key", contents.secrets.claudeApiKey)
         assertEquals(setOf("Organic Whole Milk"), displayNamesIn(contents))
     }
 

@@ -1,11 +1,11 @@
 package com.example.chatgpt_mealplanner.di
 
-import com.example.chatgpt_mealplanner.core.ai.provider.GeminiMealPlannerAiProvider
+import com.example.chatgpt_mealplanner.core.ai.provider.ClaudeMealPlannerAiProvider
 import com.example.chatgpt_mealplanner.core.ai.provider.MealPlannerAiProvider
 import com.example.chatgpt_mealplanner.core.receipt.MlKitReceiptOcrService
 import com.example.chatgpt_mealplanner.core.receipt.ReceiptOcrService
 import com.example.chatgpt_mealplanner.core.security.CredentialStore
-import com.example.chatgpt_mealplanner.core.security.GeminiCredentialStore
+import com.example.chatgpt_mealplanner.core.security.ClaudeCredentialStore
 import com.example.chatgpt_mealplanner.core.service.InventoryDomainService
 import com.example.chatgpt_mealplanner.core.service.InventoryDomainServiceImpl
 import com.example.chatgpt_mealplanner.core.service.MealDomainService
@@ -68,13 +68,13 @@ abstract class DomainModule {
     @Binds
     @Singleton
     abstract fun bindCredentialStore(
-        impl: GeminiCredentialStore
+        impl: ClaudeCredentialStore
     ): CredentialStore
 
     @Binds
     @Singleton
     abstract fun bindMealPlannerAiProvider(
-        impl: GeminiMealPlannerAiProvider
+        impl: ClaudeMealPlannerAiProvider
     ): MealPlannerAiProvider
 
     @Binds

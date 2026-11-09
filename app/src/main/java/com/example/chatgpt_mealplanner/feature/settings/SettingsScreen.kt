@@ -41,7 +41,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.example.chatgpt_mealplanner.core.ai.provider.GEMINI_MODEL_ID
+import com.example.chatgpt_mealplanner.core.ai.provider.CLAUDE_MODEL_ID
 
 @Composable
 fun SettingsScreen(
@@ -122,12 +122,12 @@ fun SettingsScreen(
         // AI SECTION
         Text("AI Configuration", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(4.dp))
-        Text("Model: $GEMINI_MODEL_ID (Direct Google Gemini API)", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.secondary)
+        Text("Model: $CLAUDE_MODEL_ID (Anthropic Claude API)", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.secondary)
         Spacer(modifier = Modifier.height(8.dp))
 
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text("Gemini API Key", fontWeight = FontWeight.Bold)
+                Text("Claude API Key", fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(4.dp))
 
                 if (uiState.credentialStorageError != null) {
@@ -138,7 +138,7 @@ fun SettingsScreen(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        "Enter your Gemini API key again to replace the unreadable saved key. This replaces only the Gemini API key stored on this device.",
+                        "Enter your Claude API key again to replace the unreadable saved key. This replaces only the Claude API key stored on this device.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -146,7 +146,7 @@ fun SettingsScreen(
                     OutlinedTextField(
                         value = apiKeyInput,
                         onValueChange = { apiKeyInput = it },
-                        label = { Text("AIza...") },
+                        label = { Text("sk-ant-...") },
                         visualTransformation = PasswordVisualTransformation(),
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
@@ -171,7 +171,7 @@ fun SettingsScreen(
                     OutlinedTextField(
                         value = apiKeyInput,
                         onValueChange = { apiKeyInput = it },
-                        label = { Text("AIza...") },
+                        label = { Text("sk-ant-...") },
                         visualTransformation = PasswordVisualTransformation(),
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
@@ -196,7 +196,7 @@ fun SettingsScreen(
                         Icon(Icons.Default.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error)
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            "Your Gemini API key is stored securely on this device and used to make requests directly to Google Gemini API. Only necessary pantry context is sent when invoking AI features.",
+                            "Your Claude API key is stored securely on this device and used to make requests directly to the Claude API from Anthropic. Only necessary pantry context is sent when invoking AI features. Requests are charged to the key's Anthropic account.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onErrorContainer
                         )
@@ -414,7 +414,7 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = if (uiState.isMainRole) {
-                        "Saves a passphrase-protected backup of everything on this phone, including your Gemini key and sync identity. Anyone with the file and passphrase can read them."
+                        "Saves a passphrase-protected backup of everything on this phone, including your Claude key and sync identity. Anyone with the file and passphrase can read them."
                     } else {
                         "Household backup is available on the Main device only."
                     },
