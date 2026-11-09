@@ -1546,6 +1546,27 @@ private val milkAllergyAndNoCoriander = com.example.chatgpt_mealplanner.contract
     }
 
     @Test
+    fun aQuestionThatSetsOutWhatYouHave_isStillAQuestion() = runTest(testDispatcher) {
+        // Seen live from claude-haiku-5-5 on 2026-11-09: "Here's what you have" was read as offering a recipe.
+        assertAnsweredWithoutRepair(
+            "suggest a pizza recipe with toppings of my choice",
+            "I can do that. Which toppings would you like? Here's what you have on hand, plus some other options:\n\n" +
+                "- **From your stock:** chicken thighs, spinach, mature cheddar\n- **To buy:** mushrooms, peppers"
+        )
+    }
+
+    @Test
+    fun aQuestionThatStillGetsSentForACard_isShownWhenNoCardComesBack() = runTest(testDispatcher) {
+        val sent = mutableListOf<AiProviderRequest>()
+        val reply = "Here's a pizza idea for you. Which toppings would you like on it?"
+
+        val result = orchestratorReplying(sent, reply).processUserMessage("default_conversation", "suggest a pizza recipe")
+
+        assertEquals("offer_add_planned_meal", sent.getOrNull(1)?.forcedToolName)
+        assertEquals(reply, (result as AiOrchestrationResult.Final).assistantText)
+    }
+
+    @Test
     fun aWrittenRecipeThatEndsWithAQuestion_stillGetsACard() = runTest(testDispatcher) {
         val sent = mutableListOf<AiProviderRequest>()
         val draft = "Tomato pasta\nIngredients:\n- 200 g spaghetti\n- 1 tin tomatoes\n- 15 ml olive oil\n- 2 g salt\n" +

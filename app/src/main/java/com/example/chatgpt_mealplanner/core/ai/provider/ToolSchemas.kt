@@ -34,6 +34,7 @@ internal object ToolSchemas {
                     number("prepMinutes", "Honest preparation time in minutes")
                     number("cookMinutes", "Honest cooking time in minutes")
                     string("whyThisSuits", "One short, specific reason this recipe suits this user today")
+                    string("basedOn", "Only if the recipe is adapted from a web page you searched: the site name and the page URL, such as \"BBC Good Food: https://...\"")
                     putJsonObject("equipment") {
                         put("type", "array")
                         put("description", "Pans, trays and tools needed")

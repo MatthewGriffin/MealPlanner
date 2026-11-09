@@ -262,6 +262,45 @@ class ClaudeMealPlannerAiProviderTest {
     }
 
     @Test
+    fun webSearch_isOfferedOnlyWhenAllowed_withAFewSearchesAtMost() = runBlocking {
+        server.enqueue(textReply("ok"))
+        server.enqueue(textReply("ok"))
+
+        provider.send(request())
+        provider.send(request().copy(allowWebSearch = true))
+
+        fun webTool(body: JsonObject) = body["tools"]!!.jsonArray.map { it.jsonObject }.firstOrNull { it["name"]?.jsonPrimitive?.content == "web_search" }
+        assertNull(webTool(nextBody()))
+        val tool = webTool(nextBody())!!
+        assertEquals("web_search_20250305", tool["type"]!!.jsonPrimitive.content)
+        assertEquals("2", tool["max_uses"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun aPausedSearch_isSentBackSoClaudeCanFinish_andSearchesAreCounted() = runBlocking {
+        val usage = mutableListOf<TokenUsage>()
+        provider.usageObserver = { usage += it }
+        val search = """{"type":"server_tool_use","id":"srvtoolu_1","name":"web_search","input":{"query":"shawarma traybake"}}"""
+        val results = """{"type":"web_search_tool_result","tool_use_id":"srvtoolu_1","content":[{"type":"web_search_result","url":"https://example.com/shawarma","title":"Shawarma","encrypted_content":"abc","page_age":null}]}"""
+        server.enqueue(
+            MockResponse().setHeader("Content-Type", "application/json").setBody(
+                """{"id":"msg_1","type":"message","role":"assistant","model":"claude-haiku-5-5","content":[$search,$results],
+                "stop_reason":"pause_turn","stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":5,"server_tool_use":{"web_search_requests":1}}}"""
+            )
+        )
+        server.enqueue(textReply("Here is a shawarma traybake idea."))
+
+        val response = provider.send(request().copy(allowWebSearch = true)) as AiProviderResponse.FinalResponse
+
+        assertEquals("Here is a shawarma traybake idea.", response.text)
+        nextBody()
+        val second = nextBody()["messages"]!!.jsonArray
+        assertEquals("assistant", second.last().jsonObject["role"]!!.jsonPrimitive.content)
+        assertTrue(second.last().toString().contains("srvtoolu_1"))
+        assertEquals(1L, usage.sumOf { it.webSearches })
+    }
+
+    @Test
     fun twoConversations_doNotShareToolCallState() = runBlocking {
         server.enqueue(reply("tool_use", toolUse("toolu_first", "get_usable_inventory")))
         server.enqueue(reply("tool_use", toolUse("toolu_second", "get_usable_inventory")))

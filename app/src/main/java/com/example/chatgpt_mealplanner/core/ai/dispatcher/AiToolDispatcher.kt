@@ -608,7 +608,8 @@ class AiToolDispatcher @Inject constructor(
             prepMinutes = extractDoubleArg(argsJson, "prepMinutes")?.toInt()?.takeIf { it >= 0 },
             cookMinutes = extractDoubleArg(argsJson, "cookMinutes")?.toInt()?.takeIf { it >= 0 },
             equipment = parseStringArray(argsJson, "equipment"),
-            reasoningSummary = extractStringArg(argsJson, "whyThisSuits").orEmpty()
+            reasoningSummary = extractStringArg(argsJson, "whyThisSuits").orEmpty(),
+            source = extractStringArg(argsJson, "basedOn")?.trim()?.ifBlank { null }
         )
 
         val checks = com.example.chatgpt_mealplanner.core.ai.validation.RecipeOfferChecks

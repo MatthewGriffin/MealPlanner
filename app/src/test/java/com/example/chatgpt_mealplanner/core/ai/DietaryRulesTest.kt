@@ -51,6 +51,48 @@ class DietaryRulesTest {
     }
 
     @Test
+    fun aLabelWarningInTheName_isNotItselfAConflict() {
+        // Seen live from claude-haiku-5-5 on 2026-11-09: the app refused this, and the warning was dropped.
+        assertAllowed(allergy("Fish"), "Green curry paste (check the label for shrimp paste and fish)", "Pesto, check the label for nuts")
+        assertCaught(allergy("Fish"), "Fish sauce (check the label)", "Salmon fillets")
+    }
+
+    @Test
+    fun productsThatOftenHideAnAllergen_needALabelWarning() {
+        fun labelQuery(name: String, preferences: UserPreferencesSummaryDto) =
+            com.example.chatgpt_mealplanner.core.ai.validation.RecipeOfferChecks.queries(
+                recipe(ingredients = arrayOf(Triple(name, 45.0, "GRAM"))),
+                "Fry the ${name.lowercase()}.",
+                preferences
+            ).joinToString(" ")
+
+        assertTrue(labelQuery("Green curry paste", allergy("Fish")).contains("check the label for fish"))
+        assertTrue(labelQuery("Oyster sauce", allergy("Molluscs")).contains("check the label for molluscs"))
+        assertFalse(labelQuery("Green curry paste (check the label for fish)", allergy("Fish")).contains("often contains"))
+        assertFalse(labelQuery("Green curry paste", allergy("Milk")).contains("often contains"))
+    }
+
+    @Test
+    fun labelWarnings_dontMakeAProductCountAsFish() {
+        // Seen live on 2026-11-09: 70 g of this paste was called "very little" as if it were the fish.
+        assertFalse(com.example.chatgpt_mealplanner.core.ai.validation.DietaryRules.isMeatOrFish("Green curry paste (check the label for fish)"))
+        val problems = com.example.chatgpt_mealplanner.core.ai.validation.RecipeOfferChecks.problems(
+            com.example.chatgpt_mealplanner.contract.MealProposal(
+                title = "Curry",
+                ingredients = listOf(
+                    com.example.chatgpt_mealplanner.contract.ProposedIngredient(
+                        displayName = "Green curry paste", quantity = 50.0, unit = "GRAM",
+                        substitute = "Choose a paste whose label shows no fish, fish sauce or shrimp paste"
+                    )
+                ),
+                reasoningSummary = ""
+            ),
+            allergy("Fish")
+        )
+        assertEquals(emptyList<String>(), problems)
+    }
+
+    @Test
     fun correctionsLeftInTheMethod_areQueried() {
         // Seen live from claude-haiku-5-5 on 2026-11-09 (quick-lunch).
         assertTrue(queries("Once boiling, add 1 tsp salt... no: add the rice and cook for 10 minutes.").contains("correction"))

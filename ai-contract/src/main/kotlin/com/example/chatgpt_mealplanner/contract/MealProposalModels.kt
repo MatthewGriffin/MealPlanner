@@ -59,7 +59,9 @@ data class MealProposal(
     val equipment: List<String> = emptyList(),
     val mealGoal: MealGoal? = null,
     val reasoningSummary: String,
-    val changeSummary: String? = null
+    val changeSummary: String? = null,
+    /** The web recipe this was adapted from, such as "BBC Good Food: https://...". */
+    val source: String? = null
 ) {
     /** Null when the recipe gave no time, so a card never shows an invented one. */
     fun totalMinutes(): Int? =
@@ -79,7 +81,8 @@ data class MealProposal(
         val swaps = ingredients.mapNotNull { ingredient ->
             ingredient.substitute?.takeIf { it.isNotBlank() }?.let { "Swap ${ingredient.displayName} for $it" }
         }
-        return (listOfNotNull(summary.ifBlank { null }) + methodLines() + swaps).joinToString("\n")
+        val basedOn = source?.takeIf { it.isNotBlank() }?.let { "Based on: $it" }
+        return (listOfNotNull(summary.ifBlank { null }) + methodLines() + swaps + listOfNotNull(basedOn)).joinToString("\n")
     }
 }
 

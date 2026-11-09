@@ -80,12 +80,38 @@ object DietaryRules {
         "kosher" to listOf(pork, crustaceans, molluscs)
     )
 
+    /**
+     * Products that often hide an allergen without naming it. They aren't refused, because a safe
+     * brand may exist, but the ingredient has to tell the household to check the label.
+     */
+    private val oftenHidden = mapOf(
+        "fish" to Regex("""\b(?:thai|green|red|yellow|massaman|panang|jungle) curry paste\b|\bcaesar\b|\bnam pla\b|\bxo sauce\b|\bkimchi\b"""),
+        "crustaceans" to Regex("""\b(?:thai|green|red|yellow|massaman|panang|jungle) curry paste\b|\bxo sauce\b|\bkimchi\b|\blaksa paste\b"""),
+        "molluscs" to Regex("""\boyster sauce\b"""),
+        "peanuts" to Regex("""\b(?:massaman|panang) curry paste\b"""),
+        "gluten" to Regex("""\b(?:stock cubes?|gravy granules|curry paste)\b"""),
+        "milk" to Regex("""\b(?:pesto|gravy granules)\b""")
+    )
+
+    private val labelNote = Regex("""\(?\s*check (?:the )?labels?[^)]*\)?""")
+
+    /** The allergies this product often hides, unless its name already says to check the label. */
+    fun labelChecksNeeded(ingredientName: String, preferences: UserPreferencesSummaryDto): List<String> {
+        val ingredient = ingredientName.lowercase()
+        if (labelNote.containsMatchIn(ingredient)) return emptyList()
+        return preferences.allergies.filter { allergy -> oftenHidden[allergy.lowercase()]?.containsMatchIn(ingredient) == true }
+    }
+
     fun isMeatOrFish(ingredientName: String): Boolean =
-        ingredientName.lowercase().let { meat.matches(it) || fish.matches(it) }
+        labelNote.replace(ingredientName.lowercase(), " ").let { meat.matches(it) || fish.matches(it) }
+
+    /** A swap that talks about labels is advice on choosing a safe product, not an ingredient. */
+    fun isLabelAdvice(text: String): Boolean = Regex("""\blabels?\b""").containsMatchIn(text.lowercase())
 
     /** Each allergy or diet this ingredient breaks, written for Claude and the recipe card. */
     fun conflicts(ingredientName: String, preferences: UserPreferencesSummaryDto): List<String> {
-        val ingredient = ingredientName.lowercase()
+        // "Green curry paste (check the label for fish)" names fish to warn about it, not as an ingredient.
+        val ingredient = labelNote.replace(ingredientName.lowercase(), " ")
         val allergies = preferences.allergies.filter { allergy ->
             allergyGroups[allergy.lowercase()]?.matches(ingredient) ?: mentions(ingredient, allergy)
         }.map { "'$ingredientName' conflicts with the $it allergy." }

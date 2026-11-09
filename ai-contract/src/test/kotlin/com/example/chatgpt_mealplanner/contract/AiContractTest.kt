@@ -30,4 +30,19 @@ class AiContractTest {
         val deserializedResult = json.decodeFromString<AiToolResult>(serializedResult)
         assertEquals(result, deserializedResult)
     }
+
+    @Test
+    fun aWebRecipesSource_isKeptWithTheSavedMethod_andOlderSavedCardsStillRead() {
+        val proposal = MealProposal(
+            title = "Shawarma traybake",
+            ingredients = emptyList(),
+            steps = listOf(RecipeStep(order = 1, instruction = "Roast")),
+            reasoningSummary = "",
+            source = "The Happy Foodie: https://thehappyfoodie.co.uk/recipes/shawarma-chicken-traybake/"
+        )
+
+        assertTrue(proposal.savedInstructions().endsWith("Based on: The Happy Foodie: https://thehappyfoodie.co.uk/recipes/shawarma-chicken-traybake/"))
+        val older = Json { ignoreUnknownKeys = true }.decodeFromString(MealProposal.serializer(), """{"title":"Old","ingredients":[],"reasoningSummary":""}""")
+        assertEquals(null, older.source)
+    }
 }

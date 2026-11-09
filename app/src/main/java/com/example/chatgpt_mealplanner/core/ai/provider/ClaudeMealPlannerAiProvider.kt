@@ -17,6 +17,9 @@ import com.anthropic.models.messages.Tool
 import com.anthropic.models.messages.ToolChoiceAuto
 import com.anthropic.models.messages.ToolChoiceNone
 import com.anthropic.models.messages.ToolResultBlockParam
+import com.anthropic.models.messages.ToolUnion
+import com.anthropic.models.messages.UserLocation
+import com.anthropic.models.messages.WebSearchTool20250305
 import com.example.chatgpt_mealplanner.contract.AiChatMessage
 import com.example.chatgpt_mealplanner.contract.AiContinueWithToolsRequest
 import com.example.chatgpt_mealplanner.contract.AiProviderRequest
@@ -55,6 +58,8 @@ const val CLAUDE_SONNET_MODEL_ID = "claude-sonnet-5-5"
 const val GLOBAL_TIMEOUT_CAP_MS = 180_000L
 
 private const val MAX_TOKENS = 16_000L
+private const val MAX_WEB_SEARCHES = 2L
+private const val MAX_PAUSED_TURNS = 3
 private const val BLOCKED_MESSAGE = "Claude declined to answer this. Please try rewording your request."
 private const val INVALID_MESSAGE = "Claude returned a reply the app couldn't use. Please tap Retry."
 private const val KEY_MESSAGE = "Claude didn't accept the API key. Check the key in Settings."
@@ -67,7 +72,7 @@ private val RETIRED_TOOLS = setOf(
 )
 
 /** Input excludes the cached tokens, which are counted separately. */
-data class TokenUsage(val input: Long, val output: Long, val cacheRead: Long, val cacheWrite: Long)
+data class TokenUsage(val input: Long, val output: Long, val cacheRead: Long, val cacheWrite: Long, val webSearches: Long = 0)
 
 @Singleton
 class ClaudeMealPlannerAiProvider @Inject constructor(
@@ -100,7 +105,8 @@ class ClaudeMealPlannerAiProvider @Inject constructor(
         val system: String,
         val tools: List<Tool>,
         val messages: List<MessageParam>,
-        val pendingToolUseIds: List<String>
+        val pendingToolUseIds: List<String>,
+        val webSearch: Boolean = false
     )
 
     private val conversations = ConcurrentHashMap<String, Conversation>()
@@ -139,7 +145,7 @@ class ClaudeMealPlannerAiProvider @Inject constructor(
         }
         val messages = toMessageParams(request.messages)
         conversations.remove(request.conversationId)
-        exchange(key, request.conversationId, Conversation(system, tools, messages, emptyList()), allowToolCalls = true)
+        exchange(key, request.conversationId, Conversation(system, tools, messages, emptyList(), request.allowWebSearch), allowToolCalls = true)
     }
 
     override suspend fun continueWithToolResults(request: AiContinueWithToolsRequest): AiProviderResponse = withContext(ioDispatcher) {
@@ -170,10 +176,25 @@ class ClaudeMealPlannerAiProvider @Inject constructor(
     private suspend fun exchange(
         key: String,
         conversationId: String,
-        conversation: Conversation,
+        start: Conversation,
         allowToolCalls: Boolean
     ): AiProviderResponse {
-        val params = MessageCreateParams.builder()
+        var conversation = start
+        repeat(MAX_PAUSED_TURNS) {
+            val message = when (val result = call(key, params(conversation, allowToolCalls))) {
+                is CallResult.Failed -> return result.error
+                is CallResult.Succeeded -> result.message
+            }
+            if (message.stopReason().orElse(null) != StopReason.PAUSE_TURN) return readReply(message, conversationId, conversation)
+            // A long web search can pause the turn. Sending it back unchanged lets Claude carry on.
+            recordUsage(message)
+            conversation = conversation.copy(messages = conversation.messages + message.toParam())
+        }
+        return AiProviderResponse.Error("REQUEST_TIMEOUT", "Claude took too long searching the web. Please try again.")
+    }
+
+    private fun params(conversation: Conversation, allowToolCalls: Boolean): MessageCreateParams =
+        MessageCreateParams.builder()
             .model(model)
             .maxTokens(MAX_TOKENS)
             .system(conversation.system)
@@ -182,32 +203,45 @@ class ClaudeMealPlannerAiProvider @Inject constructor(
             // The rules, context and tools repeat on every tool round, so caching them saves most of the cost.
             .cacheControl(CacheControlEphemeral.builder().build())
             .apply {
-                if (conversation.tools.isNotEmpty()) {
-                    tools(conversation.tools.map { com.anthropic.models.messages.ToolUnion.ofTool(it) })
+                val all = conversation.tools.map { ToolUnion.ofTool(it) } +
+                    listOfNotNull(webSearchTool().takeIf { conversation.webSearch }?.let { ToolUnion.ofWebSearchTool20250305(it) })
+                if (all.isNotEmpty()) {
+                    tools(all)
                     if (allowToolCalls) toolChoice(ToolChoiceAuto.builder().build())
                     else toolChoice(ToolChoiceNone.builder().build())
                 }
             }
             .build()
 
-        val message = when (val result = call(key, params)) {
-            is CallResult.Failed -> return result.error
-            is CallResult.Succeeded -> result.message
+    /**
+     * Anthropic's own web search, run on their side. The basic version is used because the newer
+     * one ran extra filtering code and read a third more tokens for the same answer (2026-11-09).
+     */
+    private fun webSearchTool(): WebSearchTool20250305 = WebSearchTool20250305.builder()
+        .maxUses(MAX_WEB_SEARCHES)
+        .apply {
+            java.util.Locale.getDefault().country.takeIf { it.length == 2 }?.let { country ->
+                userLocation(UserLocation.builder().type(JsonValue.from("approximate")).country(country).build())
+            }
         }
-        return readReply(message, conversationId, conversation)
-    }
+        .build()
 
-    private fun readReply(message: Message, conversationId: String, conversation: Conversation): AiProviderResponse {
-        // A reply that's cut off or refused is still charged.
+    private fun recordUsage(message: Message) {
         val usage = message.usage()
         usageObserver?.invoke(
             TokenUsage(
                 input = usage.inputTokens(),
                 output = usage.outputTokens(),
                 cacheRead = usage.cacheReadInputTokens().orElse(0L),
-                cacheWrite = usage.cacheCreationInputTokens().orElse(0L)
+                cacheWrite = usage.cacheCreationInputTokens().orElse(0L),
+                webSearches = usage.serverToolUse().map { it.webSearchRequests() }.orElse(0L)
             )
         )
+    }
+
+    private fun readReply(message: Message, conversationId: String, conversation: Conversation): AiProviderResponse {
+        // A reply that's cut off or refused is still charged.
+        recordUsage(message)
         when (message.stopReason().orElse(null)) {
             StopReason.REFUSAL -> return AiProviderResponse.Error("RESPONSE_BLOCKED", BLOCKED_MESSAGE)
             StopReason.MAX_TOKENS -> return AiProviderResponse.Error(
