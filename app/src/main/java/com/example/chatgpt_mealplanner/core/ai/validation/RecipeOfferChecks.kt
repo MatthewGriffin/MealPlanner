@@ -35,6 +35,9 @@ object RecipeOfferChecks {
         """\b(?:\d|1[0-4])\s?(?:g|grams?)\b(?!\s*\))(?![^.;()]{0,40}\(\s*[\d/½¼¾.\s]+(?:tsp|tbsp|teaspoons?|tablespoons?)\b)"""
     )
     private val unitWord = Regex("""\b\d+\s?units?\b""")
+    // Claude Haiku 5.5 wrote "add 1 tsp fine salt... no: add the spaghetti" in a live run.
+    private val leftInCorrection = Regex("""(?:\.\.\.|…)\s*(?:no|actually|wait|sorry|oops)\b|\b(?:actually|wait|oops|sorry)\s*[,:]?\s*(?:no|scratch that|i mean)\b""")
+    private val tapWater = Regex("""^(?:(?:cold|warm|hot|boiling|tap|fresh)\s+)?water$""")
     private val commonIngredients = listOf("salt", "pepper", "butter", "garlic", "sugar", "flour")
 
     // Claude has sent "Salt: 6 UNIT" and "Olive oil: 15 UNIT". The name has to end with the word, so "Salted butter" can be counted.
@@ -148,6 +151,14 @@ object RecipeOfferChecks {
                 "Write whole items in the method by name, such as '4 eggs', not '4 unit eggs'.",
                 "Where the method says something like '4 unit eggs', it means 4 eggs."
             ).takeIf { unitWord.containsMatchIn(methodText) },
+            Finding(
+                "A method step still has a correction in it, such as '... no:'. Rewrite the step as finished text.",
+                "A method step has a correction left in it, so read it carefully."
+            ).takeIf { leftInCorrection.containsMatchIn(methodText) },
+            Finding(
+                "Leave tap water out of the ingredients, because they become the shopping list. Give the amount in the method.",
+                "Water is listed as an ingredient, so it may appear on the shopping list."
+            ).takeIf { proposal.ingredients.any { tapWater.matches(it.displayName.trim().lowercase()) } },
             Finding(
                 "The title offers a choice. Name one dish.",
                 "The title offers a choice of dishes, but the recipe may only make one."

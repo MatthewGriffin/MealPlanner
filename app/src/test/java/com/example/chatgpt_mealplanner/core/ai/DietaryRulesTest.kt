@@ -51,6 +51,27 @@ class DietaryRulesTest {
     }
 
     @Test
+    fun correctionsLeftInTheMethod_areQueried() {
+        // Seen live from claude-haiku-5-5 on 2026-11-09 (quick-lunch).
+        assertTrue(queries("Once boiling, add 1 tsp salt... no: add the rice and cook for 10 minutes.").contains("correction"))
+        assertTrue(queries("Add the rice. Actually, no, rinse the rice first.").contains("correction"))
+        assertFalse(queries("Cook the rice until no water is left.").contains("correction"))
+        assertFalse(queries("Fry the rice... until golden.").contains("correction"))
+    }
+
+    @Test
+    fun tapWaterInTheIngredients_isQueried_butStockAndCoconutWaterAreNot() {
+        fun waterQuery(name: String) = queries(
+            "Boil the rice in the $name.",
+            recipe(ingredients = arrayOf(rice, Triple(name, 300.0, "MILLILITRE")))
+        ).contains("tap water")
+        assertTrue(waterQuery("Water"))
+        assertTrue(waterQuery("Boiling water"))
+        assertFalse(waterQuery("Coconut water"))
+        assertFalse(waterQuery("Chicken stock"))
+    }
+
+    @Test
     fun gramsBesideASpoonMeasure_areNotQueried() {
         // Seen live from gemini-3.6-flash on 2026-11-09 (sesame-soya-stir-fry).
         assertFalse(queries("Whisk 10g cornflour (2 tsp) with the stock.").contains("spoons"))

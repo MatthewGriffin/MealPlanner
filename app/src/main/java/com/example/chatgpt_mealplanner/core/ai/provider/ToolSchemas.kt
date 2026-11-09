@@ -1,6 +1,8 @@
 package com.example.chatgpt_mealplanner.core.ai.provider
 
 import com.example.chatgpt_mealplanner.contract.AiToolId
+import com.example.chatgpt_mealplanner.core.model.MealType
+import com.example.chatgpt_mealplanner.core.model.QuantityUnit
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.add
@@ -9,7 +11,14 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 
-/** The JSON Schema of each tool's input, as the model sees it. */
+/**
+ * The JSON Schema of each tool's input, as the model sees it. Units and meal types are listed as
+ * choices, and the app's own checks catch anything else.
+ *
+ * Tools aren't strict. Tried live on 2026-11-09 with Haiku 5.5: strict recipe tools came back with
+ * empty or "placeholder" steps and "150 GRAM" in the method, and the API also caps strict tools
+ * at 20 and 24 optional fields in total.
+ */
 internal object ToolSchemas {
 
     /** The tool's input properties. */
@@ -19,7 +28,7 @@ internal object ToolSchemas {
             AiToolId.OFFER_ADD_PLANNED_MEAL -> {
                 string("title", "Meal title (e.g. Shakshuka)")
                 string("date", "Date in YYYY-MM-DD format (e.g. 2026-09-30)")
-                string("mealType", "Meal type: BREAKFAST, LUNCH, DINNER, or SNACK")
+                choice("mealType", "Meal type", MealType.entries.map { it.name })
                 number("servings", "Number of servings (default 2)")
                 if (tool == AiToolId.OFFER_ADD_PLANNED_MEAL) {
                     number("prepMinutes", "Honest preparation time in minutes")
@@ -55,7 +64,7 @@ internal object ToolSchemas {
                         putJsonObject("properties") {
                             string("displayName", "Ingredient display name")
                             number("quantity", "Quantity needed")
-                            string("unit", "One of GRAM, KILOGRAM, MILLILITRE, LITRE, UNIT, PACK, TIN, BOTTLE, BAG, SLICE or PORTION. Use GRAM or MILLILITRE for small amounts, not spoons")
+                            choice("unit", "Use GRAM or MILLILITRE for small amounts, not spoons, and UNIT only for whole items that are counted", QuantityUnit.entries.map { it.name })
                             string("measure", "Kitchen measure for small amounts, such as 1 tsp, matching the method")
                             boolean("optional", "True if the dish works without it")
                             string("substitute", "A good swap if there is one")
@@ -96,7 +105,7 @@ internal object ToolSchemas {
             AiToolId.ADD_MANUAL_SHOPPING_ITEM -> {
                 string("displayName", "Display name of manual item")
                 number("quantity", "Optional required quantity")
-                string("unit", "Optional unit (e.g. GRAM, PACK)")
+                choice("unit", "Optional unit", QuantityUnit.entries.map { it.name })
             }
             AiToolId.SET_STAPLE_STATUS -> {
                 string("itemId", "Optional specific inventory item ID")
@@ -123,6 +132,14 @@ internal object ToolSchemas {
     private fun JsonObjectBuilder.string(name: String, description: String) = field(name, "string", description)
     private fun JsonObjectBuilder.number(name: String, description: String) = field(name, "number", description)
     private fun JsonObjectBuilder.boolean(name: String, description: String) = field(name, "boolean", description)
+
+    private fun JsonObjectBuilder.choice(name: String, description: String, values: List<String>) {
+        putJsonObject(name) {
+            put("type", "string")
+            put("description", description)
+            putJsonArray("enum") { values.forEach { add(it) } }
+        }
+    }
 
     private fun JsonObjectBuilder.field(name: String, type: String, description: String) {
         putJsonObject(name) {

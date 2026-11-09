@@ -1347,7 +1347,8 @@ private val milkAllergyAndNoCoriander = com.example.chatgpt_mealplanner.contract
         assertTrue(queries("tomatoes", "Chop the tomato.").isEmpty())
         assertTrue(queries("onion", "Fry the onions.").isEmpty())
         assertTrue(queries("Extra virgin olive oil", "Heat the oil.").isEmpty())
-        assertTrue(queries("water", "Bring to the boil.").isEmpty())
+        // Water needn't be named in the method, but it shouldn't be on the shopping list either.
+        assertEquals(listOf(true), queries("water", "Bring to the boil.").map { "tap water" in it })
         assertEquals(1, queries("fresh basil", "Bring to the boil.").size)
     }
 
@@ -1521,6 +1522,38 @@ private val milkAllergyAndNoCoriander = com.example.chatgpt_mealplanner.contract
             "suggest a pizza recipe with toppings of my choice",
             "To get this right, what toppings would you prefer? You currently have mature cheddar in the fridge."
         )
+    }
+
+    @Test
+    fun askingTheUserToChoose_isShownEvenWhenItMentionsIngredientsAndSteps() = runTest(testDispatcher) {
+        // Seen live from claude-sonnet-5-5 on 2026-11-09 (needs-a-choice).
+        assertAnsweredWithoutRepair(
+            "suggest a pizza recipe with toppings of my choice",
+            "Happy to. Pick your toppings first, because they change what you need to buy and how the pizza is made.\n\n" +
+                "- **Chicken and spinach**\n- **Cheese and tomato**\n\nOnce you choose, I'll write the full recipe with ingredients and steps."
+        )
+    }
+
+    @Test
+    fun toppingOptionsThatMentionStockAmounts_areStillAQuestion() = runTest(testDispatcher) {
+        // Seen live from claude-haiku-5-5 on 2026-11-09 (needs-a-choice).
+        assertAnsweredWithoutRepair(
+            "suggest a pizza recipe with toppings of my choice",
+            "Happy to. Which toppings would you like? Here are some options based on what you have in stock:\n\n" +
+                "- **Cheese:** mature cheddar (you have 200 g)\n- **Meat:** chicken thighs (you have 600 g)\n" +
+                "- **Veg:** spinach (you have 150 g)\n\nTell me your picks and I'll write the recipe."
+        )
+    }
+
+    @Test
+    fun aWrittenRecipeThatEndsWithAQuestion_stillGetsACard() = runTest(testDispatcher) {
+        val sent = mutableListOf<AiProviderRequest>()
+        val draft = "Tomato pasta\nIngredients:\n- 200 g spaghetti\n- 1 tin tomatoes\n- 15 ml olive oil\n- 2 g salt\n" +
+            "Method:\n1. Boil the pasta.\n2. Warm the tomatoes.\n3. Toss together.\nWant it spicier?"
+
+        orchestratorReplying(sent, draft).processUserMessage("default_conversation", "suggest a pasta recipe")
+
+        assertEquals("offer_add_planned_meal", sent.getOrNull(1)?.forcedToolName)
     }
 
     @Test

@@ -113,12 +113,18 @@ class LiveRecipeEvaluation {
             calls++
             trace += "$kind -> " + when (response) {
                 is AiProviderResponse.ToolCalls -> "tools ${response.calls.map { it.toolName }}" +
-                    response.calls.mapNotNull { rawIngredients(it.argsJson) }.joinToString("") { "\n    raw ingredients: $it" }
+                    response.calls.mapNotNull { rawIngredients(it.argsJson) }.joinToString("") { "\n    raw ingredients: $it" } +
+                    response.calls.mapNotNull { rawSteps(it.argsJson) }.joinToString("") { "\n    raw steps: $it" }
                 is AiProviderResponse.FinalResponse -> "text from ${response.modelId}: ${response.text.take(160).replace('\n', ' ')}"
                 is AiProviderResponse.Error -> "ERROR ${response.code}: ${response.message.take(200)}"
             }
             return response
         }
+
+        /** The method as sent, shortened, because an unreadable one is rejected as empty. */
+        private fun rawSteps(argsJson: String): String? =
+            runCatching { Json.parseToJsonElement(argsJson).jsonObject["steps"]?.toString()?.take(400) ?: "MISSING, keys ${Json.parseToJsonElement(argsJson).jsonObject.keys}" }.getOrNull()
+                ?.takeIf { "ingredients" in argsJson }
 
         /** What the model actually sent, before the app reads units from it. */
         private fun rawIngredients(argsJson: String): String? =

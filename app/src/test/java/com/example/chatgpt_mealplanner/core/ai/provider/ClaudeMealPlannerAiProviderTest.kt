@@ -244,6 +244,24 @@ class ClaudeMealPlannerAiProviderTest {
     }
 
     @Test
+    fun tools_listTheUnitsTheAppCanRead_andAreNotStrict() = runBlocking {
+        server.enqueue(textReply("ok"))
+
+        provider.send(request())
+
+        val body = nextBody()
+        val offer = body["tools"]!!.jsonArray.first { it.jsonObject["name"]!!.jsonPrimitive.content == "offer_add_planned_meal" }.jsonObject
+        // Strict tools made Haiku send empty or placeholder steps in a live run.
+        assertFalse(offer["strict"]?.jsonPrimitive?.content == "true")
+        val schema = offer["input_schema"]!!.jsonObject
+        val ingredient = schema["properties"]!!.jsonObject["ingredients"]!!.jsonObject["items"]!!.jsonObject
+        val units = ingredient["properties"]!!.jsonObject["unit"]!!.jsonObject["enum"]!!.jsonArray.map { it.jsonPrimitive.content }
+        assertEquals(com.example.chatgpt_mealplanner.core.model.QuantityUnit.entries.map { it.name }, units)
+        assertEquals("1", schema["properties"]!!.jsonObject["steps"]!!.jsonObject["minItems"]!!.jsonPrimitive.content)
+        assertEquals("medium", body["output_config"]!!.jsonObject["effort"]!!.jsonPrimitive.content)
+    }
+
+    @Test
     fun twoConversations_doNotShareToolCallState() = runBlocking {
         server.enqueue(reply("tool_use", toolUse("toolu_first", "get_usable_inventory")))
         server.enqueue(reply("tool_use", toolUse("toolu_second", "get_usable_inventory")))
@@ -274,6 +292,17 @@ class ClaudeMealPlannerAiProviderTest {
 
         assertEquals("RESPONSE_TRUNCATED", (provider.send(request()) as AiProviderResponse.Error).code)
         assertEquals("RESPONSE_BLOCKED", (provider.send(request()) as AiProviderResponse.Error).code)
+    }
+
+    @Test
+    fun aCutOffReply_isStillCountedInTheUsage() = runBlocking {
+        val usage = mutableListOf<TokenUsage>()
+        provider.usageObserver = { usage += it }
+        server.enqueue(reply("max_tokens", text("Half a plan")))
+
+        provider.send(request())
+
+        assertEquals(5L, usage.single().output)
     }
 
     @Test
