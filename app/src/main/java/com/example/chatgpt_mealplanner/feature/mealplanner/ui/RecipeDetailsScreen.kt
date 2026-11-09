@@ -173,7 +173,8 @@ fun RecipeDetailsScreen(
                     Spacer(modifier = Modifier.height(8.dp))
                     if (!meal.instructions.isNullOrBlank()) {
                         Text(
-                            text = meal.instructions,
+                            // A recipe adapted from the web ends with "Based on:" and the page's address.
+                            text = com.example.chatgpt_mealplanner.ui.text.withTappableLinks(meal.instructions, MaterialTheme.colorScheme.primary),
                             style = MaterialTheme.typography.bodyMedium
                         )
                     } else {
