@@ -67,9 +67,8 @@ import kotlinx.serialization.decodeFromString
 fun formatModelDisplayName(modelId: String?): String? {
     if (modelId.isNullOrBlank()) return null
     return when (modelId) {
-        "gemini-3.7-flash" -> "Gemini 3.7 Flash"
-        "gemini-3.6-flash" -> "Gemini 3.6 Flash"
-        "gemini-3.5-flash-lite" -> "Gemini 3.5 Flash Lite"
+        "claude-haiku-5-5" -> "Claude Haiku 5.5"
+        "claude-sonnet-5-5" -> "Claude Sonnet 5.5"
         else -> modelId
     }
 }

@@ -102,12 +102,11 @@ class ChatUiTest {
 
     @Test
     fun modelDisplayNameMapping_mapsKnownAndUnknownModels() {
-        assertEquals("Gemini 3.7 Flash", com.example.chatgpt_mealplanner.feature.chat.ui.formatModelDisplayName("gemini-3.7-flash"))
-        assertEquals("Gemini 3.6 Flash", com.example.chatgpt_mealplanner.feature.chat.ui.formatModelDisplayName("gemini-3.6-flash"))
-        assertEquals("Gemini 3.5 Flash Lite", com.example.chatgpt_mealplanner.feature.chat.ui.formatModelDisplayName("gemini-3.5-flash-lite"))
+        assertEquals("Claude Haiku 5.5", com.example.chatgpt_mealplanner.feature.chat.ui.formatModelDisplayName("claude-haiku-5-5"))
+        assertEquals("Claude Sonnet 5.5", com.example.chatgpt_mealplanner.feature.chat.ui.formatModelDisplayName("claude-sonnet-5-5"))
 
-        // Unknown model -> raw string
-        assertEquals("gemini-4.0-ultra", com.example.chatgpt_mealplanner.feature.chat.ui.formatModelDisplayName("gemini-4.0-ultra"))
+        // Unknown model, such as one saved with an old chat -> raw string
+        assertEquals("gemini-3.6-flash", com.example.chatgpt_mealplanner.feature.chat.ui.formatModelDisplayName("gemini-3.6-flash"))
 
         // Null / blank -> null
         org.junit.Assert.assertNull(com.example.chatgpt_mealplanner.feature.chat.ui.formatModelDisplayName(null))

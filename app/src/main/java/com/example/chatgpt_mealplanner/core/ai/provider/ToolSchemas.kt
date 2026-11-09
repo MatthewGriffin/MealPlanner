@@ -1,0 +1,133 @@
+package com.example.chatgpt_mealplanner.core.ai.provider
+
+import com.example.chatgpt_mealplanner.contract.AiToolId
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonObjectBuilder
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
+import kotlinx.serialization.json.putJsonObject
+
+/** The JSON Schema of each tool's input, as the model sees it. */
+internal object ToolSchemas {
+
+    /** The tool's input properties. */
+    fun properties(tool: AiToolId): JsonObject = buildJsonObject {
+        when (tool) {
+            AiToolId.ADD_PLANNED_MEAL,
+            AiToolId.OFFER_ADD_PLANNED_MEAL -> {
+                string("title", "Meal title (e.g. Shakshuka)")
+                string("date", "Date in YYYY-MM-DD format (e.g. 2026-09-30)")
+                string("mealType", "Meal type: BREAKFAST, LUNCH, DINNER, or SNACK")
+                number("servings", "Number of servings (default 2)")
+                if (tool == AiToolId.OFFER_ADD_PLANNED_MEAL) {
+                    number("prepMinutes", "Honest preparation time in minutes")
+                    number("cookMinutes", "Honest cooking time in minutes")
+                    string("whyThisSuits", "One short, specific reason this recipe suits this user today")
+                    putJsonObject("equipment") {
+                        put("type", "array")
+                        put("description", "Pans, trays and tools needed")
+                        putJsonObject("items") { put("type", "string") }
+                    }
+                    putJsonObject("steps") {
+                        put("type", "array")
+                        put("description", "Every method stage, in the order it happens")
+                        put("minItems", 1)
+                        putJsonObject("items") {
+                            put("type", "object")
+                            putJsonObject("properties") {
+                                string("instruction", "One stage, with heat or oven temperature, time and how to tell it is ready")
+                                number("durationMinutes", "Minutes this stage takes")
+                            }
+                            putJsonArray("required") { add("instruction") }
+                        }
+                    }
+                } else {
+                    string("instructions", "Complete step-by-step cooking instructions for the recipe")
+                }
+                putJsonObject("ingredients") {
+                    put("type", "array")
+                    put("description", "List of required ingredients for the meal")
+                    put("minItems", 1)
+                    putJsonObject("items") {
+                        put("type", "object")
+                        putJsonObject("properties") {
+                            string("displayName", "Ingredient display name")
+                            number("quantity", "Quantity needed")
+                            string("unit", "One of GRAM, KILOGRAM, MILLILITRE, LITRE, UNIT, PACK, TIN, BOTTLE, BAG, SLICE or PORTION. Use GRAM or MILLILITRE for small amounts, not spoons")
+                            string("measure", "Kitchen measure for small amounts, such as 1 tsp, matching the method")
+                            boolean("optional", "True if the dish works without it")
+                            string("substitute", "A good swap if there is one")
+                            string("canonicalIngredientId", "Optional canonical ingredient ID")
+                        }
+                        putJsonArray("required") {
+                            add("displayName")
+                            add("quantity")
+                            add("unit")
+                        }
+                    }
+                }
+            }
+            AiToolId.GET_INVENTORY_FOR_INGREDIENT -> {
+                string("canonicalIngredientId", "Canonical ingredient ID (e.g. ING_MILK)")
+                string("searchQuery", "Ingredient search query term")
+            }
+            AiToolId.GET_MEAL_DETAILS,
+            AiToolId.CANCEL_PLANNED_MEAL,
+            AiToolId.RESTORE_MEAL_TO_PLANNED,
+            AiToolId.PREPARE_MARK_MEAL_COOKED -> string("mealId", "Target meal ID")
+            AiToolId.GET_RETAIL_ITEM_OPTIONS -> string("requirementId", "Shopping requirement ID")
+            AiToolId.SEARCH_RETAIL_PRODUCTS -> {
+                string("query", "Product term to search for, without retailer name (e.g. milk)")
+                string("retailerFilter", "Optional retailer ID filter: ASDA, ICELAND, ALDI, TESCO, MORRISONS, SAINSBURYS, or LIDL")
+            }
+            AiToolId.MOVE_PLANNED_MEAL -> {
+                string("mealId", "Target meal ID")
+                string("newDate", "New date in YYYY-MM-DD format")
+            }
+            AiToolId.MARK_INVENTORY_LOT_OUT -> string("itemId", "Target inventory lot item ID")
+            AiToolId.MARK_ALL_INVENTORY_FOR_CANONICAL_INGREDIENT_OUT -> string("canonicalIngredientId", "Canonical ingredient ID (e.g. ING_MILK)")
+            AiToolId.ADJUST_INVENTORY_QUANTITY,
+            AiToolId.RESOLVE_INVENTORY_LOT_UNCERTAINTY -> {
+                string("itemId", "Target inventory lot item ID")
+                number("newQuantity", "New physical quantity")
+            }
+            AiToolId.ADD_MANUAL_SHOPPING_ITEM -> {
+                string("displayName", "Display name of manual item")
+                number("quantity", "Optional required quantity")
+                string("unit", "Optional unit (e.g. GRAM, PACK)")
+            }
+            AiToolId.SET_STAPLE_STATUS -> {
+                string("itemId", "Optional specific inventory item ID")
+                string("searchQuery", "Optional item search query or display name")
+                boolean("isStaple", "True to mark as staple, false to remove staple status")
+            }
+            AiToolId.DELETE_INVENTORY_ITEM -> {
+                string("itemId", "Optional specific inventory item ID")
+                string("searchQuery", "Optional item search query")
+            }
+            AiToolId.DELETE_ALL_INVENTORY -> boolean("confirmBulkDelete", "Explicit confirmation flag for bulk delete")
+            else -> {
+                // Read tools without arguments have no properties.
+            }
+        }
+    }
+
+    fun required(tool: AiToolId): List<String> = when (tool) {
+        AiToolId.ADD_PLANNED_MEAL -> listOf("title", "servings", "ingredients", "instructions")
+        AiToolId.OFFER_ADD_PLANNED_MEAL -> listOf("title", "servings", "ingredients", "steps")
+        else -> emptyList()
+    }
+
+    private fun JsonObjectBuilder.string(name: String, description: String) = field(name, "string", description)
+    private fun JsonObjectBuilder.number(name: String, description: String) = field(name, "number", description)
+    private fun JsonObjectBuilder.boolean(name: String, description: String) = field(name, "boolean", description)
+
+    private fun JsonObjectBuilder.field(name: String, type: String, description: String) {
+        putJsonObject(name) {
+            put("type", type)
+            put("description", description)
+        }
+    }
+}

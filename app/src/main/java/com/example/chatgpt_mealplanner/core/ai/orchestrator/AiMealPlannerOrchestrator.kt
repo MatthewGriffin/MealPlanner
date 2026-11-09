@@ -43,7 +43,7 @@ class AiMealPlannerOrchestrator @Inject constructor(
     companion object {
         const val MAX_TOOL_ROUNDS = 8
 
-        /** Times Gemini is asked to fix a recipe or plan. Anything still wrong becomes a warning on the card. */
+        /** Times Claude is asked to fix a recipe or plan. Anything still wrong becomes a warning on the card. */
         const val MAX_CORRECTION_ATTEMPTS = 3
     }
 
@@ -154,7 +154,7 @@ class AiMealPlannerOrchestrator @Inject constructor(
 
         val historicalMessages = try {
             chatRepository.getMessagesForConversation(conversationId).takeLast(20).mapNotNull { message ->
-                // Persist a concise summary for the user, but send the full internal prompt to Gemini.
+                // Persist a concise summary for the user, but send the full internal prompt to Claude.
                 if (message.id == userMsgId && message.role.equals("USER", ignoreCase = true)) {
                     AiChatMessage(role = "user", content = userMessageText)
                 } else {
@@ -231,7 +231,7 @@ class AiMealPlannerOrchestrator @Inject constructor(
 
         while (true) {
             if (providerResponse !is AiProviderResponse.ToolCalls) {
-                // Gemini can answer a correction in words, which leaves the card as it was.
+                // Claude can answer a correction in words, which leaves the card as it was.
                 val correction = if (offerAcceptedThisTurn && !mealPlanRequest && correctionsAsked < MAX_CORRECTION_ATTEMPTS) {
                     askForRecipeCorrection(request, conversationId)
                 } else null
@@ -351,7 +351,7 @@ class AiMealPlannerOrchestrator @Inject constructor(
                 intentClass == com.example.chatgpt_mealplanner.core.ai.context.UserMessageIntentClass.FOLLOW_UP_TO_ACTIVE_PROPOSAL)
 
         val finalResponseText = (providerResponse as? AiProviderResponse.FinalResponse)?.text ?: ""
-        // Honour the user's explicit request even if Gemini formats its answer as one recipe.
+        // Honour the user's explicit request even if Claude formats its answer as one recipe.
         val responseIsMultiMealPlan = mealPlanRequest || isMultiMealResponse(finalResponseText)
         val replyNeedsRecipeCard = needsRecipeCard(
             userMessageText = userMessageText,
@@ -628,7 +628,7 @@ class AiMealPlannerOrchestrator @Inject constructor(
             is AiProviderResponse.Error -> {
                 val errRes = providerResponse as AiProviderResponse.Error
                 if (writeCommitted) {
-                    val fallbackText = "Your requested action was applied successfully, but Gemini is temporarily busy to generate a follow-up summary. Please check your screen."
+                    val fallbackText = "Your requested action was applied successfully, but Claude was too busy to write a follow-up summary. Please check your screen."
                     val assistantMsgId = "msg_${System.currentTimeMillis()}"
                     try {
                         chatRepository.saveMessage(
@@ -671,10 +671,10 @@ class AiMealPlannerOrchestrator @Inject constructor(
     }
 
     /**
-     * A recipe card is stored with empty text because the app draws it from its payload. Gemini
+     * A recipe card is stored with empty text because the app draws it from its payload. Claude
      * still has to read it, or "make it spicier" and "option 2" refer to nothing.
      */
-    /** Returns Gemini's next attempt, or null when the card is fine, or Gemini couldn't be reached. */
+    /** Returns Claude's next attempt, or null when the card is fine, or Claude couldn't be reached. */
     private suspend fun askForRecipeCorrection(request: AiProviderRequest, conversationId: String): AiProviderResponse? {
         val pending = pendingMutationStore.getPendingMutation(conversationId) as? com.example.chatgpt_mealplanner.core.ai.pending.PendingAiMutation.AddPlannedMeal
             ?: return null
@@ -694,7 +694,7 @@ class AiMealPlannerOrchestrator @Inject constructor(
     }
 
     /**
-     * Asks Gemini to fix a plan until nothing is wrong or the attempts run out. The card then warns
+     * Asks Claude to fix a plan until nothing is wrong or the attempts run out. The card then warns
      * about what's left, and can't be saved if a meal breaks an allergy or diet. Returns null to keep
      * the reply as it is.
      */

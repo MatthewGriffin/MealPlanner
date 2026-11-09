@@ -10,7 +10,6 @@ import com.example.chatgpt_mealplanner.core.ai.context.AiContextBuilder
 import com.example.chatgpt_mealplanner.core.ai.context.UserMutationIntentResolver
 import com.example.chatgpt_mealplanner.core.ai.dispatcher.AiToolDispatcher
 import com.example.chatgpt_mealplanner.core.ai.orchestrator.AiMealPlannerOrchestrator
-import com.example.chatgpt_mealplanner.core.ai.provider.GeminiMealPlannerAiProvider
 import com.example.chatgpt_mealplanner.core.ai.provider.MealPlannerAiProvider
 import com.example.chatgpt_mealplanner.core.ai.validator.RecipeValidator
 import com.example.chatgpt_mealplanner.core.database.entity.ChatConversationEntity

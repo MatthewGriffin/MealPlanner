@@ -324,7 +324,7 @@ class AiOrchestratorIntegrationTest {
         assertTrue(result is AiOrchestrationResult.Final)
 
         val assistantText = (result as AiOrchestrationResult.Final).assistantText
-        assertEquals("Your requested action was applied successfully, but Gemini is temporarily busy to generate a follow-up summary. Please check your screen.", assistantText)
+        assertEquals("Your requested action was applied successfully, but Claude was too busy to write a follow-up summary. Please check your screen.", assistantText)
     }
 
     @Test
@@ -518,7 +518,7 @@ class AiOrchestratorIntegrationTest {
         val result = orchestrator.processUserMessage("conv_1", "no milk left")
         val assistantText = (result as AiOrchestrationResult.Final).assistantText
 
-        assertEquals("Your requested action was applied successfully, but Gemini is temporarily busy to generate a follow-up summary. Please check your screen.", assistantText)
+        assertEquals("Your requested action was applied successfully, but Claude was too busy to write a follow-up summary. Please check your screen.", assistantText)
     }
 
     @Test

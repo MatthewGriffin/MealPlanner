@@ -75,7 +75,7 @@ object DietaryRules {
         "pescatarian" to listOf(meat),
         "gluten-free" to listOf(gluten),
         "dairy-free" to listOf(milk),
-        // These two only catch the plainest conflicts. Gemini follows the rest from the prompt.
+        // These two only catch the plainest conflicts. Claude follows the rest from the prompt.
         "halal" to listOf(pork, alcohol),
         "kosher" to listOf(pork, crustaceans, molluscs)
     )
@@ -83,7 +83,7 @@ object DietaryRules {
     fun isMeatOrFish(ingredientName: String): Boolean =
         ingredientName.lowercase().let { meat.matches(it) || fish.matches(it) }
 
-    /** Each allergy or diet this ingredient breaks, written for Gemini and the recipe card. */
+    /** Each allergy or diet this ingredient breaks, written for Claude and the recipe card. */
     fun conflicts(ingredientName: String, preferences: UserPreferencesSummaryDto): List<String> {
         val ingredient = ingredientName.lowercase()
         val allergies = preferences.allergies.filter { allergy ->

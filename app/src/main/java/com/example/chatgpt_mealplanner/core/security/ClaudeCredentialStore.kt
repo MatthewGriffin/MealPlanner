@@ -14,29 +14,33 @@ interface CredentialStore {
 }
 
 @Singleton
-open class GeminiCredentialStore @Inject constructor(
+open class ClaudeCredentialStore @Inject constructor(
     @param:ApplicationContext private val context: Context
 ) : CredentialStore {
     private val securePreferences by lazy {
-        AndroidKeystoreSecurePreferences(context, "gemini_secure_prefs", mapOf("KEY_GEMINI_API_KEY" to 'S'))
+        AndroidKeystoreSecurePreferences(context, "claude_secure_prefs", mapOf(KEY to 'S'))
     }
 
     override fun hasKey(): Boolean = loadKey()?.isNotBlank() == true
 
     override fun saveKey(key: String) {
-        if (!securePreferences.putString("KEY_GEMINI_API_KEY", key.trim())) {
-            throw IllegalStateException("Could not persist Gemini API key securely")
+        if (!securePreferences.putString(KEY, key.trim())) {
+            throw IllegalStateException("Could not persist Claude API key securely")
         }
     }
 
     override fun replaceKey(key: String) {
-        securePreferences.replaceString("KEY_GEMINI_API_KEY", key.trim())
+        securePreferences.replaceString(KEY, key.trim())
     }
 
     override fun loadKey(): String? =
-        securePreferences.getString("KEY_GEMINI_API_KEY")?.takeIf { it.isNotBlank() }
+        securePreferences.getString(KEY)?.takeIf { it.isNotBlank() }
 
     override fun deleteKey() {
-        if (!securePreferences.remove("KEY_GEMINI_API_KEY")) throw IllegalStateException("Could not remove Gemini API key")
+        if (!securePreferences.remove(KEY)) throw IllegalStateException("Could not remove Claude API key")
+    }
+
+    private companion object {
+        const val KEY = "KEY_CLAUDE_API_KEY"
     }
 }

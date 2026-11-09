@@ -83,7 +83,7 @@ class FullBackupRestoreTest {
         database.pairedDeviceDao().insertOrUpdateDevice(
             PairedDeviceEntity("follower", "Phone", "public-key", "ACTIVE", 1L, 1L)
         )
-        manager = FullBackupManager(context, database, FakeCredentialStore("gemini-key"), tlsKeyManager, codec, streamProvider)
+        manager = FullBackupManager(context, database, FakeCredentialStore("claude-key"), tlsKeyManager, codec, streamProvider)
     }
 
     @After
@@ -135,7 +135,7 @@ class FullBackupRestoreTest {
         } finally {
             reopened.close()
         }
-        assertEquals("gemini-key", restoredSecrets?.geminiApiKey)
+        assertEquals("claude-key", restoredSecrets?.claudeApiKey)
         assertEquals("tls-password", restoredSecrets?.tlsKeystorePassword)
         assertTrue(File(context.applicationInfo.dataDir, "shared_prefs/barcode_concept_verification_v1.xml").exists())
         assertTrue(FullBackupRestoreInstaller.consumeResult(context)!!.startsWith("Backup restored"))
@@ -283,6 +283,7 @@ class FullBackupRestoreTest {
         assertTrue(FullBackupManager.isPortablePreferenceFile("barcode_concept_verification_v1.xml"))
         listOf(
             "gemini_secure_prefs_keystore_v2.xml",
+            "claude_secure_prefs.xml",
             "pantry_tls_secure_prefs.xml",
             "pantry_follower_pairing_prefs_keystore_v2.xml",
             "androidx.work.util.preferences.xml"

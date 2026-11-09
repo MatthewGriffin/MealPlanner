@@ -65,7 +65,7 @@ open class FullBackupManager @Inject constructor(
     private fun readSecrets(): FullBackupSecrets {
         val tlsIdentity = tlsKeyManager.exportTlsIdentity()
         return FullBackupSecrets(
-            geminiApiKey = credentialStore.loadKey(),
+            claudeApiKey = credentialStore.loadKey(),
             tlsKeystoreBase64 = tlsIdentity?.first?.let { Base64.getEncoder().encodeToString(it) },
             tlsKeystorePassword = tlsIdentity?.second
         )

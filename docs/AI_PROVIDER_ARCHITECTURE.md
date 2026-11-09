@@ -4,8 +4,17 @@ This document specifies the provider-neutral runtime AI integration strategy for
 
 ---
 
+## 0. Current Runtime Provider (2026-11-09)
+- The app uses the Claude API from Anthropic through `ClaudeMealPlannerAiProvider`, built on the official Anthropic Java SDK (`com.anthropic:anthropic-java`). Gemini was removed after a live evaluation showed the free tier was too unreliable (20 requests a day per model, frequent 503s and timeouts).
+- The default model is `claude-haiku-5-5`. `claude-sonnet-5-5` is being compared on the live evaluation (`LiveRecipeEvaluation`, `-e live true -e model ...`) before the choice is settled.
+- The user's Anthropic Console API key is stored on the device in `ClaudeCredentialStore` (Android Keystore) and entered in Settings. There is no backend proxy, so requests go straight from the phone to Anthropic and are charged to that key.
+- The Messages API keeps no state, so a tool round resends the rules, context, tools and Claude's previous turn unchanged. Prompt caching keeps that cheap.
+- Current models reject forced tool choice, so a forced tool is requested in the system prompt with `tool_choice: auto`. The last allowed tool round sends `tool_choice: none`.
+- The Anthropic SDK is only imported in `core/ai/provider`. Everything else uses `MealPlannerAiProvider`.
+
+---
+
 ## 1. Provider Neutrality
-- Gemini is used to develop the app inside Android Studio.
 - The runtime AI in the mobile client MUST BE provider-neutral.
 - Runtime AI providers may include OpenAI, Gemini, Anthropic, or custom local/cloud LLMs.
 - Neither the UI components nor the core domain/inventory packages import vendor-specific SDKs.

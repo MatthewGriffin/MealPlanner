@@ -25,7 +25,7 @@ class RecipeValidator @Inject constructor(
         com.example.chatgpt_mealplanner.core.repository.NoCookingPreferences
 ) {
 
-    /** What Gemini should fix. A recipe with no steps has no method for the wording checks to read. */
+    /** What Claude should fix. A recipe with no steps has no method for the wording checks to read. */
     suspend fun correctionsNeeded(proposal: MealProposal): List<String> {
         val preferences = cookingPreferences.current()
         val checks = com.example.chatgpt_mealplanner.core.ai.validation.RecipeOfferChecks
@@ -136,7 +136,7 @@ class RecipeValidator @Inject constructor(
             }
         }
 
-        // Whatever Gemini was asked to correct and didn't.
+        // Whatever Claude was asked to correct and didn't.
         if (proposal.steps.isNotEmpty()) {
             warnings.addAll(com.example.chatgpt_mealplanner.core.ai.validation.RecipeOfferChecks.warnings(proposal, proposal.methodText()))
         }

@@ -16,8 +16,9 @@ import com.example.chatgpt_mealplanner.core.ai.dispatcher.AiToolDispatcher
 import com.example.chatgpt_mealplanner.core.ai.orchestrator.AiMealPlannerOrchestrator
 import com.example.chatgpt_mealplanner.core.ai.pending.PendingMutationStore
 import com.example.chatgpt_mealplanner.core.ai.proposal.ActiveProposalStore
-import com.example.chatgpt_mealplanner.core.ai.provider.GEMINI_PRIMARY_MODEL
-import com.example.chatgpt_mealplanner.core.ai.provider.GeminiMealPlannerAiProvider
+import com.example.chatgpt_mealplanner.core.ai.provider.CLAUDE_MODEL_ID
+import com.example.chatgpt_mealplanner.core.ai.provider.ClaudeMealPlannerAiProvider
+import com.example.chatgpt_mealplanner.core.ai.provider.TokenUsage
 import com.example.chatgpt_mealplanner.core.ai.provider.MealPlannerAiProvider
 import com.example.chatgpt_mealplanner.core.ai.validation.RecipeOfferChecks
 import com.example.chatgpt_mealplanner.core.ai.validator.RecipeValidator
@@ -32,7 +33,7 @@ import com.example.chatgpt_mealplanner.core.model.QuantityUnit
 import com.example.chatgpt_mealplanner.core.model.StorageLocation
 import com.example.chatgpt_mealplanner.core.repository.ChatRepositoryImpl
 import com.example.chatgpt_mealplanner.core.repository.CookingPreferencesStore
-import com.example.chatgpt_mealplanner.core.security.GeminiCredentialStore
+import com.example.chatgpt_mealplanner.core.security.ClaudeCredentialStore
 import com.example.chatgpt_mealplanner.core.service.InventoryDomainServiceImpl
 import com.example.chatgpt_mealplanner.core.service.MealDomainServiceImpl
 import com.example.chatgpt_mealplanner.core.service.ShoppingDomainServiceImpl
@@ -46,21 +47,18 @@ import org.junit.runner.RunWith
 import java.io.File
 
 /**
- * Sends real recipe requests to Gemini using the key saved in the app, which spends that key's
- * quota. It only runs when asked:
+ * Sends real recipe requests to Claude using the key saved in the app, which is charged to that
+ * key's Anthropic account. It only runs when asked:
  *
- *   am instrument -w -e class ...eval.LiveRecipeEvaluation -e liveGemini true ...
+ *   am instrument -w -e class ...eval.LiveRecipeEvaluation -e live true ...
  *
- * Add `-e scenarios allergy-milk,vegan` to run only some, and `-e model gemini-x` to test another
- * model. Only that one model is used, with no fallback, so the results are all from it. Everything
- * uses a separate in-memory database, so the app's own data isn't touched. The report goes to the
- * app's files directory as `recipe-evaluation-<model>.txt`.
+ * Add `-e scenarios allergy-milk,vegan` to run only some, and `-e model claude-sonnet-5-5` to test
+ * another model (Haiku 5.5 by default). Everything uses a separate in-memory database, so the app's
+ * own data isn't touched. The report goes to the app's files directory as
+ * `recipe-evaluation-<model>.txt`, with the tokens used and an estimated cost.
  *
- * A rate-limited request is sent again after an exponential backoff, waiting longer if Google
- * suggests a delay. A daily limit can't be waited out, so the run stops there instead.
- *
- * On the free tier each model allows 20 requests a day (November 2026), and refused or timed-out
- * requests count too. A run covers about 15 scenarios a day on a model that isn't overloaded.
+ * The SDK already retries a busy or rate-limited request twice. If it still fails, the request is
+ * sent again after an exponential backoff. A run stops when the account is out of credit.
  */
 @RunWith(AndroidJUnit4::class)
 class LiveRecipeEvaluation {
@@ -78,7 +76,7 @@ class LiveRecipeEvaluation {
         val expected: Expected = Expected.CARD
     )
 
-    private class ScenarioOutcome(val id: String, val calls: Int, val models: Set<String>, val failures: List<String>, val rateLimited: Boolean, val rateLimitWaits: Int)
+    private class ScenarioOutcome(val id: String, val calls: Int, val models: Set<String>, val failures: List<String>, val rateLimited: Boolean, val rateLimitWaits: Int, val usage: List<TokenUsage>)
 
     private class Stock(val name: String, val quantity: Double, val unit: QuantityUnit, val status: ItemStatus = ItemStatus.AVAILABLE)
 
@@ -139,16 +137,15 @@ class LiveRecipeEvaluation {
 
     @Test
     fun run() = runBlocking {
-        assumeTrue("Spends Gemini quota, so it only runs with -e liveGemini true", arguments.getString("liveGemini") == "true")
+        assumeTrue("Costs money on the saved Claude key, so it only runs with -e live true", arguments.getString("live") == "true")
         // The prompt takes the home country from the locale, and the emulator's may not match a real user's.
         java.util.Locale.setDefault(java.util.Locale.UK)
         val wanted = arguments.getString("scenarios")?.split(',')?.map { it.trim() }
-        val model = arguments.getString("model")?.trim()?.takeIf { it.isNotEmpty() } ?: GEMINI_PRIMARY_MODEL
+        val model = arguments.getString("model")?.trim()?.takeIf { it.isNotEmpty() } ?: CLAUDE_MODEL_ID
         val report = File(context.filesDir, "recipe-evaluation-$model.txt")
         val details = StringBuilder()
         val outcomes = mutableListOf<ScenarioOutcome>()
         for (scenario in SCENARIOS.filter { wanted == null || it.id in wanted }) {
-            // The free tier limits requests per minute, and hitting that would test the fallback model instead.
             delay(PAUSE_BETWEEN_SCENARIOS_MS)
             val (text, outcome) = runScenario(scenario, model)
             details.append(text)
@@ -167,8 +164,10 @@ class LiveRecipeEvaluation {
         val passed = outcomes.count { it.failures.isEmpty() }
         appendLine("MODEL: $model")
         appendLine("SUMMARY: $passed of ${outcomes.size} scenarios had no findings, ${outcomes.sumOf { it.calls }} model requests, ${outcomes.sumOf { it.rateLimitWaits }} rate-limit waits")
+        val all = outcomes.flatMap { it.usage }
+        appendLine("TOKENS: ${tokens(all)}, estimated cost ${dollars(model, all)} in total, ${dollars(model, all, perScenario = outcomes.size)} a scenario")
         outcomes.forEach { outcome ->
-            appendLine("- ${outcome.id}: ${outcome.calls} requests, ${outcome.models}, ${if (outcome.failures.isEmpty()) "clean" else outcome.failures.joinToString(" | ")}")
+            appendLine("- ${outcome.id}: ${outcome.calls} requests, ${dollars(model, outcome.usage)}, ${outcome.models}, ${if (outcome.failures.isEmpty()) "clean" else outcome.failures.joinToString(" | ")}")
         }
     }
 
@@ -180,8 +179,12 @@ class LiveRecipeEvaluation {
             db.inventoryDao().insertItems(scenario.stock.mapIndexed { index, item -> item.toEntity(index, now) })
             val preferences = CookingPreferencesStore(db.cookingPreferencesDao())
             preferences.save(scenario.preferences)
-            val gemini = GeminiMealPlannerAiProvider(GeminiCredentialStore(context)).apply { modelChain = listOf(model) }
-            val provider = TracingProvider(gemini)
+            val usage = mutableListOf<TokenUsage>()
+            val claude = ClaudeMealPlannerAiProvider(ClaudeCredentialStore(context)).apply {
+                this.model = model
+                usageObserver = { usage += it }
+            }
+            val provider = TracingProvider(claude)
             val orchestrator = orchestrator(db, provider, preferences)
             val failures = mutableListOf<String>()
             val models = mutableSetOf<String>()
@@ -201,12 +204,12 @@ class LiveRecipeEvaluation {
                     result.fold({ append(describe(it)) }, { appendLine("EXCEPTION: ${it.javaClass.simpleName}") })
                     val outcome = result.getOrNull()
                     (outcome as? AiOrchestrationResult.Final)?.modelId?.let { models += it }
-                    rateLimited = rateLimited || (outcome as? AiOrchestrationResult.Error)?.code.let { it == "HTTP_429" || it == "API_QUOTA_EXCEEDED" }
+                    rateLimited = rateLimited || (outcome as? AiOrchestrationResult.Error).let { it?.code == "HTTP_429" || it?.userFacingMessage?.contains("credit balance", ignoreCase = true) == true }
                     failures += findings(scenario, outcome, isLastTurn = index == scenario.turns.lastIndex)
                 }
                 if (failures.isNotEmpty()) appendLine("FINDINGS: $failures")
             }
-            return text to ScenarioOutcome(scenario.id, provider.calls, models, failures, rateLimited, provider.rateLimitWaits)
+            return text to ScenarioOutcome(scenario.id, provider.calls, models, failures, rateLimited, provider.rateLimitWaits, usage)
         } finally {
             db.close()
         }
@@ -339,23 +342,35 @@ class LiveRecipeEvaluation {
 
     private companion object {
         const val CONVERSATION = "default_conversation"
-        const val PAUSE_BETWEEN_SCENARIOS_MS = 15_000L
+        const val PAUSE_BETWEEN_SCENARIOS_MS = 2_000L
         const val FIRST_BACKOFF_MS = 5_000L
         const val MAX_BACKOFF_MS = 120_000L
         // 5, 10, 20, 40, 80 and 120 s: over four and a half minutes, so a per-minute limit has long reset.
         const val MAX_RATE_LIMIT_RETRIES = 6
-        val RATE_LIMIT_CODES = setOf("HTTP_429", "API_QUOTA_EXCEEDED")
-        // "This model is currently experiencing high demand" is a 503, and it passes like a rate limit does.
-        val BACK_OFF_CODES = RATE_LIMIT_CODES + setOf("HTTP_503", "GEMINI_BUSY")
+        // 529 is "overloaded". The SDK has already retried these twice before the harness sees them.
+        val BACK_OFF_CODES = setOf("HTTP_429", "HTTP_500", "HTTP_503", "HTTP_529", "READ_TIMEOUT")
 
-        /** Google's 429 names the quota it hit. A per-day one, or a model with no allowance, won't reset by waiting. */
-        fun cantBeWaitedOut(message: String) = Regex("""per ?day|limit:\s*0\b""", RegexOption.IGNORE_CASE).containsMatchIn(message)
+        /** Running out of credit won't reset by waiting. */
+        fun cantBeWaitedOut(message: String) = message.contains("credit balance", ignoreCase = true)
 
-        /** Google suggests a wait as "retry in 37.2s", "retryDelay": "37s" or a Retry-After header. */
-        fun suggestedDelayMs(message: String): Long? =
-            listOf(Regex("""retry in ([\d.]+)\s*s""", RegexOption.IGNORE_CASE), Regex(""""retryDelay"\s*:\s*"([\d.]+)s""""), Regex("""Retry-After:\s*([\d.]+)"""))
-                .firstNotNullOfOrNull { it.find(message)?.groupValues?.get(1)?.toDoubleOrNull() }
-                ?.let { (it * 1000).toLong() }
+        fun suggestedDelayMs(@Suppress("UNUSED_PARAMETER") message: String): Long? = null
+
+        /** Estimated dollars per million tokens: input, output, cache read, cache write (5-minute). Check before quoting. */
+        val PRICES = mapOf(
+            "claude-haiku-5-5" to listOf(0.10, 0.50, 0.01, 0.125),
+            "claude-sonnet-5-5" to listOf(2.0, 10.0, 0.20, 2.50)
+        )
+
+        fun tokens(usage: List<TokenUsage>) =
+            "input ${usage.sumOf { it.input }}, output ${usage.sumOf { it.output }}, cache read ${usage.sumOf { it.cacheRead }}, cache write ${usage.sumOf { it.cacheWrite }}"
+
+        fun dollars(model: String, usage: List<TokenUsage>, perScenario: Int = 1): String {
+            val price = PRICES[model] ?: return "unknown cost"
+            val total = usage.sumOf {
+                it.input * price[0] + it.output * price[1] + it.cacheRead * price[2] + it.cacheWrite * price[3]
+            } / 1_000_000.0 / perScenario.coerceAtLeast(1)
+            return "$" + String.format(java.util.Locale.UK, "%.4f", total)
+        }
 
         val STANDARD_STOCK = listOf(
             Stock("Chicken thighs", 600.0, QuantityUnit.GRAM, ItemStatus.USE_SOON),
