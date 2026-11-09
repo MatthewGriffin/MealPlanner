@@ -301,6 +301,26 @@ class ClaudeMealPlannerAiProviderTest {
     }
 
     @Test
+    fun theUnchangingRulesAndTools_endCachedPrefixes_andTheContextComesAfter() = runBlocking {
+        server.enqueue(textReply("ok"))
+
+        provider.send(request().copy(allowWebSearch = true))
+
+        val body = nextBody()
+        val system = body["system"]!!.jsonArray.map { it.jsonObject }
+        assertEquals(2, system.size)
+        assertEquals("RULES_conv1", system[0]["text"]!!.jsonPrimitive.content)
+        assertEquals("ephemeral", system[0]["cache_control"]!!.jsonObject["type"]!!.jsonPrimitive.content)
+        assertTrue(system[1]["text"]!!.jsonPrimitive.content.contains("pantry"))
+        assertNull(system[1]["cache_control"])
+        val tools = body["tools"]!!.jsonArray.map { it.jsonObject }
+        // The marker goes on the app's last tool, so adding web search doesn't change the cached prefix.
+        assertEquals("offer_add_planned_meal", tools.last { it.containsKey("cache_control") }["name"]!!.jsonPrimitive.content)
+        assertEquals(1, tools.count { it.containsKey("cache_control") })
+        assertEquals("web_search", tools.last()["name"]!!.jsonPrimitive.content)
+    }
+
+    @Test
     fun twoConversations_doNotShareToolCallState() = runBlocking {
         server.enqueue(reply("tool_use", toolUse("toolu_first", "get_usable_inventory")))
         server.enqueue(reply("tool_use", toolUse("toolu_second", "get_usable_inventory")))

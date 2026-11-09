@@ -365,3 +365,10 @@ The user confirmed meal-plan synchronization now works on both phones.
 - The FLAVOUR rule now asks Claude to look through the stock for things that give a dish character (pastes, sauces, miso, spices, salty cheeses, citrus, herbs, pickles, capers, nuts and seeds), use the few that suit the dish, and give every main dish a finishing touch, such as a sauce, dressing, pickle, crunch, or herbs and citrus at the end.
 - New `worthAdding` on the recipe tool and `MealProposal`: 1 to 3 extras the household doesn't own, each with what it adds. They show on the card as "Worth adding (not on your shopping list)" and are kept in the saved method. They're checked against allergies and diets like ingredients are.
 - Live, on a flavour-rich test pantry: dinner went from miso salmon to sticky gochujang chicken (7 of 15 flavour items), lunch from the same salmon to harissa chicken with lemon yoghurt, and pasta gained crispy capers. The empty-kitchen traybake gained a spice paste, roasted lemon and parsley. Every card had sensible extras, and the nut-allergy dessert's extras were nut-free.
+
+
+## Caching the unchanging part of each request (2026-11-09)
+
+- Measured with `count_tokens`: the system rules are about 6,800 tokens and the 25 tools about 4,900, both the same on every request. The household context and chat add about 3,000. Input was over 80% of tokens, but output was still about 58% of the cost, because Haiku output costs 5 times as much per token.
+- The only cache breakpoint was at the end, after the context, so each new conversation wrote the whole prompt to the cache again at 1.25 times the price. The rules are now their own system block with a breakpoint, the context is a second block, and the app's last tool has a breakpoint (web search goes after it).
+- Live, on the same 5 scenarios: cache writes fell from 75,000 to 17,600 tokens, and input cost per request fell by about 58%. The cache lasts 5 minutes, so the first request after a longer gap still writes it.
