@@ -23,7 +23,7 @@ class FastProductSearchTest {
 
     private val legacy: OpenFoodFactsApi = mock()
     private val fast: SearchALiciousApi = mock()
-    private val provider = OpenFoodFactsProductDataProvider(legacy, fast)
+    private val provider = OpenFoodFactsProductDataProvider(legacy, fast).apply { countryTag = { "en:united-kingdom" } }
     private val json = Json { ignoreUnknownKeys = true; coerceInputValues = true; isLenient = true }
 
     /** A response in the shape the live service returned on 2026-11-10: brands is a list, quantity may be missing or a number. */
@@ -87,5 +87,40 @@ class FastProductSearchTest {
             OpenFoodFactsSearchResponse(products = listOf(OpenFoodFactsProductDto(code = "9", productName = "Monster Energy")))
         )
         assertTrue(legacyOnly.searchProductsByName("monster") is ProductProviderSearchResult.Success)
+    }
+
+    @Test
+    fun productsSoldInTheUsersCountryAreSearchedFirst() = runTest {
+        whenever(fast.search(any(), any(), any(), any())).thenReturn(json.decodeFromString<SearchALiciousResponse>(liveShape))
+
+        provider.searchProductsByName("Asda white bread")
+
+        verify(fast).search(org.mockito.kotlin.eq("Asda white bread countries_tags:\"en:united-kingdom\""), any(), any(), any())
+        verify(fast, never()).search(org.mockito.kotlin.eq("Asda white bread"), any(), any(), any())
+    }
+
+    @Test
+    fun ifNothingIsSoldThereTheWholeDatabaseIsSearched() = runTest {
+        whenever(fast.search(org.mockito.kotlin.eq("kimchi countries_tags:\"en:united-kingdom\""), any(), any(), any())).thenReturn(SearchALiciousResponse(hits = emptyList()))
+        whenever(fast.search(org.mockito.kotlin.eq("kimchi"), any(), any(), any())).thenReturn(json.decodeFromString<SearchALiciousResponse>(liveShape))
+
+        assertTrue(provider.searchProductsByName("kimchi") is ProductProviderSearchResult.Success)
+    }
+
+    @Test
+    fun noCountryMeansNoFilter() = runTest {
+        val worldwide = OpenFoodFactsProductDataProvider(legacy, fast).apply { countryTag = { null } }
+        whenever(fast.search(any(), any(), any(), any())).thenReturn(json.decodeFromString<SearchALiciousResponse>(liveShape))
+
+        worldwide.searchProductsByName("rice")
+
+        verify(fast).search(org.mockito.kotlin.eq("rice"), any(), any(), any())
+    }
+
+    @Test
+    fun theCountryTagIsBuiltFromTheDevicesLocale() {
+        assertEquals("en:united-kingdom", com.example.chatgpt_mealplanner.core.barcode.provider.defaultCountryTag(java.util.Locale.UK))
+        assertEquals("en:united-states", com.example.chatgpt_mealplanner.core.barcode.provider.defaultCountryTag(java.util.Locale.US))
+        assertEquals(null, com.example.chatgpt_mealplanner.core.barcode.provider.defaultCountryTag(java.util.Locale.ENGLISH))
     }
 }

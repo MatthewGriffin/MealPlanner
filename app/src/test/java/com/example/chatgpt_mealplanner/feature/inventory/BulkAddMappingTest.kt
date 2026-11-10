@@ -30,7 +30,9 @@ class BulkAddMappingTest {
         assertEquals(QuantityUnit.GRAM, input.packSizeUnit)
         assertNull(input.netQuantity)
         assertEquals("5000157024671", input.barcode)
-        assertEquals("Heinz", input.brand)
+        // Inventory stays generic; the brand lives in the barcode mapping.
+        assertNull(input.brand)
+        assertEquals("Baked beans", input.displayName)
         assertEquals(FoodCategory.TINS_CANS, input.category)
     }
 
@@ -61,5 +63,31 @@ class BulkAddMappingTest {
         assertEquals("415 gram", heinz.sizeText())
         assertEquals("Baked Beans in Tomato Sauce (Heinz) · 415 gram", heinz.choiceLabel())
         assertNull(BarcodeLookupResult(barcode = "1", displayName = "X").sizeText())
+    }
+
+    @Test
+    fun theMappingKeepsTheProductsRealNameBrandAndBarcodeButPointsAtTheGenericName() {
+        val mapping = row("4", QuantityUnit.TIN, heinz).copy(canonicalName = "baked beans").toMappingInput()!!
+        assertEquals("Baked Beans in Tomato Sauce", mapping.displayName)
+        assertEquals("Heinz", mapping.brand)
+        assertEquals("5000157024671", mapping.barcode)
+        assertEquals("baked beans", mapping.canonicalName)
+        assertEquals(415.0, mapping.netQuantity!!, 0.0)
+        assertNull(row("4", QuantityUnit.TIN).toMappingInput())
+    }
+
+    private fun packInput(packs: Int, size: Double, unit: QuantityUnit) = row(packs.toString(), QuantityUnit.UNIT, BarcodeLookupResult(barcode = "1", displayName = "x", netQuantity = size, netQuantityUnit = unit)).toProductInput()!!
+
+    @Test
+    fun amountsConvertIntoTheUnitTheExistingItemUses() {
+        val loaves = packInput(2, 800.0, QuantityUnit.GRAM)
+        // 2 loaves of 800 g, into an item counted in kilograms or in whole units.
+        assertEquals(1.6, loaves.inUnit(QuantityUnit.KILOGRAM, 2.0, QuantityUnit.UNIT)!!.netQuantity!!, 1e-9)
+        assertEquals(2.0, loaves.inUnit(QuantityUnit.UNIT, 2.0, QuantityUnit.UNIT)!!.netQuantity!!, 0.0)
+        assertEquals(1600.0, loaves.inUnit(QuantityUnit.GRAM, 2.0, QuantityUnit.UNIT)!!.netQuantity!!, 0.0)
+        // Litres and millilitres convert; grams can't become millilitres.
+        val milk = packInput(1, 1.0, QuantityUnit.LITRE)
+        assertEquals(1000.0, milk.inUnit(QuantityUnit.MILLILITRE, 1.0, QuantityUnit.BOTTLE)!!.netQuantity!!, 0.0)
+        assertNull(loaves.inUnit(QuantityUnit.MILLILITRE, 2.0, QuantityUnit.GRAM))
     }
 }

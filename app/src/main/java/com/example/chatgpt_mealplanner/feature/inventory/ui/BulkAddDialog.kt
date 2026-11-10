@@ -277,9 +277,10 @@ private fun ProductChooser(row: BulkAddRow, onChange: (BulkAddRow) -> Unit) {
             val product = option.product
             onChange(
                 if (product == null) {
-                    row.copy(matched = null, decided = true, displayName = row.genericName)
+                    row.copy(matched = null, decided = true)
                 } else {
-                    row.copy(matched = product, decided = true, displayName = product.displayName, brand = product.brand ?: row.brand)
+                    // The inventory name stays generic; the product only supplies its barcode, brand and size.
+                    row.copy(matched = product, decided = true)
                 }
             )
         },

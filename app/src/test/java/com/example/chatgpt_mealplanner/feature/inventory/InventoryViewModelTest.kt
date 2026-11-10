@@ -245,7 +245,8 @@ class InventoryViewModelTest {
         val cornflakes = rows.first { it.genericName == "Cornflakes" }
         org.junit.Assert.assertTrue(cornflakes.decided)
         org.junit.Assert.assertNotNull(cornflakes.matched)
-        org.junit.Assert.assertTrue(cornflakes.displayName.startsWith("Corn Flakes"))
+        // The inventory name stays what the user called it, not the product's full name.
+        org.junit.Assert.assertEquals("Cornflakes", cornflakes.displayName)
         // The line with no database match keeps the user's wording and needs no decision.
         val salt = rows.first { it.genericName == "Salt" }
         org.junit.Assert.assertTrue(salt.decided && salt.candidates.isEmpty())
@@ -253,7 +254,7 @@ class InventoryViewModelTest {
 
         vm.onEvent(InventoryUiEvent.SaveBulkAddRows)
         testDispatcher.scheduler.advanceUntilIdle()
-        val saved = fakeInventoryDao.getAllItemsSync().first { it.displayName.startsWith("Corn Flakes") }
+        val saved = fakeInventoryDao.getAllItemsSync().first { it.displayName == "Cornflakes" }
         val size = cornflakes.matched!!.netQuantity!!
         org.junit.Assert.assertEquals(2 * size, saved.quantity ?: 0.0, 0.001)
         org.junit.Assert.assertEquals(com.example.chatgpt_mealplanner.core.model.QuantityUnit.GRAM, saved.quantityUnit)
@@ -300,5 +301,84 @@ class InventoryViewModelTest {
         val rows = vm.uiState.value.bulkAdd!!.rows
         org.junit.Assert.assertTrue(rows.all { it.decided && it.matched == null })
         org.junit.Assert.assertEquals("Cornflakes", rows.first { it.genericName == "Cornflakes" }.displayName)
+    }
+
+    private suspend fun breadCoordinator(): com.example.chatgpt_mealplanner.core.barcode.BarcodeLookupCoordinator {
+        val coordinator = com.example.chatgpt_mealplanner.core.barcode.BarcodeLookupCoordinator(com.example.chatgpt_mealplanner.core.service.FakeBarcodeMappingDao())
+        listOf("Asda" to "5000000000111", "Morrisons" to "5000000000222").forEach { (brand, code) ->
+            coordinator.confirmAndSaveBarcodeMapping(
+                com.example.chatgpt_mealplanner.core.barcode.model.ConfirmedProductInput(
+                    barcode = code, displayName = "$brand White Bread", brand = brand,
+                    netQuantity = 800.0, netQuantityUnit = com.example.chatgpt_mealplanner.core.model.QuantityUnit.GRAM
+                )
+            )
+        }
+        return coordinator
+    }
+
+    private suspend fun bulkAddWhiteBread(coordinator: com.example.chatgpt_mealplanner.core.barcode.BarcodeLookupCoordinator, brand: String) {
+        val provider = FakePantryProvider(
+            com.example.chatgpt_mealplanner.core.ai.provider.PantryListResult.Items(
+                listOf(parsed("White bread", 1.0, com.example.chatgpt_mealplanner.core.model.QuantityUnit.UNIT).copy(searchText = "$brand White Bread"))
+            )
+        )
+        provider.matchResult = com.example.chatgpt_mealplanner.core.ai.provider.ProductMatchResult.Choices(
+            listOf(com.example.chatgpt_mealplanner.core.ai.provider.ProductMatchChoice(0, 0, sure = true))
+        )
+        val vm = InventoryViewModel(fakeRepository, domainService, barcodeLookupCoordinator = coordinator, aiProvider = provider)
+        vm.onEvent(InventoryUiEvent.OpenBulkAdd)
+        vm.onEvent(InventoryUiEvent.BulkAddTextChanged("$brand white bread"))
+        vm.onEvent(InventoryUiEvent.ReadBulkAddList)
+        testDispatcher.scheduler.advanceUntilIdle()
+        org.junit.Assert.assertEquals("White bread", vm.uiState.value.bulkAdd!!.rows.single().displayName)
+        vm.onEvent(InventoryUiEvent.SaveBulkAddRows)
+        testDispatcher.scheduler.advanceUntilIdle()
+    }
+
+    @org.junit.Test
+    fun bulkAdd_sameFoodFromDifferentBrandsMergesIntoOneGenericItemWithBothBarcodes() = kotlinx.coroutines.test.runTest {
+        val coordinator = breadCoordinator()
+        bulkAddWhiteBread(coordinator, "Asda")
+        bulkAddWhiteBread(coordinator, "Morrisons")
+
+        val items = fakeInventoryDao.getAllItemsSync()
+        org.junit.Assert.assertEquals(listOf("White bread"), items.map { it.displayName })
+        org.junit.Assert.assertNull(items.single().brand)
+        org.junit.Assert.assertEquals(1600.0, items.single().quantity ?: 0.0, 0.001)
+        val barcodes = fakeInventoryBarcodeDao.getBarcodesForItem(items.single().id).map { it.normalizedBarcode }.toSet()
+        org.junit.Assert.assertEquals(2, barcodes.size)
+        // Each product's own name and brand are still remembered against its barcode.
+        org.junit.Assert.assertEquals("Morrisons", coordinator.lookupBarcode("5000000000222").brand)
+    }
+
+    @org.junit.Test
+    fun bulkAdd_mergingIntoAnItemCountedInAnotherUnitUsesThatUnit() = kotlinx.coroutines.test.runTest {
+        domainService.addLotFromProductInput(
+            com.example.chatgpt_mealplanner.core.barcode.model.ConfirmedProductInput(
+                barcode = null, displayName = "White bread",
+                netQuantity = 2.0, netQuantityUnit = com.example.chatgpt_mealplanner.core.model.QuantityUnit.UNIT
+            )
+        )
+        bulkAddWhiteBread(breadCoordinator(), "Asda")
+
+        val item = fakeInventoryDao.getAllItemsSync().single()
+        org.junit.Assert.assertEquals(3.0, item.quantity ?: 0.0, 0.001)
+        org.junit.Assert.assertEquals(com.example.chatgpt_mealplanner.core.model.QuantityUnit.UNIT, item.quantityUnit)
+    }
+
+    @org.junit.Test
+    fun bulkAdd_whenClaudeSaysNoCandidateFitsThereIsNothingToAskTheUser() = kotlinx.coroutines.test.runTest {
+        val provider = FakePantryProvider(com.example.chatgpt_mealplanner.core.ai.provider.PantryListResult.Items(emptyList()))
+        provider.matchResult = com.example.chatgpt_mealplanner.core.ai.provider.ProductMatchResult.Choices(
+            listOf(com.example.chatgpt_mealplanner.core.ai.provider.ProductMatchChoice(0, null, sure = false))
+        )
+        val vm = cornflakesList(provider, coordinatorWithCornflakes())
+        readCornflakes(vm)
+
+        val row = vm.uiState.value.bulkAdd!!.rows.first { it.genericName == "Cornflakes" }
+        org.junit.Assert.assertTrue(row.decided)
+        org.junit.Assert.assertNull(row.matched)
+        // The candidates are still there if the user wants to pick one in the editor.
+        org.junit.Assert.assertEquals(2, row.candidates.size)
     }
 }

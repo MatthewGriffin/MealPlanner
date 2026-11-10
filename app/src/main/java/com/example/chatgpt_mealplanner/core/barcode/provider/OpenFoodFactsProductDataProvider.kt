@@ -17,6 +17,9 @@ class OpenFoodFactsProductDataProvider @Inject constructor(
     private val searchApi: SearchALiciousApi? = null
 ) : ProductDataProvider {
 
+    /** The country whose products are searched first, as Open Food Facts spells it ("en:united-kingdom"), or null for the whole world. */
+    internal var countryTag: () -> String? = { defaultCountryTag() }
+
     override val providerSource: ProductDataSource = ProductDataSource.OPEN_FOOD_FACTS
 
     private data class CatalogueEndpoint(
@@ -111,15 +114,24 @@ class OpenFoodFactsProductDataProvider @Inject constructor(
         if (trimmed.isBlank()) return ProductProviderSearchResult.Empty
 
         val fast = searchApi?.let { fastApi ->
-            val result = runCatching { fastApi.search(trimmed, page, pageSize) }
-            val failure = result.exceptionOrNull()
-            if (failure is kotlinx.coroutines.CancellationException) throw failure
-            if (failure != null) {
-                logBarcode("[BARCODE_LOOKUP] search provider=SEARCH_A_LICIOUS result=ERROR cause=\"${failure.message}\"")
-                null
-            } else {
-                mapSearchProducts(result.getOrNull()?.hits.orEmpty().map { it.toProductDto() })
+            // Products sold in the user's country come first: a world-wide search for "Asda white bread"
+            // returned Bulgarian cheese. If nothing is sold there, the whole database is searched.
+            val country = countryTag()
+            val queries = if (country != null) listOf("$trimmed countries_tags:\"$country\"", trimmed) else listOf(trimmed)
+            var outcome: ProductProviderSearchResult? = null
+            for (q in queries) {
+                val result = runCatching { fastApi.search(q, page, pageSize) }
+                val failure = result.exceptionOrNull()
+                if (failure is kotlinx.coroutines.CancellationException) throw failure
+                if (failure != null) {
+                    logBarcode("[BARCODE_LOOKUP] search provider=SEARCH_A_LICIOUS result=ERROR cause=\"${failure.message}\"")
+                    outcome = null
+                    break
+                }
+                outcome = mapSearchProducts(result.getOrNull()?.hits.orEmpty().map { it.toProductDto() })
+                if (outcome is ProductProviderSearchResult.Success) break
             }
+            outcome
         }
         if (fast != null) return fast
 
@@ -183,3 +195,8 @@ private fun logBarcode(message: String) {
     println(message)
     runCatching { android.util.Log.i("AI_MEALPLANNER", message) }
 }
+
+/** The device's country in Open Food Facts' tag form, such as "en:united-kingdom". */
+internal fun defaultCountryTag(locale: java.util.Locale = java.util.Locale.getDefault()): String? =
+    locale.getDisplayCountry(java.util.Locale.ENGLISH).takeIf { it.isNotBlank() }
+        ?.lowercase()?.replace(Regex("[^a-z0-9]+"), "-")?.trim('-')?.let { "en:$it" }
