@@ -63,6 +63,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.testTag
 import com.example.chatgpt_mealplanner.core.model.FoodCategory
 import com.example.chatgpt_mealplanner.core.model.InventoryItem
 import com.example.chatgpt_mealplanner.core.model.ItemStatus
@@ -195,6 +196,7 @@ fun InventoryScreen(
                     items(state.filteredItems, key = { it.id }) { item ->
                         InventoryItemCard(
                             item = item,
+                            needsInstructions = item.id in state.kitsWithoutInstructions,
                             onItemClick = { onEvent(InventoryUiEvent.SelectItemForEdit(item)) },
                             onToggleStaple = { onEvent(InventoryUiEvent.ToggleStaple(item.id)) },
                             onMarkAsOut = { onEvent(InventoryUiEvent.MarkAsOut(item.id)) },
@@ -310,6 +312,7 @@ fun StatusChip(status: ItemStatus) {
 @Composable
 fun InventoryItemCard(
     item: InventoryItem,
+    needsInstructions: Boolean = false,
     onItemClick: () -> Unit,
     onToggleStaple: () -> Unit,
     onMarkAsOut: () -> Unit,
@@ -327,6 +330,14 @@ fun InventoryItemCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
+            if (needsInstructions) {
+                Text(
+                    text = "No packet instructions yet - scan the packet in the Assistant chat",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.testTag("kit-no-instructions")
+                )
+            }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
