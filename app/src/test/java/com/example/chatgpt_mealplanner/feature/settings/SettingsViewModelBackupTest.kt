@@ -12,6 +12,7 @@ import com.example.chatgpt_mealplanner.core.sync.AppRoleResolver
 import com.example.chatgpt_mealplanner.core.sync.follower.worker.FollowerSyncScheduler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -105,7 +106,8 @@ class SettingsViewModelBackupTest {
 
     private fun createViewModel(
         isMain: Boolean = true,
-        fullBackupManager: com.example.chatgpt_mealplanner.core.backup.FullBackupManager? = null
+        fullBackupManager: com.example.chatgpt_mealplanner.core.backup.FullBackupManager? = null,
+        dataResetDao: com.example.chatgpt_mealplanner.core.database.dao.AppDataResetDao? = null
     ): SettingsViewModel {
         appRoleResolver.isMainRole = isMain
         fakeSaveCoordinator.isMainRole = isMain
@@ -118,7 +120,8 @@ class SettingsViewModelBackupTest {
             followerSyncScheduler = followerSyncScheduler,
             appRoleResolver = appRoleResolver,
             mainBackupSaveCoordinator = fakeSaveCoordinator,
-            fullBackupManager = fullBackupManager
+            fullBackupManager = fullBackupManager,
+            dataResetDao = dataResetDao
         )
     }
 
@@ -305,5 +308,60 @@ class SettingsViewModelBackupTest {
         assertFalse("Backup MUST no longer be in progress", state.isBackupInProgress)
         assertTrue("Status message MUST mention No document I/O attempted", state.backupStatusMessage?.contains("No document I/O attempted") == true)
         assertTrue("Passphrase array MUST be zeroed out", validPassphrase.all { it == ' ' })
+    }
+
+    private fun resetDao(): com.example.chatgpt_mealplanner.core.database.dao.AppDataResetDao {
+        val dao = mock<com.example.chatgpt_mealplanner.core.database.dao.AppDataResetDao>()
+        kotlinx.coroutines.runBlocking {
+            org.mockito.kotlin.whenever(dao.counts()).thenReturn(com.example.chatgpt_mealplanner.core.database.dao.ClearableDataCounts(2, 15, 40))
+        }
+        return dao
+    }
+
+    @Test
+    fun clearAllData_showsWhatWillBeDeleted_thenClearsOnConfirm() = runTest {
+        val dao = resetDao()
+        viewModel = createViewModel(dataResetDao = dao)
+        testScheduler.advanceUntilIdle()
+
+        viewModel.requestClearAllData()
+        testScheduler.advanceUntilIdle()
+        assertEquals(40, viewModel.uiState.value.clearDataCounts?.inventoryItems)
+        org.mockito.kotlin.verify(dao, org.mockito.kotlin.never()).clearHouseholdData()
+
+        viewModel.confirmClearAllData()
+        testScheduler.advanceUntilIdle()
+        org.mockito.kotlin.verify(dao).clearHouseholdData()
+        assertNull(viewModel.uiState.value.clearDataCounts)
+        assertFalse(viewModel.uiState.value.isClearingData)
+        assertTrue(viewModel.uiState.value.clearDataMessage!!.contains("API key were kept"))
+    }
+
+    @Test
+    fun clearAllData_isRefusedOnAPairedFollower() = runTest {
+        val dao = resetDao()
+        viewModel = createViewModel(isMain = false, dataResetDao = dao)
+        testScheduler.advanceUntilIdle()
+
+        viewModel.requestClearAllData()
+        testScheduler.advanceUntilIdle()
+
+        assertNull(viewModel.uiState.value.clearDataCounts)
+        assertTrue(viewModel.uiState.value.clearDataMessage!!.contains("main phone"))
+        org.mockito.kotlin.verify(dao, org.mockito.kotlin.never()).clearHouseholdData()
+    }
+
+    @Test
+    fun clearAllData_failureSaysNothingWasDeleted() = runTest {
+        val dao = resetDao()
+        org.mockito.kotlin.whenever(runBlocking { dao.clearHouseholdData() }).thenThrow(RuntimeException("disk full"))
+        viewModel = createViewModel(dataResetDao = dao)
+        testScheduler.advanceUntilIdle()
+
+        viewModel.confirmClearAllData()
+        testScheduler.advanceUntilIdle()
+
+        assertTrue(viewModel.uiState.value.clearDataMessage!!.startsWith("Nothing was deleted"))
+        assertFalse(viewModel.uiState.value.isClearingData)
     }
 }

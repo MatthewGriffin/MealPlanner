@@ -1042,5 +1042,6 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun pairedDeviceDao(): com.example.chatgpt_mealplanner.core.database.dao.PairedDeviceDao
     abstract fun canonicalSyncDao(): com.example.chatgpt_mealplanner.core.database.dao.CanonicalSyncDao
     abstract fun mealChangeRequestDao(): com.example.chatgpt_mealplanner.core.database.dao.MealChangeRequestDao
+    abstract fun appDataResetDao(): com.example.chatgpt_mealplanner.core.database.dao.AppDataResetDao
 }
 
