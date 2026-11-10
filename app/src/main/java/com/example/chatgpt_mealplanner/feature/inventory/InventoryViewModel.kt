@@ -47,7 +47,8 @@ class InventoryViewModel @Inject constructor(
     private val followerSyncScheduler: FollowerSyncScheduler? = null,
     private val followerDatabase: FollowerDatabase? = null,
     private val barcodeLookupCoordinator: BarcodeLookupCoordinator? = null,
-    private val aiProvider: MealPlannerAiProvider? = null
+    private val aiProvider: MealPlannerAiProvider? = null,
+    private val kitInstructionDao: com.example.chatgpt_mealplanner.core.database.dao.KitInstructionDao? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(InventoryUiState())
@@ -109,10 +110,21 @@ class InventoryViewModel @Inject constructor(
                 inventoryDomainService.repairOrphanStapleRulesFromMergeLogs()
             } catch (_: Exception) {}
 
-            inventoryRepository.getAllItems().collect { items ->
+            val savedKits = kitInstructionDao?.observeAll()
+                ?: kotlinx.coroutines.flow.flowOf(emptyList())
+            kotlinx.coroutines.flow.combine(inventoryRepository.getAllItems(), savedKits) { items, saved -> items to saved }.collect { (items, saved) ->
+                val unscanned = items.filter { it.category == com.example.chatgpt_mealplanner.core.model.FoodCategory.KITS_MIXES && kitInstructionDao != null }
+                    .filter { item ->
+                        val names = listOf(
+                            com.example.chatgpt_mealplanner.core.database.entity.normalizeKitName(item.displayName),
+                            com.example.chatgpt_mealplanner.core.database.entity.normalizeKitName(item.canonicalName)
+                        )
+                        saved.none { com.example.chatgpt_mealplanner.core.database.entity.savedKitMatches(names, it.normalizedName) }
+                    }.map { it.id }.toSet()
                 _uiState.update { currentState ->
                     val filtered = filterItems(items, currentState.activeFilter, currentState.searchQuery)
                     currentState.copy(
+                        kitsWithoutInstructions = unscanned,
                         rawItems = items,
                         filteredItems = filtered,
                         isLoading = false

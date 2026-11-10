@@ -19,6 +19,8 @@ enum class InventoryFilter(val displayName: String) {
 
 data class InventoryUiState(
     val rawItems: List<InventoryItem> = emptyList(),
+    /** Ids of Kits & Mixes items that have no saved packet instructions yet. */
+    val kitsWithoutInstructions: Set<String> = emptySet(),
     val filteredItems: List<InventoryItem> = emptyList(),
     val activeFilter: InventoryFilter = InventoryFilter.ALL,
     val searchQuery: String = "",
