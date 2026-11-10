@@ -4,6 +4,8 @@ import com.example.chatgpt_mealplanner.core.barcode.model.ProductDataSource
 import com.example.chatgpt_mealplanner.core.barcode.model.ProductMatchConfidence
 import com.example.chatgpt_mealplanner.core.barcode.model.ProductMetadata
 import com.example.chatgpt_mealplanner.core.barcode.provider.openfoodfacts.OpenFoodFactsApi
+import com.example.chatgpt_mealplanner.core.barcode.provider.openfoodfacts.OpenFoodFactsProductDto
+import com.example.chatgpt_mealplanner.core.barcode.provider.openfoodfacts.SearchALiciousApi
 import com.example.chatgpt_mealplanner.core.barcode.util.QuantityParser
 import com.example.chatgpt_mealplanner.core.model.DomainError
 import javax.inject.Inject
@@ -11,7 +13,8 @@ import javax.inject.Singleton
 
 @Singleton
 class OpenFoodFactsProductDataProvider @Inject constructor(
-    private val api: OpenFoodFactsApi
+    private val api: OpenFoodFactsApi,
+    private val searchApi: SearchALiciousApi? = null
 ) : ProductDataProvider {
 
     override val providerSource: ProductDataSource = ProductDataSource.OPEN_FOOD_FACTS
@@ -99,27 +102,40 @@ class OpenFoodFactsProductDataProvider @Inject constructor(
         }
     }
 
+    /**
+     * Searches the fast Search-a-licious service first. Only when it fails, such as when it is down or
+     * unreachable, does the slower legacy search run. An answer of "nothing found" is final.
+     */
     override suspend fun searchProductsByName(query: String, page: Int, pageSize: Int): ProductProviderSearchResult {
         val trimmed = query.trim()
         if (trimmed.isBlank()) return ProductProviderSearchResult.Empty
 
-        val result = runCatching {
-            api.searchProductsByName(terms = trimmed, page = page, pageSize = pageSize)
+        val fast = searchApi?.let { fastApi ->
+            val result = runCatching { fastApi.search(trimmed, page, pageSize) }
+            val failure = result.exceptionOrNull()
+            if (failure is kotlinx.coroutines.CancellationException) throw failure
+            if (failure != null) {
+                logBarcode("[BARCODE_LOOKUP] search provider=SEARCH_A_LICIOUS result=ERROR cause=\"${failure.message}\"")
+                null
+            } else {
+                mapSearchProducts(result.getOrNull()?.hits.orEmpty().map { it.toProductDto() })
+            }
         }
+        if (fast != null) return fast
 
-        if (result.isFailure) {
-            val ex = result.exceptionOrNull()
-            if (ex is kotlinx.coroutines.CancellationException) throw ex
+        val result = runCatching { api.searchProductsByName(terms = trimmed, page = page, pageSize = pageSize) }
+        val failure = result.exceptionOrNull()
+        if (failure is kotlinx.coroutines.CancellationException) throw failure
+        if (failure != null) {
             return ProductProviderSearchResult.Failure(
-                DomainError.TransactionFailed(ex?.message ?: "Network error searching OpenFoodFacts")
+                DomainError.TransactionFailed(failure.message ?: "Network error searching OpenFoodFacts")
             )
         }
+        return mapSearchProducts(result.getOrNull()?.products.orEmpty())
+    }
 
-        val response = result.getOrNull()
-        val products = response?.products
-        if (products.isNullOrEmpty()) {
-            return ProductProviderSearchResult.Empty
-        }
+    private fun mapSearchProducts(products: List<OpenFoodFactsProductDto>): ProductProviderSearchResult {
+        if (products.isEmpty()) return ProductProviderSearchResult.Empty
 
         val mappedList = products.mapNotNull { product ->
             val rawName = product.productNameEn.takeUnless { it.isNullOrBlank() }
