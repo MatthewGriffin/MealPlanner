@@ -78,4 +78,15 @@ class PantryListParsingTest {
         assertEquals("Heinz baked beans", items[0].searchText)
         assertEquals("Rice", items[1].searchText)
     }
+
+    @Test
+    fun emojiInClaudesNamesAreRemoved() {
+        val item = PantryListParsing.parse(
+            """{"items":[{"displayName":"Broccoli and Stilton soup 🥦","canonicalName":"broccoli 🥦 stilton soup","brand":"Heinz 🍲","searchText":"Heinz broccoli 🥦 soup","quantity":1,"unit":"TIN"}]}"""
+        ).single()
+        assertEquals("Broccoli and Stilton soup", item.displayName)
+        assertEquals("broccoli stilton soup", item.canonicalName)
+        assertEquals("Heinz", item.brand)
+        assertEquals("Heinz broccoli soup", item.searchText)
+    }
 }

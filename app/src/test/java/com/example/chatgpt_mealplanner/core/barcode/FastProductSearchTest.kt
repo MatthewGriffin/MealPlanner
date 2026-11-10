@@ -123,4 +123,17 @@ class FastProductSearchTest {
         assertEquals("en:united-states", com.example.chatgpt_mealplanner.core.barcode.provider.defaultCountryTag(java.util.Locale.US))
         assertEquals(null, com.example.chatgpt_mealplanner.core.barcode.provider.defaultCountryTag(java.util.Locale.ENGLISH))
     }
+
+    @Test
+    fun emojiInTheDatabasesProductNamesAreDroppedBeforeTheyReachTheApp() = runTest {
+        whenever(fast.search(any(), any(), any(), any())).thenReturn(
+            json.decodeFromString<SearchALiciousResponse>(
+                """{"hits":[{"code":"5","brands":["Heinz"],"quantity":"400 g","product_name":"Broccoli 🥦 and Stilton soup"}]}"""
+            )
+        )
+
+        val result = provider.searchProductsByName("broccoli stilton soup") as ProductProviderSearchResult.Success
+
+        assertEquals("Broccoli and Stilton soup", result.products.single().displayName)
+    }
 }

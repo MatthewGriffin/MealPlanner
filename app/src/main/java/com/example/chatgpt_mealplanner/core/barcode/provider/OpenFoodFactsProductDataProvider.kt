@@ -8,6 +8,7 @@ import com.example.chatgpt_mealplanner.core.barcode.provider.openfoodfacts.OpenF
 import com.example.chatgpt_mealplanner.core.barcode.provider.openfoodfacts.SearchALiciousApi
 import com.example.chatgpt_mealplanner.core.barcode.util.QuantityParser
 import com.example.chatgpt_mealplanner.core.model.DomainError
+import com.example.chatgpt_mealplanner.core.util.withoutPictographsOrNull
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -50,8 +51,9 @@ class OpenFoodFactsProductDataProvider @Inject constructor(
                 val response = result.getOrNull()
                 if (response?.status == 1 && response.product != null) {
                     val product = response.product
-                    val name = product.productNameEn.takeUnless { it.isNullOrBlank() }
-                        ?: product.productName.takeUnless { it.isNullOrBlank() }
+                    val name = (product.productNameEn.takeUnless { it.isNullOrBlank() }
+                        ?: product.productName.takeUnless { it.isNullOrBlank() })
+                        .withoutPictographsOrNull()
 
                     val parsedQuantity = QuantityParser.parse(product.quantity)
 
@@ -71,7 +73,7 @@ class OpenFoodFactsProductDataProvider @Inject constructor(
                         barcode = barcode,
                         displayName = name,
                         canonicalName = derivedConcept,
-                        brand = product.brands.takeUnless { it.isNullOrBlank() },
+                        brand = product.brands.withoutPictographsOrNull(),
                         netQuantity = parsedQuantity.netQuantity,
                         netQuantityUnit = parsedQuantity.netQuantityUnit,
                         packCount = parsedQuantity.packCount,
@@ -150,8 +152,9 @@ class OpenFoodFactsProductDataProvider @Inject constructor(
         if (products.isEmpty()) return ProductProviderSearchResult.Empty
 
         val mappedList = products.mapNotNull { product ->
-            val rawName = product.productNameEn.takeUnless { it.isNullOrBlank() }
-                ?: product.productName.takeUnless { it.isNullOrBlank() }
+            val rawName = (product.productNameEn.takeUnless { it.isNullOrBlank() }
+                ?: product.productName.takeUnless { it.isNullOrBlank() })
+                .withoutPictographsOrNull()
                 ?: return@mapNotNull null
 
             val parsedTitleInfo = com.example.chatgpt_mealplanner.core.barcode.util.BarcodeNormalizer.parseProductTitle(rawName)
@@ -169,7 +172,7 @@ class OpenFoodFactsProductDataProvider @Inject constructor(
                 barcode = productBarcode,
                 displayName = parsedTitleInfo.cleanName,
                 canonicalName = derivedConcept,
-                brand = product.brands.takeUnless { it.isNullOrBlank() },
+                brand = product.brands.withoutPictographsOrNull(),
                 netQuantity = parsedQuantity.netQuantity,
                 netQuantityUnit = parsedQuantity.netQuantityUnit,
                 packCount = parsedQuantity.packCount ?: parsedTitleInfo.extractedPackCount,
