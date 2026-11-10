@@ -105,13 +105,13 @@ fun SettingsScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        "This permanently deletes ${counts.inventoryItems} inventory item${if (counts.inventoryItems == 1) "" else "s"}, " +
+                        "This permanently deletes everything you've entered: ${counts.inventoryItems} inventory item${if (counts.inventoryItems == 1) "" else "s"}, " +
                             "${counts.meals} meal${if (counts.meals == 1) "" else "s"} and the meal plan, " +
                             "${counts.chatConversations} chat conversation${if (counts.chatConversations == 1) "" else "s"}, " +
-                            "and the shopping items worked out from them. It can't be undone."
+                            "shopping lists, receipts and spending, recorded prices, and the products the app has learned. It can't be undone."
                     )
                     Text(
-                        "Kept: your Claude API key, settings, cooking preferences, shops and recorded prices, receipts and spending, and household and pairing details. " +
+                        "Kept: your Claude API key, settings, cooking preferences, your list of shops, and household and pairing details. " +
                             "Phones paired to this one keep their old copy until you pair them again. Save a backup first if you might want this data back."
                     )
                     OutlinedTextField(

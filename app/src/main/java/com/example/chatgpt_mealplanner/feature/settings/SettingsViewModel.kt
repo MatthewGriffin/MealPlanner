@@ -364,7 +364,7 @@ class SettingsViewModel @Inject constructor(
         _uiState.update { it.copy(clearDataMessage = null) }
     }
 
-    /** Deletes chat history, meals and plans, and inventory in one step. Settings and keys are left alone. */
+    /** Deletes all entered data in one step. Settings, keys and preferences are left alone. */
     fun confirmClearAllData() {
         val dao = dataResetDao ?: return
         if (_uiState.value.isClearingData) return
@@ -373,7 +373,7 @@ class SettingsViewModel @Inject constructor(
             try {
                 if (!appRoleResolver.isMainAsync()) error("Clearing data is only available on the main phone.")
                 dao.clearHouseholdData()
-                _uiState.update { it.copy(clearDataMessage = "All chat history, meals and inventory were cleared. Your settings and API key were kept.") }
+                _uiState.update { it.copy(clearDataMessage = "Everything was cleared. Your settings and API key were kept.") }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
