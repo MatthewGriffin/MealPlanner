@@ -21,7 +21,7 @@ data class PacketPhoto(
                 append(ocrText.trim())
             }
             if (imageJpegBase64 != null) {
-                append("\n\n[A photo of the kit's packet is attached for you to read.]")
+                append("\n\n[A photo of the kit's packet is attached for you to read. It is attached to this message only and is not kept: in later messages you can't see it.]")
             }
         }
         return AiChatMessage(role = "user", content = note, imageJpegBase64 = imageJpegBase64)
