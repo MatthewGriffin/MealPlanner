@@ -25,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -80,7 +81,8 @@ fun ChatScreen(
     uiState: ChatUiState,
     onEvent: (ChatUiEvent) -> Unit,
     modifier: Modifier = Modifier,
-    innerPadding: PaddingValues = PaddingValues(0.dp)
+    innerPadding: PaddingValues = PaddingValues(0.dp),
+    onOpenRecipes: () -> Unit = {}
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     val listState = rememberLazyListState()
@@ -255,6 +257,30 @@ fun ChatScreen(
         Column(
             modifier = Modifier.fillMaxSize()
         ) {
+            if (uiState.messages.isEmpty() && !uiState.isLoading) {
+                Column(
+                    modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 24.dp),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text("What would you like to do?", style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(12.dp))
+                    listOf(
+                        "What can I cook tonight?",
+                        "Plan my meals for the week",
+                        "What needs using up soon?"
+                    ).forEach { suggestion ->
+                        OutlinedButton(
+                            onClick = { onEvent(ChatUiEvent.SendText(suggestion)) },
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                        ) { Text(suggestion) }
+                    }
+                    OutlinedButton(
+                        onClick = onOpenRecipes,
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).testTag("chat-empty-recipes")
+                    ) { Text("Add a recipe from a link or photo") }
+                }
+            }
             LazyColumn(
                 state = listState,
                 modifier = Modifier

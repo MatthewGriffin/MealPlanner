@@ -25,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MergeType
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
@@ -158,23 +159,30 @@ fun InventoryScreen(
                         }
                     }
                 }
-                IconButton(
-                    onClick = onScanBarcodeClicked,
-                    modifier = Modifier.width(48.dp)
-                ) {
-                    Icon(Icons.Default.QrCodeScanner, contentDescription = "Scan barcode")
-                }
-                IconButton(
-                    onClick = { onEvent(InventoryUiEvent.OpenBulkAdd) },
-                    modifier = Modifier.width(48.dp)
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.PlaylistAdd, contentDescription = "Add many items from a list")
-                }
-                IconButton(
-                    onClick = { showAddDialog = true },
-                    modifier = Modifier.width(48.dp)
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = "Add inventory item")
+                var showAddMenu by remember { mutableStateOf(false) }
+                Box {
+                    Button(onClick = { showAddMenu = true }, modifier = Modifier.testTag("inventory-add-menu")) {
+                        Icon(Icons.Default.Add, contentDescription = null)
+                        Spacer(Modifier.width(4.dp))
+                        Text("Add")
+                    }
+                    DropdownMenu(expanded = showAddMenu, onDismissRequest = { showAddMenu = false }) {
+                        DropdownMenuItem(
+                            text = { Text("Scan a barcode") },
+                            leadingIcon = { Icon(Icons.Default.QrCodeScanner, contentDescription = null) },
+                            onClick = { showAddMenu = false; onScanBarcodeClicked() }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Add many from a list") },
+                            leadingIcon = { Icon(Icons.AutoMirrored.Filled.PlaylistAdd, contentDescription = null) },
+                            onClick = { showAddMenu = false; onEvent(InventoryUiEvent.OpenBulkAdd) }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Add one item") },
+                            leadingIcon = { Icon(Icons.Default.Add, contentDescription = null) },
+                            onClick = { showAddMenu = false; showAddDialog = true }
+                        )
+                    }
                 }
             }
 
@@ -383,25 +391,37 @@ fun InventoryItemCard(
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             if (needsInstructions) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "No packet instructions yet",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.weight(1f).testTag("kit-no-instructions")
-                    )
-                    TextButton(onClick = onScanPacket, modifier = Modifier.testTag("kit-scan-packet")) { Text("Scan packet") }
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    shape = MaterialTheme.shapes.small,
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                ) {
+                    Row(modifier = Modifier.padding(start = 12.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "No packet instructions yet",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.weight(1f).testTag("kit-no-instructions")
+                        )
+                        FilledTonalButton(onClick = onScanPacket, modifier = Modifier.testTag("kit-scan-packet")) { Text("Scan packet") }
+                    }
                 }
             }
             if (onViewInstructions != null) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "Packet instructions saved",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.weight(1f)
-                    )
-                    TextButton(onClick = onViewInstructions, modifier = Modifier.testTag("kit-view-instructions")) { Text("View") }
+                Surface(
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    shape = MaterialTheme.shapes.small,
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                ) {
+                    Row(modifier = Modifier.padding(start = 12.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "Packet instructions saved",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = onViewInstructions, modifier = Modifier.testTag("kit-view-instructions")) { Text("View") }
+                    }
                 }
             }
             Row(
@@ -443,6 +463,24 @@ fun InventoryItemCard(
                                 }
                             )
                             DropdownMenuItem(
+                                text = { Text("Correct quantity") },
+                                leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
+                                onClick = {
+                                    showMenu = false
+                                    onCorrection()
+                                }
+                            )
+                            if (item.status != ItemStatus.OUT) {
+                                DropdownMenuItem(
+                                    text = { Text("Mark as out") },
+                                    leadingIcon = { Icon(Icons.Default.Close, contentDescription = null) },
+                                    onClick = {
+                                        showMenu = false
+                                        onMarkAsOut()
+                                    }
+                                )
+                            }
+                            DropdownMenuItem(
                                 text = { Text("Merge with another item") },
                                 leadingIcon = { Icon(Icons.AutoMirrored.Filled.MergeType, contentDescription = null) },
                                 onClick = {
@@ -465,34 +503,16 @@ fun InventoryItemCard(
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                val qtyText = when (item.quantityConfidence) {
-                    QuantityConfidence.EXACT -> "${item.quantity ?: 0.0} ${item.quantityUnit?.name ?: ""}"
-                    QuantityConfidence.APPROXIMATE -> "Approx. ${item.quantity ?: 0.0} ${item.quantityUnit?.name ?: ""}"
-                    QuantityConfidence.UNKNOWN -> "Unknown quantity"
-                }
-
-                Text(
-                    text = qtyText,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = onCorrection) {
-                        Text("Correct Qty")
-                    }
-                    if (item.status != ItemStatus.OUT) {
-                        OutlinedButton(onClick = onMarkAsOut) {
-                            Text("Mark Out")
-                        }
-                    }
-                }
+            val qtyText = when (item.quantityConfidence) {
+                QuantityConfidence.EXACT -> com.example.chatgpt_mealplanner.core.util.describeAmount(item.quantity ?: 0.0, item.quantityUnit)
+                QuantityConfidence.APPROXIMATE -> "About " + com.example.chatgpt_mealplanner.core.util.describeAmount(item.quantity ?: 0.0, item.quantityUnit)
+                QuantityConfidence.UNKNOWN -> "Unknown quantity"
             }
+            Text(
+                text = qtyText,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
             if (onAddToShoppingList != null) {
                 Spacer(modifier = Modifier.height(4.dp))
                 FilledTonalButton(onClick = onAddToShoppingList, modifier = Modifier.fillMaxWidth()) {

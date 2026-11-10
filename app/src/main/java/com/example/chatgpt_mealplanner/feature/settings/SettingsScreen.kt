@@ -20,6 +20,8 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -171,7 +173,7 @@ fun SettingsScreen(
             .padding(16.dp)
     ) {
         // AI SECTION
-        Text("AI Configuration", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        SettingsSection("AI Configuration", initiallyExpanded = !uiState.isApiKeyConfigured) {
         Spacer(modifier = Modifier.height(4.dp))
         Text("Model: $CLAUDE_MODEL_ID (Anthropic Claude API)", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.secondary)
         Spacer(modifier = Modifier.height(8.dp))
@@ -215,7 +217,10 @@ fun SettingsScreen(
                 } else if (uiState.isApiKeyConfigured) {
                     Text("Status: Configured securely.", color = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.height(8.dp))
-                    Button(onClick = { viewModel.deleteApiKey() }) {
+                    OutlinedButton(
+                        onClick = { viewModel.deleteApiKey() },
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                    ) {
                         Text("Delete API Key")
                     }
                 } else {
@@ -239,20 +244,12 @@ fun SettingsScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
-                ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Icon(Icons.Default.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            "Your Claude API key is stored securely on this device and used to make requests directly to the Claude API from Anthropic. Only necessary pantry context is sent when invoking AI features. Requests are charged to the key's Anthropic account.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onErrorContainer
-                        )
-                    }
-                }
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    "Stored securely on this device and used directly with the Claude API. Requests are charged to the key's Anthropic account.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
 
@@ -268,21 +265,25 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.height(8.dp))
             Text("Result: ${uiState.connectionTestResult}", color = MaterialTheme.colorScheme.primary)
         }
+        }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(8.dp))
         HorizontalDivider()
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
         // RETAIL SECTION
         // Only the main phone uses the AI, so followers have nothing to set here.
         if (uiState.isMainRole) {
-            Text("Cooking", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            SettingsSection("Cooking", initiallyExpanded = false) {
+                Spacer(modifier = Modifier.height(8.dp))
+                CookingPreferencesSection()
+            }
             Spacer(modifier = Modifier.height(8.dp))
-            CookingPreferencesSection()
-            Spacer(modifier = Modifier.height(24.dp))
+            HorizontalDivider()
+            Spacer(modifier = Modifier.height(8.dp))
         }
 
-        Text("Retail & Shopping", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        SettingsSection("Retail & Shopping", initiallyExpanded = false) {
         Spacer(modifier = Modifier.height(4.dp))
         Text(
             "Purchase history entered when scanning products helps compare prices between your shops and determine where items are best to buy.",
@@ -404,12 +405,14 @@ fun SettingsScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
         HorizontalDivider()
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
         // DATA SECTION
-        Text("Data Management", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        SettingsSection("Data Management", initiallyExpanded = false) {
         Spacer(modifier = Modifier.height(8.dp))
 
         Card(modifier = Modifier.fillMaxWidth()) {
@@ -494,7 +497,25 @@ fun SettingsScreen(
                 }
             }
         }
+        }
     }
+}
+
+/** A settings group the user can fold away, so the page isn't one long scroll. */
+@Composable
+private fun SettingsSection(title: String, initiallyExpanded: Boolean, content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
+    var expanded by remember { mutableStateOf(initiallyExpanded) }
+    Row(
+        modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded }.padding(vertical = 8.dp),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+    ) {
+        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+        Icon(
+            if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+            contentDescription = if (expanded) "Collapse $title" else "Expand $title"
+        )
+    }
+    if (expanded) Column(content = content)
 }
 
 

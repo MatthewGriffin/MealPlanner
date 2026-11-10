@@ -33,14 +33,17 @@ class PacketScanViewModel @Inject constructor(
     private val _state = MutableStateFlow(PacketScanState())
     val state: StateFlow<PacketScanState> = _state.asStateFlow()
 
+    private var readingJob: kotlinx.coroutines.Job? = null
+
     fun reset() {
+        readingJob?.cancel()
         _state.value = PacketScanState()
     }
 
     /** Adds a photo to the pages. */
     fun addPage(uri: Uri) {
         _state.update { it.copy(stage = PacketScanStage.READING, error = null) }
-        viewModelScope.launch {
+        readingJob = viewModelScope.launch {
             val page = try {
                 source.prepare(uri)
             } finally {
@@ -57,6 +60,12 @@ class PacketScanViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    /** Gives up on the photo being prepared and goes back to what was there before. */
+    fun cancelReading() {
+        readingJob?.cancel()
+        _state.update { it.copy(stage = if (it.pages.isEmpty()) PacketScanStage.CHOOSE else PacketScanStage.PREVIEW) }
     }
 
     fun removePage(index: Int) {

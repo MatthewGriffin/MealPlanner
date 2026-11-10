@@ -83,4 +83,16 @@ class PacketScanViewModelTest {
         viewModel.reset()
         assertEquals(PacketScanState(), viewModel.state.value)
     }
+
+    @Test
+    fun cancellingWhileAPhotoIsBeingPreparedKeepsEarlierPages() = runTest {
+        results.addAll(listOf("A", "B"))
+        viewModel.addPage(uri); dispatcher.scheduler.advanceUntilIdle()
+        viewModel.addPage(uri)
+        viewModel.cancelReading()
+        dispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(PacketScanStage.PREVIEW, viewModel.state.value.stage)
+        assertEquals(listOf("A"), viewModel.state.value.pages)
+    }
 }
