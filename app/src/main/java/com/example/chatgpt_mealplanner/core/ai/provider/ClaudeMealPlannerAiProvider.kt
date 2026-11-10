@@ -132,6 +132,52 @@ class ClaudeMealPlannerAiProvider @Inject constructor(
         }
     }
 
+    override suspend fun parsePantryList(text: String): PantryListResult = withContext(ioDispatcher) {
+        val key = apiKey() ?: return@withContext PantryListResult.Failed(noKey().message)
+        val list = text.trim().take(PantryListParsing.MAX_LIST_CHARS)
+        if (list.isEmpty()) return@withContext PantryListResult.Failed("Type or paste what you have first.")
+        val tool = Tool.builder()
+            .name(PantryListParsing.TOOL_NAME)
+            .description("Records the household's stock items read from their list.")
+            .inputSchema(
+                Tool.InputSchema.builder()
+                    .properties(
+                        Tool.InputSchema.Properties.builder()
+                            .putAllAdditionalProperties(PantryListParsing.itemsSchema().mapValues { (_, value) -> JsonValue.from(plain(value)) })
+                            .build()
+                    )
+                    .required(listOf("items"))
+                    .build()
+            )
+            .build()
+        val params = MessageCreateParams.builder()
+            .model(model)
+            .maxTokens(MAX_TOKENS)
+            .systemOfTextBlockParams(listOf(TextBlockParam.builder().text(PantryListParsing.SYSTEM_PROMPT).build()))
+            .addUserMessage(list)
+            .outputConfig(OutputConfig.builder().effort(OutputConfig.Effort.LOW).build())
+            .tools(listOf(ToolUnion.ofTool(tool)))
+            .toolChoice(ToolChoiceAuto.builder().build())
+            .build()
+        when (val result = call(key, params)) {
+            is CallResult.Failed -> PantryListResult.Failed(result.error.message)
+            is CallResult.Succeeded -> {
+                recordUsage(result.message)
+                when (result.message.stopReason().orElse(null)) {
+                    StopReason.MAX_TOKENS -> return@withContext PantryListResult.Failed("The list was too long to read in one go. Try it in two parts.")
+                    StopReason.REFUSAL -> return@withContext PantryListResult.Failed(BLOCKED_MESSAGE)
+                    else -> Unit
+                }
+                val items = result.message.content()
+                    .mapNotNull { block -> block.toolUse().orElse(null) }
+                    .filter { it.name() == PantryListParsing.TOOL_NAME }
+                    .flatMap { PantryListParsing.parse(jsonText(it._input())) }
+                if (items.isEmpty()) PantryListResult.Failed("Claude didn't find any food in that list. Try listing items like \"2 kg rice, 3 tins chopped tomatoes\".")
+                else PantryListResult.Items(items)
+            }
+        }
+    }
+
     override suspend fun send(request: AiProviderRequest): AiProviderResponse = withContext(ioDispatcher) {
         val key = apiKey() ?: return@withContext noKey()
 
