@@ -502,4 +502,39 @@ class ClaudeMealPlannerAiProviderTest {
         assertEquals("basil", first.ingredients.single().substitute)
         assertEquals(10, first.steps.single().durationMinutes)
     }
+
+    @Test
+    fun parsePantryList_sendsTheListAndReadsTheToolCall() = runBlocking {
+        server.enqueue(
+            reply(
+                "tool_use",
+                toolUse(
+                    "t1", PantryListParsing.TOOL_NAME,
+                    """{"items":[{"displayName":"Chopped tomatoes","canonicalName":"chopped tomatoes","category":"TINS_CANS","storageLocation":"CUPBOARD","quantity":3,"unit":"TIN","quantityGuessed":false}]}"""
+                )
+            )
+        )
+        val result = provider.parsePantryList("3 tins chopped tomatoes")
+        val item = (result as PantryListResult.Items).items.single()
+        assertEquals("Chopped tomatoes", item.displayName)
+        assertEquals(3.0, item.quantity, 0.0)
+        val body = nextBody()
+        assertEquals("3 tins chopped tomatoes", body["messages"]!!.jsonArray[0].jsonObject["content"]!!.jsonPrimitive.content)
+        assertEquals(PantryListParsing.TOOL_NAME, body["tools"]!!.jsonArray[0].jsonObject["name"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun parsePantryList_failsClearlyWhenNothingWasFoundOrBlank() = runBlocking {
+        server.enqueue(textReply("There is no food in that."))
+        assertTrue(provider.parsePantryList("hello") is PantryListResult.Failed)
+        assertTrue(provider.parsePantryList("   ") is PantryListResult.Failed)
+        assertEquals(1, server.requestCount)
+    }
+
+    @Test
+    fun parsePantryList_reportsApiErrors() = runBlocking {
+        server.enqueue(error(401, "authentication_error", "bad key"))
+        val result = provider.parsePantryList("rice")
+        assertTrue((result as PantryListResult.Failed).message.contains("API key"))
+    }
 }

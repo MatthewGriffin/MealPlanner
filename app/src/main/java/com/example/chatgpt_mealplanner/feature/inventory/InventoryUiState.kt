@@ -1,6 +1,9 @@
 package com.example.chatgpt_mealplanner.feature.inventory
 
+import com.example.chatgpt_mealplanner.core.model.FoodCategory
 import com.example.chatgpt_mealplanner.core.model.InventoryItem
+import com.example.chatgpt_mealplanner.core.model.QuantityUnit
+import com.example.chatgpt_mealplanner.core.model.StorageLocation
 import com.example.chatgpt_mealplanner.core.model.ItemStatus
 import com.example.chatgpt_mealplanner.core.model.QuantityConfidence
 
@@ -23,7 +26,31 @@ data class InventoryUiState(
     val userMessage: String? = null,
     val selectedItemForEdit: InventoryItem? = null,
     val isFollowerPaired: Boolean = false,
-    val followerSyncStatus: com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncStatusModel? = null
+    val followerSyncStatus: com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncStatusModel? = null,
+    /** Non-null while the "add many items" screen is open. */
+    val bulkAdd: BulkAddState? = null
+)
+
+/** One line on the review screen of the bulk add. Every field can be edited before saving. */
+data class BulkAddRow(
+    val id: String,
+    val displayName: String,
+    val canonicalName: String,
+    val brand: String?,
+    val category: FoodCategory,
+    val storageLocation: StorageLocation,
+    val quantityText: String,
+    val unit: QuantityUnit,
+    val quantityGuessed: Boolean
+)
+
+data class BulkAddState(
+    val text: String = "",
+    val isReading: Boolean = false,
+    val isSaving: Boolean = false,
+    /** Empty until the list has been read. */
+    val rows: List<BulkAddRow> = emptyList(),
+    val error: String? = null
 )
 
 sealed interface InventoryUiEvent {
@@ -57,5 +84,14 @@ sealed interface InventoryUiEvent {
     ) : InventoryUiEvent
     data class AssociateBarcodeRequested(val itemId: String, val rawBarcode: String) : InventoryUiEvent
     data class RemoveBarcodeRequested(val itemId: String, val rawBarcode: String) : InventoryUiEvent
+    object OpenBulkAdd : InventoryUiEvent
+    object CloseBulkAdd : InventoryUiEvent
+    data class BulkAddTextChanged(val text: String) : InventoryUiEvent
+    object ReadBulkAddList : InventoryUiEvent
+    /** Back from the review lines to the typed list, keeping what was typed. */
+    object EditBulkAddList : InventoryUiEvent
+    data class BulkAddRowChanged(val row: BulkAddRow) : InventoryUiEvent
+    data class BulkAddRowRemoved(val rowId: String) : InventoryUiEvent
+    object SaveBulkAddRows : InventoryUiEvent
     object ClearMessage : InventoryUiEvent
 }

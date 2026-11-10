@@ -5,7 +5,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
+import com.example.chatgpt_mealplanner.core.ai.provider.MealPlannerAiProvider
+import com.example.chatgpt_mealplanner.core.ai.provider.PantryListResult
 import com.example.chatgpt_mealplanner.core.barcode.BarcodeLookupCoordinator
+import com.example.chatgpt_mealplanner.core.barcode.model.ConfirmedProductInput
 import com.example.chatgpt_mealplanner.core.barcode.BarcodeLookupResult
 import com.example.chatgpt_mealplanner.core.model.DomainError
 import com.example.chatgpt_mealplanner.core.model.DomainResult
@@ -36,7 +39,8 @@ class InventoryViewModel @Inject constructor(
     private val followerSyncStatusRepository: FollowerSyncStatusRepository? = null,
     private val followerSyncScheduler: FollowerSyncScheduler? = null,
     private val followerDatabase: FollowerDatabase? = null,
-    private val barcodeLookupCoordinator: BarcodeLookupCoordinator? = null
+    private val barcodeLookupCoordinator: BarcodeLookupCoordinator? = null,
+    private val aiProvider: MealPlannerAiProvider? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(InventoryUiState())
@@ -164,11 +168,106 @@ class InventoryViewModel @Inject constructor(
             is InventoryUiEvent.RemoveBarcodeRequested -> {
                 removeBarcode(event.itemId, event.rawBarcode)
             }
+            InventoryUiEvent.OpenBulkAdd -> _uiState.update { it.copy(bulkAdd = BulkAddState()) }
+            InventoryUiEvent.CloseBulkAdd -> _uiState.update { it.copy(bulkAdd = null) }
+            is InventoryUiEvent.BulkAddTextChanged -> updateBulk { it.copy(text = event.text, error = null) }
+            InventoryUiEvent.EditBulkAddList -> updateBulk { it.copy(rows = emptyList(), error = null) }
+            InventoryUiEvent.ReadBulkAddList -> readBulkAddList()
+            is InventoryUiEvent.BulkAddRowChanged -> updateBulk { bulk ->
+                bulk.copy(rows = bulk.rows.map { if (it.id == event.row.id) event.row else it })
+            }
+            is InventoryUiEvent.BulkAddRowRemoved -> updateBulk { bulk -> bulk.copy(rows = bulk.rows.filterNot { it.id == event.rowId }) }
+            InventoryUiEvent.SaveBulkAddRows -> saveBulkAddRows()
             InventoryUiEvent.ClearMessage -> {
                 _uiState.update { it.copy(userMessage = null) }
             }
         }
     }
+
+    private fun updateBulk(change: (BulkAddState) -> BulkAddState) {
+        _uiState.update { state -> state.bulkAdd?.let { state.copy(bulkAdd = change(it)) } ?: state }
+    }
+
+    private fun readBulkAddList() {
+        val bulk = _uiState.value.bulkAdd ?: return
+        if (bulk.isReading || bulk.text.isBlank()) return
+        val provider = aiProvider
+        if (provider == null) {
+            updateBulk { it.copy(error = "Reading a list needs the AI, which isn't available here.") }
+            return
+        }
+        updateBulk { it.copy(isReading = true, error = null) }
+        viewModelScope.launch {
+            val result = provider.parsePantryList(bulk.text)
+            updateBulk { current ->
+                when (result) {
+                    is PantryListResult.Failed -> current.copy(isReading = false, error = result.message)
+                    is PantryListResult.Items -> current.copy(
+                        isReading = false,
+                        rows = result.items.map { item ->
+                            BulkAddRow(
+                                id = java.util.UUID.randomUUID().toString(),
+                                displayName = item.displayName,
+                                canonicalName = item.canonicalName,
+                                brand = item.brand,
+                                category = item.category,
+                                storageLocation = item.storageLocation,
+                                quantityText = formatBulkQuantity(item.quantity),
+                                unit = item.unit,
+                                quantityGuessed = item.quantityGuessed
+                            )
+                        }
+                    )
+                }
+            }
+        }
+    }
+
+    private fun saveBulkAddRows() {
+        val bulk = _uiState.value.bulkAdd ?: return
+        if (bulk.isSaving || bulk.rows.isEmpty()) return
+        updateBulk { it.copy(isSaving = true, error = null) }
+        viewModelScope.launch {
+            val failed = mutableListOf<BulkAddRow>()
+            var saved = 0
+            bulk.rows.forEach { row ->
+                val quantity = row.quantityText.trim().replace(',', '.').toDoubleOrNull()?.takeIf { it > 0.0 && it.isFinite() }
+                val name = row.displayName.trim()
+                if (quantity == null || name.isEmpty()) {
+                    failed += row
+                    return@forEach
+                }
+                val input = ConfirmedProductInput(
+                    barcode = null,
+                    displayName = name,
+                    brand = row.brand,
+                    canonicalName = row.canonicalName.ifBlank { name.lowercase() },
+                    category = row.category,
+                    storageLocation = row.storageLocation,
+                    netQuantity = quantity,
+                    netQuantityUnit = row.unit,
+                    quantityConfidence = if (row.quantityGuessed) QuantityConfidence.APPROXIMATE else QuantityConfidence.EXACT
+                )
+                when (inventoryDomainService.addLotFromProductInput(input)) {
+                    is DomainResult.Success -> saved++
+                    is DomainResult.Failure -> failed += row
+                }
+            }
+            _uiState.update { state ->
+                state.copy(
+                    bulkAdd = if (failed.isEmpty()) null else state.bulkAdd?.copy(
+                        isSaving = false,
+                        rows = failed,
+                        error = "${failed.size} item${if (failed.size == 1) "" else "s"} couldn't be saved. Check the amount and name, then try again."
+                    ),
+                    userMessage = if (saved > 0) "Added $saved item${if (saved == 1) "" else "s"}" else state.userMessage
+                )
+            }
+        }
+    }
+
+    private fun formatBulkQuantity(quantity: Double): String =
+        if (quantity == Math.floor(quantity) && quantity < 1_000_000) quantity.toLong().toString() else quantity.toString()
 
     private fun addItem(item: InventoryItem) {
         viewModelScope.launch {

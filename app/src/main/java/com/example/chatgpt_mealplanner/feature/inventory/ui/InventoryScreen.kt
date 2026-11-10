@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MergeType
+import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -158,6 +159,12 @@ fun InventoryScreen(
                     Icon(Icons.Default.QrCodeScanner, contentDescription = "Scan barcode")
                 }
                 IconButton(
+                    onClick = { onEvent(InventoryUiEvent.OpenBulkAdd) },
+                    modifier = Modifier.width(48.dp)
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.PlaylistAdd, contentDescription = "Add many items from a list")
+                }
+                IconButton(
                     onClick = { showAddDialog = true },
                     modifier = Modifier.width(48.dp)
                 ) {
@@ -203,6 +210,8 @@ fun InventoryScreen(
             }
         }
     }
+
+    state.bulkAdd?.let { BulkAddDialog(state = it, onEvent = onEvent) }
 
     if (showAddDialog) {
         AddEditItemDialog(

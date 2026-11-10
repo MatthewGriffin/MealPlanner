@@ -17,4 +17,8 @@ interface MealPlannerAiProvider {
     suspend fun testConnection(): AiProviderResponse {
         return AiProviderResponse.FinalResponse("Connected")
     }
+
+    /** Turns a typed or dictated list of what the household owns into stock lines to review. */
+    suspend fun parsePantryList(text: String): PantryListResult =
+        PantryListResult.Failed("This AI provider can't read a pantry list.")
 }
