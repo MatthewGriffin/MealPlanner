@@ -49,8 +49,8 @@ import com.example.chatgpt_mealplanner.feature.chat.PacketScanStage
 import com.example.chatgpt_mealplanner.feature.chat.PacketScanViewModel
 
 /**
- * Scan a kit's packet. The phone turns the photo into text; the user sees that text beside the picture and can
- * correct it. If it looks wrong or the phone couldn't read it, they let Claude read the picture instead.
+ * Photograph a kit's packet or a recipe. The photos go to Claude as they are; a recipe can take several pages,
+ * added one at a time, and the user sees them before sending.
  */
 @Composable
 fun PacketScanDialog(
@@ -62,7 +62,7 @@ fun PacketScanDialog(
 ) {
     LaunchedEffect(Unit) { viewModel.reset() }
     val state by viewModel.state.collectAsState()
-    val picker = rememberPacketPhotoPicker(onPhoto = { viewModel.scan(it, instructionsOnly = !recipe) }, onProblem = viewModel::problem)
+    val picker = rememberPacketPhotoPicker(onPhoto = viewModel::addPage, onProblem = viewModel::problem)
 
     Dialog(
         onDismissRequest = onCancel,
@@ -83,7 +83,8 @@ fun PacketScanDialog(
                 when (state.stage) {
                     PacketScanStage.CHOOSE -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text(
-                            if (recipe) "Photograph the recipe page, with the ingredients and method in view. Your phone reads the text, and you can check it before anything is sent." else "Photograph the back of the packet where the cooking instructions are. Your phone reads the text, and you can check it before anything is sent.",
+                            if (recipe) "Photograph the recipe with the ingredients and method in view. If it runs over several pages, you can add them one at a time before sending."
+                            else "Photograph the back of the packet where the cooking instructions are.",
                             style = MaterialTheme.typography.bodyMedium
                         )
                         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
@@ -96,66 +97,59 @@ fun PacketScanDialog(
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         CircularProgressIndicator()
-                        Text("Reading the text on your phone…")
+                        Text("Getting the photo ready…")
                     }
                     PacketScanStage.PREVIEW -> {
-                        val scan = state.scan!!
-                        val picture = remember(scan.jpegBase64) {
-                            scan.jpegBase64?.let {
-                                val bytes = Base64.decode(it, Base64.DEFAULT)
-                                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = 4 })
-                            }
-                        }
                         Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            if (scan.looksGood) {
-                                Text(if (recipe) "The phone read this. Check it against the page and correct anything that's wrong." else "The phone read this. Check it against the packet and correct anything that's wrong.", style = MaterialTheme.typography.bodyMedium)
-                            } else {
-                                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
-                                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        Text("The phone's reading may not be good enough", style = MaterialTheme.typography.titleSmall)
-                                        scan.problems.forEach { Text("• $it", style = MaterialTheme.typography.bodySmall) }
-                                        if (picture != null) Text("Let Claude read the photo instead, or retake it.", style = MaterialTheme.typography.bodySmall)
+                            Text(
+                                if (state.pages.size == 1) "Check the photo is clear and shows everything, then send it to Claude."
+                                else "Check each page is clear. Claude reads them in this order.",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
+                            state.pages.forEachIndexed { index, page ->
+                                val bitmap = remember(page) {
+                                    val bytes = Base64.decode(page, Base64.DEFAULT)
+                                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = 4 })
+                                }
+                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            if (state.pages.size > 1) "Page ${index + 1}" else "Photo",
+                                            style = MaterialTheme.typography.labelLarge,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        TextButton(onClick = { viewModel.removePage(index) }) { Text("Remove") }
+                                    }
+                                    bitmap?.let {
+                                        Image(
+                                            bitmap = it.asImageBitmap(),
+                                            contentDescription = "Photo ${index + 1}",
+                                            contentScale = ContentScale.Fit,
+                                            modifier = Modifier.fillMaxWidth().height(220.dp)
+                                        )
                                     }
                                 }
                             }
-                            picture?.let {
-                                Image(
-                                    bitmap = it.asImageBitmap(),
-                                    contentDescription = if (recipe) "Your photo of the recipe" else "Your photo of the packet",
-                                    contentScale = ContentScale.Fit,
-                                    modifier = Modifier.fillMaxWidth().height(160.dp)
-                                )
+                            if (state.pages.size < MAX_PAGES) {
+                                Text(if (recipe) "Is there more of the recipe?" else "Is there more to the instructions?", style = MaterialTheme.typography.labelLarge)
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    OutlinedButton(onClick = picker.takePhoto, modifier = Modifier.weight(1f)) { Text("Add: take photo") }
+                                    OutlinedButton(onClick = picker.chooseFromGallery, modifier = Modifier.weight(1f)) { Text("Add: gallery") }
+                                }
                             }
-                            OutlinedTextField(
-                                value = state.checkedText,
-                                onValueChange = viewModel::editText,
-                                label = { Text(if (recipe) "Text read from the recipe" else "Text read from the packet") },
-                                minLines = 6,
-                                modifier = Modifier.fillMaxWidth().testTag("scan-text")
-                            )
                         }
                         Spacer(Modifier.height(8.dp))
-                        val canSendPicture = scan.pictureForClaude() != null
-                        val canSendText = state.checkedText.isNotBlank()
-                        if (scan.looksGood) {
-                            Button(onClick = { onSend(scan.textForClaude(state.checkedText)) }, enabled = canSendText, modifier = Modifier.fillMaxWidth().testTag("scan-send-text")) {
-                                Text("Send this text to Claude")
-                            }
-                            if (canSendPicture) OutlinedButton(onClick = { onSend(scan.pictureForClaude()!!) }, modifier = Modifier.fillMaxWidth()) {
-                                Text("Let Claude read the photo instead")
-                            }
-                        } else {
-                            if (canSendPicture) Button(onClick = { onSend(scan.pictureForClaude()!!) }, modifier = Modifier.fillMaxWidth().testTag("scan-send-picture")) {
-                                Text("Let Claude read the photo")
-                            }
-                            OutlinedButton(onClick = { onSend(scan.textForClaude(state.checkedText)) }, enabled = canSendText, modifier = Modifier.fillMaxWidth()) {
-                                Text("Send this text anyway")
-                            }
-                        }
-                        TextButton(onClick = viewModel::retake, modifier = Modifier.fillMaxWidth()) { Text("Retake photo") }
+                        Button(
+                            onClick = { onSend(PacketPhoto(state.pages)) },
+                            enabled = state.pages.isNotEmpty(),
+                            modifier = Modifier.fillMaxWidth().testTag("scan-send-picture")
+                        ) { Text(if (state.pages.size > 1) "Send ${state.pages.size} pages to Claude" else "Send to Claude") }
                     }
                 }
             }
         }
     }
 }
+
+private const val MAX_PAGES = 6

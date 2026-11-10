@@ -23,8 +23,8 @@ data class AiToolResult(
 data class AiChatMessage(
     val role: String,
     val content: String,
-    /** A photo sent with this message as a JPEG in base64, such as the back of a kit's packet. Not stored in the chat history. */
-    val imageJpegBase64: String? = null
+    /** Photos sent with this message as JPEGs in base64, such as a kit's packet or the pages of a recipe. Not stored in the chat history. */
+    val imagesJpegBase64: List<String> = emptyList()
 )
 
 @Serializable

@@ -474,33 +474,32 @@ class ClaudeMealPlannerAiProvider @Inject constructor(
      * recipe card is saved with empty text, and the orchestrator can add two turns in a row.
      */
     internal fun toMessageParams(messages: List<AiChatMessage>): List<MessageParam> {
-        class Turn(val isUser: Boolean, val text: String, val image: String?)
+        class Turn(val isUser: Boolean, val text: String, val images: List<String>)
         val turns = mutableListOf<Turn>()
         messages.filter { it.content.isNotBlank() }.forEach { message ->
             val isUser = !message.role.equals("assistant", ignoreCase = true) && !message.role.equals("model", ignoreCase = true)
             val last = turns.lastOrNull()
             if (last != null && last.isUser == isUser) {
-                turns[turns.lastIndex] = Turn(isUser, "${last.text}\n\n${message.content}", message.imageJpegBase64 ?: last.image)
+                turns[turns.lastIndex] = Turn(isUser, "${last.text}\n\n${message.content}", last.images + message.imagesJpegBase64)
             } else {
-                turns += Turn(isUser, message.content, message.imageJpegBase64)
+                turns += Turn(isUser, message.content, message.imagesJpegBase64)
             }
         }
-        if (turns.firstOrNull()?.isUser == false) turns.add(0, Turn(true, "(Continuing our conversation.)", null))
-        if (turns.lastOrNull()?.isUser != true) turns += Turn(true, "Please continue.", null)
+        if (turns.firstOrNull()?.isUser == false) turns.add(0, Turn(true, "(Continuing our conversation.)", emptyList()))
+        if (turns.lastOrNull()?.isUser != true) turns += Turn(true, "Please continue.", emptyList())
         return turns.map { turn ->
             when {
                 !turn.isUser -> MessageParam.ofAssistant(turn.text)
-                turn.image == null -> MessageParam.ofUser(turn.text)
-                // The picture goes before the words about it, as Claude reads best.
+                turn.images.isEmpty() -> MessageParam.ofUser(turn.text)
+                // The pictures go before the words about them, as Claude reads best.
                 else -> MessageParam.ofUserOfContentBlockParams(
-                    listOf(
+                    turn.images.map { image ->
                         ContentBlockParam.ofImage(
                             ImageBlockParam.builder()
-                                .source(Base64ImageSource.builder().data(turn.image).mediaType(Base64ImageSource.MediaType.IMAGE_JPEG).build())
+                                .source(Base64ImageSource.builder().data(image).mediaType(Base64ImageSource.MediaType.IMAGE_JPEG).build())
                                 .build()
-                        ),
-                        ContentBlockParam.ofText(TextBlockParam.builder().text(turn.text).build())
-                    )
+                        )
+                    } + ContentBlockParam.ofText(TextBlockParam.builder().text(turn.text).build())
                 )
             }
         }

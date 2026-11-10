@@ -5,7 +5,6 @@ import android.graphics.Bitmap
 import android.graphics.ImageDecoder
 import android.net.Uri
 import android.util.Base64
-import com.example.chatgpt_mealplanner.core.receipt.ReceiptOcrService
 import com.example.chatgpt_mealplanner.core.util.rethrowIfCancelled
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -14,41 +13,24 @@ import java.io.ByteArrayOutputStream
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** Reads a packet photo on the phone, for the user to check before it is sent. */
+/** Gets a photo ready to send to Claude. */
 interface PacketPhotoSource {
-    /** Null if the photo couldn't be opened at all. */
-    suspend fun scan(uri: Uri): PacketScan?
+    /** The photo as a JPEG in base64, or null if it couldn't be opened. */
+    suspend fun prepare(uri: Uri): String?
 }
 
 @Singleton
 class PacketPhotoReader @Inject constructor(
-    @param:ApplicationContext private val context: Context,
-    private val ocr: ReceiptOcrService
+    @param:ApplicationContext private val context: Context
 ) : PacketPhotoSource {
 
-    override suspend fun scan(uri: Uri): PacketScan? = withContext(Dispatchers.IO) {
-        val result = try {
-            ocr.recognizeTextFromUri(uri)
-        } catch (e: Exception) {
-            rethrowIfCancelled()
-            null
-        }
-        val text = result?.fullText.orEmpty()
-        val confidences = result?.lines?.map { it.confidence }.orEmpty()
-        // The picture is kept either way: the user may decide the phone's text isn't good enough.
-        val picture = try {
+    override suspend fun prepare(uri: Uri): String? = withContext(Dispatchers.IO) {
+        try {
             jpegFor(uri)
         } catch (e: Exception) {
             rethrowIfCancelled()
             null
         }
-        if (picture == null && text.isBlank()) return@withContext null
-        PacketScan(
-            text = text,
-            averageConfidence = confidences.takeIf { it.isNotEmpty() }?.average()?.toFloat(),
-            lowestConfidence = confidences.minOrNull(),
-            jpegBase64 = picture
-        )
     }
 
     /** The photo scaled to a size Claude reads well and that stays small, with the camera's rotation applied. */
