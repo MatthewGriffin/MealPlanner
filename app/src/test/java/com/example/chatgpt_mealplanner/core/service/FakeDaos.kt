@@ -410,4 +410,5 @@ class FakeKitInstructionDao : com.example.chatgpt_mealplanner.core.database.dao.
     override suspend fun getByName(normalizedName: String) = rows[normalizedName]
     override suspend fun getAll() = rows.values.sortedBy { it.displayName }
     override suspend fun delete(normalizedName: String) { rows.remove(normalizedName) }
+    override fun observeAll() = kotlinx.coroutines.flow.flowOf(rows.values.toList())
 }

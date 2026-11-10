@@ -24,3 +24,7 @@ data class KitInstructionEntity(
 )
 
 fun normalizeKitName(name: String?): String = name.orEmpty().trim().replace(Regex("\\s+"), " ").lowercase()
+
+/** Whether a saved instruction matches an owned kit: equal names, or one name contained in the other. */
+fun savedKitMatches(ownedNormalizedNames: List<String>, savedNormalizedName: String): Boolean =
+    ownedNormalizedNames.any { it.isNotEmpty() && (it == savedNormalizedName || it.contains(savedNormalizedName) || savedNormalizedName.contains(it)) }

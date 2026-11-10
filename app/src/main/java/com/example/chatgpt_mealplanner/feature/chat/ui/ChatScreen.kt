@@ -23,7 +23,6 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -432,9 +431,6 @@ fun ChatScreen(
                     },
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = { onEvent(ChatUiEvent.OpenPacketScan(null)) }, enabled = !uiState.isLoading) {
-                    Icon(Icons.Default.AttachFile, contentDescription = "Scan a kit's packet")
-                }
                 OutlinedTextField(
                     value = uiState.userMessageText,
                     onValueChange = { onEvent(ChatUiEvent.UpdateMessageText(it)) },
