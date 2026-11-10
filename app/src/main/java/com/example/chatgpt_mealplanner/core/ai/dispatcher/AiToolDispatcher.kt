@@ -60,6 +60,7 @@ class AiToolDispatcher @Inject constructor(
     private val activeProposalStore: com.example.chatgpt_mealplanner.core.ai.proposal.ActiveProposalStore,
     private val cookingPreferences: com.example.chatgpt_mealplanner.core.repository.CookingPreferencesSource =
         com.example.chatgpt_mealplanner.core.repository.NoCookingPreferences,
+    private val kitInstructionDao: com.example.chatgpt_mealplanner.core.database.dao.KitInstructionDao? = null,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -147,6 +148,7 @@ class AiToolDispatcher @Inject constructor(
                 AiToolId.GET_RETAIL_BASKET_COMPARISON -> handleGetRetailBasketComparison()
                 AiToolId.GET_RETAIL_ITEM_OPTIONS -> handleGetRetailItemOptions(call.argsJson)
                 AiToolId.SEARCH_RETAIL_PRODUCTS -> handleSearchRetailProducts(call.argsJson)
+                AiToolId.SAVE_KIT_INSTRUCTIONS -> handleSaveKitInstructions(call.argsJson)
                 AiToolId.OFFER_ADD_PLANNED_MEAL -> handleOfferAddPlannedMeal(conversationId, call.argsJson)
                 AiToolId.ADD_PLANNED_MEAL -> handleAddPlannedMeal(conversationId, call.argsJson)
                 AiToolId.MOVE_PLANNED_MEAL -> handleMovePlannedMeal(call.argsJson)
@@ -1011,6 +1013,36 @@ class AiToolDispatcher @Inject constructor(
         return DomainResult.Success(AiToolPayload.TextPayload("Added manual item '$displayName' to shopping list"))
     }
 
+    /** Keeps what a kit's packet says, so the packet is only read or looked up once. */
+    private suspend fun handleSaveKitInstructions(argsJson: String): DomainResult<AiToolPayload> {
+        val dao = kitInstructionDao ?: return DomainResult.Failure(DomainError.TransactionFailed("Saving kit instructions isn't available."))
+        val name = extractStringArg(argsJson, "kitName")?.trim()
+        val instructions = extractStringArg(argsJson, "instructions")?.trim()
+        if (name.isNullOrBlank() || instructions.isNullOrBlank()) {
+            return DomainResult.Failure(DomainError.TransactionFailed("kitName and instructions are both needed."))
+        }
+        // A one-line "see packet" isn't instructions; saving it would stop the real ones being looked up.
+        if (instructions.length < MIN_KIT_INSTRUCTION_CHARS) {
+            return DomainResult.Failure(DomainError.TransactionFailed("Those instructions are too short to be the packet's. Read the packet fully first."))
+        }
+        val source = (extractStringArg(argsJson, "source") ?: "USER").uppercase().takeIf { it in setOf("PHOTO", "WEB", "USER") } ?: "USER"
+        val now = System.currentTimeMillis()
+        val key = com.example.chatgpt_mealplanner.core.database.entity.normalizeKitName(name)
+        val existing = dao.getByName(key)
+        dao.upsert(
+            com.example.chatgpt_mealplanner.core.database.entity.KitInstructionEntity(
+                normalizedName = key,
+                displayName = name,
+                instructions = instructions,
+                source = source,
+                sourceNote = extractStringArg(argsJson, "sourceNote")?.trim(),
+                createdAt = existing?.createdAt ?: now,
+                updatedAt = now
+            )
+        )
+        return DomainResult.Success(AiToolPayload.TextPayload("Saved the instructions for '$name'. They will be available next time."))
+    }
+
     private suspend fun handleSetStapleStatus(argsJson: String): DomainResult<AiToolPayload> {
         val itemIdArg = extractStringArg(argsJson, "itemId")
         val searchArg = extractStringArg(argsJson, "searchQuery") ?: extractStringArg(argsJson, "displayName")
@@ -1366,3 +1398,5 @@ class AiToolDispatcher @Inject constructor(
         )
     }
 }
+
+private const val MIN_KIT_INSTRUCTION_CHARS = 40

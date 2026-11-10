@@ -23,6 +23,8 @@ import com.example.chatgpt_mealplanner.core.ai.provider.MealPlannerAiProvider
 import com.example.chatgpt_mealplanner.core.ai.validation.RecipeOfferChecks
 import com.example.chatgpt_mealplanner.core.ai.validator.RecipeValidator
 import com.example.chatgpt_mealplanner.core.database.AppDatabase
+import com.example.chatgpt_mealplanner.core.database.entity.KitInstructionEntity
+import com.example.chatgpt_mealplanner.core.database.entity.normalizeKitName
 import com.example.chatgpt_mealplanner.core.database.RoomTransactionRunner
 import com.example.chatgpt_mealplanner.core.database.entity.ChatConversationEntity
 import com.example.chatgpt_mealplanner.core.database.entity.InventoryItemEntity
@@ -73,12 +75,18 @@ class LiveRecipeEvaluation {
         val turns: List<String>,
         val preferences: UserPreferencesSummaryDto = UserPreferencesSummaryDto(),
         val stock: List<Stock> = STANDARD_STOCK,
-        val expected: Expected = Expected.CARD
+        val expected: Expected = Expected.CARD,
+        /** Packet instructions already on file, as if read from a photo earlier. */
+        val savedKits: Map<String, String> = emptyMap(),
+        /** Words the finished recipe must contain, to show it followed the packet. */
+        val mustMention: List<String> = emptyList(),
+        /** Kits that have no instructions on file: the model must look them up or ask, never invent a method. */
+        val unknownKit: String? = null
     )
 
     private class ScenarioOutcome(val id: String, val calls: Int, val models: Set<String>, val failures: List<String>, val rateLimited: Boolean, val rateLimitWaits: Int, val usage: List<TokenUsage>)
 
-    private class Stock(val name: String, val quantity: Double, val unit: QuantityUnit, val status: ItemStatus = ItemStatus.AVAILABLE)
+    private class Stock(val name: String, val quantity: Double, val unit: QuantityUnit, val status: ItemStatus = ItemStatus.AVAILABLE, val category: FoodCategory = FoodCategory.FRIDGE)
 
     /**
      * Counts calls and records what each one returned, because the final result hides the path to it.
@@ -183,6 +191,9 @@ class LiveRecipeEvaluation {
             val now = System.currentTimeMillis()
             db.chatDao().insertOrUpdateConversation(ChatConversationEntity(CONVERSATION, "Evaluation", now, now))
             db.inventoryDao().insertItems(scenario.stock.mapIndexed { index, item -> item.toEntity(index, now) })
+            scenario.savedKits.forEach { (name, instructions) ->
+                db.kitInstructionDao().upsert(KitInstructionEntity(normalizeKitName(name), name, instructions, "PHOTO", null, now, now))
+            }
             val preferences = CookingPreferencesStore(db.cookingPreferencesDao())
             preferences.save(scenario.preferences)
             val usage = mutableListOf<TokenUsage>()
@@ -212,6 +223,7 @@ class LiveRecipeEvaluation {
                     (outcome as? AiOrchestrationResult.Final)?.modelId?.let { models += it }
                     rateLimited = rateLimited || (outcome as? AiOrchestrationResult.Error).let { it?.code == "HTTP_429" || it?.userFacingMessage?.contains("credit balance", ignoreCase = true) == true }
                     failures += findings(scenario, outcome, isLastTurn = index == scenario.turns.lastIndex)
+                    if (index == scenario.turns.lastIndex) failures += kitFindings(scenario, outcome, db, provider.trace)
                     if (scenario.stock === FLAVOUR_STOCK) {
                         val final = outcome as? AiOrchestrationResult.Final
                         val names = (listOfNotNull(final?.validatedProposal?.proposal) + final?.mealPlan.orEmpty())
@@ -220,6 +232,8 @@ class LiveRecipeEvaluation {
                         appendLine("FLAVOUR USED: ${used.size} of ${FLAVOUR_WORDS.size} $used")
                     }
                 }
+                kitNotes.forEach { appendLine(it) }
+                kitNotes.clear()
                 if (failures.isNotEmpty()) appendLine("FINDINGS: $failures")
             }
             return text to ScenarioOutcome(scenario.id, provider.calls, models, failures, rateLimited, provider.rateLimitWaits, usage)
@@ -227,6 +241,32 @@ class LiveRecipeEvaluation {
             db.close()
         }
     }
+
+    /** Whether the recipe followed the packet, or the model looked the kit up or asked for it, instead of inventing a method. */
+    private suspend fun kitFindings(scenario: Scenario, outcome: AiOrchestrationResult?, db: AppDatabase, trace: List<String>): List<String> {
+        val final = outcome as? AiOrchestrationResult.Final ?: return emptyList()
+        val meals = listOfNotNull(final.validatedProposal?.proposal) + final.mealPlan.orEmpty()
+        val recipeText = meals.joinToString("\n") { meal -> (meal.ingredients.map { it.displayName } + meal.methodLines()).joinToString(" ") }.lowercase()
+        val found = mutableListOf<String>()
+        scenario.mustMention.filter { it.lowercase() !in recipeText }.takeIf { it.isNotEmpty() }?.let { found += "recipe doesn't follow the packet: missing $it" }
+        scenario.unknownKit?.let { kit ->
+            val saved = db.kitInstructionDao().getByName(normalizeKitName(kit))
+            val searched = trace.any { "web" in it.lowercase() || "search" in it.lowercase() }
+            val askedForPhoto = final.validatedProposal == null && final.assistantText.lowercase().let { "photo" in it || "packet" in it || "paste" in it }
+            when {
+                meals.isNotEmpty() && saved == null -> found += "offered a recipe using the $kit without instructions on file (invented method)"
+                meals.isEmpty() && !askedForPhoto -> found += "neither used nor asked about the $kit"
+            }
+            appendKitNote(trace, saved != null, searched, askedForPhoto)
+        }
+        return found
+    }
+
+    private fun appendKitNote(trace: List<String>, saved: Boolean, searched: Boolean, askedForPhoto: Boolean) {
+        kitNotes += "kit: instructions saved=$saved, web searched=$searched, asked for photo=$askedForPhoto, calls=${trace.size}"
+    }
+
+    private val kitNotes = mutableListOf<String>()
 
     private fun findings(scenario: Scenario, outcome: AiOrchestrationResult?, isLastTurn: Boolean): List<String> {
         val final = outcome as? AiOrchestrationResult.Final
@@ -281,7 +321,8 @@ class LiveRecipeEvaluation {
             chatDao = db.chatDao(),
             pendingMutationStore = pending,
             activeProposalStore = active,
-            cookingPreferences = preferences
+            cookingPreferences = preferences,
+            kitInstructionDao = db.kitInstructionDao()
         )
         return AiMealPlannerOrchestrator(
             provider = provider,
@@ -292,7 +333,8 @@ class LiveRecipeEvaluation {
                 shoppingDao = db.shoppingDao(),
                 activeProposalStore = active,
                 pendingMutationStore = pending,
-                cookingPreferences = preferences
+                cookingPreferences = preferences,
+                kitInstructionDao = db.kitInstructionDao()
             ),
             toolDispatcher = dispatcher,
             recipeValidator = RecipeValidator(db.inventoryDao(), db.mealDao(), preferences),
@@ -343,7 +385,7 @@ class LiveRecipeEvaluation {
         id = "stock_$index",
         canonicalName = name,
         displayName = name,
-        category = FoodCategory.FRIDGE,
+        category = category,
         storageLocation = StorageLocation.FRIDGE,
         quantity = quantity,
         quantityUnit = unit,
@@ -512,7 +554,36 @@ class LiveRecipeEvaluation {
             // Flavour: a well-stocked kitchen and plain requests. The report counts the owned flavour items each recipe uses.
             Scenario("flavour-dinner", listOf("suggest a recipe for dinner"), stock = FLAVOUR_STOCK),
             Scenario("flavour-lunch", listOf("give me a quick recipe for lunch"), stock = FLAVOUR_STOCK),
-            Scenario("flavour-pasta", listOf("suggest a pasta recipe for dinner"), stock = FLAVOUR_STOCK)
+            Scenario("flavour-pasta", listOf("suggest a pasta recipe for dinner"), stock = FLAVOUR_STOCK),
+            // Kits and mixes: with the packet on file the recipe follows it; without it the model looks it up or asks.
+            Scenario(
+                "kit-saved-instructions",
+                listOf("make dinner for 2 with my fajita kit"),
+                stock = listOf(
+                    Stock("Old El Paso Fajita Kit", 1.0, QuantityUnit.PACK, category = FoodCategory.KITS_MIXES),
+                    Stock("Chicken breast", 400.0, QuantityUnit.GRAM),
+                    Stock("Peppers", 3.0, QuantityUnit.UNIT),
+                    Stock("Onions", 2.0, QuantityUnit.UNIT),
+                    Stock("Vegetable oil", 500.0, QuantityUnit.MILLILITRE)
+                ),
+                savedKits = mapOf(
+                    "Old El Paso Fajita Kit" to "Contains 8 soft tortillas, 1 sachet of fajita seasoning and 1 jar of salsa. Add 400 g chicken strips, 2 peppers and 1 onion, plus 2 tbsp oil. Fry the chicken in the oil for 5 minutes, add the vegetables and cook 3 minutes, stir in the seasoning with 3 tbsp water and cook 2 minutes. Warm the tortillas for 20 seconds in the microwave. Serve with the salsa."
+                ),
+                mustMention = listOf("seasoning", "water", "tortilla")
+            ),
+            Scenario(
+                "kit-unknown-instructions",
+                listOf("use up my Schwartz Slow Cook Chicken Casserole kit for dinner for 2"),
+                stock = listOf(
+                    Stock("Schwartz Slow Cook Chicken Casserole Seasoning Mix", 1.0, QuantityUnit.PACK, category = FoodCategory.KITS_MIXES),
+                    Stock("Chicken thighs", 600.0, QuantityUnit.GRAM),
+                    Stock("Potatoes", 600.0, QuantityUnit.GRAM),
+                    Stock("Carrots", 4.0, QuantityUnit.UNIT),
+                    Stock("Onions", 2.0, QuantityUnit.UNIT)
+                ),
+                expected = Expected.ANY,
+                unknownKit = "Schwartz Slow Cook Chicken Casserole Seasoning Mix"
+            )
         )
     }
 }

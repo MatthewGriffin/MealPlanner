@@ -16,6 +16,7 @@ enum class FoodCategory(val displayName: String) {
     SNACKS("Snacks"),
     DRINKS("Drinks"),
     READY_MEALS("Ready Meals"),
+    KITS_MIXES("Kits & Mixes"),
     HOUSEHOLD("Household"),
     OTHER("Other");
 
@@ -34,8 +35,8 @@ enum class FoodCategory(val displayName: String) {
         val BREAD_BAKERY: FoodCategory get() = BAKERY
         @Deprecated("Use SAUCES_CONDIMENTS.")
         val SAUCES_SEASONINGS: FoodCategory get() = SAUCES_CONDIMENTS
-        @Deprecated("Use READY_MEALS.")
-        val MEAL_KITS: FoodCategory get() = READY_MEALS
+        @Deprecated("Use KITS_MIXES.")
+        val MEAL_KITS: FoodCategory get() = KITS_MIXES
     }
 }
 
@@ -66,7 +67,8 @@ fun parseFoodCategory(rawCategory: String?): FoodCategory {
     return when (rawCategory.trim().uppercase()) {
         "BREAD_BAKERY", "BAKERY" -> FoodCategory.BAKERY
         "SAUCES_SEASONINGS", "SAUCES_CONDIMENTS" -> FoodCategory.SAUCES_CONDIMENTS
-        "MEAL_KITS", "READY_MEALS" -> FoodCategory.READY_MEALS
+        "MEAL_KITS", "KITS_MIXES", "KITS", "MIXES" -> FoodCategory.KITS_MIXES
+        "READY_MEALS" -> FoodCategory.READY_MEALS
         "PRODUCE" -> FoodCategory.PRODUCE
         "FRESH_PANTRY" -> FoodCategory.OTHER
         "SNACKS" -> FoodCategory.SNACKS

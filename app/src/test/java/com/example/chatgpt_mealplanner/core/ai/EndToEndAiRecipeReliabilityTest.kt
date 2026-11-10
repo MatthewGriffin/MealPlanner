@@ -29,6 +29,8 @@ import com.example.chatgpt_mealplanner.core.security.FakeCredentialStore
 import com.example.chatgpt_mealplanner.core.service.FakeChatDao
 import com.example.chatgpt_mealplanner.core.service.FakeInventoryBarcodeDao
 import com.example.chatgpt_mealplanner.core.service.FakeInventoryDao
+import com.example.chatgpt_mealplanner.core.service.FakeKitInstructionDao
+import com.example.chatgpt_mealplanner.core.database.entity.normalizeKitName
 import com.example.chatgpt_mealplanner.core.service.FakeLeftoverDao
 import com.example.chatgpt_mealplanner.core.database.entity.toEntity
 import com.example.chatgpt_mealplanner.core.service.FakeMealDao
@@ -2079,5 +2081,111 @@ private val milkAllergyAndNoCoriander = com.example.chatgpt_mealplanner.contract
         val authCtx = ActionAuthorizationContext("msg_1", listOf(AuthorizedMutationScope.AddManualShoppingScope("msg_1")))
         val res = aiToolDispatcher.executeToolCall("default_conversation", authCtx, manualCall)
         assertTrue("Explicit manual shopping request must succeed", res.success)
+    }
+
+    // ----- Kits and mixes -----
+
+    private fun kitItem(name: String) = com.example.chatgpt_mealplanner.core.model.InventoryItem(
+        canonicalName = name.lowercase(), displayName = name,
+        category = com.example.chatgpt_mealplanner.core.model.FoodCategory.KITS_MIXES,
+        storageLocation = com.example.chatgpt_mealplanner.core.model.StorageLocation.CUPBOARD,
+        quantity = 1.0, quantityUnit = com.example.chatgpt_mealplanner.core.model.QuantityUnit.PACK
+    )
+
+    private fun kitOrchestrator(sent: MutableList<AiProviderRequest>, kits: FakeKitInstructionDao) = AiMealPlannerOrchestrator(
+        provider = object : MealPlannerAiProvider {
+            override suspend fun send(request: AiProviderRequest): AiProviderResponse {
+                sent.add(request)
+                return AiProviderResponse.FinalResponse("Here is a thought.")
+            }
+            override suspend fun continueWithToolResults(request: AiContinueWithToolsRequest) = AiProviderResponse.FinalResponse("Done")
+        },
+        contextBuilder = AiContextBuilder(
+            inventoryDao = inventoryDao, mealDao = mealDao, leftoverDao = leftoverDao, shoppingDao = shoppingDao,
+            activeProposalStore = activeProposalStore, pendingMutationStore = pendingMutationStore, kitInstructionDao = kits
+        ),
+        toolDispatcher = aiToolDispatcher,
+        recipeValidator = RecipeValidator(inventoryDao, mealDao),
+        intentResolver = intentResolver,
+        chatRepository = chatRepository,
+        pendingMutationStore = pendingMutationStore,
+        activeProposalStore = activeProposalStore
+    )
+
+    @Test
+    fun ownedKit_turnsOnWebSearch_andShowsItsCategoryAndSavedInstructions() = runTest(testDispatcher) {
+        inventoryDao.insertItem(kitItem("Old El Paso Fajita Kit").toEntity())
+        val kits = FakeKitInstructionDao()
+        kits.upsert(
+            com.example.chatgpt_mealplanner.core.database.entity.KitInstructionEntity(
+                normalizeKitName("Old El Paso Fajita Kit"), "Old El Paso Fajita Kit", "Fry 400 g chicken strips for 5 minutes, add the seasoning and 3 tbsp water, simmer 3 minutes.", "WEB", "https://example.com", 1L, 1L
+            )
+        )
+        val sent = mutableListOf<AiProviderRequest>()
+
+        kitOrchestrator(sent, kits).processUserMessage("default_conversation", "what shall I cook tonight?")
+
+        val request = sent.single()
+        assertTrue("web search is needed to look a kit up", request.allowWebSearch)
+        assertTrue(request.contextPayloadJson.contains("KITS_MIXES"))
+        assertTrue(request.contextPayloadJson.contains("simmer 3 minutes"))
+        assertTrue(request.systemPrompt.contains("KITS AND MIXES"))
+        assertTrue(request.systemPrompt.contains("save_kit_instructions"))
+    }
+
+    @Test
+    fun withoutAKit_webSearchStaysOffForOrdinaryRequests() = runTest(testDispatcher) {
+        val sent = mutableListOf<AiProviderRequest>()
+
+        kitOrchestrator(sent, FakeKitInstructionDao()).processUserMessage("default_conversation", "what shall I cook tonight?")
+
+        assertFalse(sent.single().allowWebSearch)
+        assertFalse(sent.single().contextPayloadJson.contains("simmer"))
+    }
+
+    @Test
+    fun savedInstructionsForAKitTheHouseholdDoesNotOwnAreNotSent() = runTest(testDispatcher) {
+        inventoryDao.insertItem(kitItem("Schwartz Chicken Tonight").toEntity())
+        val kits = FakeKitInstructionDao()
+        kits.upsert(com.example.chatgpt_mealplanner.core.database.entity.KitInstructionEntity(normalizeKitName("Dolmio Bolognese Kit"), "Dolmio Bolognese Kit", "Brown the mince and add the sachet and 200 ml water, simmer 20 minutes.", "WEB", null, 1L, 1L))
+        val sent = mutableListOf<AiProviderRequest>()
+
+        kitOrchestrator(sent, kits).processUserMessage("default_conversation", "dinner ideas")
+
+        assertFalse(sent.single().contextPayloadJson.contains("Dolmio"))
+    }
+
+    @Test
+    fun saveKitInstructionsTool_storesThemOncePerKit_andRefusesAThinNote() = runTest(testDispatcher) {
+        val kits = FakeKitInstructionDao()
+        val dispatcher = AiToolDispatcher(
+            inventoryDomainService = inventoryDomainService, mealDomainService = mealDomainService,
+            shoppingDomainService = shoppingDomainService, activeProposalStore = activeProposalStore,
+            pendingMutationStore = pendingMutationStore, chatDao = chatDao, inventoryDao = inventoryDao,
+            leftoverDao = leftoverDao, shoppingDao = shoppingDao, mealDao = mealDao, kitInstructionDao = kits
+        )
+        var n = 0
+        fun call(args: String) = AiToolCall("kit_call_${++n}", "save_kit_instructions", args)
+        val auth = ActionAuthorizationContext("msg_1")
+
+        val saved = dispatcher.executeToolCall("default_conversation", auth, call(
+            """{"kitName":"Old El Paso Fajita Kit","instructions":"Contains 8 tortillas, seasoning and salsa. Fry the chicken 5 minutes, add seasoning and 3 tbsp water.","source":"WEB","sourceNote":"https://oldelpaso.example/fajita"}"""
+        ))
+        assertTrue(saved.success)
+        val row = kits.rows[normalizeKitName("old el paso fajita kit")]!!
+        assertEquals("WEB", row.source)
+        assertEquals("https://oldelpaso.example/fajita", row.sourceNote)
+
+        // A second save for the same kit replaces it and keeps the first save's date.
+        dispatcher.executeToolCall("default_conversation", auth, call(
+            """{"kitName":"Old El Paso Fajita Kit","instructions":"Contains 8 tortillas, seasoning and salsa. Fry the chicken 6 minutes, add seasoning and 4 tbsp water.","source":"PHOTO"}"""
+        ))
+        assertEquals(1, kits.rows.size)
+        assertEquals("PHOTO", kits.rows.values.single().source)
+        assertEquals(row.createdAt, kits.rows.values.single().createdAt)
+
+        val thin = dispatcher.executeToolCall("default_conversation", auth, call("""{"kitName":"Other kit","instructions":"see packet","source":"USER"}"""))
+        assertFalse(thin.success)
+        assertEquals(1, kits.rows.size)
     }
 }

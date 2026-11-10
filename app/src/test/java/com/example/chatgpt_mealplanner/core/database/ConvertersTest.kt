@@ -65,4 +65,12 @@ class ConvertersTest {
         assertEquals(TransactionType.COOKED, converters.toTransactionType("COOKED"))
         assertNull(converters.toTransactionType("INVALID"))
     }
+
+    @org.junit.Test
+    fun kitsAndMixesIsACategoryAgain_andOldMealKitDataMapsToIt() {
+        org.junit.Assert.assertEquals(com.example.chatgpt_mealplanner.core.model.FoodCategory.KITS_MIXES, com.example.chatgpt_mealplanner.core.model.parseFoodCategory("KITS_MIXES"))
+        org.junit.Assert.assertEquals(com.example.chatgpt_mealplanner.core.model.FoodCategory.KITS_MIXES, com.example.chatgpt_mealplanner.core.model.parseFoodCategory("meal_kits"))
+        org.junit.Assert.assertEquals(com.example.chatgpt_mealplanner.core.model.FoodCategory.READY_MEALS, com.example.chatgpt_mealplanner.core.model.parseFoodCategory("READY_MEALS"))
+        org.junit.Assert.assertEquals("Kits & Mixes", com.example.chatgpt_mealplanner.core.model.FoodCategory.KITS_MIXES.displayName)
+    }
 }
