@@ -77,11 +77,16 @@ class ChatViewModel @Inject constructor(
     private val mealDomainService: MealDomainService,
     private val mealRepository: MealRepository = UnavailableMealRepository,
     private val mealChangeRequestRepository: MealChangeRequestRepository = UnavailableMealChangeRequestRepository,
-    @param:ApplicationContext private val appContext: Context? = null
+    @param:ApplicationContext private val appContext: Context? = null,
+    private val packetPhotoSource: com.example.chatgpt_mealplanner.core.ai.packet.PacketPhotoSource? = null
 ) : ViewModel() {
 
     private val conversationIdFlow = MutableStateFlow("default_conversation")
     private val userMessageTextFlow = MutableStateFlow("")
+    private val attachedPhotoUriFlow = MutableStateFlow<android.net.Uri?>(null)
+    private val isReadingPhotoFlow = MutableStateFlow(false)
+    /** The photo read for the message in flight, kept so a retry sends it again. */
+    private var retainedPacketPhoto: com.example.chatgpt_mealplanner.core.ai.packet.PacketPhoto? = null
     private val errorMessageFlow = MutableStateFlow<String?>(null)
     private val requestStateHolderFlow = MutableStateFlow(RequestStateHolder())
 
@@ -127,7 +132,9 @@ class ChatViewModel @Inject constructor(
         mealChangeRequestTitleFlow,
         latestMealPlanFlow,
         mealPlanConflictsFlow,
-        showMealPlanConflictDialogFlow
+        showMealPlanConflictDialogFlow,
+        attachedPhotoUriFlow,
+        isReadingPhotoFlow
     ) { flows ->
         @Suppress("UNCHECKED_CAST")
         val reqHolder = flows[4] as RequestStateHolder
@@ -146,6 +153,8 @@ class ChatViewModel @Inject constructor(
             elapsedSeconds = flows[7] as Int,
             progressStatusText = flows[8] as String?,
             userMessageText = flows[5] as String,
+            attachedPhotoUri = flows[19] as android.net.Uri?,
+            isReadingPhoto = flows[20] as Boolean,
             errorMessage = flows[6] as String?,
             requestState = reqHolder.requestState,
             retainedUserMessage = reqHolder.retainedUserMessage,
@@ -287,6 +296,12 @@ class ChatViewModel @Inject constructor(
         when (event) {
             is ChatUiEvent.UpdateMessageText -> userMessageTextFlow.value = event.text
             ChatUiEvent.SendMessage -> sendMessage()
+            is ChatUiEvent.AttachPhoto -> attachedPhotoUriFlow.value = event.uri
+            ChatUiEvent.RemovePhoto -> {
+                attachedPhotoUriFlow.value?.let(::deleteOwnTempPhoto)
+                attachedPhotoUriFlow.value = null
+            }
+            is ChatUiEvent.ShowMessage -> errorMessageFlow.value = event.text
             ChatUiEvent.SubmitMealChangeRequest -> submitMealChangeRequestDraft()
             is ChatUiEvent.UpdateMealChangeRequestDraft -> mealChangeRequestDraftFlow.value = event.text
             ChatUiEvent.CancelMealChangeRequestDraft -> cancelMealChangeRequestDraft()
@@ -362,8 +377,11 @@ class ChatViewModel @Inject constructor(
     }
 
     private fun sendMessage(displayMessageText: String? = null) {
-        val text = userMessageTextFlow.value.trim()
-        if (text.isBlank()) return
+        val photoUri = attachedPhotoUriFlow.value
+        val typed = userMessageTextFlow.value.trim()
+        // A photo on its own is a complete message: it is the packet Claude asked for.
+        if (typed.isBlank() && photoUri == null) return
+        val text = typed.ifBlank { "Here is the photo of the packet." }
         if (requestStateHolderFlow.value.requestState == ChatRequestState.IN_FLIGHT) return
 
         // A proposal belongs to the previous assistant turn. Do not leave its Save card
@@ -372,18 +390,37 @@ class ChatViewModel @Inject constructor(
         latestMealPlanFlow.value = null
         latestProposedActionFlow.value = null
 
-        val visibleText = displayMessageText ?: text
-        safeLog("[CHAT_SEND] messageLength=${text.length}")
+        val visibleText = displayMessageText ?: if (photoUri != null) "$text\n(photo of the packet attached)" else text
+        safeLog("[CHAT_SEND] messageLength=${text.length} photo=${photoUri != null}")
 
         val userMsgId = "msg_${System.currentTimeMillis()}"
         userMessageTextFlow.value = ""
+        attachedPhotoUriFlow.value = null
         errorMessageFlow.value = null
+        retainedPacketPhoto = null
         startProgressTicker()
         transitionRequestState(ChatRequestState.IN_FLIGHT, retainedMessage = visibleText, retainedMessageId = userMsgId, retainedRequestText = text)
 
         viewModelScope.launch {
             safeLog("[CHAT_ORCHESTRATOR_CALL] conversationId=\"default_conversation\" messageId=\"$userMsgId\"")
-            val result = processAiMessage(text, userMsgId, displayMessageText)
+            if (photoUri != null) {
+                isReadingPhotoFlow.value = true
+                val photo = try {
+                    packetPhotoSource?.read(photoUri)
+                } finally {
+                    isReadingPhotoFlow.value = false
+                    deleteOwnTempPhoto(photoUri)
+                }
+                if (photo == null) {
+                    // Nothing was sent, so give the words back to be sent again.
+                    userMessageTextFlow.value = typed
+                    errorMessageFlow.value = "That photo couldn't be read. Try taking it again in good light, or paste the instructions instead."
+                    transitionRequestState(ChatRequestState.IDLE)
+                    return@launch
+                }
+                retainedPacketPhoto = photo
+            }
+            val result = processAiMessage(text, userMsgId, displayMessageText ?: visibleText.takeIf { photoUri != null }, retainedPacketPhoto)
 
             when (result) {
                 is AiOrchestrationResult.Final -> {
@@ -414,7 +451,12 @@ class ChatViewModel @Inject constructor(
      * Keep the CPU awake during a user-initiated foreground AI request. This is a bounded
      * partial wake lock, not a battery-optimization exemption; Android still controls network policy.
      */
-    private suspend fun processAiMessage(requestText: String, messageId: String?, displayMessageText: String?): AiOrchestrationResult {
+    private suspend fun processAiMessage(
+        requestText: String,
+        messageId: String?,
+        displayMessageText: String?,
+        packetPhoto: com.example.chatgpt_mealplanner.core.ai.packet.PacketPhoto? = null
+    ): AiOrchestrationResult {
         val context = appContext
         val powerManager = context?.getSystemService(Context.POWER_SERVICE) as? PowerManager
         val wakeLock = if (context != null && powerManager != null) {
@@ -423,9 +465,17 @@ class ChatViewModel @Inject constructor(
         return try {
             // Auto-release after five minutes even if a provider call stalls unexpectedly.
             wakeLock?.acquire(5 * 60 * 1000L)
-            orchestrator.processUserMessage("default_conversation", requestText, userMessageId = messageId, displayUserMessageText = displayMessageText)
+            orchestrator.processUserMessage("default_conversation", requestText, userMessageId = messageId, displayUserMessageText = displayMessageText, packetPhoto = packetPhoto)
         } finally {
             if (wakeLock?.isHeld == true) wakeLock.release()
+        }
+    }
+
+    /** The camera's photo is only needed while it is read, so it isn't left in the cache. Gallery pictures are never deleted. */
+    private fun deleteOwnTempPhoto(uri: android.net.Uri) {
+        val context = appContext ?: return
+        if (uri.authority == "${context.packageName}.fileprovider") {
+            runCatching { context.contentResolver.delete(uri, null, null) }
         }
     }
 
@@ -443,7 +493,7 @@ class ChatViewModel @Inject constructor(
         transitionRequestState(ChatRequestState.IN_FLIGHT, retainedMessage = visibleText, retainedMessageId = messageId, retainedRequestText = text)
 
         viewModelScope.launch {
-            val result = processAiMessage(text, messageId, visibleText)
+            val result = processAiMessage(text, messageId, visibleText, retainedPacketPhoto)
 
             when (result) {
                 is AiOrchestrationResult.Final -> {

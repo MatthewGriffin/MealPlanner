@@ -49,6 +49,12 @@ abstract class DomainModule {
 
     @Binds
     @Singleton
+    abstract fun bindPacketPhotoSource(
+        impl: com.example.chatgpt_mealplanner.core.ai.packet.PacketPhotoReader
+    ): com.example.chatgpt_mealplanner.core.ai.packet.PacketPhotoSource
+
+    @Binds
+    @Singleton
     abstract fun bindReceiptOcrService(
         impl: MlKitReceiptOcrService
     ): ReceiptOcrService

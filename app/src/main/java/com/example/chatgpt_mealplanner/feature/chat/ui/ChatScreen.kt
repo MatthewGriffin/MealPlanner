@@ -23,6 +23,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -144,7 +145,14 @@ fun ChatScreen(
         }
     }
 
-    val canSubmit = !uiState.isLoading && uiState.userMessageText.isNotBlank()
+    // A photo of a packet is a message by itself, so it can be sent with no words.
+    val canSubmit = !uiState.isLoading && !uiState.isReadingPhoto &&
+        (uiState.userMessageText.isNotBlank() || uiState.attachedPhotoUri != null)
+    val photoPicker = rememberPacketPhotoPicker(
+        onPhoto = { onEvent(ChatUiEvent.AttachPhoto(it)) },
+        onProblem = { onEvent(ChatUiEvent.ShowMessage(it)) }
+    )
+    var showAttachMenu by remember { mutableStateOf(false) }
     val submitMessage: () -> Unit = {
         if (canSubmit) {
             onEvent(ChatUiEvent.SendMessage)
@@ -395,6 +403,14 @@ fun ChatScreen(
                 }
             }
 
+            if (uiState.attachedPhotoUri != null || uiState.isReadingPhoto) {
+                androidx.compose.material3.AssistChip(
+                    onClick = { if (!uiState.isReadingPhoto) onEvent(ChatUiEvent.RemovePhoto) },
+                    label = { Text(if (uiState.isReadingPhoto) "Reading the packet…" else "Photo of the packet attached. Tap to remove") },
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+            }
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -406,10 +422,25 @@ fun ChatScreen(
                     },
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                androidx.compose.foundation.layout.Box {
+                    IconButton(onClick = { showAttachMenu = true }, enabled = !uiState.isLoading) {
+                        Icon(Icons.Default.AttachFile, contentDescription = "Attach a photo of a packet")
+                    }
+                    androidx.compose.material3.DropdownMenu(expanded = showAttachMenu, onDismissRequest = { showAttachMenu = false }) {
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text("Take a photo") },
+                            onClick = { showAttachMenu = false; photoPicker.takePhoto() }
+                        )
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text("Choose from gallery") },
+                            onClick = { showAttachMenu = false; photoPicker.chooseFromGallery() }
+                        )
+                    }
+                }
                 OutlinedTextField(
                     value = uiState.userMessageText,
                     onValueChange = { onEvent(ChatUiEvent.UpdateMessageText(it)) },
-                    placeholder = { Text("Ask about meals, inventory, or shopping...") },
+                    placeholder = { Text("Ask about meals or stock", maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(
                         imeAction = ImeAction.Send

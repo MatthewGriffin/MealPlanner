@@ -6,8 +6,10 @@ import com.anthropic.client.okhttp.AnthropicOkHttpClient
 import com.anthropic.core.JsonValue
 import com.anthropic.errors.AnthropicIoException
 import com.anthropic.errors.AnthropicServiceException
+import com.anthropic.models.messages.Base64ImageSource
 import com.anthropic.models.messages.CacheControlEphemeral
 import com.anthropic.models.messages.ContentBlockParam
+import com.anthropic.models.messages.ImageBlockParam
 import com.anthropic.models.messages.Message
 import com.anthropic.models.messages.MessageCreateParams
 import com.anthropic.models.messages.MessageParam
@@ -472,19 +474,36 @@ class ClaudeMealPlannerAiProvider @Inject constructor(
      * recipe card is saved with empty text, and the orchestrator can add two turns in a row.
      */
     internal fun toMessageParams(messages: List<AiChatMessage>): List<MessageParam> {
-        val turns = mutableListOf<Pair<Boolean, String>>()
+        class Turn(val isUser: Boolean, val text: String, val image: String?)
+        val turns = mutableListOf<Turn>()
         messages.filter { it.content.isNotBlank() }.forEach { message ->
             val isUser = !message.role.equals("assistant", ignoreCase = true) && !message.role.equals("model", ignoreCase = true)
             val last = turns.lastOrNull()
-            if (last != null && last.first == isUser) {
-                turns[turns.lastIndex] = isUser to "${last.second}\n\n${message.content}"
+            if (last != null && last.isUser == isUser) {
+                turns[turns.lastIndex] = Turn(isUser, "${last.text}\n\n${message.content}", message.imageJpegBase64 ?: last.image)
             } else {
-                turns += isUser to message.content
+                turns += Turn(isUser, message.content, message.imageJpegBase64)
             }
         }
-        if (turns.firstOrNull()?.first == false) turns.add(0, true to "(Continuing our conversation.)")
-        if (turns.lastOrNull()?.first != true) turns += true to "Please continue."
-        return turns.map { (isUser, text) -> if (isUser) MessageParam.ofUser(text) else MessageParam.ofAssistant(text) }
+        if (turns.firstOrNull()?.isUser == false) turns.add(0, Turn(true, "(Continuing our conversation.)", null))
+        if (turns.lastOrNull()?.isUser != true) turns += Turn(true, "Please continue.", null)
+        return turns.map { turn ->
+            when {
+                !turn.isUser -> MessageParam.ofAssistant(turn.text)
+                turn.image == null -> MessageParam.ofUser(turn.text)
+                // The picture goes before the words about it, as Claude reads best.
+                else -> MessageParam.ofUserOfContentBlockParams(
+                    listOf(
+                        ContentBlockParam.ofImage(
+                            ImageBlockParam.builder()
+                                .source(Base64ImageSource.builder().data(turn.image).mediaType(Base64ImageSource.MediaType.IMAGE_JPEG).build())
+                                .build()
+                        ),
+                        ContentBlockParam.ofText(TextBlockParam.builder().text(turn.text).build())
+                    )
+                )
+            }
+        }
     }
 
     private fun toolResultContent(success: Boolean, payloadJson: String, errorCode: String?, errorMessage: String?): String =

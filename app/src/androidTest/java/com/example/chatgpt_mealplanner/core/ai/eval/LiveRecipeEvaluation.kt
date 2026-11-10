@@ -81,7 +81,11 @@ class LiveRecipeEvaluation {
         /** Words the finished recipe must contain, to show it followed the packet. */
         val mustMention: List<String> = emptyList(),
         /** Kits that have no instructions on file: the model must look them up or ask, never invent a method. */
-        val unknownKit: String? = null
+        val unknownKit: String? = null,
+        /** A packet photo sent with the last turn: drawn from these lines, with the phone's own text reading assumed to have failed. */
+        val packetPhotoLines: List<String>? = null,
+        /** After the last turn the kit's saved instructions must exist and contain these words. */
+        val kitSavedWith: Pair<String, List<String>>? = null
     )
 
     private class ScenarioOutcome(val id: String, val calls: Int, val models: Set<String>, val failures: List<String>, val rateLimited: Boolean, val rateLimitWaits: Int, val usage: List<TokenUsage>)
@@ -214,7 +218,8 @@ class LiveRecipeEvaluation {
                     val before = provider.calls
                     val traceStart = provider.trace.size
                     val started = System.currentTimeMillis()
-                    val result = runCatching { orchestrator.processUserMessage(CONVERSATION, turn) }
+                    val photo = scenario.packetPhotoLines?.takeIf { index == scenario.turns.lastIndex }?.let { drawnPacket(it) }
+                    val result = runCatching { orchestrator.processUserMessage(CONVERSATION, turn, packetPhoto = photo) }
                     appendLine("\n--- USER: $turn")
                     appendLine("[${provider.calls - before} model requests, ${(System.currentTimeMillis() - started) / 1000}s]")
                     provider.trace.drop(traceStart).forEach { appendLine("  trace: $it") }
@@ -249,6 +254,15 @@ class LiveRecipeEvaluation {
         val recipeText = meals.joinToString("\n") { meal -> (meal.ingredients.map { it.displayName } + meal.methodLines()).joinToString(" ") }.lowercase()
         val found = mutableListOf<String>()
         scenario.mustMention.filter { it.lowercase() !in recipeText }.takeIf { it.isNotEmpty() }?.let { found += "recipe doesn't follow the packet: missing $it" }
+        scenario.kitSavedWith?.let { (kit, words) ->
+            val saved = db.kitInstructionDao().getByName(normalizeKitName(kit))
+            val text = saved?.instructions.orEmpty().lowercase()
+            when {
+                saved == null -> found += "the $kit's instructions were not saved"
+                words.any { it.lowercase() !in text } -> found += "saved instructions for the $kit miss ${words.filter { it.lowercase() !in text }}: ${saved.instructions.take(200)}"
+            }
+            kitNotes += "kit saved=${saved != null} source=${saved?.source} instructions=${saved?.instructions?.take(300)}"
+        }
         scenario.unknownKit?.let { kit ->
             val saved = db.kitInstructionDao().getByName(normalizeKitName(kit))
             val searched = trace.any { "web" in it.lowercase() || "search" in it.lowercase() }
@@ -260,6 +274,21 @@ class LiveRecipeEvaluation {
             appendKitNote(trace, saved != null, searched, askedForPhoto)
         }
         return found
+    }
+
+    /** A packet drawn as a picture, as if the phone's text reader had given nothing usable. */
+    private fun drawnPacket(lines: List<String>): com.example.chatgpt_mealplanner.core.ai.packet.PacketPhoto {
+        val bitmap = android.graphics.Bitmap.createBitmap(1200, 900, android.graphics.Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(bitmap)
+        canvas.drawColor(android.graphics.Color.WHITE)
+        val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.BLACK; textSize = 34f }
+        lines.forEachIndexed { i, line -> canvas.drawText(line, 30f, 70f + i * 50f, paint) }
+        val out = java.io.ByteArrayOutputStream()
+        bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, out)
+        return com.example.chatgpt_mealplanner.core.ai.packet.PacketPhoto(
+            ocrText = "SIZZLE",
+            imageJpegBase64 = android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP)
+        )
     }
 
     private fun appendKitNote(trace: List<String>, saved: Boolean, searched: Boolean, askedForPhoto: Boolean) {
@@ -583,6 +612,32 @@ class LiveRecipeEvaluation {
                 ),
                 expected = Expected.ANY,
                 unknownKit = "Schwartz Slow Cook Chicken Casserole Seasoning Mix"
+            ),
+            // A made-up kit nobody can find online: Claude should ask for the packet, then read the picture sent back.
+            Scenario(
+                "kit-photo-read-by-claude",
+                listOf(
+                    "make dinner for 2 with my Cantina Fiesta Sizzle Kit",
+                    "here is the back of the packet"
+                ),
+                stock = listOf(
+                    Stock("Cantina Fiesta Sizzle Kit", 1.0, QuantityUnit.PACK, category = FoodCategory.KITS_MIXES),
+                    Stock("Pork mince", 500.0, QuantityUnit.GRAM),
+                    Stock("Peppers", 2.0, QuantityUnit.UNIT),
+                    Stock("Onions", 2.0, QuantityUnit.UNIT)
+                ),
+                packetPhotoLines = listOf(
+                    "CANTINA FIESTA SIZZLE KIT - METHOD",
+                    "Kit contains: 1 sachet sizzle spice, 6 corn tacos.",
+                    "You will need: 500 g pork mince, 1 pepper, 1 onion,",
+                    "150 ml coconut milk.",
+                    "1. Brown the mince in a hot pan for 6 minutes.",
+                    "2. Add the chopped pepper and onion, cook 4 minutes.",
+                    "3. Stir in the sizzle spice and the coconut milk.",
+                    "4. Simmer for 7 minutes until thick.",
+                    "5. Heat the tacos 1 minute and fill."
+                ),
+                kitSavedWith = "Cantina Fiesta Sizzle Kit" to listOf("coconut milk", "7 minutes", "mince")
             )
         )
     }
