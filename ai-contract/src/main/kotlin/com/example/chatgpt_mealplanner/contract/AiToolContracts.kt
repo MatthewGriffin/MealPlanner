@@ -35,7 +35,7 @@ enum class AiToolId(
     // Records reference knowledge about a product (what a kit's packet says), not household state, so it needs no
     // instruction from the user and is not gated like the write tools.
     // Shows the user a Scan packet button in the chat. It changes nothing in the household's data.
-    REQUEST_KIT_PACKET("request_kit_packet", AiToolClass.READ, "Asks the user for a kit's packet instructions: the app shows them a Scan packet button, where the phone reads a photo of the packet and they can check the text before it is sent to you. Call it instead of searching the web when a kit has no saved instructions. Args: kitName."),
+    REQUEST_KIT_PACKET("request_kit_packet", AiToolClass.READ, "Asks the user for a kit's packet instructions: the app shows them a Scan packet button, where they photograph the packet and the photo is sent to you. Call it instead of searching the web when a kit has no saved instructions. Args: kitName."),
     SAVE_KIT_INSTRUCTIONS("save_kit_instructions", AiToolClass.READ, "Saves what a meal kit or spice kit's packet says, so it is only looked up once. Call it after reading the instructions from a photo of the packet, or finding them on the web. Args: kitName, instructions (what is in the kit, what else to add, and the steps), source (PHOTO, WEB or USER), sourceNote (the page URL for WEB)."),
     FETCH_RECIPE_PAGE("fetch_recipe_page", AiToolClass.READ, "Fetches a web page the user gave you so you can read the recipe on it. Returns the page's recipe data or its text. Args: url."),
     // Like the kit instructions, a saved recipe is reference knowledge the user asked to keep, not household state.

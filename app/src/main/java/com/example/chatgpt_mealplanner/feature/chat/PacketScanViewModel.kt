@@ -5,7 +5,6 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.chatgpt_mealplanner.core.ai.packet.PacketPhotoSource
-import com.example.chatgpt_mealplanner.core.ai.packet.PacketScan
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,13 +18,12 @@ enum class PacketScanStage { CHOOSE, READING, PREVIEW }
 
 data class PacketScanState(
     val stage: PacketScanStage = PacketScanStage.CHOOSE,
-    val scan: PacketScan? = null,
-    /** What the phone read, which the user can correct before it is sent. */
-    val checkedText: String = "",
+    /** The photos taken so far, each as a JPEG in base64, in order. A recipe can run over several pages. */
+    val pages: List<String> = emptyList(),
     val error: String? = null
 )
 
-/** The Scan packet screen: the phone reads a photo, and the user checks the text before choosing what Claude gets. */
+/** The scan screen: the user takes one or more photos, looks at them, and sends them for Claude to read. */
 @HiltViewModel
 class PacketScanViewModel @Inject constructor(
     private val source: PacketPhotoSource,
@@ -39,37 +37,40 @@ class PacketScanViewModel @Inject constructor(
         _state.value = PacketScanState()
     }
 
-    /** [instructionsOnly] cuts the text down to cooking steps, for a kit's packet; a recipe needs all of it. */
-    fun scan(uri: Uri, instructionsOnly: Boolean = true) {
+    /** Adds a photo to the pages. */
+    fun addPage(uri: Uri) {
         _state.update { it.copy(stage = PacketScanStage.READING, error = null) }
         viewModelScope.launch {
-            val scan = try {
-                source.scan(uri)
+            val page = try {
+                source.prepare(uri)
             } finally {
                 deleteOwnTempPhoto(uri)
             }
-            _state.value = if (scan == null) {
-                PacketScanState(error = "That photo couldn't be opened. Try taking it again, or choose another.")
-            } else {
-                val shown = if (instructionsOnly) scan.copy(text = com.example.chatgpt_mealplanner.core.ai.packet.PacketTextFilter.keepInstructions(scan.text)) else scan
-                PacketScanState(stage = PacketScanStage.PREVIEW, scan = shown, checkedText = shown.text)
+            _state.update { current ->
+                if (page == null) {
+                    current.copy(
+                        stage = if (current.pages.isEmpty()) PacketScanStage.CHOOSE else PacketScanStage.PREVIEW,
+                        error = "That photo couldn't be opened. Try taking it again, or choose another."
+                    )
+                } else {
+                    current.copy(stage = PacketScanStage.PREVIEW, pages = current.pages + page, error = null)
+                }
             }
         }
     }
 
-    fun editText(text: String) {
-        _state.update { it.copy(checkedText = text) }
-    }
-
-    fun retake() {
-        _state.value = PacketScanState()
+    fun removePage(index: Int) {
+        _state.update { current ->
+            val pages = current.pages.filterIndexed { i, _ -> i != index }
+            current.copy(pages = pages, stage = if (pages.isEmpty()) PacketScanStage.CHOOSE else PacketScanStage.PREVIEW)
+        }
     }
 
     fun problem(message: String) {
         _state.update { it.copy(error = message) }
     }
 
-    /** The camera's photo is only needed while it is read, so it isn't left in the cache. Gallery pictures are never deleted. */
+    /** The camera's photo is only needed while it is prepared, so it isn't left in the cache. Gallery pictures are never deleted. */
     private fun deleteOwnTempPhoto(uri: Uri) {
         val ctx = context ?: return
         if (uri.authority == "${ctx.packageName}.fileprovider") {

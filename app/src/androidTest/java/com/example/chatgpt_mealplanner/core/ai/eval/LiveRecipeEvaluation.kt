@@ -293,8 +293,7 @@ class LiveRecipeEvaluation {
         val out = java.io.ByteArrayOutputStream()
         bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, out)
         return com.example.chatgpt_mealplanner.core.ai.packet.PacketPhoto(
-            ocrText = "",
-            imageJpegBase64 = android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP)
+            listOf(android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP))
         )
     }
 

@@ -30,7 +30,6 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -95,31 +94,30 @@ class ChatViewModelPacketPhotoTest {
     }
 
     @Test
-    fun theTextTheUserCheckedIsSentAsAMessage_andTheChatShowsAShortNote() = runTest {
+    fun thePhotosAreSentWithTheMessage_andTheChatShowsAShortNote() = runTest {
         watchState()
         testDispatcher.scheduler.advanceUntilIdle()
 
-        viewModel.onEvent(ChatUiEvent.SendPacket(PacketPhoto("Fry the chicken 5 minutes, add the seasoning and 3 tbsp water.", null), "Fajita Kit"))
+        viewModel.onEvent(ChatUiEvent.SendPacket(PacketPhoto(listOf("QUJD", "REVG")), "Fajita Kit"))
         testDispatcher.scheduler.advanceUntilIdle()
 
         val last = sent.single().messages.last()
         assertTrue(last.content.startsWith("Here are the instructions from the packet of my Fajita Kit."))
-        assertTrue(last.content.contains("3 tbsp water"))
-        assertNull(last.imageJpegBase64)
-        // The chat shows a short note, never the packet's text or the picture.
+        assertEquals(listOf("QUJD", "REVG"), last.imagesJpegBase64)
+        // The chat shows a short note, never the pictures.
         val shown = chatDao.observeMessagesForConversation("default_conversation").first().last { it.role == "USER" }
-        assertEquals("Here are the instructions from the packet of my Fajita Kit.\n(text from the packet sent)", shown.content)
+        assertEquals("Here are the instructions from the packet of my Fajita Kit.\n(2 photos of the packet sent for Claude to read)", shown.content)
     }
 
     @Test
-    fun thePictureIsSentWhenTheUserLetsClaudeReadIt() = runTest {
+    fun aSinglePhotoIsDescribedAsOne() = runTest {
         testDispatcher.scheduler.advanceUntilIdle()
 
-        viewModel.onEvent(ChatUiEvent.SendPacket(PacketPhoto("", "QUJD"), null))
+        viewModel.onEvent(ChatUiEvent.SendPacket(PacketPhoto(listOf("QUJD")), null))
         testDispatcher.scheduler.advanceUntilIdle()
 
         val last = sent.single().messages.last()
-        assertEquals("QUJD", last.imageJpegBase64)
+        assertEquals(listOf("QUJD"), last.imagesJpegBase64)
         assertTrue(last.content.startsWith("Here is the packet."))
         val shown = chatDao.observeMessagesForConversation("default_conversation").first().last { it.role == "USER" }
         assertTrue(shown.content.endsWith("(photo of the packet sent for Claude to read)"))
@@ -135,7 +133,7 @@ class ChatViewModelPacketPhotoTest {
         assertTrue(viewModel.uiState.value.showPacketScan)
         assertEquals("Fajita Kit", viewModel.uiState.value.packetScanKit)
 
-        viewModel.onEvent(ChatUiEvent.SendPacket(PacketPhoto("Fry for 5 minutes and add water and seasoning", null), "Fajita Kit"))
+        viewModel.onEvent(ChatUiEvent.SendPacket(PacketPhoto(listOf("QUJD")), "Fajita Kit"))
         testDispatcher.scheduler.advanceUntilIdle()
         assertEquals(false, viewModel.uiState.value.showPacketScan)
 

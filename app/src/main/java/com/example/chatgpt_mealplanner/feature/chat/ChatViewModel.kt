@@ -438,7 +438,8 @@ class ChatViewModel @Inject constructor(
             else -> "Here are the instructions from the packet of my $kitName."
         }
         val what = if (recipe) "recipe" else "packet"
-        val shown = text + if (packet.imageJpegBase64 != null) "\n(photo of the $what sent for Claude to read)" else "\n(text from the $what sent)"
+        val pages = packet.imagesJpegBase64.size
+        val shown = text + if (pages == 1) "\n(photo of the $what sent for Claude to read)" else "\n($pages photos of the $what sent for Claude to read)"
         startSend(text, shown, packet)
     }
 
