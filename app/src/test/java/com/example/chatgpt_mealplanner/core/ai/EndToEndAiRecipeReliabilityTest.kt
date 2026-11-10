@@ -1467,7 +1467,7 @@ private val milkAllergyAndNoCoriander = com.example.chatgpt_mealplanner.contract
         orchestratorReplying(sent, "You have milk.").processUserMessage("default_conversation", "what is in my fridge?")
         val prompt = sent.single().systemPrompt
 
-        listOf("RECIPE QUALITY MANDATE", "FOOD SAFETY", "piping hot", "low blood glucose", "strict rule").forEach {
+        listOf("RECIPE QUALITY", "FOOD SAFETY", "piping hot", "low blood glucose", "strict rule").forEach {
             assertTrue(it, prompt.contains(it))
         }
         assertFalse(prompt.contains("Use plain, specific UK grocery names"))
@@ -2063,8 +2063,8 @@ private val milkAllergyAndNoCoriander = com.example.chatgpt_mealplanner.contract
         field.isAccessible = true
         val prompt = field.get(orchestrator) as String
 
-        assertTrue(prompt.contains("AUTOMATED SHOPPING RECONCILIATION INVARIANT"))
-        assertTrue(prompt.contains("Do NOT offer \"Would you like me to generate your shopping list?\""))
+        assertTrue(prompt.contains("TOOLS AND SAVING"))
+        assertTrue(prompt.contains("Never offer to generate or add to the shopping list"))
         assertFalse("Old prompt phrase 'add ingredients to shopping list' must be removed", prompt.contains("'add ingredients to shopping list'"))
     }
 
