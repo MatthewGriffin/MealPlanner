@@ -30,7 +30,9 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -77,12 +79,31 @@ class ChatViewModel @Inject constructor(
     private val mealDomainService: MealDomainService,
     private val mealRepository: MealRepository = UnavailableMealRepository,
     private val mealChangeRequestRepository: MealChangeRequestRepository = UnavailableMealChangeRequestRepository,
-    @param:ApplicationContext private val appContext: Context? = null
+    @param:ApplicationContext private val appContext: Context? = null,
+    private val inventoryDao: com.example.chatgpt_mealplanner.core.database.dao.InventoryDao? = null,
+    private val kitInstructionDao: com.example.chatgpt_mealplanner.core.database.dao.KitInstructionDao? = null
 ) : ViewModel() {
 
     private val conversationIdFlow = MutableStateFlow("default_conversation")
     private val userMessageTextFlow = MutableStateFlow("")
     private val kitPacketRequestFlow = MutableStateFlow<String?>(null)
+    /** Kits the user chose "Not now" for, so the reminder doesn't come back until the app restarts. */
+    private val dismissedKitsFlow = MutableStateFlow<Set<String>>(emptySet())
+
+    /** The first owned kit (added by scan, by hand or in bulk) that has no saved packet instructions yet. */
+    private val unscannedKitFlow: Flow<String?> =
+        if (inventoryDao == null || kitInstructionDao == null) flowOf(null)
+        else combine(inventoryDao.getUsableItems(), kitInstructionDao.observeAll(), dismissedKitsFlow) { items, saved, dismissed ->
+            items.filter { it.category == com.example.chatgpt_mealplanner.core.model.FoodCategory.KITS_MIXES }
+                .firstOrNull { item ->
+                    val names = listOf(
+                        com.example.chatgpt_mealplanner.core.database.entity.normalizeKitName(item.displayName),
+                        com.example.chatgpt_mealplanner.core.database.entity.normalizeKitName(item.canonicalName)
+                    )
+                    item.displayName !in dismissed &&
+                        saved.none { com.example.chatgpt_mealplanner.core.database.entity.savedKitMatches(names, it.normalizedName) }
+                }?.displayName
+        }
     private val showPacketScanFlow = MutableStateFlow(false)
     private val packetScanKitFlow = MutableStateFlow<String?>(null)
     /** The packet sent with the message in flight, kept so a retry sends it again. */
@@ -134,6 +155,7 @@ class ChatViewModel @Inject constructor(
         mealPlanConflictsFlow,
         showMealPlanConflictDialogFlow,
         kitPacketRequestFlow,
+        unscannedKitFlow,
         showPacketScanFlow,
         packetScanKitFlow
     ) { flows ->
@@ -154,9 +176,9 @@ class ChatViewModel @Inject constructor(
             elapsedSeconds = flows[7] as Int,
             progressStatusText = flows[8] as String?,
             userMessageText = flows[5] as String,
-            kitPacketRequest = flows[19] as String?,
-            showPacketScan = flows[20] as Boolean,
-            packetScanKit = flows[21] as String?,
+            kitPacketRequest = (flows[19] as String?) ?: (flows[20] as String?),
+            showPacketScan = flows[21] as Boolean,
+            packetScanKit = flows[22] as String?,
             errorMessage = flows[6] as String?,
             requestState = reqHolder.requestState,
             retainedUserMessage = reqHolder.retainedUserMessage,
@@ -307,7 +329,10 @@ class ChatViewModel @Inject constructor(
                 showPacketScanFlow.value = false
                 sendPacket(event.packet, event.kitName)
             }
-            ChatUiEvent.DismissKitPacketRequest -> kitPacketRequestFlow.value = null
+            ChatUiEvent.DismissKitPacketRequest -> {
+                (kitPacketRequestFlow.value ?: uiState.value.kitPacketRequest)?.let { dismissedKitsFlow.value = dismissedKitsFlow.value + it }
+                kitPacketRequestFlow.value = null
+            }
             ChatUiEvent.SubmitMealChangeRequest -> submitMealChangeRequestDraft()
             is ChatUiEvent.UpdateMealChangeRequestDraft -> mealChangeRequestDraftFlow.value = event.text
             ChatUiEvent.CancelMealChangeRequestDraft -> cancelMealChangeRequestDraft()

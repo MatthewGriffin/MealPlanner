@@ -48,7 +48,7 @@ class AiContextBuilder @Inject constructor(
         val kitNames = kits.flatMap { listOf(com.example.chatgpt_mealplanner.core.database.entity.normalizeKitName(it.displayName), com.example.chatgpt_mealplanner.core.database.entity.normalizeKitName(it.canonicalName)) }
             .filter { it.isNotEmpty() }
         return dao.getAll().filter { saved ->
-            kitNames.any { owned -> owned == saved.normalizedName || owned.contains(saved.normalizedName) || saved.normalizedName.contains(owned) }
+            com.example.chatgpt_mealplanner.core.database.entity.savedKitMatches(kitNames, saved.normalizedName)
         }.map {
             com.example.chatgpt_mealplanner.contract.KitInstructionContextDto(kitName = it.displayName, instructions = it.instructions, source = it.source)
         }
