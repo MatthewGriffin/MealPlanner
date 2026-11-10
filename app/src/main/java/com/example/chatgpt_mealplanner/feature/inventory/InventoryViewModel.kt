@@ -7,6 +7,10 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import com.example.chatgpt_mealplanner.core.ai.provider.MealPlannerAiProvider
 import com.example.chatgpt_mealplanner.core.ai.provider.PantryListResult
+import com.example.chatgpt_mealplanner.core.ai.provider.ProductCandidate
+import com.example.chatgpt_mealplanner.core.ai.provider.ProductMatchChoice
+import com.example.chatgpt_mealplanner.core.ai.provider.ProductMatchLine
+import com.example.chatgpt_mealplanner.core.ai.provider.ProductMatchResult
 import com.example.chatgpt_mealplanner.core.barcode.BarcodeLookupCoordinator
 import com.example.chatgpt_mealplanner.core.barcode.model.ConfirmedProductInput
 import com.example.chatgpt_mealplanner.core.barcode.BarcodeLookupResult
@@ -23,7 +27,10 @@ import com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyn
 import com.example.chatgpt_mealplanner.core.sync.follower.worker.FollowerSyncScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -173,6 +180,10 @@ class InventoryViewModel @Inject constructor(
             is InventoryUiEvent.BulkAddTextChanged -> updateBulk { it.copy(text = event.text, error = null) }
             InventoryUiEvent.EditBulkAddList -> updateBulk { it.copy(rows = emptyList(), error = null) }
             InventoryUiEvent.ReadBulkAddList -> readBulkAddList()
+            InventoryUiEvent.RetryBulkLookup -> retryBulkLookup()
+            InventoryUiEvent.KeepWordingForUndecided -> updateBulk { bulk ->
+                bulk.copy(rows = bulk.rows.map { if (it.decided) it else it.copy(decided = true, matched = null, displayName = it.genericName) })
+            }
             is InventoryUiEvent.BulkAddRowChanged -> updateBulk { bulk ->
                 bulk.copy(rows = bulk.rows.map { if (it.id == event.row.id) event.row else it })
             }
@@ -196,60 +207,169 @@ class InventoryViewModel @Inject constructor(
             updateBulk { it.copy(error = "Reading a list needs the AI, which isn't available here.") }
             return
         }
-        updateBulk { it.copy(isReading = true, error = null) }
+        updateBulk { it.copy(isReading = true, error = null, lookupNote = null, progress = "Reading your list…") }
         viewModelScope.launch {
-            val result = provider.parsePantryList(bulk.text)
-            updateBulk { current ->
-                when (result) {
-                    is PantryListResult.Failed -> current.copy(isReading = false, error = result.message)
-                    is PantryListResult.Items -> current.copy(
-                        isReading = false,
-                        rows = result.items.map { item ->
-                            BulkAddRow(
-                                id = java.util.UUID.randomUUID().toString(),
-                                displayName = item.displayName,
-                                canonicalName = item.canonicalName,
-                                brand = item.brand,
-                                category = item.category,
-                                storageLocation = item.storageLocation,
-                                quantityText = formatBulkQuantity(item.quantity),
-                                unit = item.unit,
-                                quantityGuessed = item.quantityGuessed
-                            )
-                        }
-                    )
+            val items = when (val result = provider.parsePantryList(bulk.text)) {
+                is PantryListResult.Failed -> {
+                    updateBulk { it.copy(isReading = false, progress = null, error = result.message) }
+                    return@launch
                 }
+                is PantryListResult.Items -> result.items
+            }
+            val base = items.map { item ->
+                BulkAddRow(
+                    id = java.util.UUID.randomUUID().toString(),
+                    displayName = item.displayName,
+                    canonicalName = item.canonicalName,
+                    brand = item.brand,
+                    category = item.category,
+                    storageLocation = item.storageLocation,
+                    quantityText = formatBulkQuantity(item.quantity),
+                    unit = item.unit,
+                    quantityGuessed = item.quantityGuessed,
+                    searchText = item.searchText,
+                    genericName = item.displayName
+                )
+            }
+            val resolved = resolveProducts(provider, base.map { it.searchText })
+            val rows = base.mapIndexed { i, row -> row.withResolution(resolved[i]) }
+            updateBulk { it.copy(isReading = false, progress = null, rows = rows.sortedBy { r -> r.decided }, lookupNote = lookupNote(rows)) }
+        }
+    }
+
+    private fun retryBulkLookup() {
+        val bulk = _uiState.value.bulkAdd ?: return
+        val provider = aiProvider ?: return
+        val failedRows = bulk.rows.filter { it.lookupFailed }
+        if (bulk.isReading || failedRows.isEmpty()) return
+        updateBulk { it.copy(isReading = true, error = null, progress = "Looking up products…") }
+        viewModelScope.launch {
+            val resolved = resolveProducts(provider, failedRows.map { it.searchText })
+            val byId = failedRows.mapIndexed { i, row -> row.id to resolved[i] }.toMap()
+            updateBulk { current ->
+                val rows = current.rows.map { row -> byId[row.id]?.let { row.withResolution(it) } ?: row }
+                current.copy(isReading = false, progress = null, rows = rows.sortedBy { it.decided }, lookupNote = lookupNote(rows))
             }
         }
     }
 
+    private fun lookupNote(rows: List<BulkAddRow>): String? {
+        if (barcodeLookupCoordinator == null) return null
+        val failed = rows.count { it.lookupFailed }
+        val none = rows.count { it.candidates.isEmpty() && !it.lookupFailed }
+        val parts = listOfNotNull(
+            failed.takeIf { it > 0 }?.let { "$it couldn't be looked up because the food database was busy." },
+            none.takeIf { it > 0 }?.let { "$it had no match in the food database and keep the name as you wrote it." }
+        )
+        return parts.joinToString(" ").ifEmpty { null }
+    }
+
+    /** What the food database and Claude's matching made of one line. */
+    private data class Resolution(
+        val candidates: List<com.example.chatgpt_mealplanner.core.barcode.BarcodeLookupResult>,
+        val choice: ProductMatchChoice?,
+        val failed: Boolean
+    )
+
+    private fun BulkAddRow.withResolution(resolution: Resolution): BulkAddRow {
+        val found = resolution.candidates
+        val choice = resolution.choice
+        val matched = if (choice != null && choice.sure) choice.candidate?.let { found.getOrNull(it) } else null
+        // Claude's best guess goes first, so the user finds it without searching the list.
+        val ordered = choice?.candidate?.let { found.getOrNull(it) }?.let { best -> listOf(best) + (found - best) } ?: found
+        return copy(
+            displayName = matched?.displayName ?: genericName,
+            brand = matched?.brand ?: brand,
+            candidates = ordered,
+            matched = matched,
+            decided = found.isEmpty() || matched != null,
+            lookupFailed = resolution.failed
+        )
+    }
+
+    private suspend fun resolveProducts(provider: MealPlannerAiProvider, texts: List<String>): List<Resolution> {
+        val searched = lookUpProducts(texts)
+        val chosen = chooseProducts(provider, texts, searched)
+        return texts.indices.map { Resolution(searched[it] ?: emptyList(), chosen[it], failed = searched[it] == null) }
+    }
+
+    /**
+     * Searches the food database for each line, two at a time. The free service limits how fast it
+     * answers, so a busy answer is retried after a pause. A line it never answers is null.
+     */
+    private suspend fun lookUpProducts(queries: List<String>): List<List<com.example.chatgpt_mealplanner.core.barcode.BarcodeLookupResult>?> {
+        val coordinator = barcodeLookupCoordinator ?: return queries.map { emptyList() }
+        val done = java.util.concurrent.atomic.AtomicInteger(0)
+        val gate = kotlinx.coroutines.sync.Semaphore(2)
+        return kotlinx.coroutines.coroutineScope {
+            queries.map { query ->
+                async {
+                    gate.withPermit {
+                        var products: List<com.example.chatgpt_mealplanner.core.barcode.BarcodeLookupResult>? = null
+                        for (attempt in 0..LOOKUP_RETRIES) {
+                            products = try {
+                                coordinator.searchProductsByNameOrNull(query)?.take(MAX_PRODUCT_CHOICES)
+                            } catch (e: kotlinx.coroutines.CancellationException) {
+                                throw e
+                            } catch (_: Exception) {
+                                null
+                            }
+                            if (products != null) break
+                            if (attempt < LOOKUP_RETRIES) kotlinx.coroutines.delay(LOOKUP_BACKOFF_MS * (attempt + 1))
+                        }
+                        updateBulk { it.copy(progress = "Looking up products… ${done.incrementAndGet()} of ${queries.size}") }
+                        products
+                    }
+                }
+            }.awaitAll()
+        }
+    }
+
+    /** One Claude call per 40 lines picks the likely product for each line that has candidates. */
+    private suspend fun chooseProducts(
+        provider: MealPlannerAiProvider,
+        texts: List<String>,
+        candidates: List<List<com.example.chatgpt_mealplanner.core.barcode.BarcodeLookupResult>?>
+    ): Map<Int, ProductMatchChoice> {
+        val lines = texts.indices.filter { !candidates[it].isNullOrEmpty() }.map { index ->
+            ProductMatchLine(
+                index = index,
+                userText = texts[index],
+                candidates = candidates[index].orEmpty().map { ProductCandidate(it.displayName, it.brand, it.sizeText()) }
+            )
+        }
+        if (lines.isEmpty()) return emptyMap()
+        updateBulk { it.copy(progress = "Matching products…") }
+        val chosen = mutableMapOf<Int, ProductMatchChoice>()
+        lines.chunked(40).forEach { chunk ->
+            // If matching fails, those lines simply ask the user instead.
+            (provider.chooseProducts(chunk) as? ProductMatchResult.Choices)?.choices?.forEach { chosen[it.index] = it }
+        }
+        return chosen
+    }
+
     private fun saveBulkAddRows() {
         val bulk = _uiState.value.bulkAdd ?: return
-        if (bulk.isSaving || bulk.rows.isEmpty()) return
+        // Every line that couldn't be matched on its own needs the user's decision first.
+        if (bulk.isSaving || bulk.rows.isEmpty() || bulk.rows.any { !it.decided }) return
         updateBulk { it.copy(isSaving = true, error = null) }
         viewModelScope.launch {
             val failed = mutableListOf<BulkAddRow>()
             var saved = 0
             bulk.rows.forEach { row ->
-                val quantity = row.quantityText.trim().replace(',', '.').toDoubleOrNull()?.takeIf { it > 0.0 && it.isFinite() }
-                val name = row.displayName.trim()
-                if (quantity == null || name.isEmpty()) {
+                val input = row.toProductInput()
+                if (input == null) {
                     failed += row
                     return@forEach
                 }
-                val input = ConfirmedProductInput(
-                    barcode = null,
-                    displayName = name,
-                    brand = row.brand,
-                    canonicalName = row.canonicalName.ifBlank { name.lowercase() },
-                    category = row.category,
-                    storageLocation = row.storageLocation,
-                    netQuantity = quantity,
-                    netQuantityUnit = row.unit,
-                    quantityConfidence = if (row.quantityGuessed) QuantityConfidence.APPROXIMATE else QuantityConfidence.EXACT
-                )
                 when (inventoryDomainService.addLotFromProductInput(input)) {
-                    is DomainResult.Success -> saved++
+                    is DomainResult.Success -> {
+                        saved++
+                        // Remember the match, so the next list that names this product needs no lookup.
+                        if (row.matched != null && input.barcode != null) {
+                            try { barcodeLookupCoordinator?.confirmAndSaveBarcodeMapping(input) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) {}
+                        }
+                    }
                     is DomainResult.Failure -> failed += row
                 }
             }
@@ -461,3 +581,7 @@ class InventoryViewModel @Inject constructor(
         }
     }
 }
+
+private const val MAX_PRODUCT_CHOICES = 6
+private const val LOOKUP_RETRIES = 2
+private const val LOOKUP_BACKOFF_MS = 3_000L

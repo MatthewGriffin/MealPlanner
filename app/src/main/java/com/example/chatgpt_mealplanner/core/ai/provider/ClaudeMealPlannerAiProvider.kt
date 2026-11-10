@@ -132,50 +132,77 @@ class ClaudeMealPlannerAiProvider @Inject constructor(
         }
     }
 
-    override suspend fun parsePantryList(text: String): PantryListResult = withContext(ioDispatcher) {
-        val key = apiKey() ?: return@withContext PantryListResult.Failed(noKey().message)
-        val list = text.trim().take(PantryListParsing.MAX_LIST_CHARS)
-        if (list.isEmpty()) return@withContext PantryListResult.Failed("Type or paste what you have first.")
+    /** One request that must end in a call of [toolName]. Returns that call's JSON, or the reason it failed. */
+    private suspend fun callSingleTool(
+        key: String,
+        system: String,
+        user: String,
+        toolName: String,
+        toolDescription: String,
+        schema: JsonObject,
+        required: List<String>
+    ): Pair<String?, String?> {
         val tool = Tool.builder()
-            .name(PantryListParsing.TOOL_NAME)
-            .description("Records the household's stock items read from their list.")
+            .name(toolName)
+            .description(toolDescription)
             .inputSchema(
                 Tool.InputSchema.builder()
                     .properties(
                         Tool.InputSchema.Properties.builder()
-                            .putAllAdditionalProperties(PantryListParsing.itemsSchema().mapValues { (_, value) -> JsonValue.from(plain(value)) })
+                            .putAllAdditionalProperties(schema.mapValues { (_, value) -> JsonValue.from(plain(value)) })
                             .build()
                     )
-                    .required(listOf("items"))
+                    .required(required)
                     .build()
             )
             .build()
         val params = MessageCreateParams.builder()
             .model(model)
             .maxTokens(MAX_TOKENS)
-            .systemOfTextBlockParams(listOf(TextBlockParam.builder().text(PantryListParsing.SYSTEM_PROMPT).build()))
-            .addUserMessage(list)
+            .systemOfTextBlockParams(listOf(TextBlockParam.builder().text(system).build()))
+            .addUserMessage(user)
             .outputConfig(OutputConfig.builder().effort(OutputConfig.Effort.LOW).build())
             .tools(listOf(ToolUnion.ofTool(tool)))
             .toolChoice(ToolChoiceAuto.builder().build())
             .build()
-        when (val result = call(key, params)) {
-            is CallResult.Failed -> PantryListResult.Failed(result.error.message)
+        return when (val result = call(key, params)) {
+            is CallResult.Failed -> null to result.error.message
             is CallResult.Succeeded -> {
                 recordUsage(result.message)
                 when (result.message.stopReason().orElse(null)) {
-                    StopReason.MAX_TOKENS -> return@withContext PantryListResult.Failed("The list was too long to read in one go. Try it in two parts.")
-                    StopReason.REFUSAL -> return@withContext PantryListResult.Failed(BLOCKED_MESSAGE)
+                    StopReason.MAX_TOKENS -> return null to "The list was too long to read in one go. Try it in two parts."
+                    StopReason.REFUSAL -> return null to BLOCKED_MESSAGE
                     else -> Unit
                 }
-                val items = result.message.content()
-                    .mapNotNull { block -> block.toolUse().orElse(null) }
-                    .filter { it.name() == PantryListParsing.TOOL_NAME }
-                    .flatMap { PantryListParsing.parse(jsonText(it._input())) }
-                if (items.isEmpty()) PantryListResult.Failed("Claude didn't find any food in that list. Try listing items like \"2 kg rice, 3 tins chopped tomatoes\".")
-                else PantryListResult.Items(items)
+                val calls = result.message.content().mapNotNull { block -> block.toolUse().orElse(null) }.filter { it.name() == toolName }
+                if (calls.isEmpty()) null to "" else calls.joinToString("\u0000") { jsonText(it._input()) } to null
             }
         }
+    }
+
+    override suspend fun parsePantryList(text: String): PantryListResult = withContext(ioDispatcher) {
+        val key = apiKey() ?: return@withContext PantryListResult.Failed(noKey().message)
+        val list = text.trim().take(PantryListParsing.MAX_LIST_CHARS)
+        if (list.isEmpty()) return@withContext PantryListResult.Failed("Type or paste what you have first.")
+        val (json, error) = callSingleTool(
+            key, PantryListParsing.SYSTEM_PROMPT, list, PantryListParsing.TOOL_NAME,
+            "Records the household's stock items read from their list.", PantryListParsing.itemsSchema(), listOf("items")
+        )
+        if (error != null && json == null && error.isNotEmpty()) return@withContext PantryListResult.Failed(error)
+        val items = json.orEmpty().split('\u0000').filter { it.isNotBlank() }.flatMap { PantryListParsing.parse(it) }
+        if (items.isEmpty()) PantryListResult.Failed("Claude didn't find any food in that list. Try listing items like \"2 kg rice, 3 tins chopped tomatoes\".")
+        else PantryListResult.Items(items)
+    }
+
+    override suspend fun chooseProducts(lines: List<ProductMatchLine>): ProductMatchResult = withContext(ioDispatcher) {
+        val key = apiKey() ?: return@withContext ProductMatchResult.Failed(noKey().message)
+        if (lines.isEmpty()) return@withContext ProductMatchResult.Choices(emptyList())
+        val (json, error) = callSingleTool(
+            key, PantryListParsing.MATCH_PROMPT, PantryListParsing.matchPrompt(lines), PantryListParsing.MATCH_TOOL_NAME,
+            "Records which database product each listed line refers to.", PantryListParsing.matchSchema(), listOf("choices")
+        )
+        if (json == null) return@withContext ProductMatchResult.Failed(error?.ifEmpty { "Claude didn't pick any products." } ?: "Claude didn't pick any products.")
+        ProductMatchResult.Choices(json.split('\u0000').filter { it.isNotBlank() }.flatMap { PantryListParsing.parseMatches(it, lines) })
     }
 
     override suspend fun send(request: AiProviderRequest): AiProviderResponse = withContext(ioDispatcher) {

@@ -75,9 +75,17 @@ class BarcodeLookupCoordinator @Inject constructor(
         )
     }
 
-    suspend fun searchProductsByName(query: String): List<BarcodeLookupResult> {
+    suspend fun searchProductsByName(query: String): List<BarcodeLookupResult> =
+        searchProductsByNameOrNull(query) ?: emptyList()
+
+    /**
+     * Like [searchProductsByName], but null when the online service failed and nothing local was found,
+     * so a caller can tell "no such product" from "the service was busy".
+     */
+    suspend fun searchProductsByNameOrNull(query: String): List<BarcodeLookupResult>? {
         val trimmed = query.trim()
         if (trimmed.isBlank()) return emptyList()
+        var remoteFailed = false
 
         val resultsList = mutableListOf<BarcodeLookupResult>()
         val seenBarcodes = mutableSetOf<String>()
@@ -114,6 +122,7 @@ class BarcodeLookupCoordinator @Inject constructor(
         val repo = productLookupRepository
         if (repo != null) {
             val remoteResult = runCatching { repo.searchProductsByName(trimmed) }.getOrNull()
+            if (remoteResult == null || remoteResult is ProductLookupSearchResult.Error) remoteFailed = true
             if (remoteResult is ProductLookupSearchResult.Success) {
                 for (remoteMeta in remoteResult.products) {
                     val barcodeKey = remoteMeta.barcode?.trim() ?: ""
@@ -144,7 +153,7 @@ class BarcodeLookupCoordinator @Inject constructor(
             }
         }
 
-        return resultsList
+        return if (resultsList.isEmpty() && remoteFailed) null else resultsList
     }
 
     suspend fun confirmAndSaveBarcodeMapping(input: ConfirmedProductInput) {

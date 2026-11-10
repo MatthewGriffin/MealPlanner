@@ -49,6 +49,7 @@ import com.example.chatgpt_mealplanner.core.model.StorageLocation
 import com.example.chatgpt_mealplanner.feature.inventory.BulkAddRow
 import com.example.chatgpt_mealplanner.feature.inventory.BulkAddState
 import com.example.chatgpt_mealplanner.feature.inventory.InventoryUiEvent
+import com.example.chatgpt_mealplanner.feature.inventory.choiceLabel
 
 /**
  * Add many items at once: type, paste or dictate what you have, let Claude read it into stock
@@ -109,7 +110,7 @@ private fun ColumnScope.BulkAddInput(state: BulkAddState, onEvent: (InventoryUiE
         if (state.isReading) {
             CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
             Spacer(Modifier.size(8.dp))
-            Text("Reading your list…")
+            Text(state.progress ?: "Reading your list…")
         } else {
             Text("Read my list")
         }
@@ -119,7 +120,7 @@ private fun ColumnScope.BulkAddInput(state: BulkAddState, onEvent: (InventoryUiE
 @Composable
 private fun BulkAddHint() {
     Text(
-        "Items marked \"guess\" had no amount, so a typical pack was assumed. Tap an item to change it, remove what you don't want, then save.",
+        "Each item was looked up in the food database. Where it wasn't clear which product you mean, choose one (or keep your own wording). Items marked \"guess\" had no amount, so one pack was assumed. Tap an item to change it.",
         style = MaterialTheme.typography.bodySmall,
         modifier = Modifier.padding(vertical = 8.dp)
     )
@@ -128,8 +129,27 @@ private fun BulkAddHint() {
 @Composable
 private fun ColumnScope.BulkAddReview(state: BulkAddState, onEvent: (InventoryUiEvent) -> Unit) {
     BulkAddHint()
+    state.lookupNote?.let {
+        Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(bottom = 8.dp))
+    }
     state.error?.let {
         Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(bottom = 8.dp))
+    }
+    val failedLookups = state.rows.count { it.lookupFailed }
+    if (failedLookups > 0) {
+        OutlinedButton(
+            onClick = { onEvent(InventoryUiEvent.RetryBulkLookup) },
+            enabled = !state.isReading && !state.isSaving,
+            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+        ) { Text(if (state.isReading) (state.progress ?: "Looking up…") else "Look up the $failedLookups that failed again") }
+    }
+    val undecidedRows = state.rows.count { !it.decided }
+    if (undecidedRows > 1) {
+        OutlinedButton(
+            onClick = { onEvent(InventoryUiEvent.KeepWordingForUndecided) },
+            enabled = !state.isReading && !state.isSaving,
+            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+        ) { Text("Keep my wording for the other $undecidedRows") }
     }
     LazyColumn(
         modifier = Modifier.fillMaxWidth().weight(1f),
@@ -147,12 +167,14 @@ private fun ColumnScope.BulkAddReview(state: BulkAddState, onEvent: (InventoryUi
             enabled = !state.isSaving,
             modifier = Modifier.weight(1f)
         ) { Text("Edit list") }
+        val undecided = state.rows.count { !it.decided }
         Button(
             onClick = { onEvent(InventoryUiEvent.SaveBulkAddRows) },
-            enabled = !state.isSaving,
+            enabled = !state.isSaving && undecided == 0,
             modifier = Modifier.weight(2f).testTag("bulk-add-save")
         ) {
             if (state.isSaving) CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+            else if (undecided > 0) Text("Choose $undecided product${if (undecided == 1) "" else "s"} first")
             else Text("Save ${state.rows.size} items")
         }
     }
@@ -171,13 +193,21 @@ private fun BulkAddRowEditor(row: BulkAddRow, onChange: (BulkAddRow) -> Unit, on
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                row.matched?.let {
+                    Text("Matched: ${it.choiceLabel()}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                }
+                if (!row.decided) {
+                    Text("Which product do you mean?", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                }
             }
             IconButton(onClick = { editing = true }) { Icon(Icons.Default.Edit, contentDescription = "Edit ${row.displayName}") }
             IconButton(onClick = onRemove) { Icon(Icons.Default.Delete, contentDescription = "Remove ${row.displayName}") }
         }
+        if (!row.decided) ProductChooser(row, onChange)
         return
     }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+        if (row.candidates.isNotEmpty()) ProductChooser(row, onChange)
         OutlinedTextField(
             value = row.displayName,
             onValueChange = { onChange(row.copy(displayName = it)) },
@@ -225,4 +255,35 @@ private fun BulkAddRowEditor(row: BulkAddRow, onChange: (BulkAddRow) -> Unit, on
             OutlinedButton(onClick = onRemove) { Text("Remove") }
         }
     }
+}
+
+/** One option of the product list: a food database product, or the user's own wording. */
+private data class ProductOption(val product: com.example.chatgpt_mealplanner.core.barcode.BarcodeLookupResult?, val label: String)
+
+@Composable
+private fun ProductChooser(row: BulkAddRow, onChange: (BulkAddRow) -> Unit) {
+    val keepMine = ProductOption(null, "Keep as I wrote it: ${row.genericName}")
+    val options = (row.candidates.map { ProductOption(it, it.choiceLabel()) } + keepMine).toTypedArray()
+    val selected = when {
+        row.matched != null -> options.firstOrNull { it.product == row.matched } ?: keepMine
+        row.decided -> keepMine
+        else -> ProductOption(null, "Choose a product…")
+    }
+    EnumDropdownSelector(
+        label = "Product",
+        options = options,
+        selectedOption = selected,
+        onOptionSelected = { option ->
+            val product = option.product
+            onChange(
+                if (product == null) {
+                    row.copy(matched = null, decided = true, displayName = row.genericName)
+                } else {
+                    row.copy(matched = product, decided = true, displayName = product.displayName, brand = product.brand ?: row.brand)
+                }
+            )
+        },
+        modifier = Modifier.fillMaxWidth(),
+        optionLabel = { it.label }
+    )
 }

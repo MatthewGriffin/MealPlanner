@@ -56,4 +56,26 @@ class PantryListParsingTest {
         assertTrue(PantryListParsing.parse("not json").isEmpty())
         assertTrue(PantryListParsing.parse("""{"other":[]}""").isEmpty())
     }
+
+    @Test
+    fun matchChoicesOutsideTheCandidatesCountAsNoMatchAndNeverSure() {
+        val lines = listOf(
+            ProductMatchLine(0, "heinz beans", listOf(ProductCandidate("Beans", "Heinz", "415 gram"), ProductCandidate("Beans", "Own", null))),
+            ProductMatchLine(1, "rice", listOf(ProductCandidate("Rice", null, null)))
+        )
+        val choices = PantryListParsing.parseMatches(
+            """{"choices":[{"line":0,"candidate":1,"sure":true},{"line":1,"candidate":7,"sure":true},{"line":9,"candidate":0,"sure":true}]}""",
+            lines
+        )
+        assertEquals(listOf(ProductMatchChoice(0, 1, true), ProductMatchChoice(1, null, false)), choices)
+    }
+
+    @Test
+    fun searchTextIsWhatTheUserWroteAndFallsBackToTheName() {
+        val items = PantryListParsing.parse(
+            """{"items":[{"displayName":"Baked beans","searchText":"Heinz baked beans","quantity":4,"unit":"TIN"},{"displayName":"Rice","quantity":1,"unit":"BAG"}]}"""
+        )
+        assertEquals("Heinz baked beans", items[0].searchText)
+        assertEquals("Rice", items[1].searchText)
+    }
 }

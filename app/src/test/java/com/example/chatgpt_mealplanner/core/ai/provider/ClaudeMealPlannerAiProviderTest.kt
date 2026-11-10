@@ -537,4 +537,23 @@ class ClaudeMealPlannerAiProviderTest {
         val result = provider.parsePantryList("rice")
         assertTrue((result as PantryListResult.Failed).message.contains("API key"))
     }
+
+    @Test
+    fun chooseProducts_sendsTheCandidatesAndReadsTheChoices() = runBlocking {
+        server.enqueue(reply("tool_use", toolUse("t1", PantryListParsing.MATCH_TOOL_NAME, """{"choices":[{"line":3,"candidate":1,"sure":true}]}""")))
+        val result = provider.chooseProducts(
+            listOf(ProductMatchLine(3, "tilda basmati", listOf(ProductCandidate("Basmati", "Tilda", "1000 gram"), ProductCandidate("Basmati Rice", "Tilda", "500 gram"))))
+        )
+        assertEquals(listOf(ProductMatchChoice(3, 1, true)), (result as ProductMatchResult.Choices).choices)
+        val body = nextBody()
+        val sent = body["messages"]!!.jsonArray[0].jsonObject["content"]!!.jsonPrimitive.content
+        assertTrue(sent.contains("Line 3") && sent.contains("1: Basmati Rice | brand: Tilda | size: 500 gram"))
+        assertEquals(PantryListParsing.MATCH_TOOL_NAME, body["tools"]!!.jsonArray[0].jsonObject["name"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun chooseProducts_makesNoRequestForNoLines() = runBlocking {
+        assertEquals(emptyList<ProductMatchChoice>(), (provider.chooseProducts(emptyList()) as ProductMatchResult.Choices).choices)
+        assertEquals(0, server.requestCount)
+    }
 }
