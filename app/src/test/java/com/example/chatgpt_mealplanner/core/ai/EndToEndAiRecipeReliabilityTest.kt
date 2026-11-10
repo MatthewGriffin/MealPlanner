@@ -2192,6 +2192,37 @@ private val milkAllergyAndNoCoriander = com.example.chatgpt_mealplanner.contract
     }
 
     @Test
+    fun savedRecipeTools_saveReplaceFetchAndRead() = runTest(testDispatcher) {
+        val recipes = com.example.chatgpt_mealplanner.core.service.FakeSavedRecipeDao()
+        val pages = object : com.example.chatgpt_mealplanner.core.web.WebPageSource {
+            override suspend fun fetch(url: String) =
+                if (url.startsWith("https://good")) Result.success("Recipe data from the page:\nname: Shakshuka") else Result.failure(IllegalStateException("The page returned HTTP 404."))
+        }
+        val dispatcher = AiToolDispatcher(
+            inventoryDomainService = inventoryDomainService, mealDomainService = mealDomainService,
+            shoppingDomainService = shoppingDomainService, activeProposalStore = activeProposalStore,
+            pendingMutationStore = pendingMutationStore, chatDao = chatDao, inventoryDao = inventoryDao,
+            leftoverDao = leftoverDao, shoppingDao = shoppingDao, mealDao = mealDao, savedRecipeDao = recipes, webPages = pages
+        )
+        var n = 0
+        fun call(tool: String, args: String) = AiToolCall("recipe_call_${++n}", tool, args)
+        val auth = ActionAuthorizationContext("msg_1")
+        val body = "Ingredients: 4 eggs, 1 tin chopped tomatoes, 1 onion. Method: soften the onion 5 minutes, add the tomatoes and simmer 10 minutes, poach the eggs 6 minutes."
+
+        assertTrue(dispatcher.executeToolCall("default_conversation", auth, call("fetch_recipe_page", """{"url":"https://good.example/shakshuka"}""")).success)
+        assertFalse(dispatcher.executeToolCall("default_conversation", auth, call("fetch_recipe_page", """{"url":"https://bad.example/x"}""")).success)
+
+        assertTrue(dispatcher.executeToolCall("default_conversation", auth, call("save_recipe", """{"title":"Shakshuka","servings":2,"recipeText":"$body","source":"URL","sourceNote":"https://good.example/shakshuka"}""")).success)
+        dispatcher.executeToolCall("default_conversation", auth, call("save_recipe", """{"title":"shakshuka","servings":4,"recipeText":"$body","source":"PHOTO"}"""))
+        assertEquals(1, recipes.rows.size)
+        assertEquals(4, recipes.rows.values.single().servings)
+
+        assertFalse(dispatcher.executeToolCall("default_conversation", auth, call("save_recipe", """{"title":"Thin","recipeText":"eggs","source":"USER"}""")).success)
+        assertTrue(dispatcher.executeToolCall("default_conversation", auth, call("get_saved_recipe", """{"title":"Shakshuka"}""")).success)
+        assertFalse(dispatcher.executeToolCall("default_conversation", auth, call("get_saved_recipe", """{"title":"Lasagne"}""")).success)
+    }
+
+    @Test
     fun webSearchIsOfferedForAKitOnlyWhenTheUserSaysTheyHaveNoPacketOrAsksForALookUp() = runTest(testDispatcher) {
         inventoryDao.insertItem(kitItem("Old El Paso Fajita Kit").toEntity())
         val sent = mutableListOf<AiProviderRequest>()

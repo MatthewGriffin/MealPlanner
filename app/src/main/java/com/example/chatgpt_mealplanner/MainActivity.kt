@@ -11,6 +11,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CalendarMonth
@@ -65,6 +66,12 @@ import com.example.chatgpt_mealplanner.feature.household.JoinHouseholdViewModel
 import com.example.chatgpt_mealplanner.feature.household.PairDeviceScreen
 import com.example.chatgpt_mealplanner.feature.household.PairDeviceViewModel
 
+/** What to do in the chat when the user arrives there from another screen. */
+sealed interface ChatLaunch {
+    data class Send(val text: String) : ChatLaunch
+    data class ScanRecipe(val title: String?) : ChatLaunch
+}
+
 enum class Screen(val label: String) {
     CHAT("Assistant"),
     INVENTORY("Inventory"),
@@ -72,6 +79,7 @@ enum class Screen(val label: String) {
     SHOPPING("Shopping"),
     SCANNER("Scanner"),
     SETTINGS("Settings"),
+    RECIPES("Saved recipes"),
     RECEIPT_SPEND("Shopping Spend"),
     HOUSEHOLD("Household Sync"),
     PAIR_DEVICE("Pair New Device"),
@@ -128,6 +136,7 @@ class MainActivity : ComponentActivity() {
                     if (notificationRouteState.value != null) currentScreen = Screen.MEAL_PLANNER
                 }
                 var scanPacketForKit by remember { mutableStateOf<String?>(null) }
+                var chatLaunch by remember { mutableStateOf<ChatLaunch?>(null) }
                 var lowStockItemToAdd by remember { mutableStateOf<com.example.chatgpt_mealplanner.core.model.InventoryItem?>(null) }
                 var pendingRecipeDate by remember { mutableStateOf<String?>(null) }
                 var mealChangeRequestForAi by remember { mutableStateOf<com.example.chatgpt_mealplanner.core.database.entity.MealChangeRequestEntity?>(null) }
@@ -153,7 +162,7 @@ class MainActivity : ComponentActivity() {
                     currentScreen == Screen.PAIR_DEVICE || currentScreen == Screen.JOIN_HOUSEHOLD -> {
                         { currentScreen = Screen.HOUSEHOLD }
                     }
-                    currentScreen == Screen.SCANNER || currentScreen == Screen.SETTINGS || currentScreen == Screen.HOUSEHOLD -> {
+                    currentScreen == Screen.SCANNER || currentScreen == Screen.SETTINGS || currentScreen == Screen.HOUSEHOLD || currentScreen == Screen.RECIPES -> {
                         { currentScreen = Screen.INVENTORY }
                     }
                     else -> null
@@ -174,6 +183,14 @@ class MainActivity : ComponentActivity() {
                                 }
                             },
                             actions = {
+                                if (currentScreen != Screen.RECIPES && !isFollower) {
+                                    IconButton(onClick = { currentScreen = Screen.RECIPES }) {
+                                        Icon(
+                                            Icons.AutoMirrored.Filled.MenuBook,
+                                            contentDescription = "Saved recipes"
+                                        )
+                                    }
+                                }
                                 if (currentScreen != Screen.HOUSEHOLD) {
                                     IconButton(onClick = { currentScreen = Screen.HOUSEHOLD }) {
                                         Icon(
@@ -243,6 +260,15 @@ class MainActivity : ComponentActivity() {
                                 scanPacketForKit?.let { kit ->
                                     chatViewModel.onEvent(ChatUiEvent.OpenPacketScan(kit))
                                     scanPacketForKit = null
+                                }
+                            }
+                            LaunchedEffect(chatLaunch, chatViewModel) {
+                                chatLaunch?.let { launch ->
+                                    when (launch) {
+                                        is ChatLaunch.Send -> chatViewModel.onEvent(ChatUiEvent.SendText(launch.text))
+                                        is ChatLaunch.ScanRecipe -> chatViewModel.onEvent(ChatUiEvent.OpenRecipeScan(launch.title))
+                                    }
+                                    chatLaunch = null
                                 }
                             }
                             val state by chatViewModel.uiState.collectAsState()
@@ -323,6 +349,16 @@ class MainActivity : ComponentActivity() {
                                 userStores = scannerUserStores,
                                 onEvent = scannerViewModel::onEvent,
                                 onNavigateBack = { currentScreen = Screen.INVENTORY },
+                                modifier = Modifier.padding(innerPadding)
+                            )
+                        }
+
+                        Screen.RECIPES -> {
+                            com.example.chatgpt_mealplanner.feature.recipes.RecipesScreen(
+                                onAddFromLink = { url -> chatLaunch = ChatLaunch.Send("Please read this recipe and save it to my recipes: $url"); currentScreen = Screen.CHAT },
+                                onAddFromPhoto = { chatLaunch = ChatLaunch.ScanRecipe(null); currentScreen = Screen.CHAT },
+                                onRescanPhoto = { title -> chatLaunch = ChatLaunch.ScanRecipe(title); currentScreen = Screen.CHAT },
+                                onRescanLink = { title, url -> chatLaunch = ChatLaunch.Send("Please read this page again and update my saved recipe \"$title\": $url"); currentScreen = Screen.CHAT },
                                 modifier = Modifier.padding(innerPadding)
                             )
                         }

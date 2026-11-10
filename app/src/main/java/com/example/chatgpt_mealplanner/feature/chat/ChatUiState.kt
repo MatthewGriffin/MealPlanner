@@ -31,6 +31,8 @@ data class ChatUiState(
     /** Whether the Scan packet screen is open, and for which kit (null when the user opened it themselves). */
     val showPacketScan: Boolean = false,
     val packetScanKit: String? = null,
+    /** Whether the scan screen is for a recipe (a book page or card) rather than a kit's packet. */
+    val packetScanRecipe: Boolean = false,
     val errorMessage: String? = null,
     val requestState: ChatRequestState = ChatRequestState.IDLE,
     val retainedUserMessage: String? = null,
@@ -54,9 +56,13 @@ sealed interface ChatUiEvent {
     object SendMessage : ChatUiEvent
     /** Opens the Scan packet screen, for the kit the assistant asked about or none. */
     data class OpenPacketScan(val kitName: String?) : ChatUiEvent
+    /** Opens the scan screen for a recipe; [title] is set when replacing a saved recipe. */
+    data class OpenRecipeScan(val title: String?) : ChatUiEvent
+    /** Sends a ready-made message as if typed, such as a recipe link. */
+    data class SendText(val text: String) : ChatUiEvent
     object ClosePacketScan : ChatUiEvent
     /** Sends the packet as the user chose: the text they checked, or the picture for Claude to read. */
-    data class SendPacket(val packet: com.example.chatgpt_mealplanner.core.ai.packet.PacketPhoto, val kitName: String?) : ChatUiEvent
+    data class SendPacket(val packet: com.example.chatgpt_mealplanner.core.ai.packet.PacketPhoto, val kitName: String?, val recipe: Boolean = false) : ChatUiEvent
     object DismissKitPacketRequest : ChatUiEvent
     object SubmitMealChangeRequest : ChatUiEvent
     data class UpdateMealChangeRequestDraft(val text: String) : ChatUiEvent

@@ -30,7 +30,8 @@ class AiContextBuilder @Inject constructor(
     private val pendingMutationStore: com.example.chatgpt_mealplanner.core.ai.pending.PendingMutationStore,
     private val cookingPreferences: com.example.chatgpt_mealplanner.core.repository.CookingPreferencesSource =
         com.example.chatgpt_mealplanner.core.repository.NoCookingPreferences,
-    private val kitInstructionDao: com.example.chatgpt_mealplanner.core.database.dao.KitInstructionDao? = null
+    private val kitInstructionDao: com.example.chatgpt_mealplanner.core.database.dao.KitInstructionDao? = null,
+    private val savedRecipeDao: com.example.chatgpt_mealplanner.core.database.dao.SavedRecipeDao? = null
 ) {
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -177,6 +178,7 @@ class AiContextBuilder @Inject constructor(
             useSoonItems = useSoonDtos,
             usableInventory = usableInventoryDtos,
             kitInstructions = kitInstructionDtos,
+            savedRecipes = savedRecipeDao?.getAll().orEmpty().map { com.example.chatgpt_mealplanner.contract.SavedRecipeContextDto(it.title, it.servings, it.source) },
             lowStockStaples = lowDtos,
             activeShoppingList = activeShoppingDtos,
             activeProposalTitle = activeProposal?.title,

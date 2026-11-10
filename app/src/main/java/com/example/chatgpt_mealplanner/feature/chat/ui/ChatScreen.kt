@@ -155,7 +155,8 @@ fun ChatScreen(
     if (uiState.showPacketScan) {
         PacketScanDialog(
             kitName = uiState.packetScanKit,
-            onSend = { onEvent(ChatUiEvent.SendPacket(it, uiState.packetScanKit)) },
+            recipe = uiState.packetScanRecipe,
+            onSend = { onEvent(ChatUiEvent.SendPacket(it, uiState.packetScanKit, uiState.packetScanRecipe)) },
             onCancel = { onEvent(ChatUiEvent.ClosePacketScan) }
         )
     }

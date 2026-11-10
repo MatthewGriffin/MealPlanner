@@ -33,7 +33,7 @@ class PacketPhotoReader @Inject constructor(
             rethrowIfCancelled()
             null
         }
-        val text = PacketTextFilter.keepInstructions(result?.fullText.orEmpty())
+        val text = result?.fullText.orEmpty()
         val confidences = result?.lines?.map { it.confidence }.orEmpty()
         // The picture is kept either way: the user may decide the phone's text isn't good enough.
         val picture = try {

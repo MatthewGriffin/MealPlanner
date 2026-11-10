@@ -106,6 +106,7 @@ class ChatViewModel @Inject constructor(
         }
     private val showPacketScanFlow = MutableStateFlow(false)
     private val packetScanKitFlow = MutableStateFlow<String?>(null)
+    private val packetScanRecipeFlow = MutableStateFlow(false)
     /** The packet sent with the message in flight, kept so a retry sends it again. */
     private var retainedPacketPhoto: com.example.chatgpt_mealplanner.core.ai.packet.PacketPhoto? = null
     private val errorMessageFlow = MutableStateFlow<String?>(null)
@@ -157,7 +158,8 @@ class ChatViewModel @Inject constructor(
         kitPacketRequestFlow,
         unscannedKitFlow,
         showPacketScanFlow,
-        packetScanKitFlow
+        packetScanKitFlow,
+        packetScanRecipeFlow
     ) { flows ->
         @Suppress("UNCHECKED_CAST")
         val reqHolder = flows[4] as RequestStateHolder
@@ -179,6 +181,7 @@ class ChatViewModel @Inject constructor(
             kitPacketRequest = (flows[19] as String?) ?: (flows[20] as String?),
             showPacketScan = flows[21] as Boolean,
             packetScanKit = flows[22] as String?,
+            packetScanRecipe = flows[23] as Boolean,
             errorMessage = flows[6] as String?,
             requestState = reqHolder.requestState,
             retainedUserMessage = reqHolder.retainedUserMessage,
@@ -322,12 +325,22 @@ class ChatViewModel @Inject constructor(
             ChatUiEvent.SendMessage -> sendMessage()
             is ChatUiEvent.OpenPacketScan -> {
                 packetScanKitFlow.value = event.kitName
+                packetScanRecipeFlow.value = false
                 showPacketScanFlow.value = true
+            }
+            is ChatUiEvent.OpenRecipeScan -> {
+                packetScanKitFlow.value = event.title
+                packetScanRecipeFlow.value = true
+                showPacketScanFlow.value = true
+            }
+            is ChatUiEvent.SendText -> {
+                userMessageTextFlow.value = event.text
+                sendMessage()
             }
             ChatUiEvent.ClosePacketScan -> showPacketScanFlow.value = false
             is ChatUiEvent.SendPacket -> {
                 showPacketScanFlow.value = false
-                sendPacket(event.packet, event.kitName)
+                sendPacket(event.packet, event.kitName, event.recipe)
             }
             ChatUiEvent.DismissKitPacketRequest -> {
                 (kitPacketRequestFlow.value ?: uiState.value.kitPacketRequest)?.let { dismissedKitsFlow.value = dismissedKitsFlow.value + it }
@@ -416,10 +429,16 @@ class ChatViewModel @Inject constructor(
     }
 
     /** The packet the user chose to send, as a message of its own. */
-    private fun sendPacket(packet: com.example.chatgpt_mealplanner.core.ai.packet.PacketPhoto, kitName: String?) {
+    private fun sendPacket(packet: com.example.chatgpt_mealplanner.core.ai.packet.PacketPhoto, kitName: String?, recipe: Boolean = false) {
         if (requestStateHolderFlow.value.requestState == ChatRequestState.IN_FLIGHT) return
-        val text = if (kitName.isNullOrBlank()) "Here is the packet." else "Here are the instructions from the packet of my $kitName."
-        val shown = text + if (packet.imageJpegBase64 != null) "\n(photo of the packet sent for Claude to read)" else "\n(text from the packet sent)"
+        val text = when {
+            recipe && kitName.isNullOrBlank() -> "Here is a recipe. Please read it and save it to my recipes."
+            recipe -> "Here is my \"$kitName\" recipe again. Please read it and save it, replacing the one you have."
+            kitName.isNullOrBlank() -> "Here is the packet."
+            else -> "Here are the instructions from the packet of my $kitName."
+        }
+        val what = if (recipe) "recipe" else "packet"
+        val shown = text + if (packet.imageJpegBase64 != null) "\n(photo of the $what sent for Claude to read)" else "\n(text from the $what sent)"
         startSend(text, shown, packet)
     }
 
