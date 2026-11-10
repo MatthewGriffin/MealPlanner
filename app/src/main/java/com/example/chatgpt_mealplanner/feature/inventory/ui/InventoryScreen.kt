@@ -6,6 +6,8 @@ import java.util.Locale
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -86,6 +88,7 @@ fun InventoryScreen(
     onOpenAssistant: (kitName: String) -> Unit = {}
 ) {
     var kitPromptName by remember { mutableStateOf<String?>(null) }
+    var viewKit by remember { mutableStateOf<Pair<InventoryItem, com.example.chatgpt_mealplanner.core.database.entity.KitInstructionEntity>?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
 
     var showAddDialog by remember { mutableStateOf(false) }
@@ -200,6 +203,7 @@ fun InventoryScreen(
                             item = item,
                             needsInstructions = item.id in state.kitsWithoutInstructions,
                             onScanPacket = { onOpenAssistant(item.displayName) },
+                            onViewInstructions = state.kitInstructionsByItem[item.id]?.let { saved -> { viewKit = item to saved } },
                             onItemClick = { onEvent(InventoryUiEvent.SelectItemForEdit(item)) },
                             onToggleStaple = { onEvent(InventoryUiEvent.ToggleStaple(item.id)) },
                             onMarkAsOut = { onEvent(InventoryUiEvent.MarkAsOut(item.id)) },
@@ -242,6 +246,33 @@ fun InventoryScreen(
                 }
             },
             onSearchProducts = onSearchProducts
+        )
+    }
+
+    viewKit?.let { (item, saved) ->
+        val sourceText = when (saved.source) {
+            "PHOTO_TEXT" -> "read from a photo by the phone"
+            "PHOTO_IMAGE" -> "read from a photo by Claude"
+            "WEB" -> "found online" + (saved.sourceNote?.let { " ($it)" } ?: "")
+            "USER" -> "typed by you"
+            else -> saved.source
+        }
+        AlertDialog(
+            onDismissRequest = { viewKit = null },
+            title = { Text(saved.displayName) },
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Saved ${sourceText}.", style = MaterialTheme.typography.labelMedium)
+                    Text(saved.instructions, style = MaterialTheme.typography.bodyMedium)
+                }
+            },
+            confirmButton = { TextButton(onClick = { viewKit = null }) { Text("Close") } },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = { viewKit = null; onOpenAssistant(item.displayName) }) { Text("Scan again") }
+                    TextButton(onClick = { onEvent(InventoryUiEvent.DeleteKitInstructions(saved.normalizedName)); viewKit = null }) { Text("Forget") }
+                }
+            }
         )
     }
 
@@ -333,6 +364,7 @@ fun InventoryItemCard(
     item: InventoryItem,
     needsInstructions: Boolean = false,
     onScanPacket: () -> Unit = {},
+    onViewInstructions: (() -> Unit)? = null,
     onItemClick: () -> Unit,
     onToggleStaple: () -> Unit,
     onMarkAsOut: () -> Unit,
@@ -359,6 +391,17 @@ fun InventoryItemCard(
                         modifier = Modifier.weight(1f).testTag("kit-no-instructions")
                     )
                     TextButton(onClick = onScanPacket, modifier = Modifier.testTag("kit-scan-packet")) { Text("Scan packet") }
+                }
+            }
+            if (onViewInstructions != null) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "Packet instructions saved",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.weight(1f)
+                    )
+                    TextButton(onClick = onViewInstructions, modifier = Modifier.testTag("kit-view-instructions")) { Text("View") }
                 }
             }
             Row(

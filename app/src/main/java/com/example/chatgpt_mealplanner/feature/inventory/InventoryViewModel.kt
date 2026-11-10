@@ -113,18 +113,21 @@ class InventoryViewModel @Inject constructor(
             val savedKits = kitInstructionDao?.observeAll()
                 ?: kotlinx.coroutines.flow.flowOf(emptyList())
             kotlinx.coroutines.flow.combine(inventoryRepository.getAllItems(), savedKits) { items, saved -> items to saved }.collect { (items, saved) ->
-                val unscanned = items.filter { it.category == com.example.chatgpt_mealplanner.core.model.FoodCategory.KITS_MIXES && kitInstructionDao != null }
-                    .filter { item ->
-                        val names = listOf(
-                            com.example.chatgpt_mealplanner.core.database.entity.normalizeKitName(item.displayName),
-                            com.example.chatgpt_mealplanner.core.database.entity.normalizeKitName(item.canonicalName)
-                        )
-                        saved.none { com.example.chatgpt_mealplanner.core.database.entity.savedKitMatches(names, it.normalizedName) }
-                    }.map { it.id }.toSet()
+                val kits = items.filter { it.category == com.example.chatgpt_mealplanner.core.model.FoodCategory.KITS_MIXES && kitInstructionDao != null }
+                val matches = kits.associate { item ->
+                    val names = listOf(
+                        com.example.chatgpt_mealplanner.core.database.entity.normalizeKitName(item.displayName),
+                        com.example.chatgpt_mealplanner.core.database.entity.normalizeKitName(item.canonicalName)
+                    )
+                    item.id to saved.firstOrNull { com.example.chatgpt_mealplanner.core.database.entity.savedKitMatches(names, it.normalizedName) }
+                }
+                val unscanned = matches.filterValues { it == null }.keys
+                val withInstructions = matches.mapNotNull { (id, entity) -> entity?.let { id to it } }.toMap()
                 _uiState.update { currentState ->
                     val filtered = filterItems(items, currentState.activeFilter, currentState.searchQuery)
                     currentState.copy(
                         kitsWithoutInstructions = unscanned,
+                        kitInstructionsByItem = withInstructions,
                         rawItems = items,
                         filteredItems = filtered,
                         isLoading = false
@@ -201,6 +204,9 @@ class InventoryViewModel @Inject constructor(
             }
             is InventoryUiEvent.BulkAddRowRemoved -> updateBulk { bulk -> bulk.copy(rows = bulk.rows.filterNot { it.id == event.rowId }) }
             InventoryUiEvent.SaveBulkAddRows -> saveBulkAddRows()
+            is InventoryUiEvent.DeleteKitInstructions -> {
+                viewModelScope.launch { kitInstructionDao?.delete(event.normalizedName) }
+            }
             InventoryUiEvent.ClearMessage -> {
                 _uiState.update { it.copy(userMessage = null) }
             }
@@ -584,6 +590,7 @@ class InventoryViewModel @Inject constructor(
             InventoryFilter.FREEZER -> result.filter { it.storageLocation == com.example.chatgpt_mealplanner.core.model.StorageLocation.FREEZER && it.status != com.example.chatgpt_mealplanner.core.model.ItemStatus.DISCARDED }
             InventoryFilter.USE_SOON -> result.filter { it.status == com.example.chatgpt_mealplanner.core.model.ItemStatus.USE_SOON }
             InventoryFilter.LOW -> result.filter { it.status == com.example.chatgpt_mealplanner.core.model.ItemStatus.LOW }
+            InventoryFilter.KITS -> result.filter { it.category == com.example.chatgpt_mealplanner.core.model.FoodCategory.KITS_MIXES && it.status != com.example.chatgpt_mealplanner.core.model.ItemStatus.DISCARDED }
             InventoryFilter.OUT -> result.filter { it.status == com.example.chatgpt_mealplanner.core.model.ItemStatus.OUT }
         }
         return result.sortedWith(
