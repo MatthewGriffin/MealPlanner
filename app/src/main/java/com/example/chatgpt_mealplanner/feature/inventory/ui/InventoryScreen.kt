@@ -82,8 +82,10 @@ fun InventoryScreen(
     onScanBarcodeClicked: () -> Unit = {},
     onSearchProducts: (suspend (String) -> List<com.example.chatgpt_mealplanner.core.barcode.BarcodeLookupResult>)? = null,
     modifier: Modifier = Modifier,
-    onAddLowStockToShopping: ((InventoryItem) -> Unit)? = null
+    onAddLowStockToShopping: ((InventoryItem) -> Unit)? = null,
+    onOpenAssistant: () -> Unit = {}
 ) {
+    var kitPromptName by remember { mutableStateOf<String?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
 
     var showAddDialog by remember { mutableStateOf(false) }
@@ -221,6 +223,7 @@ fun InventoryScreen(
             onDismiss = { showAddDialog = false },
             onSave = { newItem ->
                 onEvent(InventoryUiEvent.AddItemRequested(newItem))
+                if (newItem.category == FoodCategory.KITS_MIXES) kitPromptName = newItem.displayName
                 showAddDialog = false
             },
             onSearchProducts = onSearchProducts
@@ -233,8 +236,23 @@ fun InventoryScreen(
             onDismiss = { onEvent(InventoryUiEvent.SelectItemForEdit(null)) },
             onSave = { updatedItem ->
                 onEvent(InventoryUiEvent.UpdateItemRequested(updatedItem))
+                if (updatedItem.category == FoodCategory.KITS_MIXES && itemToEdit.category != FoodCategory.KITS_MIXES) {
+                    kitPromptName = updatedItem.displayName
+                }
             },
             onSearchProducts = onSearchProducts
+        )
+    }
+
+    kitPromptName?.let { kit ->
+        AlertDialog(
+            onDismissRequest = { kitPromptName = null },
+            title = { Text("Scan the packet now?") },
+            text = { Text("\"$kit\" is a kit. Claude needs its packet instructions to cook with it. If you haven't saved them yet, scan the packet in the Assistant chat.") },
+            confirmButton = {
+                TextButton(onClick = { kitPromptName = null; onOpenAssistant() }, modifier = Modifier.testTag("kit-scan-now")) { Text("Open Assistant") }
+            },
+            dismissButton = { TextButton(onClick = { kitPromptName = null }) { Text("Later") } }
         )
     }
 
