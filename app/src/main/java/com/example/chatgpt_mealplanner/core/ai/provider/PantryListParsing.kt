@@ -4,6 +4,7 @@ import com.example.chatgpt_mealplanner.core.model.FoodCategory
 import com.example.chatgpt_mealplanner.core.model.QuantityUnit
 import com.example.chatgpt_mealplanner.core.model.StorageLocation
 import com.example.chatgpt_mealplanner.core.model.quantityUnitOrNull
+import com.example.chatgpt_mealplanner.core.util.withoutPictographsOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -118,20 +119,20 @@ internal object PantryListParsing {
         val array = (root["items"] as? JsonArray) ?: return emptyList()
         return array.mapNotNull { element ->
             val obj = element as? JsonObject ?: return@mapNotNull null
-            val name = obj.string("displayName")?.trim().orEmpty().ifBlank { obj.string("canonicalName")?.trim().orEmpty() }
+            val name = obj.string("displayName").withoutPictographsOrNull().orEmpty().ifBlank { obj.string("canonicalName").withoutPictographsOrNull().orEmpty() }
             if (name.isBlank()) return@mapNotNull null
             val unit = quantityUnitOrNull(obj.string("unit")) ?: QuantityUnit.UNIT
             val quantity = (obj["quantity"] as? JsonPrimitive)?.doubleOrNull?.takeIf { it > 0.0 && it.isFinite() }
             ParsedPantryItem(
                 displayName = name,
-                canonicalName = obj.string("canonicalName")?.trim()?.lowercase().orEmpty().ifBlank { name.lowercase() },
-                brand = obj.string("brand")?.trim()?.takeIf { it.isNotEmpty() },
+                canonicalName = obj.string("canonicalName").withoutPictographsOrNull()?.lowercase().orEmpty().ifBlank { name.lowercase() },
+                brand = obj.string("brand").withoutPictographsOrNull(),
                 category = FoodCategory.entries.firstOrNull { it.name == obj.string("category") } ?: FoodCategory.OTHER,
                 storageLocation = StorageLocation.entries.firstOrNull { it.name == obj.string("storageLocation") } ?: StorageLocation.CUPBOARD,
                 quantity = quantity ?: 1.0,
                 unit = if (quantity == null) QuantityUnit.UNIT else unit,
                 quantityGuessed = quantity == null || (obj["quantityGuessed"] as? JsonPrimitive)?.booleanOrNull == true,
-                searchText = obj.string("searchText")?.trim()?.takeIf { it.isNotEmpty() } ?: name
+                searchText = obj.string("searchText").withoutPictographsOrNull() ?: name
             )
         }
     }

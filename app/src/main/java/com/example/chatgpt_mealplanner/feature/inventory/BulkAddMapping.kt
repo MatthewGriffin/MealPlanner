@@ -4,6 +4,8 @@ import com.example.chatgpt_mealplanner.core.barcode.BarcodeLookupResult
 import com.example.chatgpt_mealplanner.core.barcode.model.ConfirmedProductInput
 import com.example.chatgpt_mealplanner.core.model.QuantityConfidence
 import com.example.chatgpt_mealplanner.core.model.QuantityUnit
+import com.example.chatgpt_mealplanner.core.util.withoutPictographs
+import com.example.chatgpt_mealplanner.core.util.withoutPictographsOrNull
 
 /** Units that count whole packs, so a product's own pack size gives the real amount. */
 private val PACK_UNITS = setOf(QuantityUnit.UNIT, QuantityUnit.PACK, QuantityUnit.TIN, QuantityUnit.BOTTLE, QuantityUnit.BAG)
@@ -18,8 +20,9 @@ fun BarcodeLookupResult.sizeText(): String? {
 
 /** How a product reads in the choice list: name, brand and size. */
 fun BarcodeLookupResult.choiceLabel(): String = buildString {
-    append(displayName)
-    brand?.takeIf { it.isNotBlank() && !displayName.contains(it, ignoreCase = true) }?.let { append(" (").append(it).append(")") }
+    val name = displayName.withoutPictographs()
+    append(name)
+    brand.withoutPictographsOrNull()?.takeIf { !name.contains(it, ignoreCase = true) }?.let { append(" (").append(it).append(")") }
     sizeText()?.let { append(" · ").append(it) }
 }
 
@@ -63,8 +66,8 @@ fun BulkAddRow.toMappingInput(): ConfirmedProductInput? {
     val barcode = product.barcode.takeIf { it.isNotBlank() } ?: return null
     return ConfirmedProductInput(
         barcode = barcode,
-        displayName = product.displayName,
-        brand = product.brand,
+        displayName = product.displayName.withoutPictographs(),
+        brand = product.brand.withoutPictographsOrNull(),
         canonicalName = canonicalName.ifBlank { displayName.trim().lowercase() },
         category = category,
         storageLocation = storageLocation,
