@@ -2113,7 +2113,7 @@ private val milkAllergyAndNoCoriander = com.example.chatgpt_mealplanner.contract
     )
 
     @Test
-    fun ownedKit_turnsOnWebSearch_andShowsItsCategoryAndSavedInstructions() = runTest(testDispatcher) {
+    fun ownedKit_showsItsCategoryAndSavedInstructions_withoutTurningOnWebSearch() = runTest(testDispatcher) {
         inventoryDao.insertItem(kitItem("Old El Paso Fajita Kit").toEntity())
         val kits = FakeKitInstructionDao()
         kits.upsert(
@@ -2126,11 +2126,13 @@ private val milkAllergyAndNoCoriander = com.example.chatgpt_mealplanner.contract
         kitOrchestrator(sent, kits).processUserMessage("default_conversation", "what shall I cook tonight?")
 
         val request = sent.single()
-        assertTrue("web search is needed to look a kit up", request.allowWebSearch)
+        // Claude asks the user for the packet first, so a search is not offered just because a kit is owned.
+        assertFalse(request.allowWebSearch)
         assertTrue(request.contextPayloadJson.contains("KITS_MIXES"))
         assertTrue(request.contextPayloadJson.contains("simmer 3 minutes"))
         assertTrue(request.systemPrompt.contains("KITS AND MIXES"))
         assertTrue(request.systemPrompt.contains("save_kit_instructions"))
+        assertTrue(request.systemPrompt.contains("request_kit_packet"))
     }
 
     @Test
@@ -2187,5 +2189,60 @@ private val milkAllergyAndNoCoriander = com.example.chatgpt_mealplanner.contract
         val thin = dispatcher.executeToolCall("default_conversation", auth, call("""{"kitName":"Other kit","instructions":"see packet","source":"USER"}"""))
         assertFalse(thin.success)
         assertEquals(1, kits.rows.size)
+    }
+
+    @Test
+    fun webSearchIsOfferedForAKitOnlyWhenTheUserSaysTheyHaveNoPacketOrAsksForALookUp() = runTest(testDispatcher) {
+        inventoryDao.insertItem(kitItem("Old El Paso Fajita Kit").toEntity())
+        val sent = mutableListOf<AiProviderRequest>()
+        val orchestrator = kitOrchestrator(sent, FakeKitInstructionDao())
+
+        orchestrator.processUserMessage("default_conversation", "I don't have the packet, please look it up")
+        orchestrator.processUserMessage("default_conversation", "make dinner with my fajita kit")
+
+        assertTrue(sent[0].allowWebSearch)
+        assertFalse(sent[1].allowWebSearch)
+    }
+
+    @Test
+    fun aLookUpRequestWithNoKitInTheHouseholdDoesNotTurnSearchOn() = runTest(testDispatcher) {
+        val sent = mutableListOf<AiProviderRequest>()
+
+        kitOrchestrator(sent, FakeKitInstructionDao()).processUserMessage("default_conversation", "look it up")
+
+        assertFalse(sent.single().allowWebSearch)
+    }
+
+    @Test
+    fun requestKitPacketTool_tellsTheModelToWait_andItsKitReachesTheChat() = runTest(testDispatcher) {
+        inventoryDao.insertItem(kitItem("Old El Paso Fajita Kit").toEntity())
+        val provider = object : MealPlannerAiProvider {
+            override suspend fun send(request: AiProviderRequest): AiProviderResponse =
+                AiProviderResponse.ToolCalls(
+                    providerContinuationToken = "t",
+                    calls = listOf(AiToolCall("ask1", "request_kit_packet", """{"kitName":"Old El Paso Fajita Kit"}"""))
+                )
+            override suspend fun continueWithToolResults(request: AiContinueWithToolsRequest): AiProviderResponse {
+                assertTrue(request.toolResults.single().payloadJson.contains("Scan packet button"))
+                return AiProviderResponse.FinalResponse("I need the packet for your Old El Paso Fajita Kit. Tap Scan packet or paste the instructions.")
+            }
+        }
+        val orchestrator = AiMealPlannerOrchestrator(
+            provider = provider, contextBuilder = contextBuilder, toolDispatcher = aiToolDispatcher,
+            recipeValidator = RecipeValidator(inventoryDao, mealDao), intentResolver = intentResolver,
+            chatRepository = chatRepository, pendingMutationStore = pendingMutationStore, activeProposalStore = activeProposalStore
+        )
+
+        val result = orchestrator.processUserMessage("default_conversation", "make dinner with my fajita kit") as AiOrchestrationResult.Final
+
+        assertEquals("Old El Paso Fajita Kit", result.kitPacketRequest)
+        assertTrue(result.assistantText.contains("Tap Scan packet"))
+    }
+
+    @Test
+    fun anOrdinaryAnswerHasNoKitRequest() = runTest(testDispatcher) {
+        val sent = mutableListOf<AiProviderRequest>()
+        val result = kitOrchestrator(sent, FakeKitInstructionDao()).processUserMessage("default_conversation", "hello") as AiOrchestrationResult.Final
+        assertNull(result.kitPacketRequest)
     }
 }

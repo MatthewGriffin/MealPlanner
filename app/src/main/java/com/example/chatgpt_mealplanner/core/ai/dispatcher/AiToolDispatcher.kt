@@ -149,6 +149,7 @@ class AiToolDispatcher @Inject constructor(
                 AiToolId.GET_RETAIL_ITEM_OPTIONS -> handleGetRetailItemOptions(call.argsJson)
                 AiToolId.SEARCH_RETAIL_PRODUCTS -> handleSearchRetailProducts(call.argsJson)
                 AiToolId.SAVE_KIT_INSTRUCTIONS -> handleSaveKitInstructions(call.argsJson)
+                AiToolId.REQUEST_KIT_PACKET -> handleRequestKitPacket(call.argsJson)
                 AiToolId.OFFER_ADD_PLANNED_MEAL -> handleOfferAddPlannedMeal(conversationId, call.argsJson)
                 AiToolId.ADD_PLANNED_MEAL -> handleAddPlannedMeal(conversationId, call.argsJson)
                 AiToolId.MOVE_PLANNED_MEAL -> handleMovePlannedMeal(call.argsJson)
@@ -1011,6 +1012,15 @@ class AiToolDispatcher @Inject constructor(
 
         shoppingDao.insertShoppingListItem(item)
         return DomainResult.Success(AiToolPayload.TextPayload("Added manual item '$displayName' to shopping list"))
+    }
+
+    /** The chat shows the Scan packet button; the model only has to tell the user, then wait. */
+    private fun handleRequestKitPacket(argsJson: String): DomainResult<AiToolPayload> {
+        val name = extractStringArg(argsJson, "kitName")?.trim()
+        if (name.isNullOrBlank()) return DomainResult.Failure(DomainError.TransactionFailed("kitName is needed."))
+        return DomainResult.Success(
+            AiToolPayload.TextPayload("The app is now showing the user a Scan packet button for '$name'. Tell them in one or two short sentences to tap it, or to paste the instructions here, then stop and wait. Do not write a recipe or search the web yet.")
+        )
     }
 
     /** Keeps what a kit's packet says, so the packet is only read or looked up once. */

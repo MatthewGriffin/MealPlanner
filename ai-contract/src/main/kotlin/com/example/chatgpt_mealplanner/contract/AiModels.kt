@@ -128,7 +128,9 @@ sealed interface AiOrchestrationResult {
         val validatedProposal: ValidatedMealProposal? = null,
         val mealPlan: List<MealProposal>? = null,
         val proposedAction: AiProposedAction? = null,
-        val modelId: String? = null
+        val modelId: String? = null,
+        /** The kit whose packet the assistant asked the user for, so the chat shows a Scan packet button. */
+        val kitPacketRequest: String? = null
     ) : AiOrchestrationResult
 
     data class Error(

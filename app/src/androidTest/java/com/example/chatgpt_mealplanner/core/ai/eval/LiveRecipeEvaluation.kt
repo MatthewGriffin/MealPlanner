@@ -82,6 +82,8 @@ class LiveRecipeEvaluation {
         val mustMention: List<String> = emptyList(),
         /** Kits that have no instructions on file: the model must look them up or ask, never invent a method. */
         val unknownKit: String? = null,
+        /** The user has told the assistant there is no packet, so a web search is expected. */
+        val searchAllowed: Boolean = false,
         /** A packet photo sent with the last turn: drawn from these lines, with the phone's own text reading assumed to have failed. */
         val packetPhotoLines: List<String>? = null,
         /** After the last turn the kit's saved instructions must exist and contain these words. */
@@ -228,7 +230,7 @@ class LiveRecipeEvaluation {
                     (outcome as? AiOrchestrationResult.Final)?.modelId?.let { models += it }
                     rateLimited = rateLimited || (outcome as? AiOrchestrationResult.Error).let { it?.code == "HTTP_429" || it?.userFacingMessage?.contains("credit balance", ignoreCase = true) == true }
                     failures += findings(scenario, outcome, isLastTurn = index == scenario.turns.lastIndex)
-                    if (index == scenario.turns.lastIndex) failures += kitFindings(scenario, outcome, db, provider.trace)
+                    if (index == scenario.turns.lastIndex) failures += kitFindings(scenario, outcome, db, provider.trace, usage)
                     if (scenario.stock === FLAVOUR_STOCK) {
                         val final = outcome as? AiOrchestrationResult.Final
                         val names = (listOfNotNull(final?.validatedProposal?.proposal) + final?.mealPlan.orEmpty())
@@ -248,7 +250,7 @@ class LiveRecipeEvaluation {
     }
 
     /** Whether the recipe followed the packet, or the model looked the kit up or asked for it, instead of inventing a method. */
-    private suspend fun kitFindings(scenario: Scenario, outcome: AiOrchestrationResult?, db: AppDatabase, trace: List<String>): List<String> {
+    private suspend fun kitFindings(scenario: Scenario, outcome: AiOrchestrationResult?, db: AppDatabase, trace: List<String>, usage: List<TokenUsage>): List<String> {
         val final = outcome as? AiOrchestrationResult.Final ?: return emptyList()
         val meals = listOfNotNull(final.validatedProposal?.proposal) + final.mealPlan.orEmpty()
         val recipeText = meals.joinToString("\n") { meal -> (meal.ingredients.map { it.displayName } + meal.methodLines()).joinToString(" ") }.lowercase()
@@ -265,14 +267,19 @@ class LiveRecipeEvaluation {
         }
         scenario.unknownKit?.let { kit ->
             val saved = db.kitInstructionDao().getByName(normalizeKitName(kit))
-            val searched = trace.any { "web" in it.lowercase() || "search" in it.lowercase() }
-            val askedForPhoto = final.validatedProposal == null && final.assistantText.lowercase().let { "photo" in it || "packet" in it || "paste" in it }
+            val searches = usage.sumOf { it.webSearches }
+            val askedViaButton = final.kitPacketRequest != null
             when {
                 meals.isNotEmpty() && saved == null -> found += "offered a recipe using the $kit without instructions on file (invented method)"
-                meals.isEmpty() && !askedForPhoto -> found += "neither used nor asked about the $kit"
+                // After the user has said there is no packet, asking again in words is fine.
+                meals.isEmpty() && !askedViaButton && !(scenario.searchAllowed && final.assistantText.lowercase().let { "packet" in it || "instructions" in it }) ->
+                    found += "neither used nor asked for the $kit's packet with the Scan packet button"
             }
-            appendKitNote(trace, saved != null, searched, askedForPhoto)
+            // The user usually has the packet, so asking first saves a search that can find the wrong product.
+            if (searches > 0 && !scenario.searchAllowed) found += "searched the web ($searches times) before asking the user for the packet"
+            appendKitNote(trace, saved != null, searches > 0, askedViaButton)
         }
+        if (scenario.searchAllowed && usage.sumOf { it.webSearches } == 0L) found += "was told there is no packet but did not look it up"
         return found
     }
 
@@ -286,13 +293,13 @@ class LiveRecipeEvaluation {
         val out = java.io.ByteArrayOutputStream()
         bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, out)
         return com.example.chatgpt_mealplanner.core.ai.packet.PacketPhoto(
-            ocrText = "SIZZLE",
+            ocrText = "",
             imageJpegBase64 = android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP)
         )
     }
 
-    private fun appendKitNote(trace: List<String>, saved: Boolean, searched: Boolean, askedForPhoto: Boolean) {
-        kitNotes += "kit: instructions saved=$saved, web searched=$searched, asked for photo=$askedForPhoto, calls=${trace.size}"
+    private fun appendKitNote(trace: List<String>, saved: Boolean, searched: Boolean, askedViaButton: Boolean) {
+        kitNotes += "kit: instructions saved=$saved, web searched=$searched, Scan packet button requested=$askedViaButton, calls=${trace.size}"
     }
 
     private val kitNotes = mutableListOf<String>()
@@ -612,6 +619,24 @@ class LiveRecipeEvaluation {
                 ),
                 expected = Expected.ANY,
                 unknownKit = "Schwartz Slow Cook Chicken Casserole Seasoning Mix"
+            ),
+            // The user has no packet, so a look-up is the right thing.
+            Scenario(
+                "kit-no-packet-look-it-up",
+                listOf(
+                    "use up my Schwartz Slow Cook Chicken Casserole kit for dinner for 2",
+                    "I don't have the packet any more, please look it up"
+                ),
+                stock = listOf(
+                    Stock("Schwartz Slow Cook Chicken Casserole Seasoning Mix", 1.0, QuantityUnit.PACK, category = FoodCategory.KITS_MIXES),
+                    Stock("Chicken thighs", 600.0, QuantityUnit.GRAM),
+                    Stock("Potatoes", 600.0, QuantityUnit.GRAM),
+                    Stock("Carrots", 4.0, QuantityUnit.UNIT),
+                    Stock("Onions", 2.0, QuantityUnit.UNIT)
+                ),
+                expected = Expected.ANY,
+                unknownKit = "Schwartz Slow Cook Chicken Casserole Seasoning Mix",
+                searchAllowed = true
             ),
             // A made-up kit nobody can find online: Claude should ask for the packet, then read the picture sent back.
             Scenario(

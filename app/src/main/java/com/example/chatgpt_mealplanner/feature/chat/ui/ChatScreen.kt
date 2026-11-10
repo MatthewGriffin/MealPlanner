@@ -56,6 +56,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -145,18 +146,19 @@ fun ChatScreen(
         }
     }
 
-    // A photo of a packet is a message by itself, so it can be sent with no words.
-    val canSubmit = !uiState.isLoading && !uiState.isReadingPhoto &&
-        (uiState.userMessageText.isNotBlank() || uiState.attachedPhotoUri != null)
-    val photoPicker = rememberPacketPhotoPicker(
-        onPhoto = { onEvent(ChatUiEvent.AttachPhoto(it)) },
-        onProblem = { onEvent(ChatUiEvent.ShowMessage(it)) }
-    )
-    var showAttachMenu by remember { mutableStateOf(false) }
+    val canSubmit = !uiState.isLoading && uiState.userMessageText.isNotBlank()
     val submitMessage: () -> Unit = {
         if (canSubmit) {
             onEvent(ChatUiEvent.SendMessage)
         }
+    }
+
+    if (uiState.showPacketScan) {
+        PacketScanDialog(
+            kitName = uiState.packetScanKit,
+            onSend = { onEvent(ChatUiEvent.SendPacket(it, uiState.packetScanKit)) },
+            onCancel = { onEvent(ChatUiEvent.ClosePacketScan) }
+        )
     }
 
     if (uiState.showMealChangeRequestDialog) {
@@ -403,12 +405,20 @@ fun ChatScreen(
                 }
             }
 
-            if (uiState.attachedPhotoUri != null || uiState.isReadingPhoto) {
-                androidx.compose.material3.AssistChip(
-                    onClick = { if (!uiState.isReadingPhoto) onEvent(ChatUiEvent.RemovePhoto) },
-                    label = { Text(if (uiState.isReadingPhoto) "Reading the packet…" else "Photo of the packet attached. Tap to remove") },
-                    modifier = Modifier.padding(horizontal = 16.dp)
-                )
+            uiState.kitPacketRequest?.let { kit ->
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                ) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Instructions needed for $kit", style = MaterialTheme.typography.titleSmall)
+                        Text("Scan the packet, or paste its instructions into the message box.", style = MaterialTheme.typography.bodySmall)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(onClick = { onEvent(ChatUiEvent.OpenPacketScan(kit)) }, modifier = Modifier.testTag("scan-packet-button")) { Text("Scan packet") }
+                            TextButton(onClick = { onEvent(ChatUiEvent.DismissKitPacketRequest) }) { Text("Not now") }
+                        }
+                    }
+                }
             }
 
             Row(
@@ -422,20 +432,8 @@ fun ChatScreen(
                     },
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                androidx.compose.foundation.layout.Box {
-                    IconButton(onClick = { showAttachMenu = true }, enabled = !uiState.isLoading) {
-                        Icon(Icons.Default.AttachFile, contentDescription = "Attach a photo of a packet")
-                    }
-                    androidx.compose.material3.DropdownMenu(expanded = showAttachMenu, onDismissRequest = { showAttachMenu = false }) {
-                        androidx.compose.material3.DropdownMenuItem(
-                            text = { Text("Take a photo") },
-                            onClick = { showAttachMenu = false; photoPicker.takePhoto() }
-                        )
-                        androidx.compose.material3.DropdownMenuItem(
-                            text = { Text("Choose from gallery") },
-                            onClick = { showAttachMenu = false; photoPicker.chooseFromGallery() }
-                        )
-                    }
+                IconButton(onClick = { onEvent(ChatUiEvent.OpenPacketScan(null)) }, enabled = !uiState.isLoading) {
+                    Icon(Icons.Default.AttachFile, contentDescription = "Scan a kit's packet")
                 }
                 OutlinedTextField(
                     value = uiState.userMessageText,

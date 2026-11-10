@@ -26,9 +26,11 @@ data class ChatUiState(
     val elapsedSeconds: Int = 0,
     val progressStatusText: String? = null,
     val userMessageText: String = "",
-    /** A photo of a kit's packet waiting to be sent with the next message. */
-    val attachedPhotoUri: android.net.Uri? = null,
-    val isReadingPhoto: Boolean = false,
+    /** A kit the assistant asked for the packet of: the chat shows a Scan packet button for it. */
+    val kitPacketRequest: String? = null,
+    /** Whether the Scan packet screen is open, and for which kit (null when the user opened it themselves). */
+    val showPacketScan: Boolean = false,
+    val packetScanKit: String? = null,
     val errorMessage: String? = null,
     val requestState: ChatRequestState = ChatRequestState.IDLE,
     val retainedUserMessage: String? = null,
@@ -50,9 +52,12 @@ data class ChatUiState(
 sealed interface ChatUiEvent {
     data class UpdateMessageText(val text: String) : ChatUiEvent
     object SendMessage : ChatUiEvent
-    data class AttachPhoto(val uri: android.net.Uri) : ChatUiEvent
-    object RemovePhoto : ChatUiEvent
-    data class ShowMessage(val text: String) : ChatUiEvent
+    /** Opens the Scan packet screen, for the kit the assistant asked about or none. */
+    data class OpenPacketScan(val kitName: String?) : ChatUiEvent
+    object ClosePacketScan : ChatUiEvent
+    /** Sends the packet as the user chose: the text they checked, or the picture for Claude to read. */
+    data class SendPacket(val packet: com.example.chatgpt_mealplanner.core.ai.packet.PacketPhoto, val kitName: String?) : ChatUiEvent
+    object DismissKitPacketRequest : ChatUiEvent
     object SubmitMealChangeRequest : ChatUiEvent
     data class UpdateMealChangeRequestDraft(val text: String) : ChatUiEvent
     object CancelMealChangeRequestDraft : ChatUiEvent

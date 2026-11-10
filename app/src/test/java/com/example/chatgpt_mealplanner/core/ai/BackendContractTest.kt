@@ -14,7 +14,7 @@ class BackendContractTest {
     @Test
     fun verifyContractVersion_andToolIdSymmetry() {
         assertEquals("ai-contract-v2", AI_CONTRACT_VERSION)
-        assertEquals(30, AiToolId.entries.size)
+        assertEquals(31, AiToolId.entries.size)
 
         AiToolId.entries.forEach { toolId ->
             val resolved = AiToolId.fromToolName(toolId.toolName)

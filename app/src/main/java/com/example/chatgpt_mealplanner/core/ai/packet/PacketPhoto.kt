@@ -3,54 +3,76 @@ package com.example.chatgpt_mealplanner.core.ai.packet
 import com.example.chatgpt_mealplanner.contract.AiChatMessage
 
 /**
- * A photo of the back of a kit's packet. The phone reads the text itself first. The picture is only
- * sent to Claude when that text wasn't good enough, because it costs more and the text alone is usually enough.
+ * A kit's packet as the user chose to send it to the assistant: the text their phone read, which they
+ * have checked and may have corrected, or the picture itself for Claude to read.
  */
 data class PacketPhoto(
-    /** What the phone's text reader found, possibly empty or partial. */
+    /** The text sent, possibly empty when only the picture is sent. */
     val ocrText: String,
-    /** The picture as a JPEG in base64, present only when [ocrText] wasn't usable on its own. */
+    /** The picture as a JPEG in base64, sent only when the user asked Claude to read it. */
     val imageJpegBase64: String?
 ) {
-    /** The user's message with the packet's text added, and the picture attached when the text fell short. */
+    /** The user's message with the packet added. */
     fun asUserTurn(userText: String): AiChatMessage {
         val note = buildString {
             append(userText)
             if (ocrText.isNotBlank()) {
-                append("\n\n[Text read from the photo of the packet, on the phone. It may have small errors.]\n")
+                append("\n\n[Text from the kit's packet. The phone read it from a photo and the user has checked it, so small errors are possible.]\n")
                 append(ocrText.trim())
             }
             if (imageJpegBase64 != null) {
-                append("\n\n[A photo of the packet is attached. The text the phone could read from it was incomplete, so read the image itself.]")
+                append("\n\n[A photo of the kit's packet is attached for you to read.]")
             }
         }
         return AiChatMessage(role = "user", content = note, imageJpegBase64 = imageJpegBase64)
     }
 }
 
-/** Whether text read from a packet is enough to work from, or the picture should go to Claude too. */
+/** What the phone made of a packet photo, for the user to check before anything is sent. */
+data class PacketScan(
+    val text: String,
+    val averageConfidence: Float?,
+    val lowestConfidence: Float?,
+    /** The photo scaled for Claude, kept so the user can choose to send it instead of the text. Null if it couldn't be prepared. */
+    val jpegBase64: String?
+) {
+    /** Why the text may not be good enough, in words for the user. Empty when it looks complete. */
+    val problems: List<String> = PacketTextQuality.problems(text, averageConfidence, lowestConfidence)
+    val looksGood: Boolean get() = problems.isEmpty()
+
+    fun textForClaude(checkedText: String) = PacketPhoto(ocrText = checkedText.trim(), imageJpegBase64 = null)
+    fun pictureForClaude(): PacketPhoto? = jpegBase64?.let { PacketPhoto(ocrText = "", imageJpegBase64 = it) }
+}
+
+/** Whether text read from a packet is enough to work from. */
 object PacketTextQuality {
 
     private val word = Regex("""\p{L}{2,}""")
     private val cue = Regex("""\b(?:add|cook|heat|stir|simmer|fry|mix|bake|boil|pour|serve|minutes?|mins?|water|sachet|tbsp|tsp|ml|g|grams?|oven|pan)\b|°""", RegexOption.IGNORE_CASE)
 
     /**
-     * Enough words, several cooking words or amounts, and a reader that was confident about what it read.
-     * A packet front with only a brand name, a blurred photo that gives a few scraps, or text that is
-     * garbled ("toillas", "To40 g") all fail and go to Claude as a picture, because a wrong amount from
-     * the phone would be worse than no text. Measured on the emulator: clear text scored 0.84 to 0.88 on
-     * average with no line under 0.72; unreadably small text scored 0.61 with a worst line of 0.47.
-     * [averageConfidence] and [lowestConfidence] are the text reader's own scores, null if it gave none.
+     * Reasons the text isn't enough: too few words, no sign of cooking steps or amounts, or a reader that wasn't
+     * confident about what it read. A wrong amount from the phone would be worse than none, and garbled text
+     * still has plenty of words ("toillas", "To40 g"), so the reader's own confidence counts. Measured on the
+     * emulator: clear print averaged 0.84 to 0.88 with no line under 0.72; unreadably small print averaged 0.61
+     * with a worst line of 0.47. [averageConfidence] and [lowestConfidence] are null if the reader gave none.
      */
-    fun isUsable(text: String, averageConfidence: Float? = null, lowestConfidence: Float? = null): Boolean {
+    fun problems(text: String, averageConfidence: Float? = null, lowestConfidence: Float? = null): List<String> {
+        if (text.isBlank()) return listOf("The phone couldn't find any text in the photo.")
+        val found = mutableListOf<String>()
         val words = word.findAll(text).count()
-        if (words < MIN_WORDS) return false
-        val cues = cue.findAll(text).map { it.value.lowercase() }.toSet().size
-        if (cues < MIN_DIFFERENT_COOKING_WORDS) return false
-        if (averageConfidence != null && averageConfidence < MIN_AVERAGE_CONFIDENCE) return false
-        if (lowestConfidence != null && lowestConfidence < MIN_LOWEST_CONFIDENCE) return false
-        return true
+        if (words < MIN_WORDS) found += "Only $words words were found. A full set of instructions usually has $MIN_WORDS or more."
+        if (cue.findAll(text).map { it.value.lowercase() }.toSet().size < MIN_DIFFERENT_COOKING_WORDS) {
+            found += "It doesn't look like cooking instructions: few steps, times or amounts were found."
+        }
+        val unsure = (averageConfidence != null && averageConfidence < MIN_AVERAGE_CONFIDENCE) ||
+            (lowestConfidence != null && lowestConfidence < MIN_LOWEST_CONFIDENCE)
+        if (unsure) found += "The phone wasn't confident about some of the text, so words or amounts may be wrong."
+        return found
     }
+
+    fun isUsable(text: String, averageConfidence: Float? = null, lowestConfidence: Float? = null): Boolean =
+        problems(text, averageConfidence, lowestConfidence).isEmpty()
 
     const val MIN_WORDS = 30
     const val MIN_DIFFERENT_COOKING_WORDS = 3

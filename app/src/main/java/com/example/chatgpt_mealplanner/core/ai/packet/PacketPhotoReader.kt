@@ -14,10 +14,10 @@ import java.io.ByteArrayOutputStream
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** Turns a packet photo into text on the phone, and into a small picture only when the text isn't enough. */
+/** Reads a packet photo on the phone, for the user to check before it is sent. */
 interface PacketPhotoSource {
     /** Null if the photo couldn't be opened at all. */
-    suspend fun read(uri: Uri): PacketPhoto?
+    suspend fun scan(uri: Uri): PacketScan?
 }
 
 @Singleton
@@ -26,7 +26,7 @@ class PacketPhotoReader @Inject constructor(
     private val ocr: ReceiptOcrService
 ) : PacketPhotoSource {
 
-    override suspend fun read(uri: Uri): PacketPhoto? = withContext(Dispatchers.IO) {
+    override suspend fun scan(uri: Uri): PacketScan? = withContext(Dispatchers.IO) {
         val result = try {
             ocr.recognizeTextFromUri(uri)
         } catch (e: Exception) {
@@ -35,21 +35,20 @@ class PacketPhotoReader @Inject constructor(
         }
         val text = result?.fullText.orEmpty()
         val confidences = result?.lines?.map { it.confidence }.orEmpty()
-        val usable = PacketTextQuality.isUsable(
-            text,
-            averageConfidence = confidences.takeIf { it.isNotEmpty() }?.average()?.toFloat(),
-            lowestConfidence = confidences.minOrNull()
-        )
-        if (usable) return@withContext PacketPhoto(ocrText = text, imageJpegBase64 = null)
+        // The picture is kept either way: the user may decide the phone's text isn't good enough.
         val picture = try {
             jpegFor(uri)
         } catch (e: Exception) {
             rethrowIfCancelled()
             null
         }
-        // Neither the text nor the picture could be had: there is nothing to send.
         if (picture == null && text.isBlank()) return@withContext null
-        PacketPhoto(ocrText = text, imageJpegBase64 = picture)
+        PacketScan(
+            text = text,
+            averageConfidence = confidences.takeIf { it.isNotEmpty() }?.average()?.toFloat(),
+            lowestConfidence = confidences.minOrNull(),
+            jpegBase64 = picture
+        )
     }
 
     /** The photo scaled to a size Claude reads well and that stays small, with the camera's rotation applied. */

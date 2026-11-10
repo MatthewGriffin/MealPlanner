@@ -123,6 +123,7 @@ internal object ToolSchemas {
                 string("searchQuery", "Optional item search query")
             }
             AiToolId.DELETE_ALL_INVENTORY -> boolean("confirmBulkDelete", "Explicit confirmation flag for bulk delete")
+            AiToolId.REQUEST_KIT_PACKET -> string("kitName", "The kit's name exactly as it appears in the household's inventory")
             AiToolId.SAVE_KIT_INSTRUCTIONS -> {
                 string("kitName", "The kit's name exactly as it appears in the household's inventory, such as \"Old El Paso Fajita Kit\"")
                 string("instructions", "What is in the kit, what else the packet says to add (with amounts), and the cooking steps with times, as the packet gives them")
@@ -139,6 +140,7 @@ internal object ToolSchemas {
         AiToolId.ADD_PLANNED_MEAL -> listOf("title", "servings", "ingredients", "instructions")
         AiToolId.OFFER_ADD_PLANNED_MEAL -> listOf("title", "servings", "ingredients", "steps")
         AiToolId.SAVE_KIT_INSTRUCTIONS -> listOf("kitName", "instructions", "source")
+        AiToolId.REQUEST_KIT_PACKET -> listOf("kitName")
         else -> emptyList()
     }
 
