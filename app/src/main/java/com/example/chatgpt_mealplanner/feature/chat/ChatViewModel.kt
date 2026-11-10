@@ -107,6 +107,7 @@ class ChatViewModel @Inject constructor(
     private val showPacketScanFlow = MutableStateFlow(false)
     private val packetScanKitFlow = MutableStateFlow<String?>(null)
     private val packetScanRecipeFlow = MutableStateFlow(false)
+    private val quickRepliesFlow = MutableStateFlow<List<String>>(emptyList())
     /** The packet sent with the message in flight, kept so a retry sends it again. */
     private var retainedPacketPhoto: com.example.chatgpt_mealplanner.core.ai.packet.PacketPhoto? = null
     private val errorMessageFlow = MutableStateFlow<String?>(null)
@@ -159,7 +160,8 @@ class ChatViewModel @Inject constructor(
         unscannedKitFlow,
         showPacketScanFlow,
         packetScanKitFlow,
-        packetScanRecipeFlow
+        packetScanRecipeFlow,
+        quickRepliesFlow
     ) { flows ->
         @Suppress("UNCHECKED_CAST")
         val reqHolder = flows[4] as RequestStateHolder
@@ -182,6 +184,7 @@ class ChatViewModel @Inject constructor(
             showPacketScan = flows[21] as Boolean,
             packetScanKit = flows[22] as String?,
             packetScanRecipe = flows[23] as Boolean,
+            quickReplies = flows[24] as List<String>,
             errorMessage = flows[6] as String?,
             requestState = reqHolder.requestState,
             retainedUserMessage = reqHolder.retainedUserMessage,
@@ -443,6 +446,13 @@ class ChatViewModel @Inject constructor(
         startSend(text, shown, packet)
     }
 
+    /** The assistant's own suggestions; for a plan or a recipe card, options for changing it. */
+    private fun quickRepliesFor(result: com.example.chatgpt_mealplanner.contract.AiOrchestrationResult.Final): List<String> = when {
+        (result.mealPlan?.size ?: 0) > 1 -> listOf("Make it healthier", "Make it cheaper", "Make it quicker", "Use up what I have first", "Swap one meal")
+        result.validatedProposal != null -> listOf("Make it healthier", "Make it quicker", "Make it spicier", "Swap an ingredient")
+        else -> result.quickReplies
+    }
+
     private fun startSend(text: String, displayMessageText: String?, packet: com.example.chatgpt_mealplanner.core.ai.packet.PacketPhoto?) {
         // A proposal belongs to the previous assistant turn. Do not leave its Save card
         // visible while a new request (especially a multi-day plan) is being processed.
@@ -450,6 +460,7 @@ class ChatViewModel @Inject constructor(
         latestMealPlanFlow.value = null
         latestProposedActionFlow.value = null
         kitPacketRequestFlow.value = null
+        quickRepliesFlow.value = emptyList()
 
         val visibleText = displayMessageText ?: text
         safeLog("[CHAT_SEND] messageLength=${text.length} packet=${packet != null}")
@@ -474,6 +485,7 @@ class ChatViewModel @Inject constructor(
                     latestMealPlanFlow.value = result.mealPlan?.takeIf { it.size > 1 }
                     latestProposedActionFlow.value = result.proposedAction
                     kitPacketRequestFlow.value = result.kitPacketRequest
+                    quickRepliesFlow.value = quickRepliesFor(result)
 
                     val confirmAction = result.proposedAction as? AiProposedAction.ConfirmCookedMeal
                     if (confirmAction != null) {
@@ -540,6 +552,7 @@ class ChatViewModel @Inject constructor(
                     latestMealPlanFlow.value = result.mealPlan?.takeIf { it.size > 1 }
                     latestProposedActionFlow.value = result.proposedAction
                     kitPacketRequestFlow.value = result.kitPacketRequest
+                    quickRepliesFlow.value = quickRepliesFor(result)
 
                     val confirmAction = result.proposedAction as? AiProposedAction.ConfirmCookedMeal
                     if (confirmAction != null) {
