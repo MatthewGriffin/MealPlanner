@@ -895,6 +895,7 @@ open class FakeAppDatabase : AppDatabase() {
     override fun mealChangeRequestDao(): com.example.chatgpt_mealplanner.core.database.dao.MealChangeRequestDao = error("")
     override fun appDataResetDao(): com.example.chatgpt_mealplanner.core.database.dao.AppDataResetDao = error("")
     override fun kitInstructionDao(): com.example.chatgpt_mealplanner.core.database.dao.KitInstructionDao = error("")
+    override fun savedRecipeDao(): com.example.chatgpt_mealplanner.core.database.dao.SavedRecipeDao = error("")
     @Deprecated("Deprecated in Room")
     override fun createOpenHelper(config: androidx.room.DatabaseConfiguration): androidx.sqlite.db.SupportSQLiteOpenHelper = error("")
     override fun createInvalidationTracker(): androidx.room.InvalidationTracker = error("")

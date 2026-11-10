@@ -37,6 +37,10 @@ enum class AiToolId(
     // Shows the user a Scan packet button in the chat. It changes nothing in the household's data.
     REQUEST_KIT_PACKET("request_kit_packet", AiToolClass.READ, "Asks the user for a kit's packet instructions: the app shows them a Scan packet button, where the phone reads a photo of the packet and they can check the text before it is sent to you. Call it instead of searching the web when a kit has no saved instructions. Args: kitName."),
     SAVE_KIT_INSTRUCTIONS("save_kit_instructions", AiToolClass.READ, "Saves what a meal kit or spice kit's packet says, so it is only looked up once. Call it after reading the instructions from a photo of the packet, or finding them on the web. Args: kitName, instructions (what is in the kit, what else to add, and the steps), source (PHOTO, WEB or USER), sourceNote (the page URL for WEB)."),
+    FETCH_RECIPE_PAGE("fetch_recipe_page", AiToolClass.READ, "Fetches a web page the user gave you so you can read the recipe on it. Returns the page's recipe data or its text. Args: url."),
+    // Like the kit instructions, a saved recipe is reference knowledge the user asked to keep, not household state.
+    SAVE_RECIPE("save_recipe", AiToolClass.READ, "Saves a recipe the user gave you (a web page, or a photo or text of a book page) so it can be used in plans later. Args: title, servings (what the recipe serves as written), recipeText (the whole recipe: every ingredient with its amount, then every method step with times and temperatures), source (URL, PHOTO or USER), sourceNote (the page URL, or the book and page)."),
+    GET_SAVED_RECIPE("get_saved_recipe", AiToolClass.READ, "Returns the full text of a saved recipe, by its title as listed in savedRecipes. Call it before using a saved recipe in a plan or meal. Args: title."),
     OFFER_ADD_PLANNED_MEAL("offer_add_planned_meal", AiToolClass.READ, "Prepares a structured offer to add a meal to the planner without modifying the database, placing the offer in AWAITING_CONFIRMATION state. Args: title, date (optional YYYY-MM-DD), mealType (optional BREAKFAST, LUNCH, DINNER, SNACK), servings (number), ingredients (JSON array of {displayName, quantity, unit, canonicalIngredientId?}), instructions (string - complete step-by-step cooking method). An offer is invalid without both complete ingredients and complete instructions."),
 
     // WRITE Tools (14)
@@ -166,6 +170,13 @@ data class InventorySummaryContextDto(
 
 /** What a meal kit or spice kit's packet says, saved the first time it was read or looked up. */
 @Serializable
+data class SavedRecipeContextDto(
+    val title: String,
+    val servings: Int? = null,
+    val source: String
+)
+
+@Serializable
 data class KitInstructionContextDto(
     val kitName: String,
     val instructions: String,
@@ -222,6 +233,8 @@ data class AiContextPayload(
     val usableInventory: List<InventorySummaryContextDto> = emptyList(),
     /** Saved packet instructions for the kits in usableInventory. A kit missing here has no instructions on file yet. */
     val kitInstructions: List<KitInstructionContextDto> = emptyList(),
+    /** Recipes the household saved from web pages and photos; the full text comes from get_saved_recipe. */
+    val savedRecipes: List<SavedRecipeContextDto> = emptyList(),
     val lowStockStaples: List<InventorySummaryContextDto> = emptyList(),
     val activeShoppingList: List<ShoppingSummaryContextDto> = emptyList(),
     val activeProposalTitle: String? = null,

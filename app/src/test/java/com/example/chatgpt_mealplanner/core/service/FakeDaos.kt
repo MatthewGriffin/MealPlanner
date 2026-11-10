@@ -412,3 +412,12 @@ class FakeKitInstructionDao : com.example.chatgpt_mealplanner.core.database.dao.
     override suspend fun delete(normalizedName: String) { rows.remove(normalizedName) }
     override fun observeAll() = kotlinx.coroutines.flow.flowOf(rows.values.toList())
 }
+
+class FakeSavedRecipeDao : com.example.chatgpt_mealplanner.core.database.dao.SavedRecipeDao {
+    val rows = mutableMapOf<String, com.example.chatgpt_mealplanner.core.database.entity.SavedRecipeEntity>()
+    override suspend fun upsert(entity: com.example.chatgpt_mealplanner.core.database.entity.SavedRecipeEntity) { rows[entity.normalizedTitle] = entity }
+    override suspend fun getByTitle(normalizedTitle: String) = rows[normalizedTitle]
+    override suspend fun getAll() = rows.values.sortedBy { it.title }
+    override fun observeAll() = kotlinx.coroutines.flow.flowOf(rows.values.sortedBy { it.title })
+    override suspend fun delete(normalizedTitle: String) { rows.remove(normalizedTitle) }
+}

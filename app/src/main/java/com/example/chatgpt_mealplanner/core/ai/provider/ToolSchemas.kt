@@ -124,6 +124,15 @@ internal object ToolSchemas {
             }
             AiToolId.DELETE_ALL_INVENTORY -> boolean("confirmBulkDelete", "Explicit confirmation flag for bulk delete")
             AiToolId.REQUEST_KIT_PACKET -> string("kitName", "The kit's name exactly as it appears in the household's inventory")
+            AiToolId.FETCH_RECIPE_PAGE -> string("url", "The web address the user gave you")
+            AiToolId.GET_SAVED_RECIPE -> string("title", "The recipe's title exactly as listed in savedRecipes")
+            AiToolId.SAVE_RECIPE -> {
+                string("title", "The recipe's title")
+                number("servings", "How many people the recipe serves as written; leave out if it doesn't say")
+                string("recipeText", "The whole recipe as plain text: an Ingredients list with every amount as written, then a Method with every step, including times, temperatures and heat levels")
+                choice("source", "Where the recipe came from", listOf("URL", "PHOTO", "USER"))
+                string("sourceNote", "For URL, the page address; for PHOTO, the book name and page if known; otherwise leave out")
+            }
             AiToolId.SAVE_KIT_INSTRUCTIONS -> {
                 string("kitName", "The kit's name exactly as it appears in the household's inventory, such as \"Old El Paso Fajita Kit\"")
                 string("instructions", "What is in the kit, what else the packet says to add (with amounts), and the cooking steps with times, as the packet gives them")
@@ -141,6 +150,9 @@ internal object ToolSchemas {
         AiToolId.OFFER_ADD_PLANNED_MEAL -> listOf("title", "servings", "ingredients", "steps")
         AiToolId.SAVE_KIT_INSTRUCTIONS -> listOf("kitName", "instructions", "source")
         AiToolId.REQUEST_KIT_PACKET -> listOf("kitName")
+        AiToolId.FETCH_RECIPE_PAGE -> listOf("url")
+        AiToolId.GET_SAVED_RECIPE -> listOf("title")
+        AiToolId.SAVE_RECIPE -> listOf("title", "recipeText", "source")
         else -> emptyList()
     }
 

@@ -55,13 +55,14 @@ import com.example.chatgpt_mealplanner.feature.chat.PacketScanViewModel
 @Composable
 fun PacketScanDialog(
     kitName: String?,
+    recipe: Boolean = false,
     onSend: (PacketPhoto) -> Unit,
     onCancel: () -> Unit,
     viewModel: PacketScanViewModel = hiltViewModel()
 ) {
     LaunchedEffect(Unit) { viewModel.reset() }
     val state by viewModel.state.collectAsState()
-    val picker = rememberPacketPhotoPicker(onPhoto = viewModel::scan, onProblem = viewModel::problem)
+    val picker = rememberPacketPhotoPicker(onPhoto = { viewModel.scan(it, instructionsOnly = !recipe) }, onProblem = viewModel::problem)
 
     Dialog(
         onDismissRequest = onCancel,
@@ -73,7 +74,7 @@ fun PacketScanDialog(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Scan the packet", style = MaterialTheme.typography.titleLarge)
+                        Text(if (recipe) "Scan a recipe" else "Scan the packet", style = MaterialTheme.typography.titleLarge)
                         if (!kitName.isNullOrBlank()) Text("for $kitName", style = MaterialTheme.typography.bodyMedium)
                     }
                     IconButton(onClick = onCancel) { Icon(Icons.Default.Close, contentDescription = "Close") }
@@ -82,7 +83,7 @@ fun PacketScanDialog(
                 when (state.stage) {
                     PacketScanStage.CHOOSE -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text(
-                            "Photograph the back of the packet where the cooking instructions are. Your phone reads the text, and you can check it before anything is sent.",
+                            if (recipe) "Photograph the recipe page, with the ingredients and method in view. Your phone reads the text, and you can check it before anything is sent." else "Photograph the back of the packet where the cooking instructions are. Your phone reads the text, and you can check it before anything is sent.",
                             style = MaterialTheme.typography.bodyMedium
                         )
                         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
@@ -107,7 +108,7 @@ fun PacketScanDialog(
                         }
                         Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             if (scan.looksGood) {
-                                Text("The phone read this. Check it against the packet and correct anything that's wrong.", style = MaterialTheme.typography.bodyMedium)
+                                Text(if (recipe) "The phone read this. Check it against the page and correct anything that's wrong." else "The phone read this. Check it against the packet and correct anything that's wrong.", style = MaterialTheme.typography.bodyMedium)
                             } else {
                                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
                                     Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -120,7 +121,7 @@ fun PacketScanDialog(
                             picture?.let {
                                 Image(
                                     bitmap = it.asImageBitmap(),
-                                    contentDescription = "Your photo of the packet",
+                                    contentDescription = if (recipe) "Your photo of the recipe" else "Your photo of the packet",
                                     contentScale = ContentScale.Fit,
                                     modifier = Modifier.fillMaxWidth().height(160.dp)
                                 )
@@ -128,7 +129,7 @@ fun PacketScanDialog(
                             OutlinedTextField(
                                 value = state.checkedText,
                                 onValueChange = viewModel::editText,
-                                label = { Text("Text read from the packet") },
+                                label = { Text(if (recipe) "Text read from the recipe" else "Text read from the packet") },
                                 minLines = 6,
                                 modifier = Modifier.fillMaxWidth().testTag("scan-text")
                             )

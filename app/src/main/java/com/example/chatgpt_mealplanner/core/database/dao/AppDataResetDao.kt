@@ -69,6 +69,7 @@ abstract class AppDataResetDao {
     @Query("DELETE FROM purchase_price_observations") abstract suspend fun deletePriceObservations()
     @Query("DELETE FROM product_barcode_mappings") abstract suspend fun deleteProductMappings()
     @Query("DELETE FROM kit_instructions") abstract suspend fun deleteKitInstructions()
+    @Query("DELETE FROM saved_recipes") abstract suspend fun deleteSavedRecipes()
 
     /** All of it, or none of it. */
     @Transaction
@@ -99,5 +100,6 @@ abstract class AppDataResetDao {
         deletePriceObservations()
         deleteProductMappings()
         deleteKitInstructions()
+        deleteSavedRecipes()
     }
 }

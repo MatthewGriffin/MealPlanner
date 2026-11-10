@@ -975,6 +975,27 @@ val MIGRATION_25_26 = object : Migration(25, 26) {
     }
 }
 
+/** Adds the recipes the household saved from web pages and photos. */
+val MIGRATION_26_27 = object : Migration(26, 27) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `saved_recipes` (
+                `normalizedTitle` TEXT NOT NULL,
+                `title` TEXT NOT NULL,
+                `servings` INTEGER,
+                `recipeText` TEXT NOT NULL,
+                `source` TEXT NOT NULL,
+                `sourceNote` TEXT,
+                `createdAt` INTEGER NOT NULL,
+                `updatedAt` INTEGER NOT NULL,
+                PRIMARY KEY(`normalizedTitle`)
+            )
+            """.trimIndent()
+        )
+    }
+}
+
 const val MAIN_DATABASE_NAME = "pantry_planner.db"
 
 val ALL_MIGRATIONS = arrayOf(
@@ -1002,7 +1023,8 @@ val ALL_MIGRATIONS = arrayOf(
     MIGRATION_22_23,
     MIGRATION_23_24,
     MIGRATION_24_25,
-    MIGRATION_25_26
+    MIGRATION_25_26,
+    MIGRATION_26_27
 )
 
 @Database(
@@ -1040,9 +1062,10 @@ val ALL_MIGRATIONS = arrayOf(
         UserStoreEntity::class,
         PurchasePriceObservationEntity::class,
         com.example.chatgpt_mealplanner.core.database.entity.CookingPreferencesEntity::class,
-        com.example.chatgpt_mealplanner.core.database.entity.KitInstructionEntity::class
+        com.example.chatgpt_mealplanner.core.database.entity.KitInstructionEntity::class,
+        com.example.chatgpt_mealplanner.core.database.entity.SavedRecipeEntity::class
     ],
-    version = 26,
+    version = 27,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -1066,5 +1089,6 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun mealChangeRequestDao(): com.example.chatgpt_mealplanner.core.database.dao.MealChangeRequestDao
     abstract fun appDataResetDao(): com.example.chatgpt_mealplanner.core.database.dao.AppDataResetDao
     abstract fun kitInstructionDao(): com.example.chatgpt_mealplanner.core.database.dao.KitInstructionDao
+    abstract fun savedRecipeDao(): com.example.chatgpt_mealplanner.core.database.dao.SavedRecipeDao
 }
 

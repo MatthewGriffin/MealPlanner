@@ -61,6 +61,8 @@ class AiToolDispatcher @Inject constructor(
     private val cookingPreferences: com.example.chatgpt_mealplanner.core.repository.CookingPreferencesSource =
         com.example.chatgpt_mealplanner.core.repository.NoCookingPreferences,
     private val kitInstructionDao: com.example.chatgpt_mealplanner.core.database.dao.KitInstructionDao? = null,
+    private val savedRecipeDao: com.example.chatgpt_mealplanner.core.database.dao.SavedRecipeDao? = null,
+    private val webPages: com.example.chatgpt_mealplanner.core.web.WebPageSource? = null,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -150,6 +152,9 @@ class AiToolDispatcher @Inject constructor(
                 AiToolId.SEARCH_RETAIL_PRODUCTS -> handleSearchRetailProducts(call.argsJson)
                 AiToolId.SAVE_KIT_INSTRUCTIONS -> handleSaveKitInstructions(call.argsJson)
                 AiToolId.REQUEST_KIT_PACKET -> handleRequestKitPacket(call.argsJson)
+                AiToolId.FETCH_RECIPE_PAGE -> handleFetchRecipePage(call.argsJson)
+                AiToolId.SAVE_RECIPE -> handleSaveRecipe(call.argsJson)
+                AiToolId.GET_SAVED_RECIPE -> handleGetSavedRecipe(call.argsJson)
                 AiToolId.OFFER_ADD_PLANNED_MEAL -> handleOfferAddPlannedMeal(conversationId, call.argsJson)
                 AiToolId.ADD_PLANNED_MEAL -> handleAddPlannedMeal(conversationId, call.argsJson)
                 AiToolId.MOVE_PLANNED_MEAL -> handleMovePlannedMeal(call.argsJson)
@@ -1023,6 +1028,59 @@ class AiToolDispatcher @Inject constructor(
         )
     }
 
+    private suspend fun handleFetchRecipePage(argsJson: String): DomainResult<AiToolPayload> {
+        val source = webPages ?: return DomainResult.Failure(DomainError.TransactionFailed("Fetching web pages isn't available."))
+        val url = extractStringArg(argsJson, "url")?.trim()
+        if (url.isNullOrBlank()) return DomainResult.Failure(DomainError.TransactionFailed("url is needed."))
+        return source.fetch(url).fold(
+            onSuccess = { DomainResult.Success(AiToolPayload.TextPayload(it)) },
+            onFailure = { DomainResult.Failure(DomainError.TransactionFailed((it.message ?: "The page couldn't be fetched.") + " Ask the user to paste the recipe or send a photo of it instead.")) }
+        )
+    }
+
+    private suspend fun handleSaveRecipe(argsJson: String): DomainResult<AiToolPayload> {
+        val dao = savedRecipeDao ?: return DomainResult.Failure(DomainError.TransactionFailed("Saving recipes isn't available."))
+        val title = extractStringArg(argsJson, "title")?.trim()
+        val text = extractStringArg(argsJson, "recipeText")?.trim()
+        if (title.isNullOrBlank() || text.isNullOrBlank()) return DomainResult.Failure(DomainError.TransactionFailed("title and recipeText are both needed."))
+        if (text.length < MIN_RECIPE_CHARS) {
+            return DomainResult.Failure(DomainError.TransactionFailed("That is too short to be the whole recipe. Include every ingredient with its amount and every step."))
+        }
+        val source = (extractStringArg(argsJson, "source") ?: "USER").uppercase().takeIf { it in setOf("URL", "PHOTO", "USER") } ?: "USER"
+        val now = System.currentTimeMillis()
+        val key = com.example.chatgpt_mealplanner.core.database.dao.normalizeRecipeTitle(title)
+        val existing = dao.getByTitle(key)
+        dao.upsert(
+            com.example.chatgpt_mealplanner.core.database.entity.SavedRecipeEntity(
+                normalizedTitle = key,
+                title = title,
+                servings = extractDoubleArg(argsJson, "servings")?.toInt()?.takeIf { it > 0 },
+                recipeText = text,
+                source = source,
+                sourceNote = extractStringArg(argsJson, "sourceNote")?.trim(),
+                createdAt = existing?.createdAt ?: now,
+                updatedAt = now
+            )
+        )
+        return DomainResult.Success(AiToolPayload.TextPayload("Saved the recipe '$title'. It can be used in plans from now on."))
+    }
+
+    private suspend fun handleGetSavedRecipe(argsJson: String): DomainResult<AiToolPayload> {
+        val dao = savedRecipeDao ?: return DomainResult.Failure(DomainError.TransactionFailed("Saved recipes aren't available."))
+        val title = extractStringArg(argsJson, "title")?.trim()
+        if (title.isNullOrBlank()) return DomainResult.Failure(DomainError.TransactionFailed("title is needed."))
+        val key = com.example.chatgpt_mealplanner.core.database.dao.normalizeRecipeTitle(title)
+        val found = dao.getByTitle(key) ?: dao.getAll().firstOrNull {
+            it.normalizedTitle.contains(key) || key.contains(it.normalizedTitle)
+        } ?: return DomainResult.Failure(DomainError.TransactionFailed("No saved recipe is called '$title'."))
+        val header = buildString {
+            append(found.title)
+            found.servings?.let { append(" (serves ").append(it).append(")") }
+            found.sourceNote?.let { append("\nSource: ").append(it) }
+        }
+        return DomainResult.Success(AiToolPayload.TextPayload(header + "\n\n" + found.recipeText))
+    }
+
     /** Keeps what a kit's packet says, so the packet is only read or looked up once. */
     private suspend fun handleSaveKitInstructions(argsJson: String): DomainResult<AiToolPayload> {
         val dao = kitInstructionDao ?: return DomainResult.Failure(DomainError.TransactionFailed("Saving kit instructions isn't available."))
@@ -1410,3 +1468,4 @@ class AiToolDispatcher @Inject constructor(
 }
 
 private const val MIN_KIT_INSTRUCTION_CHARS = 40
+private const val MIN_RECIPE_CHARS = 80

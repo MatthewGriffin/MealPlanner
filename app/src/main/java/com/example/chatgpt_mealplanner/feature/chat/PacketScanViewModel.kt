@@ -39,7 +39,8 @@ class PacketScanViewModel @Inject constructor(
         _state.value = PacketScanState()
     }
 
-    fun scan(uri: Uri) {
+    /** [instructionsOnly] cuts the text down to cooking steps, for a kit's packet; a recipe needs all of it. */
+    fun scan(uri: Uri, instructionsOnly: Boolean = true) {
         _state.update { it.copy(stage = PacketScanStage.READING, error = null) }
         viewModelScope.launch {
             val scan = try {
@@ -50,7 +51,8 @@ class PacketScanViewModel @Inject constructor(
             _state.value = if (scan == null) {
                 PacketScanState(error = "That photo couldn't be opened. Try taking it again, or choose another.")
             } else {
-                PacketScanState(stage = PacketScanStage.PREVIEW, scan = scan, checkedText = scan.text)
+                val shown = if (instructionsOnly) scan.copy(text = com.example.chatgpt_mealplanner.core.ai.packet.PacketTextFilter.keepInstructions(scan.text)) else scan
+                PacketScanState(stage = PacketScanStage.PREVIEW, scan = shown, checkedText = shown.text)
             }
         }
     }

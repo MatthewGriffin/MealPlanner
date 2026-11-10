@@ -65,6 +65,11 @@ object DatabaseModule {
     }
 
     @Provides
+    fun provideSavedRecipeDao(database: AppDatabase): com.example.chatgpt_mealplanner.core.database.dao.SavedRecipeDao {
+        return database.savedRecipeDao()
+    }
+
+    @Provides
     fun provideInventoryDao(database: AppDatabase): InventoryDao {
         return database.inventoryDao()
     }
