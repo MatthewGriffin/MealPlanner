@@ -32,6 +32,9 @@ enum class AiToolId(
     GET_RETAIL_BASKET_COMPARISON("get_retail_basket_comparison", AiToolClass.READ, "Deprecated: live retailer catalogue comparison is disabled. Do not use to claim current prices."),
     GET_RETAIL_ITEM_OPTIONS("get_retail_item_options", AiToolClass.READ, "Deprecated: live retailer catalogue options are disabled. Do not claim current retailer prices."),
     SEARCH_RETAIL_PRODUCTS("search_retail_products", AiToolClass.READ, "Deprecated: live retailer catalogue scraping is disabled. Current prices and promotions are not available through this tool; users can record actual purchase prices in their private local history."),
+    // Records reference knowledge about a product (what a kit's packet says), not household state, so it needs no
+    // instruction from the user and is not gated like the write tools.
+    SAVE_KIT_INSTRUCTIONS("save_kit_instructions", AiToolClass.READ, "Saves what a meal kit or spice kit's packet says, so it is only looked up once. Call it after reading the instructions from a photo of the packet, or finding them on the web. Args: kitName, instructions (what is in the kit, what else to add, and the steps), source (PHOTO, WEB or USER), sourceNote (the page URL for WEB)."),
     OFFER_ADD_PLANNED_MEAL("offer_add_planned_meal", AiToolClass.READ, "Prepares a structured offer to add a meal to the planner without modifying the database, placing the offer in AWAITING_CONFIRMATION state. Args: title, date (optional YYYY-MM-DD), mealType (optional BREAKFAST, LUNCH, DINNER, SNACK), servings (number), ingredients (JSON array of {displayName, quantity, unit, canonicalIngredientId?}), instructions (string - complete step-by-step cooking method). An offer is invalid without both complete ingredients and complete instructions."),
 
     // WRITE Tools (14)
@@ -154,7 +157,17 @@ data class InventorySummaryContextDto(
     val unit: String?,
     val storageLocation: String,
     val isStaple: Boolean = false,
-    val status: String = "AVAILABLE"
+    val status: String = "AVAILABLE",
+    /** The inventory category, such as KITS_MIXES for a meal kit or spice kit. */
+    val category: String? = null
+)
+
+/** What a meal kit or spice kit's packet says, saved the first time it was read or looked up. */
+@Serializable
+data class KitInstructionContextDto(
+    val kitName: String,
+    val instructions: String,
+    val source: String
 )
 
 @Serializable
@@ -205,6 +218,8 @@ data class AiContextPayload(
     val availableLeftovers: List<LeftoverContextDto> = emptyList(),
     val useSoonItems: List<InventorySummaryContextDto> = emptyList(),
     val usableInventory: List<InventorySummaryContextDto> = emptyList(),
+    /** Saved packet instructions for the kits in usableInventory. A kit missing here has no instructions on file yet. */
+    val kitInstructions: List<KitInstructionContextDto> = emptyList(),
     val lowStockStaples: List<InventorySummaryContextDto> = emptyList(),
     val activeShoppingList: List<ShoppingSummaryContextDto> = emptyList(),
     val activeProposalTitle: String? = null,

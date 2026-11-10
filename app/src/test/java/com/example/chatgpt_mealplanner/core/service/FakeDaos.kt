@@ -403,3 +403,11 @@ class FakeChatDao : ChatDao {
     override suspend fun insertOrUpdateActiveProposal(entity: com.example.chatgpt_mealplanner.core.database.entity.ActiveProposalEntity) { activeProposals[entity.conversationId] = entity }
     override suspend fun deleteActiveProposal(conversationId: String) { activeProposals.remove(conversationId) }
 }
+
+class FakeKitInstructionDao : com.example.chatgpt_mealplanner.core.database.dao.KitInstructionDao {
+    val rows = mutableMapOf<String, com.example.chatgpt_mealplanner.core.database.entity.KitInstructionEntity>()
+    override suspend fun upsert(entity: com.example.chatgpt_mealplanner.core.database.entity.KitInstructionEntity) { rows[entity.normalizedName] = entity }
+    override suspend fun getByName(normalizedName: String) = rows[normalizedName]
+    override suspend fun getAll() = rows.values.sortedBy { it.displayName }
+    override suspend fun delete(normalizedName: String) { rows.remove(normalizedName) }
+}

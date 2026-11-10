@@ -29,9 +29,30 @@ class AiContextBuilder @Inject constructor(
     private val activeProposalStore: com.example.chatgpt_mealplanner.core.ai.proposal.ActiveProposalStore,
     private val pendingMutationStore: com.example.chatgpt_mealplanner.core.ai.pending.PendingMutationStore,
     private val cookingPreferences: com.example.chatgpt_mealplanner.core.repository.CookingPreferencesSource =
-        com.example.chatgpt_mealplanner.core.repository.NoCookingPreferences
+        com.example.chatgpt_mealplanner.core.repository.NoCookingPreferences,
+    private val kitInstructionDao: com.example.chatgpt_mealplanner.core.database.dao.KitInstructionDao? = null
 ) {
     private val json = Json { ignoreUnknownKeys = true }
+
+    /**
+     * The saved packet instructions for the kits the household owns. A kit matches by name, ignoring case,
+     * and also when the saved name is contained in the inventory name or the other way round, because the
+     * user may call it "Fajita kit" while the packet says "Old El Paso Fajita Kit".
+     */
+    private suspend fun kitInstructionsFor(
+        inventory: List<com.example.chatgpt_mealplanner.core.model.InventoryItem>
+    ): List<com.example.chatgpt_mealplanner.contract.KitInstructionContextDto> {
+        val dao = kitInstructionDao ?: return emptyList()
+        val kits = inventory.filter { it.category == com.example.chatgpt_mealplanner.core.model.FoodCategory.KITS_MIXES }
+        if (kits.isEmpty()) return emptyList()
+        val kitNames = kits.flatMap { listOf(com.example.chatgpt_mealplanner.core.database.entity.normalizeKitName(it.displayName), com.example.chatgpt_mealplanner.core.database.entity.normalizeKitName(it.canonicalName)) }
+            .filter { it.isNotEmpty() }
+        return dao.getAll().filter { saved ->
+            kitNames.any { owned -> owned == saved.normalizedName || owned.contains(saved.normalizedName) || saved.normalizedName.contains(owned) }
+        }.map {
+            com.example.chatgpt_mealplanner.contract.KitInstructionContextDto(kitName = it.displayName, instructions = it.instructions, source = it.source)
+        }
+    }
 
     suspend fun buildContextPayload(conversationId: String = ""): AiContextPayload {
         val today = LocalDate.now()
@@ -86,9 +107,12 @@ class AiContextBuilder @Inject constructor(
                 unit = it.quantityUnit?.name,
                 storageLocation = it.storageLocation.name,
                 isStaple = it.staple,
-                status = it.status.name
+                status = it.status.name,
+                category = it.category.name
             )
         }
+
+        val kitInstructionDtos = kitInstructionsFor(usableInventoryEntities)
 
         val useSoonEntities = inventoryDao.getUseSoonItems().first()
         val useSoonDtos = useSoonEntities.map {
@@ -152,6 +176,7 @@ class AiContextBuilder @Inject constructor(
             availableLeftovers = leftoverDtos,
             useSoonItems = useSoonDtos,
             usableInventory = usableInventoryDtos,
+            kitInstructions = kitInstructionDtos,
             lowStockStaples = lowDtos,
             activeShoppingList = activeShoppingDtos,
             activeProposalTitle = activeProposal?.title,

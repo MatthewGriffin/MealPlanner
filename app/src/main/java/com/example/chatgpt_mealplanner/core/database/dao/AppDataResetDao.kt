@@ -68,6 +68,7 @@ abstract class AppDataResetDao {
     // Prices and learned products. The shops themselves are configuration and stay.
     @Query("DELETE FROM purchase_price_observations") abstract suspend fun deletePriceObservations()
     @Query("DELETE FROM product_barcode_mappings") abstract suspend fun deleteProductMappings()
+    @Query("DELETE FROM kit_instructions") abstract suspend fun deleteKitInstructions()
 
     /** All of it, or none of it. */
     @Transaction
@@ -97,5 +98,6 @@ abstract class AppDataResetDao {
         deleteReceiptCategoryMappings()
         deletePriceObservations()
         deleteProductMappings()
+        deleteKitInstructions()
     }
 }

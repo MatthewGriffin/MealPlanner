@@ -6,6 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.example.chatgpt_mealplanner.core.database.entity.ChatConversationEntity
 import com.example.chatgpt_mealplanner.core.database.entity.ChatMessageEntity
 import com.example.chatgpt_mealplanner.core.database.entity.CookingPreferencesEntity
+import com.example.chatgpt_mealplanner.core.database.entity.KitInstructionEntity
 import com.example.chatgpt_mealplanner.core.database.entity.ProductBarcodeMappingEntity
 import com.example.chatgpt_mealplanner.core.database.entity.PurchasePriceObservationEntity
 import com.example.chatgpt_mealplanner.core.database.entity.ReceiptSpendEntity
@@ -80,6 +81,7 @@ class AppDataResetDaoTest {
         db.purchasePriceDao().insertStore(UserStoreEntity("store1", "Asda"))
 
         // History and learned data that must go.
+        db.kitInstructionDao().upsert(KitInstructionEntity("fajita kit", "Fajita kit", "Fry the chicken, add the seasoning.", "WEB", null, 1L, 1L))
         db.purchasePriceDao().insertPriceObservation(
             PurchasePriceObservationEntity(id = "p1", storeId = "store1", barcode = "123", productName = "Rice", brand = null, packQuantity = 1000.0, packUnit = "GRAM", packCount = 1, priceMinorUnits = 199)
         )
@@ -123,6 +125,7 @@ class AppDataResetDaoTest {
         assertEquals(emptyList<Any>(), db.purchasePriceDao().getAllPriceObservations())
         assertEquals(null, db.receiptSpendDao().getSpendByFingerprint("fp1"))
         assertEquals(null, db.barcodeMappingDao().getMappingByBarcode("123"))
+        assertEquals(emptyList<Any>(), db.kitInstructionDao().getAll())
 
         // Configuration is untouched: preferences and the list of shops.
         assertEquals(3, db.cookingPreferencesDao().get()?.householdSize)

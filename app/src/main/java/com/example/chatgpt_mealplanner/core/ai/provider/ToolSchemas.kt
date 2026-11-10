@@ -123,6 +123,12 @@ internal object ToolSchemas {
                 string("searchQuery", "Optional item search query")
             }
             AiToolId.DELETE_ALL_INVENTORY -> boolean("confirmBulkDelete", "Explicit confirmation flag for bulk delete")
+            AiToolId.SAVE_KIT_INSTRUCTIONS -> {
+                string("kitName", "The kit's name exactly as it appears in the household's inventory, such as \"Old El Paso Fajita Kit\"")
+                string("instructions", "What is in the kit, what else the packet says to add (with amounts), and the cooking steps with times, as the packet gives them")
+                choice("source", "Where the instructions came from", listOf("PHOTO", "WEB", "USER"))
+                string("sourceNote", "For WEB, the page URL the instructions came from; otherwise leave out")
+            }
             else -> {
                 // Read tools without arguments have no properties.
             }
@@ -132,6 +138,7 @@ internal object ToolSchemas {
     fun required(tool: AiToolId): List<String> = when (tool) {
         AiToolId.ADD_PLANNED_MEAL -> listOf("title", "servings", "ingredients", "instructions")
         AiToolId.OFFER_ADD_PLANNED_MEAL -> listOf("title", "servings", "ingredients", "steps")
+        AiToolId.SAVE_KIT_INSTRUCTIONS -> listOf("kitName", "instructions", "source")
         else -> emptyList()
     }
 
