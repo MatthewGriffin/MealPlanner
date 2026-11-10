@@ -277,12 +277,14 @@ class InventoryViewModel @Inject constructor(
         val matched = if (choice != null && choice.sure) choice.candidate?.let { found.getOrNull(it) } else null
         // Claude's best guess goes first, so the user finds it without searching the list.
         val ordered = choice?.candidate?.let { found.getOrNull(it) }?.let { best -> listOf(best) + (found - best) } ?: found
+        // The name stays generic so brands merge; the product's own name and brand go in the barcode mapping.
+        // Claude answering "none of these fits" is an answer too: there is nothing to ask the user about.
+        val noneFit = choice != null && choice.candidate == null
         return copy(
-            displayName = matched?.displayName ?: genericName,
-            brand = matched?.brand ?: brand,
+            displayName = genericName,
             candidates = ordered,
             matched = matched,
-            decided = found.isEmpty() || matched != null,
+            decided = found.isEmpty() || matched != null || noneFit,
             lookupFailed = resolution.failed
         )
     }
@@ -362,12 +364,20 @@ class InventoryViewModel @Inject constructor(
                     failed += row
                     return@forEach
                 }
-                when (inventoryDomainService.addLotFromProductInput(input)) {
+                var result = inventoryDomainService.addLotFromProductInput(input)
+                // The item this merges into may be counted in another unit, so try the amount in that unit.
+                val conflict = (result as? DomainResult.Failure)?.error as? DomainError.InvalidUnitConversion
+                if (conflict != null) {
+                    val quantity = row.quantityText.trim().replace(',', '.').toDoubleOrNull() ?: 0.0
+                    input.inUnit(conflict.from, quantity, row.unit)?.let { result = inventoryDomainService.addLotFromProductInput(it) }
+                }
+                when (result) {
                     is DomainResult.Success -> {
                         saved++
-                        // Remember the match, so the next list that names this product needs no lookup.
-                        if (row.matched != null && input.barcode != null) {
-                            try { barcodeLookupCoordinator?.confirmAndSaveBarcodeMapping(input) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) {}
+                        // Remember the product (its real name, brand, barcode and size), so the next list or scan
+                        // that names it needs no lookup. Inventory itself keeps only the generic name.
+                        row.toMappingInput()?.let { mapping ->
+                            try { barcodeLookupCoordinator?.confirmAndSaveBarcodeMapping(mapping) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) {}
                         }
                     }
                     is DomainResult.Failure -> failed += row
