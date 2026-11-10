@@ -37,6 +37,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.example.chatgpt_mealplanner.feature.chat.ChatUiEvent
 import com.example.chatgpt_mealplanner.feature.chat.ChatViewModel
 import com.example.chatgpt_mealplanner.feature.chat.ui.ChatScreen
 import com.example.chatgpt_mealplanner.feature.inventory.InventoryViewModel
