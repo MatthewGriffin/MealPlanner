@@ -41,12 +41,27 @@ data class BulkAddRow(
     val storageLocation: StorageLocation,
     val quantityText: String,
     val unit: QuantityUnit,
-    val quantityGuessed: Boolean
+    val quantityGuessed: Boolean,
+    /** What the user wrote, which the food database was searched for. */
+    val searchText: String = displayName,
+    /** The name before any product was matched, so "keep as I wrote it" can restore it. */
+    val genericName: String = displayName,
+    /** Products the food database returned, best guess first. */
+    val candidates: List<com.example.chatgpt_mealplanner.core.barcode.BarcodeLookupResult> = emptyList(),
+    val matched: com.example.chatgpt_mealplanner.core.barcode.BarcodeLookupResult? = null,
+    /** False while Claude wasn't sure which product the user means and the user hasn't chosen yet. */
+    val decided: Boolean = true,
+    /** The food database was busy or unreachable, so this line wasn't looked up. */
+    val lookupFailed: Boolean = false
 )
 
 data class BulkAddState(
     val text: String = "",
     val isReading: Boolean = false,
+    /** What the read is doing, such as "Looking up products 3 of 15". */
+    val progress: String? = null,
+    /** Said once after the read, such as how many items the database had nothing for. */
+    val lookupNote: String? = null,
     val isSaving: Boolean = false,
     /** Empty until the list has been read. */
     val rows: List<BulkAddRow> = emptyList(),
@@ -90,6 +105,10 @@ sealed interface InventoryUiEvent {
     object ReadBulkAddList : InventoryUiEvent
     /** Back from the review lines to the typed list, keeping what was typed. */
     object EditBulkAddList : InventoryUiEvent
+    /** Looks up again the lines the food database couldn't answer. */
+    object RetryBulkLookup : InventoryUiEvent
+    /** Keeps the user's own wording for every line still waiting for a product choice. */
+    object KeepWordingForUndecided : InventoryUiEvent
     data class BulkAddRowChanged(val row: BulkAddRow) : InventoryUiEvent
     data class BulkAddRowRemoved(val rowId: String) : InventoryUiEvent
     object SaveBulkAddRows : InventoryUiEvent
