@@ -23,7 +23,11 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.ui.platform.testTag
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -90,6 +94,53 @@ fun SettingsScreen(
                     Text("Cancel")
                 }
             }
+        )
+    }
+
+    uiState.clearDataCounts?.let { counts ->
+        var confirmText by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { if (!uiState.isClearingData) viewModel.dismissClearAllData() },
+            title = { Text("Clear all data?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "This permanently deletes ${counts.inventoryItems} inventory item${if (counts.inventoryItems == 1) "" else "s"}, " +
+                            "${counts.meals} meal${if (counts.meals == 1) "" else "s"} and the meal plan, " +
+                            "${counts.chatConversations} chat conversation${if (counts.chatConversations == 1) "" else "s"}, " +
+                            "and the shopping items worked out from them. It can't be undone."
+                    )
+                    Text(
+                        "Kept: your Claude API key, settings, cooking preferences, shops and recorded prices, receipts and spending, and household and pairing details. " +
+                            "Phones paired to this one keep their old copy until you pair them again. Save a backup first if you might want this data back."
+                    )
+                    OutlinedTextField(
+                        value = confirmText,
+                        onValueChange = { confirmText = it },
+                        label = { Text("Type CLEAR to confirm") },
+                        singleLine = true,
+                        enabled = !uiState.isClearingData,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { viewModel.confirmClearAllData() },
+                    enabled = confirmText.trim().equals("CLEAR", ignoreCase = false) && !uiState.isClearingData
+                ) { Text(if (uiState.isClearingData) "Clearing…" else "Clear all data") }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.dismissClearAllData() }, enabled = !uiState.isClearingData) { Text("Cancel") }
+            }
+        )
+    }
+
+    uiState.clearDataMessage?.let { message ->
+        AlertDialog(
+            onDismissRequest = { viewModel.clearClearDataMessage() },
+            text = { Text(message) },
+            confirmButton = { TextButton(onClick = { viewModel.clearClearDataMessage() }) { Text("OK") } }
         )
     }
 
@@ -371,6 +422,14 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.height(16.dp))
                 Button(onClick = { showClearChatHistoryDialog = true }, modifier = Modifier.fillMaxWidth()) {
                     Text("Clear Chat History")
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = { viewModel.requestClearAllData() },
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                    modifier = Modifier.fillMaxWidth().testTag("clear-all-data")
+                ) {
+                    Text("Clear All Data (start fresh)")
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 Button(

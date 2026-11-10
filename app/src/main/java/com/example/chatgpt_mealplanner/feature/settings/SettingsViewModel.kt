@@ -53,6 +53,10 @@ data class SettingsUiState(
     val pendingBackupUri: android.net.Uri? = null,
     val userStores: List<UserStoreEntity> = emptyList(),
     val recentPriceHistory: List<PurchasePriceWithStore> = emptyList(),
+    /** Set while the "Clear all data" confirmation is open. */
+    val clearDataCounts: com.example.chatgpt_mealplanner.core.database.dao.ClearableDataCounts? = null,
+    val isClearingData: Boolean = false,
+    val clearDataMessage: String? = null,
 )
 
 @HiltViewModel
@@ -66,7 +70,8 @@ class SettingsViewModel @Inject constructor(
     private val appRoleResolver: AppRoleResolver,
     private val mainBackupSaveCoordinator: MainEncryptedBackupSaveCoordinator,
     private val purchasePriceDao: PurchasePriceDao? = null,
-    private val fullBackupManager: com.example.chatgpt_mealplanner.core.backup.FullBackupManager? = null
+    private val fullBackupManager: com.example.chatgpt_mealplanner.core.backup.FullBackupManager? = null,
+    private val dataResetDao: com.example.chatgpt_mealplanner.core.database.dao.AppDataResetDao? = null
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(
         SettingsUiState(backupStatusMessage = fullBackupManager?.consumeLastRestoreResult())
@@ -335,6 +340,49 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+
+    /** Opens the confirmation with what is about to be deleted. Only the main phone may do this. */
+    fun requestClearAllData() {
+        viewModelScope.launch {
+            if (!appRoleResolver.isMainAsync()) {
+                _uiState.update { it.copy(clearDataMessage = "Clearing data is only available on the main phone, because paired phones copy from it.") }
+                return@launch
+            }
+            val dao = dataResetDao ?: run {
+                _uiState.update { it.copy(clearDataMessage = "Clearing data isn't available right now.") }
+                return@launch
+            }
+            _uiState.update { it.copy(clearDataCounts = dao.counts(), clearDataMessage = null) }
+        }
+    }
+
+    fun dismissClearAllData() {
+        _uiState.update { it.copy(clearDataCounts = null) }
+    }
+
+    fun clearClearDataMessage() {
+        _uiState.update { it.copy(clearDataMessage = null) }
+    }
+
+    /** Deletes chat history, meals and plans, and inventory in one step. Settings and keys are left alone. */
+    fun confirmClearAllData() {
+        val dao = dataResetDao ?: return
+        if (_uiState.value.isClearingData) return
+        _uiState.update { it.copy(isClearingData = true) }
+        viewModelScope.launch {
+            try {
+                if (!appRoleResolver.isMainAsync()) error("Clearing data is only available on the main phone.")
+                dao.clearHouseholdData()
+                _uiState.update { it.copy(clearDataMessage = "All chat history, meals and inventory were cleared. Your settings and API key were kept.") }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _uiState.update { it.copy(clearDataMessage = "Nothing was deleted: ${e.localizedMessage ?: e.javaClass.simpleName}") }
+            } finally {
+                _uiState.update { it.copy(isClearingData = false, clearDataCounts = null) }
+            }
+        }
+    }
 
     fun clearChatHistory() {
         viewModelScope.launch {
