@@ -12,10 +12,11 @@ data class ClearableDataCounts(
 )
 
 /**
- * Starts the household from a clean slate: chat history, meals and meal plans, inventory and the
- * shopping items worked out from them are deleted. Settings, API keys, cooking preferences, shops
- * and recorded prices, receipts and spending, product knowledge, and household and pairing
- * details are kept. Each delete is a Room query so screens watching these tables update.
+ * Starts the household from a clean slate. Every piece of data is deleted: chat history, meals and
+ * meal plans, inventory, shopping lists, receipts and spending, recorded prices and the products the
+ * app has learned. Only configuration is kept: the API key (stored outside the database), cooking
+ * preferences, the shops listed in Settings, and household, pairing and sync details. Each delete
+ * is a Room query so screens watching these tables update.
  */
 @Dao
 abstract class AppDataResetDao {
@@ -52,9 +53,21 @@ abstract class AppDataResetDao {
     @Query("DELETE FROM staple_rules") abstract suspend fun deleteStapleRules()
     @Query("DELETE FROM inventory_items") abstract suspend fun deleteInventoryItems()
 
-    /** Shopping items that only existed because of meals or staples. Items the user added by hand stay. */
-    @Query("DELETE FROM shopping_list_items WHERE sourceType != 'MANUAL'")
-    abstract suspend fun deleteDerivedShoppingItems()
+    // Shopping
+    @Query("DELETE FROM shopping_list_items") abstract suspend fun deleteShoppingListItems()
+    @Query("DELETE FROM shopping_lists") abstract suspend fun deleteShoppingLists()
+
+    // Receipts and spending
+    @Query("DELETE FROM receipt_import_lines") abstract suspend fun deleteReceiptImportLines()
+    @Query("DELETE FROM receipt_imports") abstract suspend fun deleteReceiptImports()
+    @Query("DELETE FROM receipt_product_mappings") abstract suspend fun deleteReceiptProductMappings()
+    @Query("DELETE FROM receipt_spend_items") abstract suspend fun deleteReceiptSpendItems()
+    @Query("DELETE FROM receipt_spend") abstract suspend fun deleteReceiptSpend()
+    @Query("DELETE FROM receipt_category_mappings") abstract suspend fun deleteReceiptCategoryMappings()
+
+    // Prices and learned products. The shops themselves are configuration and stay.
+    @Query("DELETE FROM purchase_price_observations") abstract suspend fun deletePriceObservations()
+    @Query("DELETE FROM product_barcode_mappings") abstract suspend fun deleteProductMappings()
 
     /** All of it, or none of it. */
     @Transaction
@@ -74,6 +87,15 @@ abstract class AppDataResetDao {
         deleteInventoryItemBarcodes()
         deleteStapleRules()
         deleteInventoryItems()
-        deleteDerivedShoppingItems()
+        deleteShoppingListItems()
+        deleteShoppingLists()
+        deleteReceiptImportLines()
+        deleteReceiptImports()
+        deleteReceiptProductMappings()
+        deleteReceiptSpendItems()
+        deleteReceiptSpend()
+        deleteReceiptCategoryMappings()
+        deletePriceObservations()
+        deleteProductMappings()
     }
 }

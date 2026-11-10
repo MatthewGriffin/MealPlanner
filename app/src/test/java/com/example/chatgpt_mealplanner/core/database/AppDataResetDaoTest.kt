@@ -6,7 +6,12 @@ import androidx.test.core.app.ApplicationProvider
 import com.example.chatgpt_mealplanner.core.database.entity.ChatConversationEntity
 import com.example.chatgpt_mealplanner.core.database.entity.ChatMessageEntity
 import com.example.chatgpt_mealplanner.core.database.entity.CookingPreferencesEntity
+import com.example.chatgpt_mealplanner.core.database.entity.ProductBarcodeMappingEntity
+import com.example.chatgpt_mealplanner.core.database.entity.PurchasePriceObservationEntity
+import com.example.chatgpt_mealplanner.core.database.entity.ReceiptSpendEntity
 import com.example.chatgpt_mealplanner.core.database.entity.UserStoreEntity
+import com.example.chatgpt_mealplanner.core.barcode.model.ProductDataSource
+import com.example.chatgpt_mealplanner.core.barcode.model.ProductMatchConfidence
 import com.example.chatgpt_mealplanner.core.database.entity.toEntity
 import com.example.chatgpt_mealplanner.core.model.FoodCategory
 import com.example.chatgpt_mealplanner.core.model.InventoryItem
@@ -73,10 +78,25 @@ class AppDataResetDaoTest {
         // Things that must survive.
         db.cookingPreferencesDao().save(CookingPreferencesEntity(allergiesJson = "[\"Peanuts\"]", dietsJson = "[]", dislikesJson = "[]", equipmentJson = "[]", householdSize = 3, skillLevel = null, updatedAt = 1L))
         db.purchasePriceDao().insertStore(UserStoreEntity("store1", "Asda"))
+
+        // History and learned data that must go.
+        db.purchasePriceDao().insertPriceObservation(
+            PurchasePriceObservationEntity(id = "p1", storeId = "store1", barcode = "123", productName = "Rice", brand = null, packQuantity = 1000.0, packUnit = "GRAM", packCount = 1, priceMinorUnits = 199)
+        )
+        db.receiptSpendDao().insertReceiptSpend(
+            ReceiptSpendEntity(id = "r1", retailerId = "asda", purchasedAt = "2026-11-01", totalMinorPence = 1000, subtotalMinorPence = null, discountMinorPence = 0, itemCount = 1, fingerprint = "fp1", createdAt = 1L)
+        )
+        db.barcodeMappingDao().insertMapping(
+            ProductBarcodeMappingEntity(
+                barcode = "123", displayName = "Rice", brand = null, canonicalIngredientId = null, canonicalName = "rice", category = null,
+                defaultStorageLocation = null, netQuantity = 1000.0, netQuantityUnit = QuantityUnit.GRAM, packCount = null, packSize = null,
+                packSizeUnit = null, imageUrl = null, source = ProductDataSource.OPEN_FOOD_FACTS, confidence = ProductMatchConfidence.HIGH
+            )
+        )
     }
 
     @Test
-    fun clearsChatMealsAndInventory_butKeepsPreferencesAndShops() = runBlocking {
+    fun clearsEverythingEntered_butKeepsPreferencesAndTheListOfShops() = runBlocking {
         seed()
         val dao = db.appDataResetDao()
         val counts = dao.counts()
@@ -94,11 +114,17 @@ class AppDataResetDaoTest {
         assertEquals(null, db.mealDao().getMealWithIngredients("meal1"))
         assertEquals(emptyList<Any>(), db.transactionDao().getTransactionsForItem("inv1").first())
 
-        // The shopping item that was worked out from meals goes; the one added by hand stays.
+        // Every shopping item and list goes, including the one added by hand.
         assertEquals(null, db.shoppingDao().getShoppingListItemById("derived"))
-        assertNotNull(db.shoppingDao().getShoppingListItemById("manual"))
+        assertEquals(null, db.shoppingDao().getShoppingListItemById("manual"))
+        assertEquals(null, db.shoppingDao().getShoppingListWithItems("list1"))
 
-        // Settings-like data is untouched.
+        // Receipts, price history and learned products are history too.
+        assertEquals(emptyList<Any>(), db.purchasePriceDao().getAllPriceObservations())
+        assertEquals(null, db.receiptSpendDao().getSpendByFingerprint("fp1"))
+        assertEquals(null, db.barcodeMappingDao().getMappingByBarcode("123"))
+
+        // Configuration is untouched: preferences and the list of shops.
         assertEquals(3, db.cookingPreferencesDao().get()?.householdSize)
         assertNotNull(db.purchasePriceDao().getAllStores().firstOrNull { it.name == "Asda" })
     }
