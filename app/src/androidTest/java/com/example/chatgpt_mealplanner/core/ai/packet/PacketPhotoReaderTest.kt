@@ -11,6 +11,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.example.chatgpt_mealplanner.core.receipt.MlKitReceiptOcrService
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -51,28 +52,30 @@ class PacketPhotoReaderTest {
 
     @Test
     fun aClearPacketIsReadAsTextAndThePictureIsNotSent() = runBlocking {
-        val photo = reader.read(image(packetLines, textSize = 44f))!!
+        val photo = reader.scan(image(packetLines, textSize = 44f))!!
 
-        android.util.Log.i("PACKET_TEST", "OCR text: ${photo.ocrText.replace('\n', ' ')}")
-        assertTrue("clear text should be enough: ${photo.ocrText}", PacketTextQuality.isUsable(photo.ocrText))
-        assertNull(photo.imageJpegBase64)
-        assertTrue(photo.ocrText.contains("seasoning", ignoreCase = true))
+        android.util.Log.i("PACKET_TEST", "OCR text: ${photo.text.replace('\n', ' ')} problems=${photo.problems}")
+        assertTrue("clear text should look good: ${photo.problems}", photo.looksGood)
+        assertTrue(photo.text.contains("seasoning", ignoreCase = true))
+        // The picture is kept too, in case the user decides to let Claude read it.
+        assertNotNull(photo.pictureForClaude())
     }
 
     @Test
     fun aPacketTooSmallToReadFallsBackToSendingThePicture() = runBlocking {
-        val photo = reader.read(image(packetLines, textSize = 7f))!!
+        val photo = reader.scan(image(packetLines, textSize = 7f))!!
 
-        android.util.Log.i("PACKET_TEST", "tiny text OCR: ${photo.ocrText.replace('\n', ' ')} image=${photo.imageJpegBase64?.length}")
-        // Garbled words are not trusted, however many there are: the picture goes to Claude instead.
-        assertNotNull(photo.imageJpegBase64)
+        android.util.Log.i("PACKET_TEST", "tiny text OCR: ${photo.text.replace('\n', ' ')} problems=${photo.problems}")
+        // Garbled words are not trusted, however many there are: the user is warned and offered the picture.
+        assertFalse(photo.looksGood)
+        assertTrue(photo.problems.any { it.contains("wasn't confident") })
         // A real JPEG: base64 of the file header.
-        assertTrue(photo.imageJpegBase64!!.startsWith("/9j/"))
-        assertEquals(false, photo.imageJpegBase64!!.contains('\n'))
+        assertTrue(photo.jpegBase64!!.startsWith("/9j/"))
+        assertEquals(false, photo.jpegBase64!!.contains('\n'))
     }
 
     @Test
     fun aPhotoThatCannotBeOpenedGivesNothing() = runBlocking {
-        assertNull(reader.read(Uri.fromFile(File(context.cacheDir, "does_not_exist.jpg"))))
+        assertNull(reader.scan(Uri.fromFile(File(context.cacheDir, "does_not_exist.jpg"))))
     }
 }

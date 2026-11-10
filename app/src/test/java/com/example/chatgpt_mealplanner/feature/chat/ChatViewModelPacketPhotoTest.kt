@@ -7,7 +7,6 @@ import com.example.chatgpt_mealplanner.core.ai.context.UserMutationIntentResolve
 import com.example.chatgpt_mealplanner.core.ai.dispatcher.AiToolDispatcher
 import com.example.chatgpt_mealplanner.core.ai.orchestrator.AiMealPlannerOrchestrator
 import com.example.chatgpt_mealplanner.core.ai.packet.PacketPhoto
-import com.example.chatgpt_mealplanner.core.ai.packet.PacketPhotoSource
 import com.example.chatgpt_mealplanner.core.ai.provider.MealPlannerAiProvider
 import com.example.chatgpt_mealplanner.core.ai.validator.RecipeValidator
 import com.example.chatgpt_mealplanner.core.repository.ChatRepositoryImpl
@@ -43,8 +42,6 @@ class ChatViewModelPacketPhotoTest {
     private val sent = mutableListOf<AiProviderRequest>()
     private lateinit var chatDao: FakeChatDao
     private lateinit var viewModel: ChatViewModel
-    private var photoResult: PacketPhoto? = PacketPhoto("", null)
-    private var photosRead = 0
 
     @Before
     fun setup() {
@@ -89,16 +86,8 @@ class ChatViewModelPacketPhotoTest {
             pendingMutationStore = pending,
             activeProposalStore = active
         )
-        val photos = object : PacketPhotoSource {
-            override suspend fun read(uri: android.net.Uri): PacketPhoto? {
-                photosRead++
-                return photoResult
-            }
-        }
-        viewModel = ChatViewModel(orchestrator, chatRepository, mealService, packetPhotoSource = photos)
+        viewModel = ChatViewModel(orchestrator, chatRepository, mealService)
     }
-
-    private val uri: android.net.Uri = android.net.FakeUri()
 
     /** The screen state only updates while something is watching it, as the screen does. */
     private fun kotlinx.coroutines.test.TestScope.watchState() {
@@ -106,74 +95,58 @@ class ChatViewModelPacketPhotoTest {
     }
 
     @Test
-    fun aPhotoWithGoodTextSendsTheTextAlongsideTheMessage_andShowsThatAPhotoWasSent() = runTest {
-        photoResult = PacketPhoto("Fry the chicken for 5 minutes, add the seasoning and 3 tbsp water.", null)
+    fun theTextTheUserCheckedIsSentAsAMessage_andTheChatShowsAShortNote() = runTest {
         watchState()
         testDispatcher.scheduler.advanceUntilIdle()
 
-        viewModel.onEvent(ChatUiEvent.AttachPhoto(uri))
-        viewModel.onEvent(ChatUiEvent.UpdateMessageText("this is my fajita kit"))
-        viewModel.onEvent(ChatUiEvent.SendMessage)
+        viewModel.onEvent(ChatUiEvent.SendPacket(PacketPhoto("Fry the chicken 5 minutes, add the seasoning and 3 tbsp water.", null), "Fajita Kit"))
         testDispatcher.scheduler.advanceUntilIdle()
 
         val last = sent.single().messages.last()
-        assertTrue(last.content.contains("this is my fajita kit"))
+        assertTrue(last.content.startsWith("Here are the instructions from the packet of my Fajita Kit."))
         assertTrue(last.content.contains("3 tbsp water"))
         assertNull(last.imageJpegBase64)
-        // The chat shows a short note, not the packet's text, and never stores the picture.
+        // The chat shows a short note, never the packet's text or the picture.
         val shown = chatDao.observeMessagesForConversation("default_conversation").first().last { it.role == "USER" }
-        assertEquals("this is my fajita kit\n(photo of the packet attached)", shown.content)
-        assertNull(viewModel.uiState.value.attachedPhotoUri)
+        assertEquals("Here are the instructions from the packet of my Fajita Kit.\n(text from the packet sent)", shown.content)
     }
 
     @Test
-    fun aPhotoTheTextReaderCouldNotReadGoesToClaudeAsAPicture() = runTest {
-        photoResult = PacketPhoto("FAJITA", "QUJD")
+    fun thePictureIsSentWhenTheUserLetsClaudeReadIt() = runTest {
         testDispatcher.scheduler.advanceUntilIdle()
 
-        viewModel.onEvent(ChatUiEvent.AttachPhoto(uri))
-        viewModel.onEvent(ChatUiEvent.SendMessage)
+        viewModel.onEvent(ChatUiEvent.SendPacket(PacketPhoto("", "QUJD"), null))
         testDispatcher.scheduler.advanceUntilIdle()
 
         val last = sent.single().messages.last()
         assertEquals("QUJD", last.imageJpegBase64)
-        // A photo with no words is a complete message.
-        assertTrue(last.content.startsWith("Here is the photo of the packet."))
+        assertTrue(last.content.startsWith("Here is the packet."))
+        val shown = chatDao.observeMessagesForConversation("default_conversation").first().last { it.role == "USER" }
+        assertTrue(shown.content.endsWith("(photo of the packet sent for Claude to read)"))
     }
 
     @Test
-    fun aPhotoThatCannotBeOpenedSendsNothing_andGivesTheWordsBack() = runTest {
-        photoResult = null
+    fun theScanScreenOpensForTheKitAndClosesAfterSending() = runTest {
         watchState()
         testDispatcher.scheduler.advanceUntilIdle()
 
-        viewModel.onEvent(ChatUiEvent.AttachPhoto(uri))
-        viewModel.onEvent(ChatUiEvent.UpdateMessageText("my kit"))
-        viewModel.onEvent(ChatUiEvent.SendMessage)
+        viewModel.onEvent(ChatUiEvent.OpenPacketScan("Fajita Kit"))
         testDispatcher.scheduler.advanceUntilIdle()
+        assertTrue(viewModel.uiState.value.showPacketScan)
+        assertEquals("Fajita Kit", viewModel.uiState.value.packetScanKit)
 
-        assertTrue(sent.isEmpty())
-        assertEquals("my kit", viewModel.uiState.value.userMessageText)
-        assertTrue(viewModel.uiState.value.errorMessage!!.contains("couldn't be read"))
-        assertEquals(ChatRequestState.IDLE, viewModel.uiState.value.requestState)
+        viewModel.onEvent(ChatUiEvent.SendPacket(PacketPhoto("Fry for 5 minutes and add water and seasoning", null), "Fajita Kit"))
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals(false, viewModel.uiState.value.showPacketScan)
+
+        viewModel.onEvent(ChatUiEvent.OpenPacketScan(null))
+        viewModel.onEvent(ChatUiEvent.ClosePacketScan)
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals(false, viewModel.uiState.value.showPacketScan)
     }
 
     @Test
-    fun removingThePhotoMeansItIsNotSent() = runTest {
-        testDispatcher.scheduler.advanceUntilIdle()
-
-        viewModel.onEvent(ChatUiEvent.AttachPhoto(uri))
-        viewModel.onEvent(ChatUiEvent.RemovePhoto)
-        viewModel.onEvent(ChatUiEvent.UpdateMessageText("just words"))
-        viewModel.onEvent(ChatUiEvent.SendMessage)
-        testDispatcher.scheduler.advanceUntilIdle()
-
-        assertEquals(0, photosRead)
-        assertEquals("just words", sent.single().messages.last().content)
-    }
-
-    @Test
-    fun withNeitherWordsNorAPhotoNothingIsSent() = runTest {
+    fun withNeitherWordsNorAPacketNothingIsSent() = runTest {
         testDispatcher.scheduler.advanceUntilIdle()
         viewModel.onEvent(ChatUiEvent.SendMessage)
         testDispatcher.scheduler.advanceUntilIdle()

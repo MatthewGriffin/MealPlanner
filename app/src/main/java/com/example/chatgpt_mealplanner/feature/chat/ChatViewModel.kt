@@ -77,15 +77,15 @@ class ChatViewModel @Inject constructor(
     private val mealDomainService: MealDomainService,
     private val mealRepository: MealRepository = UnavailableMealRepository,
     private val mealChangeRequestRepository: MealChangeRequestRepository = UnavailableMealChangeRequestRepository,
-    @param:ApplicationContext private val appContext: Context? = null,
-    private val packetPhotoSource: com.example.chatgpt_mealplanner.core.ai.packet.PacketPhotoSource? = null
+    @param:ApplicationContext private val appContext: Context? = null
 ) : ViewModel() {
 
     private val conversationIdFlow = MutableStateFlow("default_conversation")
     private val userMessageTextFlow = MutableStateFlow("")
-    private val attachedPhotoUriFlow = MutableStateFlow<android.net.Uri?>(null)
-    private val isReadingPhotoFlow = MutableStateFlow(false)
-    /** The photo read for the message in flight, kept so a retry sends it again. */
+    private val kitPacketRequestFlow = MutableStateFlow<String?>(null)
+    private val showPacketScanFlow = MutableStateFlow(false)
+    private val packetScanKitFlow = MutableStateFlow<String?>(null)
+    /** The packet sent with the message in flight, kept so a retry sends it again. */
     private var retainedPacketPhoto: com.example.chatgpt_mealplanner.core.ai.packet.PacketPhoto? = null
     private val errorMessageFlow = MutableStateFlow<String?>(null)
     private val requestStateHolderFlow = MutableStateFlow(RequestStateHolder())
@@ -133,8 +133,9 @@ class ChatViewModel @Inject constructor(
         latestMealPlanFlow,
         mealPlanConflictsFlow,
         showMealPlanConflictDialogFlow,
-        attachedPhotoUriFlow,
-        isReadingPhotoFlow
+        kitPacketRequestFlow,
+        showPacketScanFlow,
+        packetScanKitFlow
     ) { flows ->
         @Suppress("UNCHECKED_CAST")
         val reqHolder = flows[4] as RequestStateHolder
@@ -153,8 +154,9 @@ class ChatViewModel @Inject constructor(
             elapsedSeconds = flows[7] as Int,
             progressStatusText = flows[8] as String?,
             userMessageText = flows[5] as String,
-            attachedPhotoUri = flows[19] as android.net.Uri?,
-            isReadingPhoto = flows[20] as Boolean,
+            kitPacketRequest = flows[19] as String?,
+            showPacketScan = flows[20] as Boolean,
+            packetScanKit = flows[21] as String?,
             errorMessage = flows[6] as String?,
             requestState = reqHolder.requestState,
             retainedUserMessage = reqHolder.retainedUserMessage,
@@ -296,12 +298,16 @@ class ChatViewModel @Inject constructor(
         when (event) {
             is ChatUiEvent.UpdateMessageText -> userMessageTextFlow.value = event.text
             ChatUiEvent.SendMessage -> sendMessage()
-            is ChatUiEvent.AttachPhoto -> attachedPhotoUriFlow.value = event.uri
-            ChatUiEvent.RemovePhoto -> {
-                attachedPhotoUriFlow.value?.let(::deleteOwnTempPhoto)
-                attachedPhotoUriFlow.value = null
+            is ChatUiEvent.OpenPacketScan -> {
+                packetScanKitFlow.value = event.kitName
+                showPacketScanFlow.value = true
             }
-            is ChatUiEvent.ShowMessage -> errorMessageFlow.value = event.text
+            ChatUiEvent.ClosePacketScan -> showPacketScanFlow.value = false
+            is ChatUiEvent.SendPacket -> {
+                showPacketScanFlow.value = false
+                sendPacket(event.packet, event.kitName)
+            }
+            ChatUiEvent.DismissKitPacketRequest -> kitPacketRequestFlow.value = null
             ChatUiEvent.SubmitMealChangeRequest -> submitMealChangeRequestDraft()
             is ChatUiEvent.UpdateMealChangeRequestDraft -> mealChangeRequestDraftFlow.value = event.text
             ChatUiEvent.CancelMealChangeRequestDraft -> cancelMealChangeRequestDraft()
@@ -377,50 +383,41 @@ class ChatViewModel @Inject constructor(
     }
 
     private fun sendMessage(displayMessageText: String? = null) {
-        val photoUri = attachedPhotoUriFlow.value
-        val typed = userMessageTextFlow.value.trim()
-        // A photo on its own is a complete message: it is the packet Claude asked for.
-        if (typed.isBlank() && photoUri == null) return
-        val text = typed.ifBlank { "Here is the photo of the packet." }
+        val text = userMessageTextFlow.value.trim()
+        if (text.isBlank()) return
         if (requestStateHolderFlow.value.requestState == ChatRequestState.IN_FLIGHT) return
+        userMessageTextFlow.value = ""
+        startSend(text, displayMessageText, packet = null)
+    }
 
+    /** The packet the user chose to send, as a message of its own. */
+    private fun sendPacket(packet: com.example.chatgpt_mealplanner.core.ai.packet.PacketPhoto, kitName: String?) {
+        if (requestStateHolderFlow.value.requestState == ChatRequestState.IN_FLIGHT) return
+        val text = if (kitName.isNullOrBlank()) "Here is the packet." else "Here are the instructions from the packet of my $kitName."
+        val shown = text + if (packet.imageJpegBase64 != null) "\n(photo of the packet sent for Claude to read)" else "\n(text from the packet sent)"
+        startSend(text, shown, packet)
+    }
+
+    private fun startSend(text: String, displayMessageText: String?, packet: com.example.chatgpt_mealplanner.core.ai.packet.PacketPhoto?) {
         // A proposal belongs to the previous assistant turn. Do not leave its Save card
         // visible while a new request (especially a multi-day plan) is being processed.
         latestProposalFlow.value = null
         latestMealPlanFlow.value = null
         latestProposedActionFlow.value = null
+        kitPacketRequestFlow.value = null
 
-        val visibleText = displayMessageText ?: if (photoUri != null) "$text\n(photo of the packet attached)" else text
-        safeLog("[CHAT_SEND] messageLength=${text.length} photo=${photoUri != null}")
+        val visibleText = displayMessageText ?: text
+        safeLog("[CHAT_SEND] messageLength=${text.length} packet=${packet != null}")
 
         val userMsgId = "msg_${System.currentTimeMillis()}"
-        userMessageTextFlow.value = ""
-        attachedPhotoUriFlow.value = null
         errorMessageFlow.value = null
-        retainedPacketPhoto = null
+        retainedPacketPhoto = packet
         startProgressTicker()
         transitionRequestState(ChatRequestState.IN_FLIGHT, retainedMessage = visibleText, retainedMessageId = userMsgId, retainedRequestText = text)
 
         viewModelScope.launch {
             safeLog("[CHAT_ORCHESTRATOR_CALL] conversationId=\"default_conversation\" messageId=\"$userMsgId\"")
-            if (photoUri != null) {
-                isReadingPhotoFlow.value = true
-                val photo = try {
-                    packetPhotoSource?.read(photoUri)
-                } finally {
-                    isReadingPhotoFlow.value = false
-                    deleteOwnTempPhoto(photoUri)
-                }
-                if (photo == null) {
-                    // Nothing was sent, so give the words back to be sent again.
-                    userMessageTextFlow.value = typed
-                    errorMessageFlow.value = "That photo couldn't be read. Try taking it again in good light, or paste the instructions instead."
-                    transitionRequestState(ChatRequestState.IDLE)
-                    return@launch
-                }
-                retainedPacketPhoto = photo
-            }
-            val result = processAiMessage(text, userMsgId, displayMessageText ?: visibleText.takeIf { photoUri != null }, retainedPacketPhoto)
+            val result = processAiMessage(text, userMsgId, displayMessageText, retainedPacketPhoto)
 
             when (result) {
                 is AiOrchestrationResult.Final -> {
@@ -431,6 +428,7 @@ class ChatViewModel @Inject constructor(
                     }
                     latestMealPlanFlow.value = result.mealPlan?.takeIf { it.size > 1 }
                     latestProposedActionFlow.value = result.proposedAction
+                    kitPacketRequestFlow.value = result.kitPacketRequest
 
                     val confirmAction = result.proposedAction as? AiProposedAction.ConfirmCookedMeal
                     if (confirmAction != null) {
@@ -471,14 +469,6 @@ class ChatViewModel @Inject constructor(
         }
     }
 
-    /** The camera's photo is only needed while it is read, so it isn't left in the cache. Gallery pictures are never deleted. */
-    private fun deleteOwnTempPhoto(uri: android.net.Uri) {
-        val context = appContext ?: return
-        if (uri.authority == "${context.packageName}.fileprovider") {
-            runCatching { context.contentResolver.delete(uri, null, null) }
-        }
-    }
-
     private fun retryLastFailedMessage() {
         val currentHolder = requestStateHolderFlow.value
         if (currentHolder.requestState == ChatRequestState.IN_FLIGHT) return
@@ -504,6 +494,7 @@ class ChatViewModel @Inject constructor(
                     }
                     latestMealPlanFlow.value = result.mealPlan?.takeIf { it.size > 1 }
                     latestProposedActionFlow.value = result.proposedAction
+                    kitPacketRequestFlow.value = result.kitPacketRequest
 
                     val confirmAction = result.proposedAction as? AiProposedAction.ConfirmCookedMeal
                     if (confirmAction != null) {
