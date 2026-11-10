@@ -55,6 +55,7 @@ import com.example.chatgpt_mealplanner.core.model.InventoryItem
 import com.example.chatgpt_mealplanner.core.model.ItemStatus
 import com.example.chatgpt_mealplanner.core.model.QuantityConfidence
 import com.example.chatgpt_mealplanner.core.model.QuantityUnit
+import com.example.chatgpt_mealplanner.core.util.pickerLabel
 import com.example.chatgpt_mealplanner.core.model.StorageLocation
 import kotlinx.coroutines.launch
 
@@ -63,7 +64,7 @@ data class AddEditItemFormState(
     val displayName: String = "",
     val brand: String = "",
     val barcode: String = "",
-    val quantityText: String = "1.0",
+    val quantityText: String = "1",
     val selectedUnit: QuantityUnit = QuantityUnit.UNIT,
     val category: FoodCategory = FoodCategory.DRY_GOODS,
     val storageLocation: StorageLocation = StorageLocation.CUPBOARD,
@@ -88,7 +89,7 @@ data class AddEditItemFormState(
         val enteredQuantity = quantityText.toDoubleOrNull()
         val qty = enteredQuantity ?: 1.0
         val quantityUnchanged = originalItem != null &&
-            quantityText == (originalItem.quantity?.toString() ?: "") &&
+            quantityText == (originalItem.quantity?.let { com.example.chatgpt_mealplanner.core.util.formatQuantityNumber(it) } ?: "") &&
             selectedUnit == (originalItem.quantityUnit ?: QuantityUnit.UNIT)
         val pCount = packCountText.toIntOrNull()
         val pSize = packSizeText.toDoubleOrNull()
@@ -162,7 +163,7 @@ data class AddEditItemFormState(
                 displayName = item.displayName,
                 brand = item.brand ?: "",
                 barcode = item.barcode ?: "",
-                quantityText = item.quantity?.toString() ?: "",
+                quantityText = item.quantity?.let { com.example.chatgpt_mealplanner.core.util.formatQuantityNumber(it) } ?: "",
                 selectedUnit = item.quantityUnit ?: QuantityUnit.UNIT,
                 category = item.category,
                 storageLocation = item.storageLocation,
@@ -460,32 +461,27 @@ fun AddEditItemForm(
                 selectedOption = formState.selectedUnit,
                 onOptionSelected = { onFormStateChange(formState.copy(selectedUnit = it)) },
                 modifier = Modifier.weight(1f),
-                optionLabel = { it.name }
+                optionLabel = { it.pickerLabel() }
             )
         }
 
-        Row(
+        EnumDropdownSelector(
+            label = "Category",
+            options = FoodCategory.entries.toTypedArray(),
+            selectedOption = formState.category,
+            onOptionSelected = { onFormStateChange(formState.copy(category = it)) },
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            EnumDropdownSelector(
-                label = "Category",
-                options = FoodCategory.entries.toTypedArray(),
-                selectedOption = formState.category,
-                onOptionSelected = { onFormStateChange(formState.copy(category = it)) },
-                modifier = Modifier.weight(1f),
-                optionLabel = { it.displayName }
-            )
+            optionLabel = { it.displayName }
+        )
 
-            EnumDropdownSelector(
-                label = "Storage Location",
-                options = StorageLocation.entries.toTypedArray(),
-                selectedOption = formState.storageLocation,
-                onOptionSelected = { onFormStateChange(formState.copy(storageLocation = it)) },
-                modifier = Modifier.weight(1f),
-                optionLabel = { it.displayName }
-            )
-        }
+        EnumDropdownSelector(
+            label = "Storage Location",
+            options = StorageLocation.entries.toTypedArray(),
+            selectedOption = formState.storageLocation,
+            onOptionSelected = { onFormStateChange(formState.copy(storageLocation = it)) },
+            modifier = Modifier.fillMaxWidth(),
+            optionLabel = { it.displayName }
+        )
 
         // Section 1: Progressive Disclosure - Packaging & Brand
         Card(
@@ -558,7 +554,7 @@ fun AddEditItemForm(
                             selectedOption = formState.packSizeUnit,
                             onOptionSelected = { onFormStateChange(formState.copy(packSizeUnit = it)) },
                             modifier = Modifier.fillMaxWidth(),
-                            optionLabel = { it.name }
+                            optionLabel = { it.pickerLabel() }
                         )
                     }
                 }

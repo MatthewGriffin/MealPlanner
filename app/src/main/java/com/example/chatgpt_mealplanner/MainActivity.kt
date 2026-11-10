@@ -11,6 +11,10 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -137,6 +141,12 @@ class MainActivity : ComponentActivity() {
                 }
                 var scanPacketForKit by remember { mutableStateOf<String?>(null) }
                 var chatLaunch by remember { mutableStateOf<ChatLaunch?>(null) }
+                /** Where Back goes from the screens opened from the top bar. */
+                var returnScreen by remember { mutableStateOf(Screen.INVENTORY) }
+                fun openFromTopBar(screen: Screen) {
+                    if (currentScreen != Screen.SETTINGS && currentScreen != Screen.HOUSEHOLD && currentScreen != Screen.RECIPES) returnScreen = currentScreen
+                    currentScreen = screen
+                }
                 var lowStockItemToAdd by remember { mutableStateOf<com.example.chatgpt_mealplanner.core.model.InventoryItem?>(null) }
                 var pendingRecipeDate by remember { mutableStateOf<String?>(null) }
                 var mealChangeRequestForAi by remember { mutableStateOf<com.example.chatgpt_mealplanner.core.database.entity.MealChangeRequestEntity?>(null) }
@@ -162,7 +172,10 @@ class MainActivity : ComponentActivity() {
                     currentScreen == Screen.PAIR_DEVICE || currentScreen == Screen.JOIN_HOUSEHOLD -> {
                         { currentScreen = Screen.HOUSEHOLD }
                     }
-                    currentScreen == Screen.SCANNER || currentScreen == Screen.SETTINGS || currentScreen == Screen.HOUSEHOLD || currentScreen == Screen.RECIPES -> {
+                    currentScreen == Screen.SETTINGS || currentScreen == Screen.HOUSEHOLD || currentScreen == Screen.RECIPES -> {
+                        { currentScreen = returnScreen }
+                    }
+                    currentScreen == Screen.SCANNER -> {
                         { currentScreen = Screen.INVENTORY }
                     }
                     else -> null
@@ -183,24 +196,34 @@ class MainActivity : ComponentActivity() {
                                 }
                             },
                             actions = {
-                                if (currentScreen != Screen.RECIPES && !isFollower) {
-                                    IconButton(onClick = { currentScreen = Screen.RECIPES }) {
-                                        Icon(
-                                            Icons.AutoMirrored.Filled.MenuBook,
-                                            contentDescription = "Saved recipes"
-                                        )
-                                    }
-                                }
-                                if (currentScreen != Screen.HOUSEHOLD) {
-                                    IconButton(onClick = { currentScreen = Screen.HOUSEHOLD }) {
-                                        Icon(
-                                            Icons.Default.Devices,
-                                            contentDescription = "Household Sync"
-                                        )
+                                var showMore by remember { mutableStateOf(false) }
+                                val canOpenRecipes = currentScreen != Screen.RECIPES && !isFollower
+                                val canOpenHousehold = currentScreen != Screen.HOUSEHOLD
+                                if (canOpenRecipes || canOpenHousehold) {
+                                    Box {
+                                        IconButton(onClick = { showMore = true }) {
+                                            Icon(Icons.Default.MoreVert, contentDescription = "More")
+                                        }
+                                        DropdownMenu(expanded = showMore, onDismissRequest = { showMore = false }) {
+                                            if (canOpenRecipes) {
+                                                DropdownMenuItem(
+                                                    text = { Text("Saved recipes") },
+                                                    leadingIcon = { Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = null) },
+                                                    onClick = { showMore = false; openFromTopBar(Screen.RECIPES) }
+                                                )
+                                            }
+                                            if (canOpenHousehold) {
+                                                DropdownMenuItem(
+                                                    text = { Text("Household sync") },
+                                                    leadingIcon = { Icon(Icons.Default.Devices, contentDescription = null) },
+                                                    onClick = { showMore = false; openFromTopBar(Screen.HOUSEHOLD) }
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                                 if (currentScreen != Screen.SETTINGS) {
-                                    IconButton(onClick = { currentScreen = Screen.SETTINGS }) {
+                                    IconButton(onClick = { openFromTopBar(Screen.SETTINGS) }) {
                                         Icon(
                                             Icons.Default.Settings,
                                             contentDescription = "Settings"
@@ -275,7 +298,8 @@ class MainActivity : ComponentActivity() {
                             ChatScreen(
                                 uiState = state,
                                 onEvent = chatViewModel::onEvent,
-                                innerPadding = innerPadding
+                                innerPadding = innerPadding,
+                                onOpenRecipes = { openFromTopBar(Screen.RECIPES) }
                             )
                         }
 
@@ -358,6 +382,7 @@ class MainActivity : ComponentActivity() {
                                 onAddFromLink = { url -> chatLaunch = ChatLaunch.Send("Please read this recipe and save it to my recipes: $url"); currentScreen = Screen.CHAT },
                                 onAddFromPhoto = { chatLaunch = ChatLaunch.ScanRecipe(null); currentScreen = Screen.CHAT },
                                 onRescanPhoto = { title -> chatLaunch = ChatLaunch.ScanRecipe(title); currentScreen = Screen.CHAT },
+                                onPlanThis = { title -> chatLaunch = ChatLaunch.Send("Please plan a meal using my saved recipe \"$title\"."); currentScreen = Screen.CHAT },
                                 onRescanLink = { title, url -> chatLaunch = ChatLaunch.Send("Please read this page again and update my saved recipe \"$title\": $url"); currentScreen = Screen.CHAT },
                                 modifier = Modifier.padding(innerPadding)
                             )

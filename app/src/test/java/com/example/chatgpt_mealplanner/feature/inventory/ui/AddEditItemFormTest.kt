@@ -121,7 +121,7 @@ class AddEditItemFormTest {
         assertEquals("Extra Virgin Olive Oil", formState.displayName)
         assertEquals("Asda", formState.brand)
         assertEquals("5012345678900", formState.barcode)
-        assertEquals("2.0", formState.quantityText)
+        assertEquals("2", formState.quantityText)
         assertEquals(QuantityUnit.LITRE, formState.selectedUnit)
         assertEquals("2", formState.packCountText)
         assertEquals("1.0", formState.packSizeText)

@@ -98,6 +98,7 @@ fun PacketScanDialog(
                     ) {
                         CircularProgressIndicator()
                         Text("Getting the photo ready…")
+                        TextButton(onClick = viewModel::cancelReading, modifier = Modifier.testTag("scan-cancel-reading")) { Text("Cancel") }
                     }
                     PacketScanStage.PREVIEW -> {
                         Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {

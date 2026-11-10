@@ -41,11 +41,13 @@ fun RecipesScreen(
     onAddFromPhoto: () -> Unit,
     onRescanPhoto: (title: String) -> Unit,
     onRescanLink: (title: String, url: String) -> Unit,
+    onPlanThis: (title: String) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: RecipesViewModel = hiltViewModel()
 ) {
     val recipes by viewModel.recipes.collectAsState()
     var showLinkDialog by remember { mutableStateOf(false) }
+    var query by remember { mutableStateOf("") }
     var viewing by remember { mutableStateOf<SavedRecipeEntity?>(null) }
     var deleting by remember { mutableStateOf<SavedRecipeEntity?>(null) }
 
@@ -58,11 +60,23 @@ fun RecipesScreen(
             Button(onClick = { showLinkDialog = true }, modifier = Modifier.testTag("recipe-add-link")) { Text("Add from link") }
             OutlinedButton(onClick = onAddFromPhoto, modifier = Modifier.testTag("recipe-add-photo")) { Text("Add from photo") }
         }
+        if (recipes.size > 5) {
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                placeholder = { Text("Search recipes") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth().testTag("recipe-search")
+            )
+        }
+        val shown = if (query.isBlank()) recipes else recipes.filter { it.title.contains(query.trim(), ignoreCase = true) }
         if (recipes.isEmpty()) {
             Text("No saved recipes yet.", style = MaterialTheme.typography.bodyLarge)
+        } else if (shown.isEmpty()) {
+            Text("No recipes match \"${query.trim()}\".", style = MaterialTheme.typography.bodyLarge)
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(recipes, key = { it.normalizedTitle }) { recipe ->
+                items(shown, key = { it.normalizedTitle }) { recipe ->
                     Card(modifier = Modifier.fillMaxWidth().clickable { viewing = recipe }) {
                         Column(modifier = Modifier.padding(12.dp)) {
                             Text(recipe.title, style = MaterialTheme.typography.titleMedium)
@@ -112,19 +126,18 @@ fun RecipesScreen(
                 Column(modifier = Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(listOfNotNull(recipe.servings?.let { "Serves $it" }, sourceLabel(recipe)).joinToString(" · "), style = MaterialTheme.typography.labelMedium)
                     Text(recipe.recipeText, style = MaterialTheme.typography.bodyMedium)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = {
+                            viewing = null
+                            val link = recipe.sourceNote?.takeIf { recipe.source == "URL" && it.startsWith("http", ignoreCase = true) }
+                            if (link != null) onRescanLink(recipe.title, link) else onRescanPhoto(recipe.title)
+                        }, modifier = Modifier.testTag("recipe-rescan")) { Text("Scan again") }
+                        OutlinedButton(onClick = { deleting = recipe; viewing = null }) { Text("Delete") }
+                    }
                 }
             },
-            confirmButton = { TextButton(onClick = { viewing = null }) { Text("Close") } },
-            dismissButton = {
-                Row {
-                    TextButton(onClick = {
-                        viewing = null
-                        val link = recipe.sourceNote?.takeIf { recipe.source == "URL" && it.startsWith("http", ignoreCase = true) }
-                        if (link != null) onRescanLink(recipe.title, link) else onRescanPhoto(recipe.title)
-                    }, modifier = Modifier.testTag("recipe-rescan")) { Text("Scan again") }
-                    TextButton(onClick = { deleting = recipe; viewing = null }) { Text("Delete") }
-                }
-            }
+            confirmButton = { Button(onClick = { viewing = null; onPlanThis(recipe.title) }, modifier = Modifier.testTag("recipe-plan-this")) { Text("Plan this") } },
+            dismissButton = { TextButton(onClick = { viewing = null }) { Text("Close") } }
         )
     }
 
