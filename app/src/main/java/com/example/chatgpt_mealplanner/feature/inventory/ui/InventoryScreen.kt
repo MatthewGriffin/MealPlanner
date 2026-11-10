@@ -83,7 +83,7 @@ fun InventoryScreen(
     onSearchProducts: (suspend (String) -> List<com.example.chatgpt_mealplanner.core.barcode.BarcodeLookupResult>)? = null,
     modifier: Modifier = Modifier,
     onAddLowStockToShopping: ((InventoryItem) -> Unit)? = null,
-    onOpenAssistant: () -> Unit = {}
+    onOpenAssistant: (kitName: String) -> Unit = {}
 ) {
     var kitPromptName by remember { mutableStateOf<String?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
@@ -199,6 +199,7 @@ fun InventoryScreen(
                         InventoryItemCard(
                             item = item,
                             needsInstructions = item.id in state.kitsWithoutInstructions,
+                            onScanPacket = { onOpenAssistant(item.displayName) },
                             onItemClick = { onEvent(InventoryUiEvent.SelectItemForEdit(item)) },
                             onToggleStaple = { onEvent(InventoryUiEvent.ToggleStaple(item.id)) },
                             onMarkAsOut = { onEvent(InventoryUiEvent.MarkAsOut(item.id)) },
@@ -248,9 +249,9 @@ fun InventoryScreen(
         AlertDialog(
             onDismissRequest = { kitPromptName = null },
             title = { Text("Scan the packet now?") },
-            text = { Text("\"$kit\" is a kit. Claude needs its packet instructions to cook with it. If you haven't saved them yet, scan the packet in the Assistant chat.") },
+            text = { Text("\"$kit\" is a kit. Claude needs its packet instructions to cook with it. If you haven't saved them yet, scan it now.") },
             confirmButton = {
-                TextButton(onClick = { kitPromptName = null; onOpenAssistant() }, modifier = Modifier.testTag("kit-scan-now")) { Text("Open Assistant") }
+                TextButton(onClick = { kitPromptName = null; onOpenAssistant(kit) }, modifier = Modifier.testTag("kit-scan-now")) { Text("Scan packet") }
             },
             dismissButton = { TextButton(onClick = { kitPromptName = null }) { Text("Later") } }
         )
@@ -331,6 +332,7 @@ fun StatusChip(status: ItemStatus) {
 fun InventoryItemCard(
     item: InventoryItem,
     needsInstructions: Boolean = false,
+    onScanPacket: () -> Unit = {},
     onItemClick: () -> Unit,
     onToggleStaple: () -> Unit,
     onMarkAsOut: () -> Unit,
@@ -349,12 +351,15 @@ fun InventoryItemCard(
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             if (needsInstructions) {
-                Text(
-                    text = "No packet instructions yet - scan the packet in the Assistant chat",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.testTag("kit-no-instructions")
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "No packet instructions yet",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.weight(1f).testTag("kit-no-instructions")
+                    )
+                    TextButton(onClick = onScanPacket, modifier = Modifier.testTag("kit-scan-packet")) { Text("Scan packet") }
+                }
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),

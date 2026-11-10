@@ -126,6 +126,7 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(notificationRouteState.value) {
                     if (notificationRouteState.value != null) currentScreen = Screen.MEAL_PLANNER
                 }
+                var scanPacketForKit by remember { mutableStateOf<String?>(null) }
                 var lowStockItemToAdd by remember { mutableStateOf<com.example.chatgpt_mealplanner.core.model.InventoryItem?>(null) }
                 var pendingRecipeDate by remember { mutableStateOf<String?>(null) }
                 var mealChangeRequestForAi by remember { mutableStateOf<com.example.chatgpt_mealplanner.core.database.entity.MealChangeRequestEntity?>(null) }
@@ -237,6 +238,12 @@ class MainActivity : ComponentActivity() {
                                     mealChangeRequestForAi = null
                                 }
                             }
+                            LaunchedEffect(scanPacketForKit, chatViewModel) {
+                                scanPacketForKit?.let { kit ->
+                                    chatViewModel.onEvent(ChatUiEvent.OpenPacketScan(kit))
+                                    scanPacketForKit = null
+                                }
+                            }
                             val state by chatViewModel.uiState.collectAsState()
                             ChatScreen(
                                 uiState = state,
@@ -252,7 +259,7 @@ class MainActivity : ComponentActivity() {
                                 state = state,
                                 onEvent = inventoryViewModel::onEvent,
                                 onScanBarcodeClicked = { currentScreen = Screen.SCANNER },
-                                onOpenAssistant = { currentScreen = Screen.CHAT },
+                                onOpenAssistant = { kit -> scanPacketForKit = kit; currentScreen = Screen.CHAT },
                                 onSearchProducts = inventoryViewModel::searchProductsByName,
                                 modifier = Modifier.padding(innerPadding),
                                 onAddLowStockToShopping = if (isFollower) null else { item ->
