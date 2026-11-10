@@ -252,6 +252,7 @@ class MainActivity : ComponentActivity() {
                                 state = state,
                                 onEvent = inventoryViewModel::onEvent,
                                 onScanBarcodeClicked = { currentScreen = Screen.SCANNER },
+                                onOpenAssistant = { currentScreen = Screen.CHAT },
                                 onSearchProducts = inventoryViewModel::searchProductsByName,
                                 modifier = Modifier.padding(innerPadding),
                                 onAddLowStockToShopping = if (isFollower) null else { item ->
