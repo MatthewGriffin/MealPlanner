@@ -143,8 +143,8 @@ internal object PantryListParsing {
     val MATCH_PROMPT = """
         A household listed food they own. For each line you get what the user wrote and the products a food database returned for it. Decide which product, if any, the user means, then call $MATCH_TOOL_NAME once with a choice for every line.
         1. candidate is the 0-based number of the matching product, or -1 if none fits.
-        2. sure is true only when exactly one candidate clearly matches what the user wrote: the same kind of product, the same brand if one was named, and the same variety (smoked or plain, wholegrain or white). Ignore pack size unless the user gave one.
-        3. If several candidates fit about equally (a brand sells many sizes or varieties and the user did not say which), or none is clearly right, set sure to false and still give your best guess. The user will choose.
+        2. The database often holds several entries for the very same product: duplicates, different spellings, or entries where one has the pack size and another doesn't. These count as one product. When all the plausible candidates are the same product, set sure to true and pick the entry with the most complete details, preferring one that gives a pack size.
+        3. Set sure to false only when the plausible candidates are genuinely different things the user could mean: different pack sizes (375 g and 500 g), different varieties (smoked or plain, wholegrain or white), or different brands when the user named none. Still give your best guess, and the user will choose. If the user already said the size or variety, that settles it.
         4. A candidate that is a different kind of food, or an unrelated brand, is not a match even if the words overlap.
     """.trimIndent()
 

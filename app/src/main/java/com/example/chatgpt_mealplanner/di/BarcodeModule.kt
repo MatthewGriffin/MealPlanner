@@ -3,6 +3,7 @@ package com.example.chatgpt_mealplanner.di
 import com.example.chatgpt_mealplanner.core.barcode.provider.OpenFoodFactsProductDataProvider
 import com.example.chatgpt_mealplanner.core.barcode.provider.ProductDataProvider
 import com.example.chatgpt_mealplanner.core.barcode.provider.openfoodfacts.OpenFoodFactsApi
+import com.example.chatgpt_mealplanner.core.barcode.provider.openfoodfacts.SearchALiciousApi
 import com.example.chatgpt_mealplanner.core.barcode.repository.ProductLookupRepository
 import com.example.chatgpt_mealplanner.core.barcode.repository.ProductLookupRepositoryImpl
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
@@ -60,6 +61,26 @@ object NetworkModule {
             .addConverterFactory(json.asConverterFactory(mediaType))
             .build()
             .create(OpenFoodFactsApi::class.java)
+    }
+
+    @Provides
+    @Singleton
+    fun provideSearchALiciousApi(
+        okHttpClient: OkHttpClient,
+        json: Json
+    ): SearchALiciousApi {
+        // Open Food Facts asks every app to say who it is, and may limit anonymous callers harder.
+        val client = okHttpClient.newBuilder()
+            .addInterceptor { chain ->
+                chain.proceed(chain.request().newBuilder().header("User-Agent", "PantryPlanner-Android/1.0").build())
+            }
+            .build()
+        return Retrofit.Builder()
+            .baseUrl(SearchALiciousApi.BASE_URL)
+            .client(client)
+            .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
+            .build()
+            .create(SearchALiciousApi::class.java)
     }
 }
 
