@@ -556,4 +556,37 @@ class ClaudeMealPlannerAiProviderTest {
         assertEquals(emptyList<ProductMatchChoice>(), (provider.chooseProducts(emptyList()) as ProductMatchResult.Choices).choices)
         assertEquals(0, server.requestCount)
     }
+
+    @Test
+    fun aPhotoOnTheUsersMessageIsSentToClaudeAsAnImageBeforeTheWords() = runBlocking {
+        server.enqueue(textReply("Thanks, that packet is clear."))
+        provider.send(request(messages = listOf(AiChatMessage("user", "here is the packet", imageJpegBase64 = "QUJD"))))
+
+        val content = nextBody()["messages"]!!.jsonArray.last().jsonObject["content"]!!.jsonArray
+        val image = content[0].jsonObject
+        assertEquals("image", image["type"]!!.jsonPrimitive.content)
+        assertEquals("base64", image["source"]!!.jsonObject["type"]!!.jsonPrimitive.content)
+        assertEquals("image/jpeg", image["source"]!!.jsonObject["media_type"]!!.jsonPrimitive.content)
+        assertEquals("QUJD", image["source"]!!.jsonObject["data"]!!.jsonPrimitive.content)
+        assertEquals("text", content[1].jsonObject["type"]!!.jsonPrimitive.content)
+        assertTrue(content[1].jsonObject["text"]!!.jsonPrimitive.content.contains("here is the packet"))
+    }
+
+    @Test
+    fun messagesWithoutAPhotoStayPlainText() = runBlocking {
+        server.enqueue(textReply("ok"))
+        provider.send(request(messages = listOf(AiChatMessage("user", "hello"))))
+
+        val last = nextBody()["messages"]!!.jsonArray.last().jsonObject["content"]!!
+        assertEquals("hello", last.jsonPrimitive.content)
+    }
+
+    @Test
+    fun aPhotoSurvivesTwoUserMessagesBeingMergedIntoOneTurn() {
+        val turns = provider.toMessageParams(
+            listOf(AiChatMessage("user", "first"), AiChatMessage("user", "the packet", imageJpegBase64 = "QUJD"))
+        )
+        assertEquals(1, turns.size)
+        assertTrue(turns.single().toString().contains("QUJD"))
+    }
 }

@@ -51,7 +51,9 @@ class AiMealPlannerOrchestrator @Inject constructor(
         conversationId: String,
         userMessageText: String,
         userMessageId: String? = null,
-        displayUserMessageText: String? = null
+        displayUserMessageText: String? = null,
+        /** A photo of a kit's packet sent with this message, read on the phone before it gets here. */
+        packetPhoto: com.example.chatgpt_mealplanner.core.ai.packet.PacketPhoto? = null
     ): AiOrchestrationResult {
         if (appRoleResolver.isFollower()) {
             return AiOrchestrationResult.Error(
@@ -156,7 +158,7 @@ class AiMealPlannerOrchestrator @Inject constructor(
             chatRepository.getMessagesForConversation(conversationId).takeLast(20).mapNotNull { message ->
                 // Persist a concise summary for the user, but send the full internal prompt to Claude.
                 if (message.id == userMsgId && message.role.equals("USER", ignoreCase = true)) {
-                    AiChatMessage(role = "user", content = userMessageText)
+                    packetPhoto?.asUserTurn(userMessageText) ?: AiChatMessage(role = "user", content = userMessageText)
                 } else {
                     historyTextFor(message)?.let { AiChatMessage(role = message.role.lowercase(), content = it) }
                 }
@@ -164,7 +166,7 @@ class AiMealPlannerOrchestrator @Inject constructor(
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (_: Exception) {
-            listOf(AiChatMessage(role = "user", content = userMessageText))
+            listOf(packetPhoto?.asUserTurn(userMessageText) ?: AiChatMessage(role = "user", content = userMessageText))
         }
 
         val historyCount = historicalMessages.size
@@ -1327,8 +1329,8 @@ class AiMealPlannerOrchestrator @Inject constructor(
         KITS AND MIXES:
         1. Items in usableInventory with category KITS_MIXES are meal kits and spice or seasoning kits, such as a fajita kit, a curry sachet or a taco kit. A kit's name doesn't tell you what is in it, what else it needs or how long it cooks, so never guess or invent a kit's method.
         2. If the kit is in kitInstructions, build the recipe on those instructions: list the kit as one ingredient (1 PACK or 1 UNIT), list everything else the packet says to add with its amount, and follow the packet's steps and times, scaled to the servings the kit makes.
-        3. If the kit isn't in kitInstructions, get its instructions before offering a recipe that uses it. Search the web for the exact kit name and brand, preferring the manufacturer's page, and use what you find only if the page clearly matches that product. If you can't find it, or aren't sure it is the same product, ask the user to send a photo of the back of the packet, or to paste its instructions, then wait for their reply. Don't offer the recipe card until you have the instructions.
-        4. As soon as you have a kit's instructions, from a page or from the user, call save_kit_instructions with the kit's name as it is in the inventory, the full instructions (contents, what to add, steps and times) and where they came from, so they never need looking up again. Then write the recipe. If the user sends the text of a packet, save that too.
+        3. If the kit isn't in kitInstructions, get its instructions before offering a recipe that uses it. Search the web for the exact kit name and brand, preferring the manufacturer's page, and use what you find only if the page clearly matches that product. If you can't find it, or aren't sure it is the same product, ask the user to send a photo of the back of the packet with the attach button next to the message box, or to paste its instructions, then wait for their reply. Don't offer the recipe card until you have the instructions.
+        4. As soon as you have a kit's instructions, from a page or from the user, call save_kit_instructions with the kit's name as it is in the inventory, the full instructions (contents, what to add, steps and times) and where they came from, so they never need looking up again. Then write the recipe. If the user sends a photo of a packet, the app adds the text it read from the photo to their message, and attaches the picture itself when that text was incomplete: read it, check it is the kit being discussed, and save it with source PHOTO. If the photo is too unclear to read the steps and amounts, ask for a clearer one rather than guessing. If the user types or pastes the instructions, save those with source USER.
         5. A kit the user names that isn't in the inventory needs its instructions in the same way.
         6. In a multi-day meal plan, use a kit only if its instructions are already in kitInstructions; don't stop a plan to look one up.
 
