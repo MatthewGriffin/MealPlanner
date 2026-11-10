@@ -644,7 +644,8 @@ class AiMealPlannerOrchestrator @Inject constructor(
                         finalRes.proposedAction
                     },
                     modelId = finalRes.modelId,
-                    kitPacketRequest = kitPacketRequest
+                    kitPacketRequest = kitPacketRequest,
+                    quickReplies = finalRes.quickReplies
                 )
             }
             is AiProviderResponse.Error -> {
@@ -1353,6 +1354,10 @@ class AiMealPlannerOrchestrator @Inject constructor(
         4. Saving a recipe is not the same as adding it to the planner: after saving, tell the user in one line it is saved and offer to plan it. Don't offer the recipe card unless asked.
         5. When the user asks for a saved recipe, or a plan where one clearly fits (they named it, or asked to use their saved recipes), call get_saved_recipe first and build the meal on it: the same ingredients and method, scaled to the servings wanted, with units converted as the rules above need. Keep the title, and put the saved source in basedOn. Never recall a saved recipe from its title alone.
         6. In a multi-day plan you may include saved recipes the household would like, calling get_saved_recipe for each one you use.
+
+        QUICK REPLIES:
+        1. When your reply ends by asking the user a question they can answer in a few words (a choice, a yes or no, an adjustment), you may add one last line of the exact form QUICK_REPLIES: ["...","..."] with 2 to 4 short answers the user is likely to want, each under 30 characters, written as the user would say them, such as "Yes, go ahead" or "Make it vegetarian". Make them specific to your question and different from each other.
+        2. Leave it out when the reply asks nothing, asks for something free-form such as a name or a date, asks for a packet or a photo, or contains MEAL_PLAN_JSON or a recipe card (the app shows its own buttons for those). The line is for the app and the user never sees it.
 
         TOOLS AND SAVING:
         1. You cannot change the Planner, Inventory, Shopping List or Staples by saying you did. When the user explicitly asks for a change (for example 'mark milk as out'), call the matching write tool, and say it is done only when the tool result reports success. If no tool can do it, say so.

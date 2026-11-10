@@ -28,6 +28,8 @@ data class ChatUiState(
     val userMessageText: String = "",
     /** A kit the assistant asked for the packet of: the chat shows a Scan packet button for it. */
     val kitPacketRequest: String? = null,
+    /** Short answers offered as buttons under the last assistant message. */
+    val quickReplies: List<String> = emptyList(),
     /** Whether the Scan packet screen is open, and for which kit (null when the user opened it themselves). */
     val showPacketScan: Boolean = false,
     val packetScanKit: String? = null,

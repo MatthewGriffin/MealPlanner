@@ -10,12 +10,37 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 private const val MEAL_PLAN_MARKER = "MEAL_PLAN_JSON:"
+private const val QUICK_REPLIES_MARKER = "QUICK_REPLIES:"
 
 /** Reads the meal plan or recipe the model writes into a text reply, and hides the JSON from the user. */
 internal object ModelReplyText {
 
     private val json = Json { ignoreUnknownKeys = true }
     private val fencedJsonArray = Regex("""```(?:json)?\s*(\[[\s\S]*])\s*(?:```|$)""")
+
+    /**
+     * The model can end a reply with a QUICK_REPLIES: line holding a JSON array of short answers to the question it
+     * asked. The line is for the app, so it comes out of the text; unreadable ones are dropped quietly.
+     */
+    fun withoutQuickReplies(text: String): Pair<String, List<String>> {
+        val lines = text.lines()
+        val index = lines.indexOfLast { it.trim().startsWith(QUICK_REPLIES_MARKER) }
+        if (index < 0) return text to emptyList()
+        val replies = try {
+            json.parseToJsonElement(lines[index].trim().removePrefix(QUICK_REPLIES_MARKER).trim()).jsonArray
+                .mapNotNull { it.jsonPrimitive.contentOrNull?.trim() }
+                .filter { it.isNotEmpty() && it.length <= MAX_QUICK_REPLY_CHARS }
+                .distinct()
+                .take(MAX_QUICK_REPLIES)
+        } catch (_: Throwable) {
+            emptyList()
+        }
+        val cleaned = lines.filterIndexed { i, _ -> i != index }.joinToString("\n").trim()
+        return cleaned to replies
+    }
+
+    private const val MAX_QUICK_REPLIES = 4
+    private const val MAX_QUICK_REPLY_CHARS = 40
 
     fun mealPlan(text: String): List<MealProposal>? {
         val planJson = mealPlanJsonIn(text) ?: return null

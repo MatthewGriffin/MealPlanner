@@ -447,6 +447,21 @@ fun ChatScreen(
                 }
             }
 
+            if (uiState.quickReplies.isNotEmpty() && !uiState.isLoading) {
+                androidx.compose.foundation.lazy.LazyRow(
+                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp).testTag("quick-replies")
+                ) {
+                    items(uiState.quickReplies) { reply ->
+                        androidx.compose.material3.AssistChip(
+                            onClick = { onEvent(ChatUiEvent.SendText(reply)) },
+                            label = { Text(reply) }
+                        )
+                    }
+                }
+            }
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
