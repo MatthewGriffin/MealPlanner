@@ -12,6 +12,7 @@ enum class InventoryFilter(val displayName: String) {
     CUPBOARD("Cupboard"),
     FRIDGE("Fridge"),
     FREEZER("Freezer"),
+    KITS("Kits & Mixes"),
     USE_SOON("Use Soon"),
     LOW("Low Stock"),
     OUT("Out of Stock")
@@ -21,6 +22,8 @@ data class InventoryUiState(
     val rawItems: List<InventoryItem> = emptyList(),
     /** Ids of Kits & Mixes items that have no saved packet instructions yet. */
     val kitsWithoutInstructions: Set<String> = emptySet(),
+    /** Saved packet instructions for Kits & Mixes items, by inventory item id. */
+    val kitInstructionsByItem: Map<String, com.example.chatgpt_mealplanner.core.database.entity.KitInstructionEntity> = emptyMap(),
     val filteredItems: List<InventoryItem> = emptyList(),
     val activeFilter: InventoryFilter = InventoryFilter.ALL,
     val searchQuery: String = "",
@@ -71,6 +74,8 @@ data class BulkAddState(
 )
 
 sealed interface InventoryUiEvent {
+    /** Forgets a kit's saved instructions, so Claude asks for the packet again. */
+    data class DeleteKitInstructions(val normalizedName: String) : InventoryUiEvent
     object TriggerManualSync : InventoryUiEvent
     data class SelectFilter(val filter: InventoryFilter) : InventoryUiEvent
     data class SearchQueryChanged(val query: String) : InventoryUiEvent
