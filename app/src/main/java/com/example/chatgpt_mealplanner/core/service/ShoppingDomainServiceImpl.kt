@@ -26,6 +26,7 @@ import com.example.chatgpt_mealplanner.core.model.ShoppingRequirementSource
 import com.example.chatgpt_mealplanner.core.model.ShoppingSourceType
 import com.example.chatgpt_mealplanner.core.model.StapleRuleMode
 import com.example.chatgpt_mealplanner.core.model.WasteRisk
+import com.example.chatgpt_mealplanner.core.util.FreshnessPlanner
 import com.example.chatgpt_mealplanner.core.util.UnitConverter
 import kotlinx.coroutines.flow.first
 import java.util.UUID
@@ -46,6 +47,7 @@ class ShoppingDomainServiceImpl @Inject constructor(
         endDate: String?
     ): DomainResult<List<ShoppingListItemWithSources>> {
         val todayStr = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE)
+        val today = java.time.LocalDate.now()
         val effectiveStartDate = startDate ?: todayStr
         val effectiveEndDate = endDate ?: "2099-12-31"
 
@@ -114,44 +116,70 @@ class ShoppingDomainServiceImpl @Inject constructor(
                 UnitConverter.convert(lotQty, lot.quantityUnit ?: primaryUnit, primaryUnit).getOrNull() ?: lotQty
             }
 
-            val shortfall = totalPlannedQuantity - availableLotQuantity
-            val optional = shortfall <= 0.0
-            val netRequirement = if (shortfall > 0.0) shortfall else 0.0
-
             val requirementConfidence = if (matchingLots.any { it.quantityConfidence == QuantityConfidence.EXACT }) {
                 RequirementConfidence.EXACT
             } else {
                 RequirementConfidence.APPROXIMATE
             }
-
             val wasteRisk = calculateWasteRisk(displayName)
 
-            val item = ShoppingListItem(
-                id = UUID.randomUUID().toString(),
-                shoppingListId = "",
-                displayName = displayName,
-                requiredQuantity = totalPlannedQuantity,
-                requiredUnit = primaryUnit,
-                suggestedPurchaseQuantity = netRequirement,
-                suggestedPurchaseUnit = primaryUnit,
-                reason = "Required for ${sources.size} planned meal(s)",
-                priority = ShoppingPriority.ESSENTIAL,
-                status = ShoppingItemStatus.NEEDED,
-                optional = optional,
-                sourceType = ShoppingSourceType.MEAL_REQUIREMENT,
-                hasMealRequirement = true,
-                hasStapleRestock = false,
-                mealShortfallQuantity = netRequirement,
-                stapleReserveTopUpQuantity = 0.0,
-                expectedFinalInventory = availableLotQuantity,
-                expectedFinalInventoryUnit = primaryUnit,
-                quantityUncertain = matchingLots.any { it.quantityConfidence == QuantityConfidence.UNKNOWN || it.quantityConfidence == QuantityConfidence.APPROXIMATE },
-                uncertaintyReason = if (matchingLots.any { it.quantityConfidence == QuantityConfidence.UNKNOWN }) "Inventory lot quantity is unknown" else null,
-                requirementConfidence = requirementConfidence,
-                wasteRisk = wasteRisk
-            )
+            fun buildItem(batchSources: List<ShoppingRequirementSource>, batchQty: Double, ownedForBatch: Double): ShoppingListItemWithSources {
+                val shortfall = batchQty - ownedForBatch
+                val netRequirement = if (shortfall > 0.0) shortfall else 0.0
+                val item = ShoppingListItem(
+                    id = UUID.randomUUID().toString(),
+                    shoppingListId = "",
+                    displayName = displayName,
+                    requiredQuantity = batchQty,
+                    requiredUnit = primaryUnit,
+                    suggestedPurchaseQuantity = netRequirement,
+                    suggestedPurchaseUnit = primaryUnit,
+                    reason = "Required for ${batchSources.size} planned meal(s)",
+                    priority = ShoppingPriority.ESSENTIAL,
+                    status = ShoppingItemStatus.NEEDED,
+                    optional = shortfall <= 0.0,
+                    sourceType = ShoppingSourceType.MEAL_REQUIREMENT,
+                    hasMealRequirement = true,
+                    hasStapleRestock = false,
+                    mealShortfallQuantity = netRequirement,
+                    stapleReserveTopUpQuantity = 0.0,
+                    expectedFinalInventory = ownedForBatch,
+                    expectedFinalInventoryUnit = primaryUnit,
+                    quantityUncertain = matchingLots.any { it.quantityConfidence == QuantityConfidence.UNKNOWN || it.quantityConfidence == QuantityConfidence.APPROXIMATE },
+                    uncertaintyReason = if (matchingLots.any { it.quantityConfidence == QuantityConfidence.UNKNOWN }) "Inventory lot quantity is unknown" else null,
+                    requirementConfidence = requirementConfidence,
+                    wasteRisk = wasteRisk
+                )
+                return ShoppingListItemWithSources(item, batchSources)
+            }
 
-            calculatedItems.add(ShoppingListItemWithSources(item, sources))
+            // Fresh food needed on days too far apart is bought in separate trips, so it is not
+            // sitting in the fridge past its date. Stock already owned covers the earliest meals.
+            val shelfLife = FreshnessPlanner.shelfLifeDays(displayName)
+            val batches = if (shelfLife != null && sources.size > 1) {
+                FreshnessPlanner.batchByShelfLife(sources, { parseMealDate(it.mealDate, today) }, shelfLife, today)
+            } else {
+                listOf(sources.toList())
+            }
+            if (batches.size <= 1) {
+                calculatedItems.add(buildItem(sources, totalPlannedQuantity, availableLotQuantity))
+            } else {
+                var ownedLeft = availableLotQuantity
+                val perBatch = batches.map { batch ->
+                    val qty = batch.sumOf { it.requiredQuantity }
+                    val covered = minOf(ownedLeft, qty)
+                    ownedLeft -= covered
+                    Triple(batch, qty, covered)
+                }
+                val needed = perBatch.filter { (_, qty, covered) -> qty - covered > 0.0 }
+                if (needed.isEmpty()) {
+                    calculatedItems.add(buildItem(sources, totalPlannedQuantity, availableLotQuantity))
+                } else {
+                    needed.forEach { (batch, qty, covered) ->
+                        calculatedItems.add(buildItem(batch, qty, covered))
+                    }
+                }
+            }
         }
 
         // Process enabled staple rules not covered by meal requirements
@@ -373,6 +401,9 @@ class ShoppingDomainServiceImpl @Inject constructor(
         if ("item_${lot.id}" == "item_$canonicalId") return true
         return false
     }
+
+    private fun parseMealDate(value: String, fallback: java.time.LocalDate): java.time.LocalDate =
+        try { java.time.LocalDate.parse(value.take(10)) } catch (_: Exception) { fallback }
 
     private fun calculateWasteRisk(ingredientName: String): WasteRisk {
         val lower = ingredientName.lowercase()
