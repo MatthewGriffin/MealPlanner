@@ -39,6 +39,8 @@ internal object ToolSchemas {
                         put("description", "1 to 3 optional extras the household doesn't have that would clearly lift this dish, each as the item and what it adds, such as \"Fresh mint: brightens the yoghurt sauce\". Not part of the recipe, and not added to the shopping list")
                         putJsonObject("items") { put("type", "string") }
                     }
+                    number("planMealsLeft", "Only while building a multi-meal plan: how many meals are still to propose after this one (0 on the last). Leave out for a single meal")
+                    string("planNote", "Only while building a multi-meal plan: one short line for the user, such as \"Meal 1 of 5, Mon dinner. Still to come: Tue, Wed, Thu, Fri dinners\"")
                     string("basedOn", "Only if the recipe is adapted from a web page you searched: the site name and the page URL, such as \"BBC Good Food: https://...\"")
                     putJsonObject("equipment") {
                         put("type", "array")
