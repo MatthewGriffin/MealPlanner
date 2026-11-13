@@ -107,9 +107,7 @@ sealed interface AiProviderResponse {
         val proposedAction: AiProposedAction? = null,
         val modelId: String? = null,
         /** Short answers the assistant suggests for the question it just asked, shown as buttons under the chat. */
-        val quickReplies: List<String> = emptyList(),
-        /** While a plan is being built: meals still to propose after this one. Null when the reply doesn't say. */
-        val mealsLeftInPlan: Int? = null
+        val quickReplies: List<String> = emptyList()
     ) : AiProviderResponse
 
     data class ToolCalls(
@@ -133,8 +131,7 @@ sealed interface AiOrchestrationResult {
         /** The kit whose packet the assistant asked the user for, so the chat shows a Scan packet button. */
         val kitPacketRequest: String? = null,
         /** Quick answers for the question just asked; empty when none. */
-        val quickReplies: List<String> = emptyList(),
-        val mealsLeftInPlan: Int? = null
+        val quickReplies: List<String> = emptyList()
     ) : AiOrchestrationResult
 
     data class Error(

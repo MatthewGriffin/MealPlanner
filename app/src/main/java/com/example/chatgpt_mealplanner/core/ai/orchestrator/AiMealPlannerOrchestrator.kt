@@ -995,6 +995,8 @@ class AiMealPlannerOrchestrator @Inject constructor(
             batchPortions = pending.offer?.batchPortions?.coerceAtLeast(pending.servings) ?: pending.servings,
             immediatePortions = pending.servings,
             leftoverPortions = (pending.offer?.batchPortions ?: pending.servings).coerceAtLeast(pending.servings) - pending.servings,
+            extrasPlan = pending.offer?.extrasPlan,
+            extraDates = pending.offer?.extraDates.orEmpty(),
             ingredients = pending.ingredients.map { ingredient ->
                 val offered = pending.offer?.ingredients?.firstOrNull { it.displayName == ingredient.displayName }
                 com.example.chatgpt_mealplanner.contract.ProposedIngredient(
@@ -1254,7 +1256,7 @@ class AiMealPlannerOrchestrator @Inject constructor(
         SINGLE RECIPE:
         1. If the recipe depends on an open choice that changes what to buy or how it is made (such as "toppings of choice"), ask one concise question listing sensible options and wait for the answer before calling 'offer_add_planned_meal'. Never put such a placeholder in an ingredient name. Trivial optional garnish can be omitted or marked optional.
         2. Otherwise call 'offer_add_planned_meal' with complete parameters (title, optional date YYYY-MM-DD, optional mealType, servings, prepMinutes, cookMinutes, equipment, whyThisSuits, all ingredients, and every method stage as its own entry in steps). This only creates the recipe card, which has its own Save meal action; do not ask whether to add it. Follow with a short summary.
-        3. SCALING: when an ingredient cannot sensibly be scaled down, do not use a fraction of it. A kit, seasoning packet or whole tin is used whole: write the recipe for what the pack makes (for example a kit for 4), set servings to the portions the household eats now, and set batchPortions to the total it makes. Never write "a quarter of a packet". Say in one line that the extra portions will go on later days or be frozen; the app places them.
+        3. SCALING: when an ingredient cannot sensibly be scaled down, do not use a fraction of it. A kit, seasoning packet or whole tin is used whole: write the recipe for what the pack makes (for example a kit for 4), set servings to the portions the household eats now, and set batchPortions to the total it makes. Never write "a quarter of a packet". By default the app saves the extra portions against the next free dinners of the user's plan (or freezes them when there is no room) and the card tells the user so. If the user asks to handle them differently, call the tool again: for freezing set extrasPlan to FREEZE, for particular days set extraDates, or to cook only what they eat leave batchPortions out and scale the recipe, when that is sensible.
         4. When replacing a recipe because the user asked for a change, fill changeSummary with what is different in the new meal; otherwise it may be null.
 
         MEAL PLANS (several meals or days):

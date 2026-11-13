@@ -47,4 +47,10 @@ class LeftoverPlacerTest {
         val p = LeftoverPlacer.place(0, 2, mon, MealType.DINNER, dinners(1))
         assertEquals(0, p.slots.size); assertEquals(0, p.frozenPortions)
     }
+
+    @Test fun nullMealTypeAcceptsAnyProvidedSlot() {
+        val slots = listOf(PlanSlot(mon.plusDays(1), MealType.LUNCH))
+        val p = LeftoverPlacer.place(2, 2, mon, null, slots)
+        assertEquals(1, p.slots.size)
+    }
 }

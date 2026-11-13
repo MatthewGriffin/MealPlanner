@@ -17,13 +17,13 @@ object LeftoverPlacer {
         extraPortions: Int,
         servings: Int,
         mealDate: LocalDate,
-        mealType: MealType,
+        mealType: MealType?,
         remainingSlots: List<PlanSlot>
     ): LeftoverPlacement {
         if (extraPortions <= 0 || servings <= 0) return LeftoverPlacement(emptyList(), 0)
         val fits = extraPortions / servings
         val chosen = remainingSlots
-            .filter { it.mealType == mealType && it.date.isAfter(mealDate) }
+            .filter { (mealType == null || it.mealType == mealType) && it.date.isAfter(mealDate) }
             .sortedBy { it.date }
             .take(fits)
         return LeftoverPlacement(chosen, extraPortions - chosen.size * servings)

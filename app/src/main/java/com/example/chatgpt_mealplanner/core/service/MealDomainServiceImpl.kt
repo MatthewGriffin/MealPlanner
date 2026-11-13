@@ -156,6 +156,21 @@ class MealDomainServiceImpl @Inject constructor(
         DomainResult.Success(updatedMeal)
     }
 
+    override suspend fun leftoverDaysFor(sourceMealId: String): List<Meal> =
+        mealDao.getAllMealsWithIngredientsSync().map { it.meal.toDomainModel() }.filter {
+            it.status == MealStatus.PLANNED && LeftoverMeals.sourceMealId(it.notes) == sourceMealId
+        }
+
+    override suspend fun changeMealSlot(mealId: String, mealType: com.example.chatgpt_mealplanner.core.model.MealType): DomainResult<Unit> {
+        val existing = mealDao.getMealWithIngredients(mealId) ?: return DomainResult.Failure(DomainError.ItemNotFound(mealId))
+        if (existing.meal.status != MealStatus.PLANNED) {
+            return DomainResult.Failure(DomainError.TransactionFailed("Only planned meals can be moved."))
+        }
+        mealDao.insertMeal(existing.meal.copy(mealType = mealType, updatedAt = System.currentTimeMillis()))
+        notifyMealPlanChangedIfMain(existing.meal.date)
+        return DomainResult.Success(Unit)
+    }
+
     override suspend fun deletePlannedMeal(mealId: String): DomainResult<Unit> =
         transactionRunner.runInDomainTransaction {
             val existing = mealDao.getMealWithIngredients(mealId)

@@ -25,6 +25,7 @@ import com.example.chatgpt_mealplanner.contract.ValidatedMealProposal
 fun MealProposalCard(
     validatedProposal: ValidatedMealProposal,
     onSaveToPlan: (MealProposal) -> Unit,
+    leftoverNote: String? = null,
     isSaving: Boolean = false,
     modifier: Modifier = Modifier
 ) {
@@ -74,7 +75,7 @@ fun MealProposalCard(
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = "Makes ${proposal.batchPortions} portions: ${proposal.servings} now, $extra extra. " +
-                        "Extra portions go on later days of your plan if they fit, otherwise they are frozen.",
+                        (leftoverNote ?: "Extra portions go on later dinners of your plan if they fit, otherwise they are frozen."),
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onPrimaryContainer

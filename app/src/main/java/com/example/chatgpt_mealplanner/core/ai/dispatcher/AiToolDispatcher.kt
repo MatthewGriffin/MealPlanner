@@ -622,6 +622,8 @@ class AiToolDispatcher @Inject constructor(
             cookMinutes = extractDoubleArg(argsJson, "cookMinutes")?.toInt()?.takeIf { it >= 0 },
             equipment = parseStringArray(argsJson, "equipment"),
             worthAdding = parseStringArray(argsJson, "worthAdding").take(3),
+            extrasPlan = extractStringArg(argsJson, "extrasPlan")?.trim()?.uppercase()?.takeIf { it == "FREEZE" || it == "PLAN_DAYS" },
+            extraDates = parseStringArray(argsJson, "extraDates"),
             reasoningSummary = extractStringArg(argsJson, "whyThisSuits").orEmpty(),
             source = extractStringArg(argsJson, "basedOn")?.trim()?.ifBlank { null }
         )

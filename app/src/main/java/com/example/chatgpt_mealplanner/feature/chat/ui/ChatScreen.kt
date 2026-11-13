@@ -270,6 +270,7 @@ fun ChatScreen(
                                 MealProposalCard(
                                     validatedProposal = validated,
                                     onSaveToPlan = { onEvent(ChatUiEvent.SaveMealProposalToPlan(it, messageId = msg.id)) },
+                                    leftoverNote = uiState.leftoverNote.takeIf { validated.proposal.title == uiState.latestProposal?.proposal?.title },
                                     isSaving = uiState.isSavingProposal
                                 )
                             }

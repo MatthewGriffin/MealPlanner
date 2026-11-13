@@ -171,6 +171,7 @@ class ChatViewModel @Inject constructor(
             activeConversationId = flows[0] as String,
             messages = (flows[1] as List<*>).map { it as ChatMessageEntity },
             latestProposal = flows[2] as ValidatedMealProposal?,
+            leftoverNote = previewLeftovers((flows[2] as ValidatedMealProposal?)?.proposal),
             latestProposedAction = flows[3] as AiProposedAction?,
             isSavingProposal = flows[12] as Boolean,
             isLoading = isReqInFlight,
@@ -491,6 +492,7 @@ class ChatViewModel @Inject constructor(
     /** The assistant's own suggestions; for a plan or a recipe card, options for changing it. */
     private fun quickRepliesFor(result: com.example.chatgpt_mealplanner.contract.AiOrchestrationResult.Final): List<String> = when {
         result.validatedProposal != null -> listOf("Make it healthier", "Make it quicker", "Make it spicier", "Swap an ingredient") +
+            (result.validatedProposal?.proposal?.takeIf { it.batchPortions > it.servings }?.let { listOf("Freeze the extra portions") } ?: emptyList()) +
             (if (planQueue.isNotEmpty()) listOf(STOP_PLAN) else emptyList())
         else -> result.quickReplies
     }
@@ -655,12 +657,13 @@ class ChatViewModel @Inject constructor(
                 val stepText = proposal.savedInstructions().ifBlank { existingMeal?.instructions }
                 // Portions beyond what the household eats now fill later days of the requested plan, or are frozen.
                 val extraPortions = (proposal.batchPortions - proposal.servings).coerceAtLeast(0)
-                val placement = if (existingMeal == null) {
-                    com.example.chatgpt_mealplanner.core.util.LeftoverPlacer.place(
-                        extraPortions, proposal.servings,
-                        java.time.LocalDate.parse(resolvedSlot.date), resolvedSlot.mealType, planQueue.toList()
-                    )
-                } else com.example.chatgpt_mealplanner.core.util.LeftoverPlacement(emptyList(), extraPortions)
+                // Replacing an uncooked meal frees the leftover days planned for the old one: they are reused first.
+                val oldLeftoverDays = existingMeal?.let { mealDomainService.leftoverDaysFor(it.id) }.orEmpty()
+                val mealDate = existingMeal?.date ?: resolvedSlot.date
+                val placement = leftoverPlacement(
+                    proposal, java.time.LocalDate.parse(mealDate),
+                    oldLeftoverDays.mapNotNull { runCatching { com.example.chatgpt_mealplanner.core.util.PlanSlot(java.time.LocalDate.parse(it.date), it.mealType) }.getOrNull() }
+                )
                 val batchPortions = proposal.servings + extraPortions
                 val immediatePortions = proposal.servings * (1 + placement.slots.size)
                 val leftoverTags = if (extraPortions > 0) parsedTags + MealTag.BATCH_COOK else parsedTags
@@ -714,6 +717,7 @@ class ChatViewModel @Inject constructor(
                     is DomainResult.Success -> {
                         updateProposalMessageAsApproved(messageId, "Saved '${meal.title}' to your meal plan.")
                         latestProposalFlow.value = null
+                        oldLeftoverDays.forEach { mealDomainService.deletePlannedMeal(it.id) }
                         val leftoverNote = planLeftoverDays(meal, placement)
                         continuePlanAfterSave(meal.title)
                         runCatching { orchestrator.clearPendingMealProposal("default_conversation") }
@@ -742,6 +746,44 @@ class ChatViewModel @Inject constructor(
                 isSavingProposalFlow.value = false
             }
         }
+    }
+
+    /**
+     * Where a batch's extra portions go: the days the user named, else the next dinners of the plan
+     * they asked for (plus any days freed by the meal being replaced). Nothing fits means freezing.
+     */
+    private fun leftoverPlacement(
+        proposal: MealProposal,
+        mealDate: java.time.LocalDate,
+        freedSlots: List<com.example.chatgpt_mealplanner.core.util.PlanSlot> = emptyList()
+    ): com.example.chatgpt_mealplanner.core.util.LeftoverPlacement {
+        val extras = (proposal.batchPortions - proposal.servings).coerceAtLeast(0)
+        if (proposal.extrasPlan.equals("FREEZE", ignoreCase = true)) {
+            return com.example.chatgpt_mealplanner.core.util.LeftoverPlacement(emptyList(), extras)
+        }
+        val named = proposal.extraDates.mapNotNull { runCatching { java.time.LocalDate.parse(it.trim()) }.getOrNull() }
+            .map { com.example.chatgpt_mealplanner.core.util.PlanSlot(it, com.example.chatgpt_mealplanner.core.model.MealType.DINNER) }
+        val candidates = named.ifEmpty {
+            freedSlots + planQueue.filter { it.mealType == com.example.chatgpt_mealplanner.core.model.MealType.DINNER }
+        }
+        return com.example.chatgpt_mealplanner.core.util.LeftoverPlacer.place(extras, proposal.servings, mealDate, null, candidates)
+    }
+
+    /** What the recipe card tells the user about the extra portions, before they save. */
+    private fun previewLeftovers(proposal: MealProposal?): String? {
+        if (proposal == null || proposal.batchPortions <= proposal.servings) return null
+        val extras = proposal.batchPortions - proposal.servings
+        val date = runCatching {
+            java.time.LocalDate.parse(com.example.chatgpt_mealplanner.core.ai.resolver.MealSlotResolver.resolveSlot(proposal.suggestedDate, proposal.mealType).date)
+        }.getOrNull() ?: return null
+        val placement = leftoverPlacement(proposal, date)
+        val fmt = java.time.format.DateTimeFormatter.ofPattern("EEE d MMM", java.util.Locale.getDefault())
+        val where = buildList {
+            if (placement.slots.isNotEmpty()) add("saved against " + placement.slots.joinToString(", ") { "${it.date.format(fmt)} dinner" })
+            if (placement.frozenPortions > 0) add("${placement.frozenPortions} portion${if (placement.frozenPortions == 1) "" else "s"} frozen")
+        }.joinToString(" and ")
+        return "$extras extra portion${if (extras == 1) "" else "s"} will be $where. " +
+            "You can ask Claude to handle them differently, such as freezing them, using other days, or cooking less."
     }
 
     /**

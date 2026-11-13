@@ -67,4 +67,22 @@ class LeftoverPantryTest {
         assertEquals(MealStatus.COOKED, mealDao.getMealWithIngredients("l1")!!.meal.status)
         assertTrue(added.isEmpty())
     }
+
+    @Test
+    fun leftoverDaysForFindsOnlyUncookedEntriesOfThatBatch() = runTest {
+        service.createPlannedMeal(Meal(id = "a", date = "2026-11-17", title = "Leftovers: X", notes = LeftoverMeals.noteFor("m1")), emptyList())
+        service.createPlannedMeal(Meal(id = "b", date = "2026-11-18", title = "Leftovers: X", notes = LeftoverMeals.noteFor("m1")), emptyList())
+        service.createPlannedMeal(Meal(id = "c", date = "2026-11-19", title = "Leftovers: Y", notes = LeftoverMeals.noteFor("other")), emptyList())
+        service.markMealCooked("b")
+
+        assertEquals(listOf("a"), service.leftoverDaysFor("m1").map { it.id })
+    }
+
+    @Test
+    fun changeMealSlotMovesAPlannedMealToAnotherMeal() = runTest {
+        service.createPlannedMeal(Meal(id = "a", date = "2026-11-17", title = "Leftovers: X", notes = LeftoverMeals.noteFor("m1")), emptyList())
+
+        assertTrue(service.changeMealSlot("a", com.example.chatgpt_mealplanner.core.model.MealType.LUNCH) is DomainResult.Success)
+        assertEquals(com.example.chatgpt_mealplanner.core.model.MealType.LUNCH, mealDao.getMealWithIngredients("a")!!.meal.mealType)
+    }
 }
