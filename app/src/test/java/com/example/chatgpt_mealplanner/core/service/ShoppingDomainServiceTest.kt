@@ -1,6 +1,7 @@
 package com.example.chatgpt_mealplanner.core.service
 
 import com.example.chatgpt_mealplanner.core.database.entity.InventoryItemEntity
+import com.example.chatgpt_mealplanner.core.database.entity.toEntity
 import com.example.chatgpt_mealplanner.core.database.entity.MealEntity
 import com.example.chatgpt_mealplanner.core.database.entity.MealIngredientEntity
 import com.example.chatgpt_mealplanner.core.database.entity.ShoppingListEntity
@@ -309,6 +310,23 @@ class ShoppingDomainServiceTest {
         assertEquals("Repeated unresolved ingredient names should produce one line", 1, items.size)
         assertEquals(5.0, items.single().item.requiredQuantity!!, 0.001)
         assertEquals(2, items.single().sources.size)
+    }
+
+    @Test
+    fun ingredientsCoveredByStock_areNotOnTheList_evenWhenNamedDifferently() = runTest {
+        inventoryDao.insertItem(createLot("lot_oregano", "item_oregano", "Oregano", 20.0, QuantityUnit.GRAM))
+        inventoryDao.insertItem(createLot("lot_lemon", "item_lemon_juice", "Lemon juice", 250.0, QuantityUnit.MILLILITRE))
+        val meal = com.example.chatgpt_mealplanner.core.model.Meal(id = "mp1", date = java.time.LocalDate.now().toString(), title = "Pasta")
+        mealDao.insertMeal(meal.toEntity())
+        mealDao.insertMealIngredients(listOf(
+            com.example.chatgpt_mealplanner.core.model.MealIngredient(id = "x1", mealId = "mp1", displayName = "Dried oregano", plannedQuantity = 2.0, plannedUnit = QuantityUnit.GRAM),
+            com.example.chatgpt_mealplanner.core.model.MealIngredient(id = "x2", mealId = "mp1", displayName = "Lemon juice", plannedQuantity = 5.0, plannedUnit = QuantityUnit.MILLILITRE),
+            com.example.chatgpt_mealplanner.core.model.MealIngredient(id = "x3", mealId = "mp1", displayName = "Chicken breast", plannedQuantity = 300.0, plannedUnit = QuantityUnit.GRAM)
+        ).map { it.toEntity() })
+
+        val items = (service.calculateShoppingRequirements(null, null) as DomainResult.Success).value
+
+        assertEquals(listOf("Chicken breast"), items.map { it.item.displayName })
     }
 
     private fun createLot(id: String, canonicalId: String, name: String, qty: Double, unit: QuantityUnit) = InventoryItemEntity(

@@ -162,8 +162,11 @@ class ShoppingDomainServiceImpl @Inject constructor(
             } else {
                 listOf(sources.toList())
             }
+            // Stock that covers the plan is not shopping: only what is short goes on the list.
             if (batches.size <= 1) {
-                calculatedItems.add(buildItem(sources, totalPlannedQuantity, availableLotQuantity))
+                if (totalPlannedQuantity - availableLotQuantity > 0.0) {
+                    calculatedItems.add(buildItem(sources, totalPlannedQuantity, availableLotQuantity))
+                }
             } else {
                 var ownedLeft = availableLotQuantity
                 val perBatch = batches.map { batch ->
@@ -173,9 +176,7 @@ class ShoppingDomainServiceImpl @Inject constructor(
                     Triple(batch, qty, covered)
                 }
                 val needed = perBatch.filter { (_, qty, covered) -> qty - covered > 0.0 }
-                if (needed.isEmpty()) {
-                    calculatedItems.add(buildItem(sources, totalPlannedQuantity, availableLotQuantity))
-                } else {
+                if (needed.isNotEmpty()) {
                     needed.forEach { (batch, qty, covered) ->
                         calculatedItems.add(buildItem(batch, qty, covered))
                     }
