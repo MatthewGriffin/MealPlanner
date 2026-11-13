@@ -48,4 +48,7 @@ interface MealDomainService {
     suspend fun discardLeftover(
         leftoverId: String
     ): DomainResult<Unit>
+
+    /** Takes eaten portions of a batch out of the pantry's "Leftover X" item. */
+    suspend fun takePantryPortions(sourceMealId: String, portions: Int)
 }

@@ -594,12 +594,17 @@ class AiToolDispatcher @Inject constructor(
         val date = slotRes.date
         val mealType = slotRes.mealType
         val ingredientDetails = parseIngredientDetails(argsJson)
+        // Portions the recipe makes beyond what the household eats now (a kit for 4 cooked for 2).
+        val batchPortions = (extractDoubleArg(argsJson, "batchPortions")?.toInt() ?: servings).coerceIn(servings, 24)
 
         val proposal = com.example.chatgpt_mealplanner.contract.MealProposal(
             title = extractedTitle,
             mealType = mealType.name,
             suggestedDate = date,
             servings = servings,
+            batchPortions = batchPortions,
+            immediatePortions = servings,
+            leftoverPortions = batchPortions - servings,
             ingredients = parsedIngs.map {
                 val details = ingredientDetails[it.displayName]
                 com.example.chatgpt_mealplanner.contract.ProposedIngredient(

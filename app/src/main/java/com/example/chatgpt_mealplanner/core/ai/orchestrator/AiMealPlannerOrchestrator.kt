@@ -992,9 +992,9 @@ class AiMealPlannerOrchestrator @Inject constructor(
             mealType = pending.mealType?.name,
             suggestedDate = pending.date,
             servings = pending.servings,
-            batchPortions = pending.servings,
+            batchPortions = pending.offer?.batchPortions?.coerceAtLeast(pending.servings) ?: pending.servings,
             immediatePortions = pending.servings,
-            leftoverPortions = 0,
+            leftoverPortions = (pending.offer?.batchPortions ?: pending.servings).coerceAtLeast(pending.servings) - pending.servings,
             ingredients = pending.ingredients.map { ingredient ->
                 val offered = pending.offer?.ingredients?.firstOrNull { it.displayName == ingredient.displayName }
                 com.example.chatgpt_mealplanner.contract.ProposedIngredient(
@@ -1254,12 +1254,14 @@ class AiMealPlannerOrchestrator @Inject constructor(
         SINGLE RECIPE:
         1. If the recipe depends on an open choice that changes what to buy or how it is made (such as "toppings of choice"), ask one concise question listing sensible options and wait for the answer before calling 'offer_add_planned_meal'. Never put such a placeholder in an ingredient name. Trivial optional garnish can be omitted or marked optional.
         2. Otherwise call 'offer_add_planned_meal' with complete parameters (title, optional date YYYY-MM-DD, optional mealType, servings, prepMinutes, cookMinutes, equipment, whyThisSuits, all ingredients, and every method stage as its own entry in steps). This only creates the recipe card, which has its own Save meal action; do not ask whether to add it. Follow with a short summary.
-        3. When replacing a recipe because the user asked for a change, fill changeSummary with what is different in the new meal; otherwise it may be null.
+        3. SCALING: when an ingredient cannot sensibly be scaled down, do not use a fraction of it. A kit, seasoning packet or whole tin is used whole: write the recipe for what the pack makes (for example a kit for 4), set servings to the portions the household eats now, and set batchPortions to the total it makes. Never write "a quarter of a packet". Say in one line that the extra portions will go on later days or be frozen; the app places them.
+        4. When replacing a recipe because the user asked for a change, fill changeSummary with what is different in the new meal; otherwise it may be null.
 
         MEAL PLANS (several meals or days):
         1. The app counts the meals of a plan and asks you for them one at a time. Each request names the slot (for example "Meal 2 of 5: Tue 17 Nov dinner, date 2026-11-17, mealType DINNER"). Propose ONLY that slot, as a normal single recipe (see SINGLE RECIPE: call 'offer_add_planned_meal' with that date and mealType). Never write the other meals or a list of the plan, and never ask whether to continue: the app moves on after the user saves.
         2. Meals already saved appear in upcomingPlannedMeals with their ingredients. Treat what those already use as taken: do not use up the same stock twice, and keep variety against the meals already planned.
-        3. If the user discusses or changes the current meal, just answer for that meal.
+        3. Planned meals titled "Leftovers: ..." are days already covered by portions of a batch cooked earlier. Never plan another meal for that slot, and do not buy ingredients for it.
+        4. If the user discusses or changes the current meal, just answer for that meal.
 
         CHOICES YOU OFFERED:
         1. When you offered named or numbered options and the user picks one ('option 2', 'the second one', 'go with that'), keep that option's meals, recipes, ingredients and titles exactly as proposed unless they ask to change them. Do not generate a new plan on the same theme.

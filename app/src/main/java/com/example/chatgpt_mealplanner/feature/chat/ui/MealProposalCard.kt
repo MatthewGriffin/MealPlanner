@@ -69,6 +69,17 @@ fun MealProposalCard(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onPrimaryContainer
             )
+            if (proposal.batchPortions > proposal.servings) {
+                val extra = proposal.batchPortions - proposal.servings
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Makes ${proposal.batchPortions} portions: ${proposal.servings} now, $extra extra. " +
+                        "Extra portions go on later days of your plan if they fit, otherwise they are frozen.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            }
             Spacer(modifier = Modifier.height(8.dp))
 
             proposal.changeSummary?.takeIf { it.isNotBlank() }?.let { summary ->

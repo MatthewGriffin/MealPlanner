@@ -653,15 +653,26 @@ class ChatViewModel @Inject constructor(
                     return@launch
                 }
                 val stepText = proposal.savedInstructions().ifBlank { existingMeal?.instructions }
+                // Portions beyond what the household eats now fill later days of the requested plan, or are frozen.
+                val extraPortions = (proposal.batchPortions - proposal.servings).coerceAtLeast(0)
+                val placement = if (existingMeal == null) {
+                    com.example.chatgpt_mealplanner.core.util.LeftoverPlacer.place(
+                        extraPortions, proposal.servings,
+                        java.time.LocalDate.parse(resolvedSlot.date), resolvedSlot.mealType, planQueue.toList()
+                    )
+                } else com.example.chatgpt_mealplanner.core.util.LeftoverPlacement(emptyList(), extraPortions)
+                val batchPortions = proposal.servings + extraPortions
+                val immediatePortions = proposal.servings * (1 + placement.slots.size)
+                val leftoverTags = if (extraPortions > 0) parsedTags + MealTag.BATCH_COOK else parsedTags
                 val meal = if (existingMeal != null) {
                     existingMeal.copy(
                         title = proposal.title,
                         servings = proposal.servings,
-                        batchPortions = proposal.batchPortions,
-                        immediatePortions = proposal.immediatePortions,
-                        leftoverPortions = proposal.leftoverPortions,
+                        batchPortions = batchPortions,
+                        immediatePortions = immediatePortions,
+                        leftoverPortions = placement.frozenPortions,
                         cookInTwoBatches = proposal.cookInTwoBatches,
-                        tags = parsedTags,
+                        tags = leftoverTags,
                         instructions = stepText,
                         updatedAt = System.currentTimeMillis()
                     )
@@ -671,11 +682,11 @@ class ChatViewModel @Inject constructor(
                     mealType = resolvedSlot.mealType,
                     title = proposal.title,
                     servings = proposal.servings,
-                    batchPortions = proposal.batchPortions,
-                    immediatePortions = proposal.immediatePortions,
-                    leftoverPortions = proposal.leftoverPortions,
+                    batchPortions = batchPortions,
+                    immediatePortions = immediatePortions,
+                    leftoverPortions = placement.frozenPortions,
                     cookInTwoBatches = proposal.cookInTwoBatches,
-                    tags = parsedTags,
+                    tags = leftoverTags,
                     instructions = stepText
                 )
 
@@ -703,6 +714,7 @@ class ChatViewModel @Inject constructor(
                     is DomainResult.Success -> {
                         updateProposalMessageAsApproved(messageId, "Saved '${meal.title}' to your meal plan.")
                         latestProposalFlow.value = null
+                        val leftoverNote = planLeftoverDays(meal, placement)
                         continuePlanAfterSave(meal.title)
                         runCatching { orchestrator.clearPendingMealProposal("default_conversation") }
                         if (linkedRequest != null) {
@@ -719,7 +731,7 @@ class ChatViewModel @Inject constructor(
                                 errorMessageFlow.value = "The meal was updated, but the request could not be marked complete. It remains open for retry."
                             }
                         } else {
-                            errorMessageFlow.value = "Saved '${meal.title}' to meal plan for ${meal.date}!"
+                            errorMessageFlow.value = "Saved '${meal.title}' to meal plan for ${meal.date}!" + leftoverNote
                         }
                     }
                     is DomainResult.Failure -> {
@@ -730,6 +742,42 @@ class ChatViewModel @Inject constructor(
                 isSavingProposalFlow.value = false
             }
         }
+    }
+
+    /**
+     * The extra portions of a batch go on later days as planned "Leftovers" meals, so the planner and
+     * future requests show those days as taken. Returns a sentence for the user.
+     */
+    private suspend fun planLeftoverDays(
+        meal: Meal,
+        placement: com.example.chatgpt_mealplanner.core.util.LeftoverPlacement
+    ): String {
+        val days = mutableListOf<String>()
+        placement.slots.forEach { slot ->
+            val entry = Meal(
+                id = UUID.randomUUID().toString(),
+                date = slot.date.toString(),
+                mealType = slot.mealType,
+                title = "Leftovers: ${meal.title}",
+                servings = meal.servings,
+                batchPortions = meal.servings,
+                immediatePortions = meal.servings,
+                leftoverPortions = 0,
+                cookInTwoBatches = false,
+                tags = setOf(MealTag.BATCH_COOK),
+                instructions = "Leftovers from ${meal.title}. Reheat until piping hot.",
+                notes = com.example.chatgpt_mealplanner.core.util.LeftoverMeals.noteFor(meal.id)
+            )
+            if (mealDomainService.createPlannedMeal(entry, emptyList()) is DomainResult.Success) {
+                days += slot.date.format(java.time.format.DateTimeFormatter.ofPattern("EEE d MMM", java.util.Locale.getDefault()))
+                planQueue.remove(slot)
+                planTotal--
+            }
+        }
+        return buildList {
+            if (days.isNotEmpty()) add(" Leftovers planned for ${days.joinToString(", ")}.")
+            if (placement.frozenPortions > 0) add(" ${placement.frozenPortions} extra portion${if (placement.frozenPortions == 1) "" else "s"} to freeze.")
+        }.joinToString("")
     }
 
     /** A plan is built one meal at a time: once a meal is saved, the app asks for the next slot of the plan. */

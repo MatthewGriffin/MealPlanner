@@ -5,6 +5,11 @@ import com.example.chatgpt_mealplanner.core.notification.AppNotificationManager
 import com.example.chatgpt_mealplanner.core.database.dao.InventoryDao
 import com.example.chatgpt_mealplanner.core.database.dao.MealChangeRequestDao
 import com.example.chatgpt_mealplanner.core.database.dao.LeftoverDao
+import com.example.chatgpt_mealplanner.core.util.LeftoverMeals
+import com.example.chatgpt_mealplanner.core.model.FoodCategory
+import com.example.chatgpt_mealplanner.core.model.InventoryItem
+import com.example.chatgpt_mealplanner.core.model.ItemStatus
+import com.example.chatgpt_mealplanner.core.model.QuantityConfidence
 import com.example.chatgpt_mealplanner.core.database.dao.MealDao
 import com.example.chatgpt_mealplanner.core.database.dao.TransactionDao
 import com.example.chatgpt_mealplanner.core.database.entity.InventoryItemEntity
@@ -29,12 +34,10 @@ import kotlinx.serialization.json.Json
 import com.example.chatgpt_mealplanner.core.model.DomainError
 import com.example.chatgpt_mealplanner.core.model.DomainResult
 import com.example.chatgpt_mealplanner.core.model.IngredientSubstitution
-import com.example.chatgpt_mealplanner.core.model.ItemStatus
 import com.example.chatgpt_mealplanner.core.model.LeftoverStatus
 import com.example.chatgpt_mealplanner.core.model.Meal
 import com.example.chatgpt_mealplanner.core.model.MealIngredient
 import com.example.chatgpt_mealplanner.core.model.MealStatus
-import com.example.chatgpt_mealplanner.core.model.QuantityConfidence
 import com.example.chatgpt_mealplanner.core.model.QuantityUnit
 import com.example.chatgpt_mealplanner.core.model.StorageLocation
 import com.example.chatgpt_mealplanner.core.model.TransactionType
@@ -71,7 +74,8 @@ class MealDomainServiceImpl @Inject constructor(
     private val canonicalSyncDao: CanonicalSyncDao? = null,
     private val householdIdentityManager: HouseholdIdentityManager? = null,
     private val mealChangeRequestDao: MealChangeRequestDao? = null,
-    private val notificationManager: AppNotificationManager? = null
+    private val notificationManager: AppNotificationManager? = null,
+    private val inventoryDomainService: InventoryDomainService? = null
 ) : MealDomainService {
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -282,6 +286,62 @@ class MealDomainServiceImpl @Inject constructor(
     }
 
     override suspend fun markMealCooked(
+        mealId: String,
+        actualIngredientOverrides: List<ActualIngredientOverride>,
+        substitutions: List<IngredientSubstitution>,
+        leftoverStorageLocation: StorageLocation
+    ): DomainResult<Unit> {
+        // A planned "Leftovers: X" day uses up portions already in the pantry; nothing is cooked or deducted.
+        val planned = mealDao.getMealWithIngredients(mealId)?.meal?.toDomainModel()
+        val leftoverSource = planned?.let { LeftoverMeals.sourceMealId(it.notes) }
+        if (planned != null && leftoverSource != null) {
+            if (planned.status == MealStatus.COOKED) {
+                return DomainResult.Failure(DomainError.DuplicateOperation("Meal $mealId is already marked as COOKED"))
+            }
+            val now = System.currentTimeMillis()
+            mealDao.insertMeal(planned.copy(status = MealStatus.COOKED, cookedAt = now, updatedAt = now).toEntity())
+            takePantryPortions(leftoverSource, planned.servings)
+            return DomainResult.Success(Unit)
+        }
+        val result = markMealCookedInTransaction(mealId, actualIngredientOverrides, substitutions, leftoverStorageLocation)
+        if (result is DomainResult.Success && planned != null) addPantryPortions(planned, leftoverStorageLocation)
+        return result
+    }
+
+    /** Everything a batch makes beyond what the household eats at the meal goes in the pantry as portions. */
+    private suspend fun addPantryPortions(meal: Meal, storage: StorageLocation) {
+        val extras = (meal.batchPortions - meal.servings).coerceAtLeast(0)
+        val inventory = inventoryDomainService ?: return
+        if (extras == 0) return
+        inventory.addItem(
+            InventoryItem(
+                canonicalName = "leftover ${meal.title}".lowercase(),
+                displayName = "Leftover ${meal.title}",
+                category = FoodCategory.READY_MEALS,
+                storageLocation = storage,
+                quantity = extras.toDouble(),
+                quantityUnit = QuantityUnit.PORTION,
+                quantityConfidence = QuantityConfidence.EXACT,
+                status = ItemStatus.AVAILABLE,
+                frozen = storage == StorageLocation.FREEZER,
+                purchaseDate = meal.date,
+                notes = LeftoverMeals.noteFor(meal.id)
+            )
+        )
+    }
+
+    /** Eating portions of a batch (a planned leftovers day, or the Leftovers tab) takes them out of the pantry too. */
+    override suspend fun takePantryPortions(sourceMealId: String, portions: Int) {
+        val inventory = inventoryDomainService ?: return
+        val item = inventoryDao.getAllItemsSync().firstOrNull {
+            LeftoverMeals.sourceMealId(it.notes) == sourceMealId && it.status != ItemStatus.OUT && it.status != ItemStatus.DISCARDED
+        } ?: return
+        val remaining = ((item.quantity ?: 0.0) - portions).coerceAtLeast(0.0)
+        if (remaining <= 0.0) inventory.markAsOut(item.id)
+        else inventory.recordUserCorrection(item.id, remaining, QuantityUnit.PORTION, QuantityConfidence.EXACT)
+    }
+
+    private suspend fun markMealCookedInTransaction(
         mealId: String,
         actualIngredientOverrides: List<ActualIngredientOverride>,
         substitutions: List<IngredientSubstitution>,
@@ -781,6 +841,7 @@ class MealDomainServiceImpl @Inject constructor(
             updatedAt = System.currentTimeMillis()
         )
         leftoverDao.insertLeftover(updated)
+        entity.sourceMealId?.let { takePantryPortions(it, entity.portions - newPortions) }
         return DomainResult.Success(Unit)
     }
 
@@ -794,6 +855,7 @@ class MealDomainServiceImpl @Inject constructor(
             updatedAt = System.currentTimeMillis()
         )
         leftoverDao.insertLeftover(updated)
+        entity.sourceMealId?.let { takePantryPortions(it, entity.portions) }
         return DomainResult.Success(Unit)
     }
 

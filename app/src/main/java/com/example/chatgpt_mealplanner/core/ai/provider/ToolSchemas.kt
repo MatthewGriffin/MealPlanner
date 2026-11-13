@@ -31,6 +31,7 @@ internal object ToolSchemas {
                 choice("mealType", "Meal type", MealType.entries.map { it.name })
                 number("servings", "Number of servings (default 2)")
                 if (tool == AiToolId.OFFER_ADD_PLANNED_MEAL) {
+                    number("batchPortions", "Only when an ingredient cannot sensibly be scaled down to servings (a kit or packet made for 4, a whole tin) and the recipe therefore makes more than the household eats now: the total portions it makes. The app uses the extra portions on later days or freezes them. Leave out when the recipe makes exactly servings")
                     number("prepMinutes", "Honest preparation time in minutes")
                     number("cookMinutes", "Honest cooking time in minutes")
                     string("whyThisSuits", "One short, specific reason this recipe suits this user today")
