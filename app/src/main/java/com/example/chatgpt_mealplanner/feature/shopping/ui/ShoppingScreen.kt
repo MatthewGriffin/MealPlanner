@@ -253,7 +253,24 @@ fun ShoppingScreen(
                             }
 
                             if (isListExpanded) {
-                                items(items, key = { it.item.id }) { itemWithSources ->
+                                val today = java.time.LocalDate.now()
+                                val trips = items.groupBy {
+                                    com.example.chatgpt_mealplanner.core.util.FreshnessPlanner.tripDate(
+                                        it.item.displayName, it.sources.map { s -> s.mealDate }, today
+                                    )
+                                }.toSortedMap()
+                                val ordered = trips.flatMap { (date, rows) -> rows.map { date to it } }
+                                items(ordered, key = { it.second.item.id }) { (tripDate, itemWithSources) ->
+                                    if (trips.size > 1 && ordered.first { it.first == tripDate }.second === itemWithSources) {
+                                        Text(
+                                            text = if (tripDate == today) "Shop today" else
+                                                "Shop on " + tripDate.format(java.time.format.DateTimeFormatter.ofPattern("EEE d MMM")) +
+                                                    " (fresh items for later meals)",
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(top = 8.dp)
+                                        )
+                                    }
                                     ShoppingItemCard(
                                         itemWithSources = itemWithSources,
                                         onToggleChecked = { id, status -> onEvent(ShoppingUiEvent.ToggleItemChecked(id, status)) },
