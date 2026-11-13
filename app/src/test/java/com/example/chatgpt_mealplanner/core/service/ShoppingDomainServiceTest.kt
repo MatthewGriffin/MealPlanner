@@ -329,6 +329,24 @@ class ShoppingDomainServiceTest {
         assertEquals(listOf("Chicken breast"), items.map { it.item.displayName })
     }
 
+    @Test
+    fun stockInPacksCoversARecipeInGrams_andLeftoverDaysNeedNothing() = runTest {
+        inventoryDao.insertItem(createLot("lot_garlic", "item_garlic", "Garlic powder", 2.0, QuantityUnit.PACK))
+        val today = java.time.LocalDate.now().toString()
+        val meal = com.example.chatgpt_mealplanner.core.model.Meal(id = "mp2", date = today, title = "Chicken")
+        val leftoverDay = com.example.chatgpt_mealplanner.core.model.Meal(id = "mp3", date = today, title = "Leftovers: Chicken")
+        mealDao.insertMeal(meal.toEntity())
+        mealDao.insertMeal(leftoverDay.toEntity())
+        mealDao.insertMealIngredients(listOf(
+            com.example.chatgpt_mealplanner.core.model.MealIngredient(id = "g1", mealId = "mp2", displayName = "Garlic powder", plannedQuantity = 8.0, plannedUnit = QuantityUnit.GRAM),
+            com.example.chatgpt_mealplanner.core.model.MealIngredient(id = "g2", mealId = "mp3", displayName = "Chicken risotto (leftover portion)", plannedQuantity = 1.0, plannedUnit = QuantityUnit.PORTION)
+        ).map { it.toEntity() })
+
+        val items = (service.calculateShoppingRequirements(null, null) as DomainResult.Success).value
+
+        assertEquals(emptyList<String>(), items.map { it.item.displayName })
+    }
+
     private fun createLot(id: String, canonicalId: String, name: String, qty: Double, unit: QuantityUnit) = InventoryItemEntity(
         id = id,
         barcode = null,

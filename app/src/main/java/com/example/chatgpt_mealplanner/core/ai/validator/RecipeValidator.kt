@@ -96,11 +96,15 @@ class RecipeValidator @Inject constructor(
             }
 
             var ownedTotal = 0.0
+            var stockInIncompatibleUnit = false
             usableMatchingLots.forEach { lot ->
                 val qty = lot.quantity ?: 0.0
-                val converted = UnitConverter.convert(qty, lot.quantityUnit ?: parsedUnit, parsedUnit).getOrNull() ?: qty
-                ownedTotal += converted
+                val converted = UnitConverter.convert(qty, lot.quantityUnit ?: parsedUnit, parsedUnit, lot.packSize, lot.packSizeUnit).getOrNull()
+                if (converted == null && qty > 0.0) stockInIncompatibleUnit = true
+                ownedTotal += converted ?: 0.0
             }
+            // Packs against grams can't be compared, so owned stock counts as enough (as on the shopping list).
+            if (stockInIncompatibleUnit) ownedTotal = maxOf(ownedTotal, ing.quantity)
 
             val availability = when {
                 hasUncertain -> IngredientAvailability.UNCERTAIN

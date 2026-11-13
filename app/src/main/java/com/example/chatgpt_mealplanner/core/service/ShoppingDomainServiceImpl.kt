@@ -53,7 +53,10 @@ class ShoppingDomainServiceImpl @Inject constructor(
 
         val plannedMeals = mealDao.getUpcomingPlannedMeals(effectiveStartDate, effectiveEndDate)
 
-        val allIngredientsWithMeals = plannedMeals.flatMap { mealWithIngs ->
+        val allIngredientsWithMeals = plannedMeals
+            // A "Leftovers" day eats portions already cooked and in the pantry: nothing to buy for it.
+            .filterNot { com.example.chatgpt_mealplanner.core.util.LeftoverMeals.sourceMealId(it.meal.notes) != null || it.meal.title.startsWith("Leftovers:", ignoreCase = true) }
+            .flatMap { mealWithIngs ->
             val mealDomain = mealWithIngs.meal.toDomainModel()
             mealWithIngs.ingredients.map { ingEntity ->
                 Pair(mealDomain, ingEntity.toDomainModel())
@@ -112,10 +115,16 @@ class ShoppingDomainServiceImpl @Inject constructor(
                 isLotMatchingRuleOrIngredient(lot, canonicalId) ||
                     (lot.status != ItemStatus.DISCARDED && lotNameMatches(lot, displayName))
             }
-            val availableLotQuantity = matchingLots.sumOf { lot ->
+            // Stock counted in packs against a recipe in grams can't be compared: owned stock is assumed
+            // to cover it (the row is marked uncertain) rather than listing something the household has.
+            var stockInIncompatibleUnit = false
+            val convertedLotQuantity = matchingLots.sumOf { lot ->
                 val lotQty = lot.quantity ?: 0.0
-                UnitConverter.convert(lotQty, lot.quantityUnit ?: primaryUnit, primaryUnit).getOrNull() ?: lotQty
+                val converted = UnitConverter.convert(lotQty, lot.quantityUnit ?: primaryUnit, primaryUnit, lot.packSize, lot.packSizeUnit).getOrNull()
+                if (converted == null && lotQty > 0.0) stockInIncompatibleUnit = true
+                converted ?: 0.0
             }
+            val availableLotQuantity = if (stockInIncompatibleUnit) maxOf(convertedLotQuantity, totalPlannedQuantity) else convertedLotQuantity
 
             val requirementConfidence = if (matchingLots.any { it.quantityConfidence == QuantityConfidence.EXACT }) {
                 RequirementConfidence.EXACT
