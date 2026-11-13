@@ -66,6 +66,19 @@ object IngredientNameMatcher {
         else -> word
     }
 
+    private val KIT_WORDS = setOf("seasoning", "kit", "mix", "sachet", "packet", "pack", "recipe", "sauce", "flavour", "flavor", "style")
+
+    /**
+     * A stored kit or mix ("Chicken risotto") against a recipe's name for it ("Chicken risotto
+     * seasoning kit (Schwartz sachet)"). Only for items filed as Kits & Mixes: elsewhere "chicken
+     * seasoning" must not match "chicken".
+     */
+    fun matchesKit(kitName: String, ingredientName: String): Boolean {
+        fun kitCore(name: String) = core(name).split(' ').filter { it.isNotEmpty() && it !in KIT_WORDS }.joinToString(" ")
+        val kit = kitCore(kitName)
+        return kit.isNotEmpty() && kit == kitCore(ingredientName)
+    }
+
     fun matches(a: String, b: String): Boolean {
         val ca = core(a)
         return ca.isNotEmpty() && ca == core(b)

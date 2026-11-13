@@ -81,7 +81,9 @@ class RecipeValidator @Inject constructor(
             val matchingLots = byId.ifEmpty {
                 allInventory.filter {
                     it.displayName.equals(ing.displayName, ignoreCase = true) ||
-                        com.example.chatgpt_mealplanner.core.util.IngredientNameMatcher.matches(it.displayName, ing.displayName)
+                        com.example.chatgpt_mealplanner.core.util.IngredientNameMatcher.matches(it.displayName, ing.displayName) ||
+                        (it.category == com.example.chatgpt_mealplanner.core.model.FoodCategory.KITS_MIXES &&
+                            com.example.chatgpt_mealplanner.core.util.IngredientNameMatcher.matchesKit(it.displayName, ing.displayName))
                 }
             }
             val hasUncertain = matchingLots.any {

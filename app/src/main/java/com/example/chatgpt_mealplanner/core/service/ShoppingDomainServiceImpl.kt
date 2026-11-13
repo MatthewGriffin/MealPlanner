@@ -109,7 +109,8 @@ class ShoppingDomainServiceImpl @Inject constructor(
             }
 
             val matchingLots = allInventoryItems.filter { lot ->
-                isLotMatchingRuleOrIngredient(lot, canonicalId)
+                isLotMatchingRuleOrIngredient(lot, canonicalId) ||
+                    (lot.status != ItemStatus.DISCARDED && lotNameMatches(lot, displayName))
             }
             val availableLotQuantity = matchingLots.sumOf { lot ->
                 val lotQty = lot.quantity ?: 0.0
@@ -392,6 +393,12 @@ class ShoppingDomainServiceImpl @Inject constructor(
             .replace(Regex("[^a-z0-9]+"), " ")
             .trim()
             .replace(Regex("\\s+"), " ")
+
+    /** Ingredients Claude names have no canonical ID, so "dried oregano" has to find the "oregano" in stock by name. */
+    private fun lotNameMatches(lot: com.example.chatgpt_mealplanner.core.model.InventoryItem, ingredientName: String): Boolean =
+        com.example.chatgpt_mealplanner.core.util.IngredientNameMatcher.matches(lot.displayName, ingredientName) ||
+            (lot.category == com.example.chatgpt_mealplanner.core.model.FoodCategory.KITS_MIXES &&
+                com.example.chatgpt_mealplanner.core.util.IngredientNameMatcher.matchesKit(lot.displayName, ingredientName))
 
     private fun isLotMatchingRuleOrIngredient(lot: com.example.chatgpt_mealplanner.core.model.InventoryItem, canonicalId: String?): Boolean {
         if (lot.status == ItemStatus.DISCARDED || canonicalId == null) return false
