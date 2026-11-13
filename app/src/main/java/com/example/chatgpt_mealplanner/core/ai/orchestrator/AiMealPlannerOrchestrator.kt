@@ -41,6 +41,12 @@ class AiMealPlannerOrchestrator @Inject constructor(
     private val appRoleResolver: com.example.chatgpt_mealplanner.core.sync.AppRoleResolver = object : com.example.chatgpt_mealplanner.core.sync.AppRoleResolver(object : com.example.chatgpt_mealplanner.core.sync.follower.config.FollowerPairingStore(null) { override fun isPaired() = false }) { override fun isFollower() = false }
 ) {
     companion object {
+        /**
+         * Chat older than this isn't sent to Claude: an old, unsaved suggestion (a beef ragu from the
+         * morning) would otherwise be treated as part of today's plan.
+         */
+        const val HISTORY_WINDOW_MS = 2 * 60 * 60 * 1000L
+
         const val MAX_TOOL_ROUNDS = 8
 
         /** Times Claude is asked to fix a recipe or plan. Anything still wrong becomes a warning on the card. */
@@ -155,7 +161,9 @@ class AiMealPlannerOrchestrator @Inject constructor(
         val contextPayloadJson = contextBuilder.buildContextPayloadJson(conversationId)
 
         val historicalMessages = try {
-            chatRepository.getMessagesForConversation(conversationId).takeLast(20).mapNotNull { message ->
+            chatRepository.getMessagesForConversation(conversationId)
+                .filter { it.id == userMsgId || it.timestamp >= System.currentTimeMillis() - HISTORY_WINDOW_MS }
+                .takeLast(20).mapNotNull { message ->
                 // Persist a concise summary for the user, but send the full internal prompt to Claude.
                 if (message.id == userMsgId && message.role.equals("USER", ignoreCase = true)) {
                     packetPhoto?.asUserTurn(userMessageText) ?: AiChatMessage(role = "user", content = userMessageText)
@@ -718,6 +726,7 @@ class AiMealPlannerOrchestrator @Inject constructor(
     }
 
     private val historyJson = Json { ignoreUnknownKeys = true }
+
 
     private suspend fun saveAssistantMessage(conversationId: String, text: String) {
         val assistantMsgId = "msg_${System.currentTimeMillis()}"
