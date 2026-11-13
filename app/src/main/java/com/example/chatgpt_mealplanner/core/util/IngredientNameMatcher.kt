@@ -7,15 +7,52 @@ package com.example.chatgpt_mealplanner.core.util
  */
 object IngredientNameMatcher {
     private val DESCRIPTORS = setOf(
-        "dried", "dry", "fresh", "freshly", "chopped", "diced", "sliced", "minced", "grated", "crushed",
-        "ground", "whole", "large", "small", "medium", "ripe", "raw", "finely", "roughly", "organic",
+        "dried", "dry", "fresh", "freshly", "chopped", "diced", "sliced", "minced", "grated", "crushed", "ground",
+        "whole", "large", "small", "medium", "ripe", "raw", "finely", "roughly", "organic",
         "a", "of", "the", "extra", "good", "quality", "optional", "powdered", "shredded", "peeled"
     )
 
+    /** Same ingredient, different names (mostly UK vs US). Phrases are replaced before words are compared. */
+    private val SYNONYMS = listOf(
+        "cilantro" to "coriander",
+        "zucchini" to "courgette",
+        "eggplant" to "aubergine",
+        "arugula" to "rocket",
+        "scallion" to "spring onion",
+        "green onion" to "spring onion",
+        "bell pepper" to "capsicum",
+        "shrimp" to "prawn",
+        "garbanzo" to "chickpea",
+        "rutabaga" to "swede",
+        "beet" to "beetroot",
+        "heavy cream" to "double cream",
+        "whipping cream" to "double cream",
+        "light cream" to "single cream",
+        "superfine sugar" to "caster sugar",
+        "powdered sugar" to "icing sugar",
+        "confectioners sugar" to "icing sugar",
+        "all purpose flour" to "plain flour",
+        "baking soda" to "bicarbonate of soda",
+        "cornstarch" to "cornflour",
+        "ground beef" to "beef mince",
+        "ground pork" to "pork mince",
+        "ground lamb" to "lamb mince",
+        "ground turkey" to "turkey mince",
+        "ground chicken" to "chicken mince",
+        "fries" to "chips"
+    )
+
+    private fun normalized(name: String): String {
+        var t = " " + name.lowercase().replace(Regex("\\(.*?\\)"), " ").replace(Regex("[^a-z0-9]+"), " ").trim() + " "
+        for ((from, to) in SYNONYMS) {
+            t = t.replace(" $from ", " $to ").replace(" ${from}s ", " $to ")
+        }
+        return t
+    }
+
     fun core(name: String): String =
-        name.lowercase()
-            .replace(Regex("\\(.*?\\)"), " ")
-            .replace(Regex("[^a-z0-9]+"), " ")
+        normalized(name)
+            .trim()
             .split(' ')
             .filter { it.isNotEmpty() && it !in DESCRIPTORS }
             .map(::singular)
