@@ -103,11 +103,11 @@ class RecipeValidator @Inject constructor(
                 if (converted == null && qty > 0.0) stockInIncompatibleUnit = true
                 ownedTotal += converted ?: 0.0
             }
-            // Packs against grams can't be compared, so owned stock counts as enough (as on the shopping list).
-            if (stockInIncompatibleUnit) ownedTotal = maxOf(ownedTotal, ing.quantity)
+
 
             val availability = when {
-                hasUncertain -> IngredientAvailability.UNCERTAIN
+                // Packs against grams can't be compared: ask the user to check instead of guessing either way.
+                hasUncertain || stockInIncompatibleUnit -> IngredientAvailability.UNCERTAIN
                 ownedTotal >= ing.quantity -> IngredientAvailability.AVAILABLE
                 ownedTotal > 0.0 -> IngredientAvailability.PARTIAL
                 else -> IngredientAvailability.MISSING

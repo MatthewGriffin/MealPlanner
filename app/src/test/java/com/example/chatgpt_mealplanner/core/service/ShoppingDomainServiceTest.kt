@@ -330,7 +330,7 @@ class ShoppingDomainServiceTest {
     }
 
     @Test
-    fun stockInPacksCoversARecipeInGrams_andLeftoverDaysNeedNothing() = runTest {
+    fun stockInPacksAgainstGrams_staysOnTheListWithANote_andLeftoverDaysNeedNothing() = runTest {
         inventoryDao.insertItem(createLot("lot_garlic", "item_garlic", "Garlic powder", 2.0, QuantityUnit.PACK))
         val today = java.time.LocalDate.now().toString()
         val meal = com.example.chatgpt_mealplanner.core.model.Meal(id = "mp2", date = today, title = "Chicken")
@@ -344,7 +344,10 @@ class ShoppingDomainServiceTest {
 
         val items = (service.calculateShoppingRequirements(null, null) as DomainResult.Success).value
 
-        assertEquals(emptyList<String>(), items.map { it.item.displayName })
+        // Packs against grams can't be compared: the row stays, with a note to check. Leftover days add nothing.
+        assertEquals(listOf("Garlic powder"), items.map { it.item.displayName })
+        assertTrue(items.single().item.quantityUncertain)
+        assertTrue(items.single().item.uncertaintyReason!!.contains("Check you have enough"))
     }
 
     private fun createLot(id: String, canonicalId: String, name: String, qty: Double, unit: QuantityUnit) = InventoryItemEntity(
