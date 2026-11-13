@@ -122,6 +122,8 @@ class ShoppingDomainServiceImpl @Inject constructor(
                 val lotQty = lot.quantity ?: 0.0
                 val converted = UnitConverter.convert(lotQty, lot.quantityUnit ?: primaryUnit, primaryUnit, lot.packSize, lot.packSizeUnit).getOrNull()
                 if (converted == null && lotQty > 0.0) stockInIncompatibleUnit = true
+                // In stock but nobody recorded how much: assume it covers the need rather than asking to buy it.
+                if (lot.quantity == null && lot.status != ItemStatus.OUT && lot.status != ItemStatus.DISCARDED) stockInIncompatibleUnit = true
                 converted ?: 0.0
             }
             val availableLotQuantity = if (stockInIncompatibleUnit) maxOf(convertedLotQuantity, totalPlannedQuantity) else convertedLotQuantity
