@@ -227,6 +227,7 @@ class ChatViewModel @Inject constructor(
                 }?.let { restoredRequestId ->
                     if (mealChangeRequestIdFlow.value == null) mealChangeRequestIdFlow.value = restoredRequestId
                 }
+                offerRetryIfCutOff(messages)
                 if (messages.isEmpty() && requestStateHolderFlow.value.requestState == ChatRequestState.FAILED_RETRYABLE) {
                     transitionRequestState(ChatRequestState.IDLE)
                     errorMessageFlow.value = null
@@ -239,6 +240,28 @@ class ChatViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    /**
+     * A user's message with no reply after it means the request was cut off (an update install, a
+     * crash, the phone killing the app). Offer Retry, as for any other failed request.
+     */
+    private fun offerRetryIfCutOff(messages: List<ChatMessageEntity>) {
+        val last = messages.lastOrNull() ?: return
+        if (!last.role.equals("USER", ignoreCase = true)) return
+        val state = requestStateHolderFlow.value.requestState
+        if (state == ChatRequestState.IN_FLIGHT || state == ChatRequestState.FAILED_RETRYABLE) return
+        // The photo of a packet or recipe is not kept, so there is nothing to send again.
+        if (last.content.contains("sent for Claude to read)")) return
+        val text = if (last.content.startsWith("Next meal (")) "Please propose the next meal of my plan. ${last.content}" else last.content
+        if (text.isBlank()) return
+        transitionRequestState(
+            ChatRequestState.FAILED_RETRYABLE,
+            retainedMessage = last.content,
+            retainedMessageId = last.id,
+            reason = "Claude's reply was interrupted. Tap Retry to ask again.",
+            retainedRequestText = text
+        )
     }
 
     private fun ensureDefaultConversationExists() {
@@ -546,7 +569,14 @@ class ChatViewModel @Inject constructor(
     private fun retryLastFailedMessage() {
         val currentHolder = requestStateHolderFlow.value
         if (currentHolder.requestState == ChatRequestState.IN_FLIGHT) return
-        val text = currentHolder.retainedRequestText ?: currentHolder.retainedUserMessage ?: return
+        var text = currentHolder.retainedRequestText ?: currentHolder.retainedUserMessage ?: return
+        // A plan request that was cut off before its first meal starts the plan again.
+        com.example.chatgpt_mealplanner.core.util.PlanRequestParser.parse(text)?.let { slots ->
+            planQueue.clear()
+            planQueue.addAll(slots)
+            planTotal = slots.size
+            text = planSlotPrompt(planQueue.removeFirst(), text)
+        }
         val visibleText = currentHolder.retainedUserMessage ?: text
         val messageId = currentHolder.retainedUserMessageId
 
