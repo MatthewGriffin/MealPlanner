@@ -1389,6 +1389,45 @@ private val milkAllergyAndNoCoriander = com.example.chatgpt_mealplanner.contract
     }
 
     @Test
+    fun questionAboutAWaitingRecipe_getsClaudesAnswer_notTheSameRecipeAgain() = runTest(testDispatcher) {
+        val proposal = com.example.chatgpt_mealplanner.contract.MealProposal(
+            title = "Chicken Risotto", mealType = "DINNER", servings = 2,
+            ingredients = listOf(
+                com.example.chatgpt_mealplanner.contract.ProposedIngredient(displayName = "Rice", quantity = 100.0, unit = "GRAM")
+            ),
+            reasoningSummary = "x"
+        )
+        activeProposalStore.setActiveProposal("default_conversation", proposal)
+        pendingMutationStore.setPendingMutation(
+            "default_conversation",
+            com.example.chatgpt_mealplanner.core.ai.pending.PendingAiMutation.AddPlannedMeal(
+                title = "Chicken Risotto",
+                date = "2026-11-16",
+                mealType = com.example.chatgpt_mealplanner.core.model.MealType.DINNER,
+                servings = 2,
+                ingredients = listOf(
+                    com.example.chatgpt_mealplanner.core.model.MealIngredient(
+                        id = "i1", mealId = "", canonicalIngredientId = null, displayName = "Rice",
+                        plannedQuantity = 100.0, plannedUnit = com.example.chatgpt_mealplanner.core.model.QuantityUnit.GRAM
+                    )
+                ),
+                instructions = "1. Cook the rice.",
+                sourceUserMessageId = "m0",
+                state = com.example.chatgpt_mealplanner.core.ai.pending.PendingMutationState.AWAITING_CONFIRMATION
+            ),
+            "TEST"
+        )
+        val answer = "A packet seasons 4 servings, so two servings need half; I used a quarter because the rice is the main flavour."
+        val sent = mutableListOf<AiProviderRequest>()
+
+        val result = orchestratorReplying(sent, answer)
+            .processUserMessage("default_conversation", "why are you only using a quarter of the spice packet?")
+
+        assertTrue(result is AiOrchestrationResult.Final)
+        assertEquals(answer, (result as AiOrchestrationResult.Final).assistantText)
+    }
+
+    @Test
     fun adviceMentioningARecipe_isAnsweredAsAdvice() = runTest(testDispatcher) {
         assertAnsweredWithoutRepair("how long does this recipe keep?", "This recipe keeps for 3 days in the fridge.")
     }

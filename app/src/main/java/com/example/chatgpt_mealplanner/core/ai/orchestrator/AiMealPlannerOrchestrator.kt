@@ -450,7 +450,9 @@ class AiMealPlannerOrchestrator @Inject constructor(
                 }
                 val hasValidOfferAwaiting = currentPending != null && currentPending.state == com.example.chatgpt_mealplanner.core.ai.pending.PendingMutationState.AWAITING_CONFIRMATION && currentPending.ingredients.isNotEmpty()
 
-                if (hasValidOfferAwaiting && !retailProductSearchOnly) {
+                // An offer left over from an earlier turn must not replace this reply: when the user asks
+                // a question about the recipe, Claude's answer is shown, not the same recipe again.
+                if (hasValidOfferAwaiting && !retailProductSearchOnly && offerAcceptedThisTurn) {
                     val pendingOffer = currentPending!!
                     textToReturn = formatAppOwnedRecipeProposal(pendingOffer)
                     // The text parser may have extracted only the bold title from the final prose,
@@ -537,7 +539,8 @@ class AiMealPlannerOrchestrator @Inject constructor(
                 }
 
                 val pendingAfter = pendingMutationStore.getPendingMutation(conversationId)
-                if (pendingAfter != null && pendingAfter.state == com.example.chatgpt_mealplanner.core.ai.pending.PendingMutationState.AWAITING_CONFIRMATION) {
+                val pendingIsStaleRecipe = pendingAfter is com.example.chatgpt_mealplanner.core.ai.pending.PendingAiMutation.AddPlannedMeal && !offerAcceptedThisTurn
+                if (pendingAfter != null && pendingAfter.state == com.example.chatgpt_mealplanner.core.ai.pending.PendingMutationState.AWAITING_CONFIRMATION && !pendingIsStaleRecipe) {
                     textToReturn = when (pendingAfter) {
                         is com.example.chatgpt_mealplanner.core.ai.pending.PendingAiMutation.AddPlannedMeal -> formatAppOwnedRecipeProposal(pendingAfter)
                         is com.example.chatgpt_mealplanner.core.ai.pending.PendingAiMutation.DeleteInventoryItem -> "Are you sure you want to delete **${pendingAfter.targetName}** from your inventory? Please confirm to proceed."
