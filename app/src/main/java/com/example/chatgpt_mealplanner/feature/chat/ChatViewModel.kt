@@ -108,6 +108,7 @@ class ChatViewModel @Inject constructor(
     private val showPacketScanFlow = MutableStateFlow(false)
     private val packetScanKitFlow = MutableStateFlow<String?>(null)
     private val packetScanRecipeFlow = MutableStateFlow(false)
+    private val STOP_PLAN = "Stop the plan"
     private val quickRepliesFlow = MutableStateFlow<List<String>>(emptyList())
     /** The packet sent with the message in flight, kept so a retry sends it again. */
     private var retainedPacketPhoto: com.example.chatgpt_mealplanner.core.ai.packet.PacketPhoto? = null
@@ -124,7 +125,9 @@ class ChatViewModel @Inject constructor(
     private val mealChangeRequestTitleFlow = MutableStateFlow("")
     private val latestProposalFlow = MutableStateFlow<ValidatedMealProposal?>(null)
     /** Meals Claude still has to propose in the plan being built one meal at a time. */
-    private var mealsLeftInPlan = 0
+    /** The meals of the plan the user asked for that are still to be proposed. The app counts them, not Claude. */
+    private val planQueue = ArrayDeque<com.example.chatgpt_mealplanner.core.util.PlanSlot>()
+    private var planTotal = 0
     private val latestProposedActionFlow = MutableStateFlow<AiProposedAction?>(null)
     private val isSavingProposalFlow = MutableStateFlow(false)
     private val proposalMessageIdFlow = MutableStateFlow<String?>(null)
@@ -216,6 +219,7 @@ class ChatViewModel @Inject constructor(
         }
         viewModelScope.launch {
             messagesFlow.collect { messages ->
+                if (messages.isEmpty()) planQueue.clear()
                 messages.asReversed().firstNotNullOfOrNull { message ->
                     message.structuredPayloadJson?.let { raw ->
                         runCatching { proposalJson.decodeFromString<ProposalMessagePayload>(raw) }.getOrNull()
@@ -416,7 +420,34 @@ class ChatViewModel @Inject constructor(
         if (text.isBlank()) return
         if (requestStateHolderFlow.value.requestState == ChatRequestState.IN_FLIGHT) return
         userMessageTextFlow.value = ""
+        if (text == STOP_PLAN && planQueue.isNotEmpty()) {
+            planQueue.clear()
+            errorMessageFlow.value = "Plan stopped. Meals you already saved stay in your planner."
+            quickRepliesFlow.value = emptyList()
+            return
+        }
+        val slots = com.example.chatgpt_mealplanner.core.util.PlanRequestParser.parse(text)
+        if (slots != null) {
+            // The app counts the meals and asks for them one at a time.
+            planQueue.clear()
+            planQueue.addAll(slots)
+            planTotal = slots.size
+            startSend(planSlotPrompt(planQueue.removeFirst(), text), displayMessageText ?: text, packet = null)
+            return
+        }
         startSend(text, displayMessageText, packet = null)
+    }
+
+    private fun planSlotPrompt(slot: com.example.chatgpt_mealplanner.core.util.PlanSlot, request: String?): String {
+        val number = planTotal - planQueue.size
+        val day = slot.date.format(java.time.format.DateTimeFormatter.ofPattern("EEE d MMM", java.util.Locale.getDefault()))
+        val meal = slot.mealType.name.lowercase()
+        return buildString {
+            if (request != null) append("The user asked: \"$request\"\n")
+            append("The app is building this meal plan one meal at a time. Propose ONLY meal $number of $planTotal now: $day $meal ")
+            append("(date ${slot.date}, mealType ${slot.mealType.name}). Offer it as one normal recipe card with that date and mealType. ")
+            append("Do not write the other meals or a list of the plan. Keep it different from meals already in upcomingPlannedMeals and do not use up the same stock twice.")
+        }
     }
 
     /** The packet the user chose to send, as a message of its own. */
@@ -436,7 +467,8 @@ class ChatViewModel @Inject constructor(
 
     /** The assistant's own suggestions; for a plan or a recipe card, options for changing it. */
     private fun quickRepliesFor(result: com.example.chatgpt_mealplanner.contract.AiOrchestrationResult.Final): List<String> = when {
-        result.validatedProposal != null -> listOf("Make it healthier", "Make it quicker", "Make it spicier", "Swap an ingredient")
+        result.validatedProposal != null -> listOf("Make it healthier", "Make it quicker", "Make it spicier", "Swap an ingredient") +
+            (if (planQueue.isNotEmpty()) listOf(STOP_PLAN) else emptyList())
         else -> result.quickReplies
     }
 
@@ -471,7 +503,6 @@ class ChatViewModel @Inject constructor(
                     latestProposedActionFlow.value = result.proposedAction
                     kitPacketRequestFlow.value = result.kitPacketRequest
                     quickRepliesFlow.value = quickRepliesFor(result)
-                    result.mealsLeftInPlan?.let { mealsLeftInPlan = it }
 
                     val confirmAction = result.proposedAction as? AiProposedAction.ConfirmCookedMeal
                     if (confirmAction != null) {
@@ -538,7 +569,6 @@ class ChatViewModel @Inject constructor(
                     latestProposedActionFlow.value = result.proposedAction
                     kitPacketRequestFlow.value = result.kitPacketRequest
                     quickRepliesFlow.value = quickRepliesFor(result)
-                    result.mealsLeftInPlan?.let { mealsLeftInPlan = it }
 
                     val confirmAction = result.proposedAction as? AiProposedAction.ConfirmCookedMeal
                     if (confirmAction != null) {
@@ -672,14 +702,20 @@ class ChatViewModel @Inject constructor(
         }
     }
 
-    /** A plan is built one meal at a time: once a meal is saved, Claude is asked for the next one. */
+    /** A plan is built one meal at a time: once a meal is saved, the app asks for the next slot of the plan. */
     private fun continuePlanAfterSave(savedTitle: String) {
-        if (mealsLeftInPlan <= 0) return
-        mealsLeftInPlan--
+        if (planQueue.isEmpty()) return
+        val slot = planQueue.removeFirst()
+        val number = planTotal - planQueue.size
+        val day = slot.date.format(java.time.format.DateTimeFormatter.ofPattern("EEE d MMM", java.util.Locale.getDefault()))
         viewModelScope.launch {
             // The save finishes before the next request starts.
             isSavingProposalFlow.first { !it }
-            startSend("Saved \"$savedTitle\". Please propose the next meal of the plan.", "Next meal", null)
+            startSend(
+                "Saved \"$savedTitle\". " + planSlotPrompt(slot, null),
+                "Next meal ($number of $planTotal): $day ${slot.mealType.name.lowercase()}",
+                null
+            )
         }
     }
 

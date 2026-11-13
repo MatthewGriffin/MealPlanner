@@ -366,8 +366,7 @@ class ClaudeMealPlannerAiProvider @Inject constructor(
         conversations.remove(conversationId)
         if (text.isBlank()) return AiProviderResponse.Error("EMPTY_RESPONSE", "Claude returned an empty reply. Please tap Retry.")
 
-        val (textWithPlanLeft, quickReplies) = ModelReplyText.withoutQuickReplies(text)
-        val (textWithoutReplies, mealsLeftInPlan) = ModelReplyText.withoutPlanLeft(textWithPlanLeft)
+        val (textWithoutReplies, quickReplies) = ModelReplyText.withoutQuickReplies(text)
         val userFacingText = textWithoutReplies.trim()
         if (userFacingText.isBlank()) {
             return AiProviderResponse.Error("RESPONSE_INVALID", INVALID_MESSAGE)
@@ -377,8 +376,7 @@ class ClaudeMealPlannerAiProvider @Inject constructor(
             proposal = ModelReplyText.mealProposal(textWithoutReplies),
             proposedAction = null,
             modelId = model,
-            quickReplies = quickReplies,
-            mealsLeftInPlan = mealsLeftInPlan
+            quickReplies = quickReplies
         )
     }
 

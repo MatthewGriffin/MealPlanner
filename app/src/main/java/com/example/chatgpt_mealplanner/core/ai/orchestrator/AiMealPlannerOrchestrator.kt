@@ -305,18 +305,9 @@ class AiMealPlannerOrchestrator @Inject constructor(
                 val askToFix = offerResult.payloadJson.contains("queries") && correctionsAsked < MAX_CORRECTION_ATTEMPTS
                 if (askToFix) correctionsAsked++
                 if (!askToFix && !isReplacementRequest(userMessageText)) {
-                    // Plan progress comes with the tool call: text after a card is never asked for.
-                    val offerArgs = runCatching {
-                        toolCalls.first { it.toolName == AiToolId.OFFER_ADD_PLANNED_MEAL.toolName }.argsJson
-                            .let { kotlinx.serialization.json.Json.parseToJsonElement(it) as? kotlinx.serialization.json.JsonObject }
-                    }.getOrNull()
-                    val planNote = (offerArgs?.get("planNote") as? kotlinx.serialization.json.JsonPrimitive)?.content?.trim().orEmpty()
-                    val planLeft = (offerArgs?.get("planMealsLeft") as? kotlinx.serialization.json.JsonPrimitive)
-                        ?.content?.toDoubleOrNull()?.toInt()?.coerceIn(0, 30)
                     providerResponse = AiProviderResponse.FinalResponse(
-                        text = planNote,
-                        modelId = (providerResponse as AiProviderResponse.ToolCalls).modelId,
-                        mealsLeftInPlan = planLeft
+                        text = "",
+                        modelId = (providerResponse as AiProviderResponse.ToolCalls).modelId
                     )
                     break
                 }
@@ -624,7 +615,6 @@ class AiMealPlannerOrchestrator @Inject constructor(
                     modelId = finalRes.modelId,
                     kitPacketRequest = kitPacketRequest,
                     quickReplies = finalRes.quickReplies,
-                    mealsLeftInPlan = finalRes.mealsLeftInPlan
                 )
             }
             is AiProviderResponse.Error -> {
@@ -1264,11 +1254,9 @@ class AiMealPlannerOrchestrator @Inject constructor(
         3. When replacing a recipe because the user asked for a change, fill changeSummary with what is different in the new meal; otherwise it may be null.
 
         MEAL PLANS (several meals or days):
-        1. Never write a whole plan in one reply: it is too long to send. Build it ONE meal at a time. Work out the list of meal slots the user wants (for example Mon dinner, Tue dinner), say it in one short line, you MUST write that slot list in your reply text (the user sees it), then propose only the first slot as a normal single recipe (see SINGLE RECIPE: call 'offer_add_planned_meal' with its date and mealType). 
-        2. Say where you are in the plan ("Meal 1 of 5, Monday dinner") and tell the user to discuss or change this meal, then tap Save meal on the card when happy. When they save, the app asks you for the next meal by itself.
-        3. On every 'offer_add_planned_meal' call while a plan is being built, set planMealsLeft (required on every recipe card: the number of meals still to propose after this one, 0 on the last or for a single meal) and planNote (one short line such as "Meal 1 of 5, Mon dinner. Still to come: Tue to Fri dinners"). The app needs planMealsLeft to move on to the next meal after the user saves, and shows planNote to the user, because no text after a recipe card is shown. In a plan discussion reply that has no recipe card, end with a line "PLAN_LEFT: n" instead. Do not use either outside a plan.
-        4. When the app says a meal was saved, propose the next slot as a new recipe. Once saved, a meal appears in upcomingPlannedMeals with its ingredients. Treat what those already use as taken: do not use up the same stock twice, and keep variety against the meals already planned. If the previous meal was not saved (the user skipped it), just move on.
-        5. After the last slot, say the plan is complete in one line, with PLAN_LEFT: 0.
+        1. The app counts the meals of a plan and asks you for them one at a time. Each request names the slot (for example "Meal 2 of 5: Tue 17 Nov dinner, date 2026-11-17, mealType DINNER"). Propose ONLY that slot, as a normal single recipe (see SINGLE RECIPE: call 'offer_add_planned_meal' with that date and mealType). Never write the other meals or a list of the plan, and never ask whether to continue: the app moves on after the user saves.
+        2. Meals already saved appear in upcomingPlannedMeals with their ingredients. Treat what those already use as taken: do not use up the same stock twice, and keep variety against the meals already planned.
+        3. If the user discusses or changes the current meal, just answer for that meal.
 
         CHOICES YOU OFFERED:
         1. When you offered named or numbered options and the user picks one ('option 2', 'the second one', 'go with that'), keep that option's meals, recipes, ingredients and titles exactly as proposed unless they ask to change them. Do not generate a new plan on the same theme.
