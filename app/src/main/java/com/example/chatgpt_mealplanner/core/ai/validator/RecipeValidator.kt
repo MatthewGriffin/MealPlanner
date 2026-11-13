@@ -161,8 +161,15 @@ class RecipeValidator @Inject constructor(
             else -> RecipeValidationStatus.VALID
         }
 
+        // Don't suggest buying an extra the household already owns (fresh coriander when dried coriander is in stock).
+        val ownedNames = usableInventory.map { it.displayName }
+        val extras = proposal.worthAdding.filterNot { idea ->
+            val name = idea.substringBefore(':')
+            ownedNames.any { com.example.chatgpt_mealplanner.core.util.IngredientNameMatcher.matches(it, name) }
+        }
+
         return ValidatedMealProposal(
-            proposal = proposal,
+            proposal = proposal.copy(worthAdding = extras),
             validatedIngredients = validatedIngredients,
             shoppingNeeded = shoppingNeeded,
             status = status,

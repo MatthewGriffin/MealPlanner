@@ -49,6 +49,21 @@ fun MealProposalCard(
             )
             Spacer(modifier = Modifier.height(4.dp))
 
+            val slot = com.example.chatgpt_mealplanner.core.ai.resolver.MealSlotResolver.resolveSlot(
+                requestedDateStr = proposal.suggestedDate,
+                requestedMealTypeStr = proposal.mealType
+            )
+            val slotDate = runCatching { java.time.LocalDate.parse(slot.date) }.getOrNull()
+            Text(
+                text = "Will be saved for " +
+                    (slotDate?.format(java.time.format.DateTimeFormatter.ofPattern("EEE d MMM", java.util.Locale.getDefault())) ?: slot.date) +
+                    " \u2022 " + slot.mealType.name.lowercase().replaceFirstChar { it.uppercase() },
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onPrimaryContainer
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+
             Text(
                 text = "Servings: ${proposal.servings}" + (proposal.totalMinutes()?.let { " • About $it mins" } ?: ""),
                 style = MaterialTheme.typography.bodyMedium,
