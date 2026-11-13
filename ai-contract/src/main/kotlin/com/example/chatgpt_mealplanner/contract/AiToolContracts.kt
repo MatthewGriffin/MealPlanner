@@ -189,7 +189,9 @@ data class RecentMealContextDto(
     val title: String,
     val date: String,
     val status: String,
-    val mealType: String
+    val mealType: String,
+    /** Planned meals only: what each one uses, so the next meal can work around it. */
+    val ingredients: List<String> = emptyList()
 )
 
 @Serializable
