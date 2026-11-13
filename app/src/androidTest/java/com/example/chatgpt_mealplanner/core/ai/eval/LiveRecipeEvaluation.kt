@@ -233,7 +233,7 @@ class LiveRecipeEvaluation {
                     if (index == scenario.turns.lastIndex) failures += kitFindings(scenario, outcome, db, provider.trace, usage)
                     if (scenario.stock === FLAVOUR_STOCK) {
                         val final = outcome as? AiOrchestrationResult.Final
-                        val names = (listOfNotNull(final?.validatedProposal?.proposal) + final?.mealPlan.orEmpty())
+                        val names = (listOfNotNull(final?.validatedProposal?.proposal))
                             .flatMap { meal -> meal.ingredients.map { it.displayName.lowercase() } }
                         val used = FLAVOUR_WORDS.filter { word -> names.any { word in it } }
                         appendLine("FLAVOUR USED: ${used.size} of ${FLAVOUR_WORDS.size} $used")
@@ -252,7 +252,7 @@ class LiveRecipeEvaluation {
     /** Whether the recipe followed the packet, or the model looked the kit up or asked for it, instead of inventing a method. */
     private suspend fun kitFindings(scenario: Scenario, outcome: AiOrchestrationResult?, db: AppDatabase, trace: List<String>, usage: List<TokenUsage>): List<String> {
         val final = outcome as? AiOrchestrationResult.Final ?: return emptyList()
-        val meals = listOfNotNull(final.validatedProposal?.proposal) + final.mealPlan.orEmpty()
+        val meals = listOfNotNull(final.validatedProposal?.proposal)
         val recipeText = meals.joinToString("\n") { meal -> (meal.ingredients.map { it.displayName } + meal.methodLines()).joinToString(" ") }.lowercase()
         val found = mutableListOf<String>()
         scenario.mustMention.filter { it.lowercase() !in recipeText }.takeIf { it.isNotEmpty() }?.let { found += "recipe doesn't follow the packet: missing $it" }
@@ -306,9 +306,8 @@ class LiveRecipeEvaluation {
     private fun findings(scenario: Scenario, outcome: AiOrchestrationResult?, isLastTurn: Boolean): List<String> {
         val final = outcome as? AiOrchestrationResult.Final
             ?: return listOf("failed: ${(outcome as? AiOrchestrationResult.Error)?.code ?: "exception"}")
-        val meals = listOfNotNull(final.validatedProposal?.proposal) + final.mealPlan.orEmpty()
+        val meals = listOfNotNull(final.validatedProposal?.proposal)
         val shape = when {
-            !final.mealPlan.isNullOrEmpty() -> Expected.MEAL_PLAN
             final.validatedProposal != null -> Expected.CARD
             else -> Expected.TEXT
         }
@@ -386,16 +385,10 @@ class LiveRecipeEvaluation {
             is AiOrchestrationResult.Final -> {
                 appendLine("MODEL: ${result.modelId}")
                 val card = result.validatedProposal
-                val plan = result.mealPlan
                 when {
                     card != null -> {
                         appendLine("CARD status=${card.status} issues=${card.issues} warnings=${card.warnings}")
                         append(describe(card.proposal))
-                    }
-                    !plan.isNullOrEmpty() -> {
-                        appendLine("MEAL PLAN with ${plan.size} meals")
-                        appendLine("Reply: ${result.assistantText}")
-                        plan.forEach { append(describe(it)) }
                     }
                     else -> appendLine("TEXT REPLY: ${result.assistantText}")
                 }

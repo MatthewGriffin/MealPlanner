@@ -187,31 +187,8 @@ class AiMealPlannerOrchestrator @Inject constructor(
             contextPayloadJson = contextPayloadJson,
             contextPayload = contextPayload,
             messages = historicalMessages,
-            // A meal-plan request is a menu-level workflow, not a single-recipe proposal.
-            // Keep recipe-offer tools out so the first meal cannot become an accidental Save meal card.
-            availableTools = AiToolId.entries.filter { tool ->
-                if (!isMealPlanRequest(userMessageText)) {
-                    // Single-recipe requests need this tool so the model can return a
-                    // complete, confirmable recipe offer. Meal-plan requests use the
-                    // separate menu-level flow below and intentionally exclude it.
-                    tool != AiToolId.REGENERATE_SHOPPING_LIST
-                } else {
-                    // Meal-plan generation should not wait on retailer catalogue/network lookups.
-                    // Retailer matching happens later when the user expands a selected meal.
-                    tool in setOf(
-                        AiToolId.GET_INVENTORY_SUMMARY,
-                        AiToolId.GET_INVENTORY_FOR_INGREDIENT,
-                        AiToolId.GET_USABLE_INVENTORY,
-                        AiToolId.GET_LOW_STOCK_ITEMS,
-                        AiToolId.GET_USE_SOON_ITEMS,
-                        AiToolId.GET_RECENT_COOKED_MEALS,
-                        AiToolId.GET_UPCOMING_PLANNED_MEALS,
-                        AiToolId.GET_MEAL_DETAILS,
-                        AiToolId.GET_AVAILABLE_LEFTOVERS,
-                        AiToolId.GET_ACTIVE_SHOPPING_LIST
-                    )
-                }
-            },
+            // Meal plans are built one recipe at a time, so every request gets the recipe-offer tool.
+            availableTools = AiToolId.entries.filter { tool -> tool != AiToolId.REGENERATE_SHOPPING_LIST },
             // Live retailer catalogue scraping has been retired; never force the deprecated lookup tool.
             forcedToolName = null,
             // A kit's packet is asked for first. Searching for it costs more and can find the wrong
@@ -221,8 +198,6 @@ class AiMealPlannerOrchestrator @Inject constructor(
                     contextPayload.usableInventory.any { it.category == com.example.chatgpt_mealplanner.core.model.FoodCategory.KITS_MIXES.name })
         )
 
-        val mealPlanRequest = isMealPlanRequest(userMessageText)
-        safeLog("[AI_PLAN_MODE] enabled=$mealPlanRequest retailerLookups=DISABLED")
         var providerResponse = provider.send(request)
         var roundCount = 0
         var readSucceeded = false
@@ -241,7 +216,7 @@ class AiMealPlannerOrchestrator @Inject constructor(
         while (true) {
             if (providerResponse !is AiProviderResponse.ToolCalls) {
                 // Claude can answer a correction in words, which leaves the card as it was.
-                val correction = if (offerAcceptedThisTurn && !mealPlanRequest && correctionsAsked < MAX_CORRECTION_ATTEMPTS) {
+                val correction = if (offerAcceptedThisTurn && correctionsAsked < MAX_CORRECTION_ATTEMPTS) {
                     askForRecipeCorrection(request, conversationId)
                 } else null
                 if (correction == null) break
@@ -249,7 +224,7 @@ class AiMealPlannerOrchestrator @Inject constructor(
                 providerResponse = correction
                 continue
             }
-            val maxRoundsForRequest = if (mealPlanRequest) 2 else MAX_TOOL_ROUNDS
+            val maxRoundsForRequest = MAX_TOOL_ROUNDS
             if (roundCount >= maxRoundsForRequest) {
                 if (offerAcceptedThisTurn) {
                     providerResponse = AiProviderResponse.FinalResponse(
@@ -366,15 +341,13 @@ class AiMealPlannerOrchestrator @Inject constructor(
                 intentClass == com.example.chatgpt_mealplanner.core.ai.context.UserMessageIntentClass.FOLLOW_UP_TO_ACTIVE_PROPOSAL)
 
         val finalResponseText = (providerResponse as? AiProviderResponse.FinalResponse)?.text ?: ""
-        // Honour the user's explicit request even if Claude formats its answer as one recipe.
-        val responseIsMultiMealPlan = mealPlanRequest || isMultiMealResponse(finalResponseText)
         val replyNeedsRecipeCard = needsRecipeCard(
             userMessageText = userMessageText,
             replyText = finalResponseText,
             replyHasIngredients = (providerResponse as? AiProviderResponse.FinalResponse)?.proposal?.ingredients?.isNotEmpty() == true
         )
 
-        if (!isRetailProductSearchOnlyRequest(userMessageText) && !responseIsMultiMealPlan && isEligibleProposalIntent && replyNeedsRecipeCard && !hasOfferCaptured && !plannerMutationCommitted && providerResponse is AiProviderResponse.FinalResponse) {
+        if (!isRetailProductSearchOnlyRequest(userMessageText) && isEligibleProposalIntent && replyNeedsRecipeCard && !hasOfferCaptured && !plannerMutationCommitted && providerResponse is AiProviderResponse.FinalResponse) {
             safeLog("[STRUCTURED_OFFER_REPAIR] needed=true attempt=1")
 
             val repairRequest = request.copy(
@@ -434,17 +407,13 @@ class AiMealPlannerOrchestrator @Inject constructor(
             }
         }
 
-        correctedMealPlan(request, providerResponse, userMessageText)?.let { providerResponse = it }
-
         return when (providerResponse) {
             is AiProviderResponse.FinalResponse -> {
                 val finalRes = providerResponse as AiProviderResponse.FinalResponse
                 val retailProductSearchOnly = isRetailProductSearchOnlyRequest(userMessageText)
                 // A retailer lookup is not permission to generate a menu. Treat any structured
                 // plan returned on a product-only turn as ineligible for the meal-plan UI.
-                val responseIsMultiMealPlan = retailProductSearchOnly || mealPlanRequest ||
-                        (finalRes.mealPlan?.size ?: 0) > 1 || isMultiMealResponse(finalRes.text)
-                var validatedProposal = if (responseIsMultiMealPlan) {
+                var validatedProposal = if (retailProductSearchOnly) {
                     null
                 } else {
                     finalRes.proposal?.let { recipeValidator.validateProposal(it) }
@@ -473,7 +442,7 @@ class AiMealPlannerOrchestrator @Inject constructor(
                 }
                 val hasValidOfferAwaiting = currentPending != null && currentPending.state == com.example.chatgpt_mealplanner.core.ai.pending.PendingMutationState.AWAITING_CONFIRMATION && currentPending.ingredients.isNotEmpty()
 
-                if (hasValidOfferAwaiting && !responseIsMultiMealPlan) {
+                if (hasValidOfferAwaiting && !retailProductSearchOnly) {
                     val pendingOffer = currentPending!!
                     textToReturn = formatAppOwnedRecipeProposal(pendingOffer)
                     // The text parser may have extracted only the bold title from the final prose,
@@ -487,7 +456,7 @@ class AiMealPlannerOrchestrator @Inject constructor(
                         ?: if (replacementRequest) {
                             finalRes.text.lineSequence()
                                 .map { it.trim().removePrefix("#").trim() }
-                                .firstOrNull { it.isNotBlank() && !it.startsWith("MEAL_PLAN_JSON:") }
+                                .firstOrNull { it.isNotBlank() }
                                 ?.take(320)
                         } else null
                     val structuredProposal = proposalFromPendingSnapshot(pendingOffer).copy(
@@ -589,14 +558,7 @@ class AiMealPlannerOrchestrator @Inject constructor(
 
                 // Store the exact validated snapshot alongside the assistant message. The UI
                 // reconstructs pending cards from this payload after process/app restarts.
-                val validatedMealPlan = if (!retailProductSearchOnly) {
-                    finalRes.mealPlan?.takeIf { it.size > 1 }?.map { recipeValidator.validateProposal(it) }
-                } else null
                 val proposalPayload = when {
-                    validatedMealPlan != null -> ProposalMessagePayload(
-                        kind = "MEAL_PLAN",
-                        meals = validatedMealPlan
-                    )
                     validatedProposal != null -> ProposalMessagePayload(
                         kind = "SINGLE_MEAL",
                         singleMeal = validatedProposal
@@ -633,8 +595,7 @@ class AiMealPlannerOrchestrator @Inject constructor(
                 AiOrchestrationResult.Final(
                     assistantText = textToReturn,
                     validatedProposal = validatedProposal,
-                    mealPlan = if (retailProductSearchOnly) null else finalRes.mealPlan,
-                    proposedAction = if (retailProductSearchOnly || isMealPlanRequest(userMessageText) || finalRes.mealPlan != null) {
+                    proposedAction = if (retailProductSearchOnly) {
                         null
                     } else if (hasValidOfferAwaiting) {
                         com.example.chatgpt_mealplanner.contract.AiProposedAction.SaveMeal(
@@ -645,7 +606,8 @@ class AiMealPlannerOrchestrator @Inject constructor(
                     },
                     modelId = finalRes.modelId,
                     kitPacketRequest = kitPacketRequest,
-                    quickReplies = finalRes.quickReplies
+                    quickReplies = finalRes.quickReplies,
+                    mealsLeftInPlan = finalRes.mealsLeftInPlan
                 )
             }
             is AiProviderResponse.Error -> {
@@ -715,40 +677,6 @@ class AiMealPlannerOrchestrator @Inject constructor(
                 )
             )
         ).takeUnless { it is AiProviderResponse.Error }
-    }
-
-    /**
-     * Asks Claude to fix a plan until nothing is wrong or the attempts run out. The card then warns
-     * about what's left, and can't be saved if a meal breaks an allergy or diet. Returns null to keep
-     * the reply as it is.
-     */
-    private suspend fun correctedMealPlan(
-        request: AiProviderRequest,
-        response: AiProviderResponse,
-        userMessageText: String
-    ): AiProviderResponse.FinalResponse? {
-        var latest = response as? AiProviderResponse.FinalResponse ?: return null
-        if ((latest.mealPlan?.size ?: 0) <= 1 || isRetailProductSearchOnlyRequest(userMessageText)) return null
-        repeat(MAX_CORRECTION_ATTEMPTS) {
-            val problems = latest.mealPlan.orEmpty().flatMap { meal ->
-                recipeValidator.correctionsNeeded(meal).map { "${meal.title}: $it" }
-            }.distinct()
-            if (problems.isEmpty()) return latest
-
-            safeLog("[MEAL_PLAN_CORRECTION] problems=${problems.size}")
-            val correction = provider.send(
-                request.copy(
-                    allowWebSearch = false,
-                    availableTools = emptyList(),
-                    messages = request.messages + AiChatMessage(role = "assistant", content = latest.text) + AiChatMessage(
-                        role = "user",
-                        content = "[MEAL_PLAN_CORRECTION] Fix these in that plan: ${problems.joinToString(" ")} Replace any meal that breaks an allergy or diet, then send the whole plan again in the same format, including MEAL_PLAN_JSON."
-                    )
-                )
-            ) as? AiProviderResponse.FinalResponse
-            latest = correction?.takeIf { (it.mealPlan?.size ?: 0) > 1 } ?: return latest
-        }
-        return latest
     }
 
     private fun historyTextFor(message: ChatMessageEntity): String? =
@@ -1217,58 +1145,6 @@ class AiMealPlannerOrchestrator @Inject constructor(
         return asksForRetailLookup && !asksForMealPlanning
     }
 
-    private fun isMealPlanRequest(userMessageText: String): Boolean {
-        val lower = intentTextWithoutNegatedGenerationInstructions(userMessageText)
-        val mentionsPlan = lower.contains("meal plan") ||
-                lower.contains("weekly plan") ||
-                lower.contains("weekly menu") ||
-                lower.contains("menu for the week") ||
-                lower.contains("plan for the week") ||
-                lower.contains("week of meals") ||
-                lower.contains("remainder of the week") ||
-                lower.contains("rest of the week") ||
-                lower.contains("remaining week") ||
-                lower.contains("remaining days of the week") ||
-                lower.contains("rest of this week") ||
-                lower.contains("remainder of this week") ||
-                lower.contains("meals for this week") ||
-                lower.contains("meals for the week") ||
-                lower.contains("this week's meals") ||
-                lower.contains("this weeks meals") ||
-                lower.contains("7-day plan") ||
-                lower.contains("7 day plan") ||
-                lower.contains("seven-day plan") ||
-                lower.contains("seven day plan")
-        return mentionsPlan
-    }
-
-    /**
-     * Classify the assistant's actual output, not the wording of the user's request.
-     * A multi-day/multi-meal answer must never be turned into the single-recipe Save card.
-     */
-    private fun isMultiMealResponse(text: String): Boolean {
-        val lines = text.lineSequence().map { it.trim() }
-            .filter { it.isNotBlank() }
-            .toList()
-        if (lines.isEmpty()) return false
-
-        val dayHeadings = Regex(
-            "(?i)^(?:#{1,6}\\s*)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?:\\s*[:—–-].*)?$"
-        )
-        val daySections = lines.count { dayHeadings.matches(it) }
-        if (daySections >= 2) return true
-
-        val mealEntry = Regex(
-            "(?i)^(?:[-*•]\\s*|\\d+[.)]\\s*|#{1,6}\\s*)?(?:(?:meal|option)\\s*\\d+\\s*[:.)—–-]?\\s*)?(?:(?:breakfast|brunch|lunch|dinner|tea|supper)\\s*[:—–-]\\s*).{3,}$"
-        )
-        if (lines.count { mealEntry.matches(it) } >= 2) return true
-
-        // Do not classify a single recipe as a multi-meal plan just because its
-        // ingredients or cooking steps use a numbered list. Multi-meal responses
-        // are identified by multiple day headings or explicit meal-slot entries above.
-        return false
-    }
-
     private fun sanitizeUncommittedPlannerClaims(text: String): String {
         // Model prose is not evidence of a database write. Cover contractions,
         // plural meals and passive completion claims as well as "I have added".
@@ -1311,7 +1187,7 @@ class AiMealPlannerOrchestrator @Inject constructor(
         The database is authoritative; use tools for dynamic queries. Default servings to householdSize in the context, or 2 if it is not there.
 
         SCOPE:
-        1. A product lookup is not a request for a recipe or meal plan. Give a recipe or MEAL_PLAN_JSON only when the user asks for meal ideas, a recipe or a plan in that message; do not infer it from earlier conversation.
+        1. A product lookup is not a request for a recipe or meal plan. Give a recipe only when the user asks for meal ideas, a recipe or a plan in that message; do not infer it from earlier conversation.
         2. Live retailer search, online prices, promotions and stock lookups are disabled. Do not call 'search_retail_products' or imply a price or stock level was checked. Users record real purchase prices against their own shops; mention one only when it is in the context, with its date and shop. Otherwise say the price is unknown. Never invent prices, availability or savings.
 
         LOCALISATION:
@@ -1357,7 +1233,7 @@ class AiMealPlannerOrchestrator @Inject constructor(
 
         QUICK REPLIES:
         1. When your reply ends by asking the user a question they can answer in a few words (a choice, a yes or no, an adjustment), you may add one last line of the exact form QUICK_REPLIES: ["...","..."] with 2 to 4 short answers the user is likely to want, each under 30 characters, written as the user would say them, such as "Yes, go ahead" or "Make it vegetarian". Make them specific to your question and different from each other.
-        2. Leave it out when the reply asks nothing, asks for something free-form such as a name or a date, asks for a packet or a photo, or contains MEAL_PLAN_JSON or a recipe card (the app shows its own buttons for those). The line is for the app and the user never sees it.
+        2. Leave it out when the reply asks nothing, asks for something free-form such as a name or a date, asks for a packet or a photo, or contains a recipe card (the app shows its own buttons for those). The line is for the app and the user never sees it.
 
         TOOLS AND SAVING:
         1. You cannot change the Planner, Inventory, Shopping List or Staples by saying you did. When the user explicitly asks for a change (for example 'mark milk as out'), call the matching write tool, and say it is done only when the tool result reports success. If no tool can do it, say so.
@@ -1370,10 +1246,11 @@ class AiMealPlannerOrchestrator @Inject constructor(
         3. When replacing a recipe because the user asked for a change, fill changeSummary with what is different in the new meal; otherwise it may be null.
 
         MEAL PLANS (several meals or days):
-        1. Never write a whole plan in one reply: it is too long to send. Build it ONE meal at a time. Work out the list of meal slots the user wants (for example Mon dinner, Tue dinner), say it in one short line, then propose only the first slot as a normal single recipe (see SINGLE RECIPE: call 'offer_add_planned_meal' with its date and mealType). Never write MEAL_PLAN_JSON.
-        2. Say where you are in the plan ("Meal 1 of 5, Monday dinner") and tell the user to discuss or change this meal, then tap Save meal on the card when happy.
-        3. Once a meal is saved it appears in upcomingPlannedMeals with its ingredients. When the user says to carry on ("next", "looks good, next"), propose the next slot as a new recipe. Treat what upcomingPlannedMeals already uses as taken: do not use up the same stock twice, and prefer ingredients that are already planned for another meal if they would otherwise be wasted, or that are in stock but not yet planned. Keep variety against the meals already planned. If the user has not saved the previous card and asks for the next meal, remind them in one line to save it first (or say skip) and wait.
-        4. After the last slot, say the plan is complete in one line.
+        1. Never write a whole plan in one reply: it is too long to send. Build it ONE meal at a time. Work out the list of meal slots the user wants (for example Mon dinner, Tue dinner), say it in one short line, then propose only the first slot as a normal single recipe (see SINGLE RECIPE: call 'offer_add_planned_meal' with its date and mealType). 
+        2. Say where you are in the plan ("Meal 1 of 5, Monday dinner") and tell the user to discuss or change this meal, then tap Save meal on the card when happy. When they save, the app asks you for the next meal by itself.
+        3. End EVERY reply while a plan is being built (the recipe, and any discussion reply) with a line "PLAN_LEFT: n" where n is the number of meals still to propose after the current one (0 on the last meal). The line is for the app and the user never sees it. Do not write it outside a plan.
+        4. When the app says a meal was saved, propose the next slot as a new recipe. Once saved, a meal appears in upcomingPlannedMeals with its ingredients. Treat what those already use as taken: do not use up the same stock twice, and keep variety against the meals already planned. If the previous meal was not saved (the user skipped it), just move on.
+        5. After the last slot, say the plan is complete in one line, with PLAN_LEFT: 0.
 
         CHOICES YOU OFFERED:
         1. When you offered named or numbered options and the user picks one ('option 2', 'the second one', 'go with that'), keep that option's meals, recipes, ingredients and titles exactly as proposed unless they ask to change them. Do not generate a new plan on the same theme.
