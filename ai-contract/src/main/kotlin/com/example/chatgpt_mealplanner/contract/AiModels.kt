@@ -53,7 +53,6 @@ sealed interface AiBackendResponse {
     data class Final(
         val text: String,
         val proposal: MealProposal? = null,
-        val mealPlan: List<MealProposal>? = null,
         val proposedAction: AiProposedAction? = null,
         val providerContinuationToken: String? = null,
         val tokenUsage: TokenUsageDto? = null,
@@ -105,11 +104,12 @@ sealed interface AiProviderResponse {
     data class FinalResponse(
         val text: String,
         val proposal: MealProposal? = null,
-        val mealPlan: List<MealProposal>? = null,
         val proposedAction: AiProposedAction? = null,
         val modelId: String? = null,
         /** Short answers the assistant suggests for the question it just asked, shown as buttons under the chat. */
-        val quickReplies: List<String> = emptyList()
+        val quickReplies: List<String> = emptyList(),
+        /** While a plan is being built: meals still to propose after this one. Null when the reply doesn't say. */
+        val mealsLeftInPlan: Int? = null
     ) : AiProviderResponse
 
     data class ToolCalls(
@@ -128,13 +128,13 @@ sealed interface AiOrchestrationResult {
     data class Final(
         val assistantText: String,
         val validatedProposal: ValidatedMealProposal? = null,
-        val mealPlan: List<MealProposal>? = null,
         val proposedAction: AiProposedAction? = null,
         val modelId: String? = null,
         /** The kit whose packet the assistant asked the user for, so the chat shows a Scan packet button. */
         val kitPacketRequest: String? = null,
         /** Quick answers for the question just asked; empty when none. */
-        val quickReplies: List<String> = emptyList()
+        val quickReplies: List<String> = emptyList(),
+        val mealsLeftInPlan: Int? = null
     ) : AiOrchestrationResult
 
     data class Error(

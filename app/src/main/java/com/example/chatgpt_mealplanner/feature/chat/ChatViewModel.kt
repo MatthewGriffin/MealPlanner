@@ -30,6 +30,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
@@ -122,9 +123,8 @@ class ChatViewModel @Inject constructor(
     private val mealChangeRequestDraftFlow = MutableStateFlow("")
     private val mealChangeRequestTitleFlow = MutableStateFlow("")
     private val latestProposalFlow = MutableStateFlow<ValidatedMealProposal?>(null)
-    private val latestMealPlanFlow = MutableStateFlow<List<MealProposal>?>(null)
-    private val mealPlanConflictsFlow = MutableStateFlow<List<com.example.chatgpt_mealplanner.core.model.MealWithIngredients>>(emptyList())
-    private val showMealPlanConflictDialogFlow = MutableStateFlow(false)
+    /** Meals Claude still has to propose in the plan being built one meal at a time. */
+    private var mealsLeftInPlan = 0
     private val latestProposedActionFlow = MutableStateFlow<AiProposedAction?>(null)
     private val isSavingProposalFlow = MutableStateFlow(false)
     private val proposalMessageIdFlow = MutableStateFlow<String?>(null)
@@ -153,9 +153,6 @@ class ChatViewModel @Inject constructor(
         showMealChangeRequestDialogFlow,
         mealChangeRequestDraftFlow,
         mealChangeRequestTitleFlow,
-        latestMealPlanFlow,
-        mealPlanConflictsFlow,
-        showMealPlanConflictDialogFlow,
         kitPacketRequestFlow,
         unscannedKitFlow,
         showPacketScanFlow,
@@ -171,20 +168,17 @@ class ChatViewModel @Inject constructor(
             activeConversationId = flows[0] as String,
             messages = (flows[1] as List<*>).map { it as ChatMessageEntity },
             latestProposal = flows[2] as ValidatedMealProposal?,
-            latestMealPlan = flows[16] as List<MealProposal>?,
-            mealPlanConflicts = flows[17] as List<com.example.chatgpt_mealplanner.core.model.MealWithIngredients>,
-            showMealPlanConflictDialog = flows[18] as Boolean,
             latestProposedAction = flows[3] as AiProposedAction?,
             isSavingProposal = flows[12] as Boolean,
             isLoading = isReqInFlight,
             elapsedSeconds = flows[7] as Int,
             progressStatusText = flows[8] as String?,
             userMessageText = flows[5] as String,
-            kitPacketRequest = (flows[19] as String?) ?: (flows[20] as String?),
-            showPacketScan = flows[21] as Boolean,
-            packetScanKit = flows[22] as String?,
-            packetScanRecipe = flows[23] as Boolean,
-            quickReplies = flows[24] as List<String>,
+            kitPacketRequest = (flows[16] as String?) ?: (flows[17] as String?),
+            showPacketScan = flows[18] as Boolean,
+            packetScanKit = flows[19] as String?,
+            packetScanRecipe = flows[20] as Boolean,
+            quickReplies = flows[21] as List<String>,
             errorMessage = flows[6] as String?,
             requestState = reqHolder.requestState,
             retainedUserMessage = reqHolder.retainedUserMessage,
@@ -262,7 +256,6 @@ class ChatViewModel @Inject constructor(
     fun prepareMealChangeRequest(request: MealChangeRequestEntity) {
         mealChangeRequestIdFlow.value = request.id
         latestProposalFlow.value = null
-        latestMealPlanFlow.value = null
         latestProposedActionFlow.value = null
         mealChangeRequestDraftFlow.value = request.requestText
         mealChangeRequestTitleFlow.value = "this meal"
@@ -354,11 +347,6 @@ class ChatViewModel @Inject constructor(
             ChatUiEvent.CancelMealChangeRequestDraft -> cancelMealChangeRequestDraft()
             ChatUiEvent.RetryLastFailedMessage -> retryLastFailedMessage()
             is ChatUiEvent.SaveMealProposalToPlan -> saveMealProposalToPlan(event.proposal, event.messageId)
-            is ChatUiEvent.AcceptMealPlan -> saveMealPlanToPlan(event.meals, event.messageId, event.replaceConflicts)
-            ChatUiEvent.CancelMealPlanReplacement -> {
-                showMealPlanConflictDialogFlow.value = false
-                mealPlanConflictsFlow.value = emptyList()
-            }
             is ChatUiEvent.ConfirmCookedMeal -> confirmCookedMeal(event.mealId)
             ChatUiEvent.DismissCookConfirmation -> dismissCookConfirmation()
             ChatUiEvent.ClearErrorMessage -> errorMessageFlow.value = null
@@ -448,7 +436,6 @@ class ChatViewModel @Inject constructor(
 
     /** The assistant's own suggestions; for a plan or a recipe card, options for changing it. */
     private fun quickRepliesFor(result: com.example.chatgpt_mealplanner.contract.AiOrchestrationResult.Final): List<String> = when {
-        (result.mealPlan?.size ?: 0) > 1 -> listOf("Make it healthier", "Make it cheaper", "Make it quicker", "Use up what I have first", "Swap one meal")
         result.validatedProposal != null -> listOf("Make it healthier", "Make it quicker", "Make it spicier", "Swap an ingredient")
         else -> result.quickReplies
     }
@@ -457,7 +444,6 @@ class ChatViewModel @Inject constructor(
         // A proposal belongs to the previous assistant turn. Do not leave its Save card
         // visible while a new request (especially a multi-day plan) is being processed.
         latestProposalFlow.value = null
-        latestMealPlanFlow.value = null
         latestProposedActionFlow.value = null
         kitPacketRequestFlow.value = null
         quickRepliesFlow.value = emptyList()
@@ -482,10 +468,10 @@ class ChatViewModel @Inject constructor(
                     if (result.validatedProposal != null && mealChangeRequestIdFlow.value != null) {
                         attachMealChangeRequestToLatestProposal(mealChangeRequestIdFlow.value!!)
                     }
-                    latestMealPlanFlow.value = result.mealPlan?.takeIf { it.size > 1 }
                     latestProposedActionFlow.value = result.proposedAction
                     kitPacketRequestFlow.value = result.kitPacketRequest
                     quickRepliesFlow.value = quickRepliesFor(result)
+                    result.mealsLeftInPlan?.let { mealsLeftInPlan = it }
 
                     val confirmAction = result.proposedAction as? AiProposedAction.ConfirmCookedMeal
                     if (confirmAction != null) {
@@ -549,10 +535,10 @@ class ChatViewModel @Inject constructor(
                     if (result.validatedProposal != null && mealChangeRequestIdFlow.value != null) {
                         attachMealChangeRequestToLatestProposal(mealChangeRequestIdFlow.value!!)
                     }
-                    latestMealPlanFlow.value = result.mealPlan?.takeIf { it.size > 1 }
                     latestProposedActionFlow.value = result.proposedAction
                     kitPacketRequestFlow.value = result.kitPacketRequest
                     quickRepliesFlow.value = quickRepliesFor(result)
+                    result.mealsLeftInPlan?.let { mealsLeftInPlan = it }
 
                     val confirmAction = result.proposedAction as? AiProposedAction.ConfirmCookedMeal
                     if (confirmAction != null) {
@@ -657,6 +643,7 @@ class ChatViewModel @Inject constructor(
                     is DomainResult.Success -> {
                         updateProposalMessageAsApproved(messageId, "Saved '${meal.title}' to your meal plan.")
                         latestProposalFlow.value = null
+                        continuePlanAfterSave(meal.title)
                         runCatching { orchestrator.clearPendingMealProposal("default_conversation") }
                         if (linkedRequest != null) {
                             try {
@@ -685,116 +672,16 @@ class ChatViewModel @Inject constructor(
         }
     }
 
-    private fun saveMealPlanToPlan(meals: List<MealProposal>, messageId: String? = null, replaceConflicts: Boolean = false) {
-        latestMealPlanFlow.value = meals
-        if (messageId != null) proposalMessageIdFlow.value = messageId
-        if (isSavingProposalFlow.value) return
-        if (meals.size < 2 || meals.any { it.title.isBlank() || it.ingredients.isEmpty() || it.steps.isEmpty() || it.suggestedDate.isNullOrBlank() }) {
-            errorMessageFlow.value = "This meal plan is missing dates, ingredients, or cooking instructions. Ask the assistant to regenerate the complete plan."
-            return
-        }
-        isSavingProposalFlow.value = true
+    /** A plan is built one meal at a time: once a meal is saved, Claude is asked for the next one. */
+    private fun continuePlanAfterSave(savedTitle: String) {
+        if (mealsLeftInPlan <= 0) return
+        mealsLeftInPlan--
         viewModelScope.launch {
-            var saved = 0
-            try {
-                val resolvedSlots = meals.map { proposal ->
-                    proposal to com.example.chatgpt_mealplanner.core.ai.resolver.MealSlotResolver.resolveSlot(
-                        requestedDateStr = proposal.suggestedDate,
-                        requestedMealTypeStr = proposal.mealType
-                    )
-                }
-                val firstDate = resolvedSlots.minOf { it.second.date }
-                val lastDate = resolvedSlots.maxOf { it.second.date }
-                val existingMeals = mealRepository.observeMealsForWeek(firstDate, lastDate).firstOrNull().orEmpty()
-                val occupiedSlots = resolvedSlots.map { it.second.date to it.second.mealType }.toSet()
-                val conflicts = existingMeals.filter {
-                    it.meal.status == com.example.chatgpt_mealplanner.core.model.MealStatus.PLANNED &&
-                        (it.meal.date to it.meal.mealType) in occupiedSlots
-                }
-                if (conflicts.isNotEmpty() && !replaceConflicts) {
-                    mealPlanConflictsFlow.value = conflicts
-                    showMealPlanConflictDialogFlow.value = true
-                    return@launch
-                }
-                if (replaceConflicts) {
-                    val currentMeals = mealRepository.observeMealsForWeek(firstDate, lastDate).firstOrNull().orEmpty()
-                    val currentConflicts = currentMeals.filter {
-                        it.meal.status == com.example.chatgpt_mealplanner.core.model.MealStatus.PLANNED &&
-                            (it.meal.date to it.meal.mealType) in occupiedSlots
-                    }
-                    // A replace action is only valid after the user has seen the confirmation
-                    // for these exact existing meals. If the slots changed since the dialog was
-                    // shown (or the action was invoked without the dialog), show confirmation first.
-                    val presentedConflictIds = mealPlanConflictsFlow.value.map { it.meal.id }.toSet()
-                    val currentConflictIds = currentConflicts.map { it.meal.id }.toSet()
-                    if (currentConflicts.isNotEmpty() &&
-                        (!showMealPlanConflictDialogFlow.value || !presentedConflictIds.containsAll(currentConflictIds))) {
-                        mealPlanConflictsFlow.value = currentConflicts
-                        showMealPlanConflictDialogFlow.value = true
-                        return@launch
-                    }
-                    for (conflict in currentConflicts) {
-                        when (val deletion = mealDomainService.deletePlannedMeal(conflict.meal.id)) {
-                            is DomainResult.Success -> Unit
-                            is DomainResult.Failure -> {
-                                errorMessageFlow.value = "Couldn't replace '${conflict.meal.title}': ${formatDomainError(deletion.error)}. No new meals were added."
-                                return@launch
-                            }
-                        }
-                    }
-                    showMealPlanConflictDialogFlow.value = false
-                    mealPlanConflictsFlow.value = emptyList()
-                }
-                for ((proposal, slot) in resolvedSlots) {
-                    val meal = Meal(
-                        id = UUID.randomUUID().toString(),
-                        date = slot.date,
-                        mealType = slot.mealType,
-                        title = proposal.title,
-                        servings = proposal.servings,
-                        batchPortions = proposal.batchPortions,
-                        immediatePortions = proposal.immediatePortions,
-                        leftoverPortions = proposal.leftoverPortions,
-                        cookInTwoBatches = proposal.cookInTwoBatches,
-                        tags = proposal.tags.mapNotNull { runCatching { MealTag.valueOf(it.uppercase()) }.getOrNull() }.toSet(),
-                        instructions = proposal.savedInstructions()
-                    )
-                    val ingredients = proposal.ingredients.map { ingredient ->
-                        MealIngredient(
-                            id = UUID.randomUUID().toString(),
-                            mealId = meal.id,
-                            canonicalIngredientId = ingredient.canonicalIngredientId,
-                            displayName = ingredient.displayName,
-                            plannedQuantity = ingredient.quantity,
-                            plannedUnit = com.example.chatgpt_mealplanner.core.model.parseQuantityUnit(ingredient.unit),
-                            optional = ingredient.optional,
-                            substitutionAllowed = ingredient.substitutionAllowed
-                        )
-                    }
-                    when (val result = mealDomainService.createPlannedMeal(meal, ingredients)) {
-                        is DomainResult.Success -> saved++
-                        is DomainResult.Failure -> {
-                            errorMessageFlow.value = if (saved == 0) {
-                                "Couldn't add '${proposal.title}' to the meal plan: ${formatDomainError(result.error)}"
-                            } else {
-                                "Added $saved of ${meals.size} meals before '${proposal.title}' failed: ${formatDomainError(result.error)}"
-                            }
-                            return@launch
-                        }
-                    }
-                }
-                latestMealPlanFlow.value = null
-                showMealPlanConflictDialogFlow.value = false
-                mealPlanConflictsFlow.value = emptyList()
-                updateProposalMessageAsApproved(proposalMessageIdFlow.value, "Approved and added all $saved meals to your planner. Shopping requirements update automatically.")
-                proposalMessageIdFlow.value = null
-                errorMessageFlow.value = "Accepted meal plan: added all $saved meals to your planner. Shopping requirements update automatically."
-            } finally {
-                isSavingProposalFlow.value = false
-            }
+            // The save finishes before the next request starts.
+            isSavingProposalFlow.first { !it }
+            startSend("Saved \"$savedTitle\". Please propose the next meal of the plan.", "Next meal", null)
         }
     }
-
 
     private suspend fun attachMealChangeRequestToLatestProposal(requestId: String) {
         runCatching {

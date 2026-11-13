@@ -9,8 +9,8 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
-private const val MEAL_PLAN_MARKER = "MEAL_PLAN_JSON:"
 private const val QUICK_REPLIES_MARKER = "QUICK_REPLIES:"
+private const val PLAN_LEFT_MARKER = "PLAN_LEFT:"
 
 /** Reads the meal plan or recipe the model writes into a text reply, and hides the JSON from the user. */
 internal object ModelReplyText {
@@ -39,73 +39,20 @@ internal object ModelReplyText {
         return cleaned to replies
     }
 
+    /**
+     * While building a plan the model ends each reply with PLAN_LEFT: n, the meals still to propose after the current one.
+     * The line is for the app, so it comes out of the text.
+     */
+    fun withoutPlanLeft(text: String): Pair<String, Int?> {
+        val lines = text.lines()
+        val index = lines.indexOfLast { it.trim().startsWith(PLAN_LEFT_MARKER) }
+        if (index < 0) return text to null
+        val left = lines[index].trim().removePrefix(PLAN_LEFT_MARKER).trim().toIntOrNull()?.coerceIn(0, 30)
+        return lines.filterIndexed { i, _ -> i != index }.joinToString("\n").trim() to left
+    }
+
     private const val MAX_QUICK_REPLIES = 4
     private const val MAX_QUICK_REPLY_CHARS = 40
-
-    fun mealPlan(text: String): List<MealProposal>? {
-        val planJson = mealPlanJsonIn(text) ?: return null
-        return try {
-            val array = json.parseToJsonElement(planJson).jsonArray
-            val meals = array.map { element ->
-                val obj = element.jsonObject
-                MealProposal(
-                    title = obj["title"]?.jsonPrimitive?.content ?: return null,
-                    mealType = obj["mealType"]?.jsonPrimitive?.content,
-                    suggestedDate = obj["suggestedDate"]?.jsonPrimitive?.content ?: obj["date"]?.jsonPrimitive?.content,
-                    servings = obj["servings"]?.jsonPrimitive?.content?.toIntOrNull() ?: 2,
-                    ingredients = obj["ingredients"]?.jsonArray?.map { ingredientElement ->
-                        val ingredient = ingredientElement.jsonObject
-                        ProposedIngredient(
-                            displayName = ingredient["displayName"]?.jsonPrimitive?.content ?: return null,
-                            quantity = ingredient["quantity"]?.jsonPrimitive?.content?.toDoubleOrNull()
-                                ?: ingredient["plannedQuantity"]?.jsonPrimitive?.content?.toDoubleOrNull() ?: return null,
-                            unit = ingredient["unit"]?.jsonPrimitive?.content
-                                ?: ingredient["plannedUnit"]?.jsonPrimitive?.content.orEmpty(),
-                            optional = ingredient["optional"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false,
-                            substitutionAllowed = ingredient["substitutionAllowed"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: true,
-                            measure = ingredient["measure"]?.jsonPrimitive?.contentOrNull?.ifBlank { null },
-                            substitute = ingredient["substitute"]?.jsonPrimitive?.contentOrNull?.ifBlank { null }
-                        )
-                    } ?: emptyList(),
-                    steps = obj["steps"]?.jsonArray?.mapIndexed { index, stepElement ->
-                        val step = stepElement.jsonObject
-                        RecipeStep(
-                            order = step["order"]?.jsonPrimitive?.content?.toIntOrNull() ?: index + 1,
-                            instruction = step["instruction"]?.jsonPrimitive?.content ?: "",
-                            durationMinutes = step["durationMinutes"]?.jsonPrimitive?.content?.toDoubleOrNull()?.toInt()
-                        )
-                    } ?: emptyList(),
-                    prepMinutes = obj["prepMinutes"]?.jsonPrimitive?.content?.toDoubleOrNull()?.toInt(),
-                    cookMinutes = obj["cookMinutes"]?.jsonPrimitive?.content?.toDoubleOrNull()?.toInt(),
-                    reasoningSummary = obj["whyThisSuits"]?.jsonPrimitive?.contentOrNull
-                        ?: obj["reasoningSummary"]?.jsonPrimitive?.contentOrNull
-                        ?: "Part of the proposed weekly plan"
-                )
-            }
-            meals.takeIf { it.size > 1 && it.all { meal -> meal.title.isNotBlank() && meal.suggestedDate != null && meal.ingredients.isNotEmpty() && meal.steps.isNotEmpty() } }
-        } catch (_: Throwable) {
-            null
-        }
-    }
-
-    /** Models don't always use the marker, and sometimes send only a code fence. */
-    private fun mealPlanJsonIn(text: String): String? =
-        if (text.contains(MEAL_PLAN_MARKER)) {
-            text.substringAfter(MEAL_PLAN_MARKER).trim()
-                .removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
-        } else {
-            fencedJsonArray.find(text)?.groupValues?.get(1)
-        }
-
-    /** The JSON is for the app. If it can't be read, the user still shouldn't see it. */
-    fun withoutMealPlanJson(text: String, planWasRead: Boolean): String {
-        val withoutJson = when {
-            text.contains(MEAL_PLAN_MARKER) -> text.substringBefore(MEAL_PLAN_MARKER)
-            planWasRead -> fencedJsonArray.replace(text, "")
-            else -> text
-        }
-        return withoutJson.trim().removeSuffix("***").trim()
-    }
 
     fun mealProposal(text: String): MealProposal? {
         if (!text.contains("PROPOSAL_JSON:")) return null

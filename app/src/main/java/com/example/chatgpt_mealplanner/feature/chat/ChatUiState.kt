@@ -17,9 +17,6 @@ data class ChatUiState(
     val activeConversationId: String = "default_conversation",
     val messages: List<ChatMessageEntity> = emptyList(),
     val latestProposal: ValidatedMealProposal? = null,
-    val latestMealPlan: List<MealProposal>? = null,
-    val mealPlanConflicts: List<MealWithIngredients> = emptyList(),
-    val showMealPlanConflictDialog: Boolean = false,
     val latestProposedAction: AiProposedAction? = null,
     val isSavingProposal: Boolean = false,
     val isLoading: Boolean = false,
@@ -71,8 +68,6 @@ sealed interface ChatUiEvent {
     object CancelMealChangeRequestDraft : ChatUiEvent
     object RetryLastFailedMessage : ChatUiEvent
     data class SaveMealProposalToPlan(val proposal: MealProposal, val messageId: String? = null) : ChatUiEvent
-    data class AcceptMealPlan(val meals: List<MealProposal>, val messageId: String? = null, val replaceConflicts: Boolean = false) : ChatUiEvent
-    object CancelMealPlanReplacement : ChatUiEvent
     data class ConfirmCookedMeal(val mealId: String) : ChatUiEvent
     object DismissCookConfirmation : ChatUiEvent
     object ClearErrorMessage : ChatUiEvent

@@ -441,66 +441,26 @@ class ClaudeMealPlannerAiProviderTest {
         assertEquals(180_000L, GLOBAL_TIMEOUT_CAP_MS)
     }
 
-    private val validPlanJson = """[
-        {"title":"Pasta","suggestedDate":"2026-11-06","mealType":"DINNER","servings":2,"ingredients":[{"displayName":"Penne","quantity":200,"unit":"GRAM"}],"steps":[{"order":1,"instruction":"Boil"}]},
-        {"title":"Curry","suggestedDate":"2026-11-07","mealType":"DINNER","servings":2,"ingredients":[{"displayName":"Rice","quantity":200,"unit":"GRAM"}],"steps":[{"order":1,"instruction":"Simmer"}]}
-    ]"""
-
     private fun finalReplyFor(value: String): AiProviderResponse {
         server.enqueue(textReply(value))
         return runBlocking { provider.send(request()) }
     }
 
     @Test
-    fun unreadableMealPlanJson_isNeverShownToTheUser() {
-        val final = finalReplyFor("Your week:\nMonday: Pasta\nMEAL_PLAN_JSON: [{\"title\":\"Pasta") as AiProviderResponse.FinalResponse
+    fun planLeftLine_isReadAndHidden() {
+        val final = finalReplyFor("Meal 1 of 3, Monday dinner.\nPLAN_LEFT: 2") as AiProviderResponse.FinalResponse
 
-        assertEquals("Your week:\nMonday: Pasta", final.text)
-        assertNull(final.mealPlan)
-    }
-
-    @Test
-    fun replyThatIsOnlyUnreadableMealPlanJson_isAnError() {
-        assertEquals("RESPONSE_INVALID", (finalReplyFor("MEAL_PLAN_JSON: [{\"title\":\"Pasta") as AiProviderResponse.Error).code)
-    }
-
-    @Test
-    fun mealPlanJson_isReadWithOrWithoutTheMarker() {
-        listOf(
-            "Your week\nMEAL_PLAN_JSON:\n```json\n$validPlanJson\n```",
-            "Your week\n\n***\n\n```json\n$validPlanJson\n```",
-            "Your week\n\n***\n\n```json\n$validPlanJson\n"
-        ).forEach { reply ->
-            val final = finalReplyFor(reply) as AiProviderResponse.FinalResponse
-            assertEquals(reply, listOf("Pasta", "Curry"), final.mealPlan?.map { it.title })
-            assertEquals("Your week", final.text)
-        }
+        assertEquals("Meal 1 of 3, Monday dinner.", final.text)
+        assertEquals(2, final.mealsLeftInPlan)
     }
 
     @Test
     fun otherCodeFencesAndBoldWords_areLeftAlone() {
         val reply = "Try this:\n```json\n[1, 2]\n```"
         val fenced = finalReplyFor(reply) as AiProviderResponse.FinalResponse
-        assertNull(fenced.mealPlan)
         assertEquals(reply, fenced.text)
 
         assertNull((finalReplyFor("You have **milk** and **eggs**.") as AiProviderResponse.FinalResponse).proposal)
-    }
-
-    @Test
-    fun mealPlanJson_keepsTimesMeasuresAndStepLengths() {
-        val plan = """[
-            {"title":"Pasta","suggestedDate":"2026-11-06","mealType":"DINNER","servings":2,"prepMinutes":5,"cookMinutes":15,"whyThisSuits":"Quick.","ingredients":[{"displayName":"Oregano","quantity":1,"unit":"GRAM","measure":"1 tsp","substitute":"basil"}],"steps":[{"order":1,"instruction":"Boil","durationMinutes":10}]},
-            {"title":"Curry","suggestedDate":"2026-11-07","mealType":"DINNER","servings":2,"ingredients":[{"displayName":"Rice","quantity":200,"unit":"GRAM"}],"steps":[{"order":1,"instruction":"Simmer"}]}
-        ]"""
-
-        val first = (finalReplyFor("Your week\nMEAL_PLAN_JSON: $plan") as AiProviderResponse.FinalResponse).mealPlan!!.first()
-
-        assertEquals(20, first.totalMinutes())
-        assertEquals("Quick.", first.reasoningSummary)
-        assertEquals("1 tsp", first.ingredients.single().measure)
-        assertEquals("basil", first.ingredients.single().substitute)
-        assertEquals(10, first.steps.single().durationMinutes)
     }
 
     @Test
