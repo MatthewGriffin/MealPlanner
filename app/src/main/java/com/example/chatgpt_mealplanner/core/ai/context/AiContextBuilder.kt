@@ -79,7 +79,10 @@ class AiContextBuilder @Inject constructor(
                 title = it.meal.title,
                 date = it.meal.date,
                 status = it.meal.status.name,
-                mealType = it.meal.mealType.name
+                mealType = it.meal.mealType.name,
+                ingredients = it.ingredients.filter { ing -> !ing.optional }.map { ing ->
+                    "${com.example.chatgpt_mealplanner.core.util.formatQuantityNumber(ing.plannedQuantity)} ${ing.plannedUnit.name.lowercase()} ${ing.displayName}"
+                }
             )
         }
 
