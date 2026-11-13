@@ -75,10 +75,14 @@ class RecipeValidator @Inject constructor(
                 issues.add("Ingredient '${ing.displayName}' quantity must be greater than 0.")
             }
 
-            val matchingLots = if (ing.canonicalIngredientId != null) {
+            val byId = if (ing.canonicalIngredientId != null) {
                 allInventory.filter { it.canonicalIngredientId == ing.canonicalIngredientId }
-            } else {
-                allInventory.filter { it.displayName.equals(ing.displayName, ignoreCase = true) }
+            } else emptyList()
+            val matchingLots = byId.ifEmpty {
+                allInventory.filter {
+                    it.displayName.equals(ing.displayName, ignoreCase = true) ||
+                        com.example.chatgpt_mealplanner.core.util.IngredientNameMatcher.matches(it.displayName, ing.displayName)
+                }
             }
             val hasUncertain = matchingLots.any {
                 it.status == ItemStatus.NEEDS_CONFIRMATION ||
