@@ -23,7 +23,7 @@ object QuotaLimits {
 
 /**
  * Counts AI use per calendar day (device local time) and says whether more is allowed.
- * The tier comes from [tierSource]; until Play billing exists, release builds are FREE and debug builds PAID.
+ * The tier comes from [tierSource]; until Play billing exists, release builds are FREE; debug builds bypass the limits.
  */
 @Singleton
 open class UsageQuota @Inject constructor(
@@ -37,7 +37,7 @@ open class UsageQuota @Inject constructor(
     open fun tier(): UsageTier {
         val saved = runCatching { prefs?.getString("tier", null) }.getOrNull()
         if (saved != null) return runCatching { UsageTier.valueOf(saved) }.getOrDefault(UsageTier.FREE)
-        return if (com.example.chatgpt_mealplanner.BuildConfig.DEBUG) UsageTier.PAID else UsageTier.FREE
+        return UsageTier.FREE
     }
 
     open fun setTier(tier: UsageTier) {
@@ -53,8 +53,11 @@ open class UsageQuota @Inject constructor(
         }.getOrDefault(0)
     }
 
+    /** Debug builds (dev testing) ignore the limits completely. Tests can override this to check the limits. */
+    protected open fun limitsBypassed(): Boolean = com.example.chatgpt_mealplanner.BuildConfig.DEBUG
+
     open fun remaining(kind: QuotaKind): Int =
-        (QuotaLimits.forTier(tier()).limitFor(kind) - used(kind)).coerceAtLeast(0)
+        if (limitsBypassed()) Int.MAX_VALUE else (QuotaLimits.forTier(tier()).limitFor(kind) - used(kind)).coerceAtLeast(0)
 
     /** True when [amount] more fits today. Does not count anything. */
     open fun canUse(kind: QuotaKind, amount: Int = 1): Boolean = remaining(kind) >= amount

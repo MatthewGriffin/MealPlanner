@@ -29,4 +29,16 @@ class UsageQuotaTest {
         assertFalse(paid.limitMessage(QuotaKind.ITEM_ENTRY).contains("free"))
         assertTrue(paid.limitMessage(QuotaKind.ITEM_ENTRY).contains("${QuotaLimits.PAID.itemEntries}"))
     }
+
+    @Test
+    fun bypassedLimitsAlwaysAllowAndEnforcedLimitsDoNot() {
+        val bypassed = object : UsageQuota(null) { override fun limitsBypassed() = true }
+        assertTrue(bypassed.canUse(QuotaKind.CHAT_MESSAGE, 100000))
+        val enforced = object : UsageQuota(null) {
+            override fun limitsBypassed() = false
+            override fun tier() = UsageTier.FREE
+        }
+        assertTrue(enforced.canUse(QuotaKind.CHAT_MESSAGE, QuotaLimits.FREE.chatMessages))
+        assertFalse(enforced.canUse(QuotaKind.CHAT_MESSAGE, QuotaLimits.FREE.chatMessages + 1))
+    }
 }
