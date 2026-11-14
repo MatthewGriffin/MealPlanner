@@ -1,0 +1,144 @@
+import { ALLOWED_MODELS, microDollars } from "./pricing";
+import { Tier } from "./quota";
+import { makeToken, verifyToken } from "./token";
+import { Env } from "./objects";
+
+export { UserQuota, Counters } from "./objects";
+
+const MAX_BODY_BYTES = 12 * 1024 * 1024; // photos of packets and recipes arrive as base64
+const MAX_OUTPUT_TOKENS = 16_000;
+const TIERS: Tier[] = ["free", "pro", "max"];
+
+const today = () => new Date().toISOString().slice(0, 10);
+const json = (status: number, body: unknown, headers: Record<string, string> = {}) =>
+  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", ...headers } });
+const anthropicError = (status: number, type: string, message: string, headers: Record<string, string> = {}) =>
+  json(status, { type: "error", error: { type, message } }, headers);
+
+function usageHeaders(s: { tier: string; percentLeft: number; resetsOn: string | null }): Record<string, string> {
+  return {
+    "x-pp-tier": s.tier,
+    "x-pp-percent-left": String(s.percentLeft),
+    "x-pp-resets-on": s.resetsOn ?? "",
+  };
+}
+
+function bearer(request: Request): string | null {
+  const h = request.headers.get("authorization");
+  return h?.startsWith("Bearer ") ? h.slice(7) : null;
+}
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const url = new URL(request.url);
+    try {
+      if (request.method === "POST" && url.pathname === "/v1/register") return await register(request, env);
+      if (request.method === "GET" && url.pathname === "/v1/usage") return await usage(request, env);
+      if (request.method === "POST" && url.pathname === "/v1/messages") return await messages(request, env);
+      if (request.method === "POST" && url.pathname === "/admin/tier") return await adminTier(request, env);
+      return json(404, { error: "not found" });
+    } catch (e) {
+      return anthropicError(500, "api_error", "The service had a problem. Please try again.");
+    }
+  },
+};
+
+/** Gives an install its own account. Limited per IP address so accounts cannot be farmed for free allowances. */
+async function register(request: Request, env: Env): Promise<Response> {
+  const ip = request.headers.get("cf-connecting-ip") ?? "unknown";
+  const gate = env.COUNTERS.get(env.COUNTERS.idFromName(`reg:${ip}:${today()}`));
+  const made = await gate.add(1);
+  if (made > Number(env.REGISTRATIONS_PER_IP_PER_DAY)) {
+    return json(429, { error: "Too many new accounts from this network today. Try again tomorrow." });
+  }
+  const userId = crypto.randomUUID();
+  return json(200, { token: await makeToken(env.TOKEN_SECRET, userId) });
+}
+
+async function userFor(request: Request, env: Env) {
+  // The Anthropic SDK sends its "API key" in x-api-key; the app puts the account token there.
+  const token = request.headers.get("x-api-key") ?? bearer(request);
+  const userId = await verifyToken(env.TOKEN_SECRET, token);
+  if (!userId) return null;
+  return env.USER_QUOTA.get(env.USER_QUOTA.idFromName(userId));
+}
+
+async function usage(request: Request, env: Env): Promise<Response> {
+  const user = await userFor(request, env);
+  if (!user) return json(401, { error: "unknown account" });
+  const snap = await user.view(today());
+  return json(200, snap, usageHeaders(snap));
+}
+
+async function messages(request: Request, env: Env): Promise<Response> {
+  const user = await userFor(request, env);
+  if (!user) return anthropicError(401, "authentication_error", "This install is not registered.");
+
+  const raw = await request.text();
+  if (raw.length > MAX_BODY_BYTES) return anthropicError(413, "request_too_large", "That request is too large.");
+  let body: Record<string, unknown>;
+  try {
+    body = JSON.parse(raw);
+  } catch {
+    return anthropicError(400, "invalid_request_error", "Invalid JSON.");
+  }
+  const model = String(body.model ?? "");
+  if (!ALLOWED_MODELS.includes(model)) return anthropicError(400, "invalid_request_error", "That model is not available.");
+  if (body.stream === true) return anthropicError(400, "invalid_request_error", "Streaming is not supported.");
+  if (typeof body.max_tokens === "number" && body.max_tokens > MAX_OUTPUT_TOKENS) body.max_tokens = MAX_OUTPUT_TOKENS;
+
+  // Whole-service backstop, so a flood of fake accounts cannot run up the bill.
+  const globalCounter = env.COUNTERS.get(env.COUNTERS.idFromName(`global:${today()}`));
+  if ((await globalCounter.get()) >= Number(env.GLOBAL_DAILY_LIMIT_MICROS)) {
+    return anthropicError(503, "overloaded_error", "The AI is very busy today. Please try again tomorrow.");
+  }
+
+  const check = await user.check(today());
+  if (!check.allowed) {
+    // 402, not 429: the SDK retries 429s, and waiting would not help here.
+    const message =
+      check.snapshot.tier === "free"
+        ? "You have used this week's free AI allowance."
+        : "You have used today's AI allowance.";
+    return anthropicError(402, "usage_limit", message, usageHeaders(check.snapshot));
+  }
+
+  const upstreamHeaders = new Headers({
+    "content-type": "application/json",
+    "x-api-key": env.ANTHROPIC_API_KEY,
+    "anthropic-version": request.headers.get("anthropic-version") ?? "2023-06-01",
+  });
+  const beta = request.headers.get("anthropic-beta");
+  if (beta) upstreamHeaders.set("anthropic-beta", beta);
+
+  const upstream = await fetch(`${env.UPSTREAM_URL}/v1/messages`, { method: "POST", headers: upstreamHeaders, body: JSON.stringify(body) });
+  const text = await upstream.text();
+
+  let snap = check.snapshot;
+  if (upstream.ok) {
+    let micros = 0;
+    try {
+      micros = microDollars(model, JSON.parse(text).usage);
+    } catch {
+      // An unreadable reply is not charged.
+    }
+    if (micros > 0) {
+      snap = await user.charge(today(), micros);
+      await globalCounter.add(micros);
+    }
+  }
+  return new Response(text, {
+    status: upstream.status,
+    headers: { "content-type": upstream.headers.get("content-type") ?? "application/json", ...usageHeaders(snap) },
+  });
+}
+
+/** Sets an account's plan. Used for testing now and for the billing webhook later. */
+async function adminTier(request: Request, env: Env): Promise<Response> {
+  if (!env.ADMIN_SECRET || bearer(request) !== env.ADMIN_SECRET) return json(401, { error: "no" });
+  const { token, tier } = (await request.json()) as { token?: string; tier?: string };
+  const userId = await verifyToken(env.TOKEN_SECRET, token);
+  if (!userId || !TIERS.includes(tier as Tier)) return json(400, { error: "need a valid token and tier (free, pro, max)" });
+  const user = env.USER_QUOTA.get(env.USER_QUOTA.idFromName(userId));
+  return json(200, await user.setPlan(today(), tier as Tier));
+}
