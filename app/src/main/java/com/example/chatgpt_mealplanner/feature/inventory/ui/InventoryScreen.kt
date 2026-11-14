@@ -347,13 +347,15 @@ fun InventoryScreen(
 
 @Composable
 fun StatusChip(status: ItemStatus) {
+    val dark = androidx.compose.foundation.isSystemInDarkTheme()
+    // Brighter shades on dark backgrounds so the label stays readable.
     val (color, text) = when (status) {
-        ItemStatus.AVAILABLE -> Color(0xFF2E7D32) to "Available"
-        ItemStatus.LOW -> Color(0xFFE65100) to "Low Stock"
-        ItemStatus.USE_SOON -> Color(0xFFC62828) to "Use Soon"
-        ItemStatus.OUT -> Color(0xFF757575) to "Out of Stock"
-        ItemStatus.DISCARDED -> Color(0xFF9E9E9E) to "Discarded"
-        ItemStatus.NEEDS_CONFIRMATION -> Color(0xFF1976D2) to "Needs Review"
+        ItemStatus.AVAILABLE -> (if (dark) Color(0xFF8FD099) else Color(0xFF1F6B2B)) to "Available"
+        ItemStatus.LOW -> (if (dark) Color(0xFFFFB074) else Color(0xFFB84200)) to "Low Stock"
+        ItemStatus.USE_SOON -> (if (dark) Color(0xFFFF9A8F) else Color(0xFFB3261E)) to "Use Soon"
+        ItemStatus.OUT -> (if (dark) Color(0xFFC4C9C0) else Color(0xFF5F625C)) to "Out of Stock"
+        ItemStatus.DISCARDED -> (if (dark) Color(0xFFA9AEA5) else Color(0xFF777A74)) to "Discarded"
+        ItemStatus.NEEDS_CONFIRMATION -> (if (dark) Color(0xFF9CC9FF) else Color(0xFF1760B0)) to "Needs Review"
     }
     Surface(
         color = color.copy(alpha = 0.15f),
