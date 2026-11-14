@@ -38,7 +38,7 @@ fun SubscriptionScreen(modifier: Modifier = Modifier, viewModel: SubscriptionVie
 
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("Your plan: ${if (usage.tier == UsageTier.PAID) "Plus" else "Free"}", fontWeight = FontWeight.Bold)
+                Text("Your plan: ${if (usage.tier == UsageTier.PAID) "Pro" else "Free"}", fontWeight = FontWeight.Bold)
                 if (usage.unlimited) {
                     Text("Limits are not tracked here.", style = MaterialTheme.typography.bodyMedium)
                 } else {
@@ -50,11 +50,11 @@ fun SubscriptionScreen(modifier: Modifier = Modifier, viewModel: SubscriptionVie
             }
         }
 
-        PlanCard("Free", listOf("Try the AI features every day"), highlighted = usage.tier == UsageTier.FREE)
-        PlanCard("Plus", listOf("${QuotaLimits.PAID_MULTIPLE}x the daily AI usage"), highlighted = usage.tier == UsageTier.PAID)
+        PlanCard("Free", listOf("Limited trial usage of the AI features"), highlighted = usage.tier == UsageTier.FREE)
+        PlanCard("Pro", listOf("${QuotaLimits.PAID_MULTIPLE}x the daily AI usage"), highlighted = usage.tier == UsageTier.PAID)
 
         if (usage.tier == UsageTier.FREE) {
-            Button(onClick = viewModel::subscribe, modifier = Modifier.fillMaxWidth()) { Text("Subscribe to Plus") }
+            Button(onClick = viewModel::subscribe, modifier = Modifier.fillMaxWidth()) { Text("Subscribe to Pro") }
             OutlinedButton(onClick = viewModel::restore, modifier = Modifier.fillMaxWidth()) { Text("Restore purchase") }
         } else {
             Button(onClick = viewModel::manage, modifier = Modifier.fillMaxWidth()) { Text("Change or cancel subscription") }
@@ -67,7 +67,7 @@ fun SubscriptionScreen(modifier: Modifier = Modifier, viewModel: SubscriptionVie
             Spacer(Modifier.height(8.dp))
             Text("Debug only", style = MaterialTheme.typography.labelLarge)
             OutlinedButton(onClick = { viewModel.debugSetTier(UsageTier.FREE) }, modifier = Modifier.fillMaxWidth()) { Text("Show as Free plan") }
-            OutlinedButton(onClick = { viewModel.debugSetTier(UsageTier.PAID) }, modifier = Modifier.fillMaxWidth()) { Text("Show as Plus plan") }
+            OutlinedButton(onClick = { viewModel.debugSetTier(UsageTier.PAID) }, modifier = Modifier.fillMaxWidth()) { Text("Show as Pro plan") }
         }
     }
 }
