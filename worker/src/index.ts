@@ -1,6 +1,6 @@
 import { ALLOWED_MODELS, microDollars } from "./pricing";
 import { Tier } from "./quota";
-import { makeToken, verifyToken } from "./token";
+import { hashOf, makeToken, verifyToken } from "./token";
 import { Env } from "./objects";
 
 export { UserQuota, Counters } from "./objects";
@@ -45,7 +45,8 @@ export default {
 
 /** Gives an install its own account. Limited per IP address so accounts cannot be farmed for free allowances. */
 async function register(request: Request, env: Env): Promise<Response> {
-  const ip = request.headers.get("cf-connecting-ip") ?? "unknown";
+  // Only a keyed hash of the address is kept, so no raw IP address is stored anywhere.
+  const ip = await hashOf(env.TOKEN_SECRET, request.headers.get("cf-connecting-ip") ?? "unknown");
   const gate = env.COUNTERS.get(env.COUNTERS.idFromName(`reg:${ip}:${today()}`));
   const made = await gate.add(1);
   if (made > Number(env.REGISTRATIONS_PER_IP_PER_DAY)) {

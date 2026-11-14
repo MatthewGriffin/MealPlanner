@@ -72,7 +72,7 @@ object NetworkModule {
         // Open Food Facts asks every app to say who it is, and may limit anonymous callers harder.
         val client = okHttpClient.newBuilder()
             .addInterceptor { chain ->
-                chain.proceed(chain.request().newBuilder().header("User-Agent", "PantryPlanner-Android/1.0").build())
+                chain.proceed(chain.request().newBuilder().header("User-Agent", "PantryPal-Android/1.0").build())
             }
             .build()
         return Retrofit.Builder()

@@ -580,7 +580,10 @@ class SettingsViewModel @Inject constructor(
                 val displayName = getDocumentDisplayName(appContext, destinationUri) ?: "Selected file"
                 val resultText = when (outcome) {
                     is SafBackupOutcome.VerifiedFullBackup -> {
-                        "Full household backup encrypted, verified and saved to $displayName."
+                        "Full household backup encrypted, verified and saved to $displayName." +
+                            (fullBackupManager?.lastSkippedSecrets.orEmpty().takeIf { it.isNotEmpty() }
+                                ?.let { " Not included, because this phone could not read it: ${it.joinToString(" and ")}. Everything else is in the backup." }
+                                ?: "")
                     }
                     is SafBackupOutcome.NoDocumentIoAttempted -> {
                         outcome.cause.cause

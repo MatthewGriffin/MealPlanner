@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -10,12 +12,19 @@ ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
 }
 
+// Release signing: keystore.properties (git-ignored, in the project root) points at the upload keystore.
+// Without it, release builds are simply left unsigned, so CI and other machines still build.
+val keystoreProperties = Properties().apply {
+    val file = rootProject.file("keystore.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}
+
 android {
     namespace = "com.example.chatgpt_mealplanner"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.example.chatgpt_mealplanner"
+        applicationId = "app.pantrypal.mealplanner"
         minSdk = 30
         targetSdk = 35
         versionCode = 1
@@ -24,8 +33,20 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        if (keystoreProperties.containsKey("storeFile")) {
+            create("release") {
+                storeFile = file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            signingConfigs.findByName("release")?.let { signingConfig = it }
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

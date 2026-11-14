@@ -72,7 +72,7 @@ class TestSafDocumentsProvider : DocumentsProvider() {
     }
 
     companion object {
-        const val AUTHORITY = "com.example.chatgpt_mealplanner.test.documents"
+        const val AUTHORITY = "app.pantrypal.mealplanner.test.documents"
 
         val writeOpenCount = AtomicInteger(0)
         val readOpenCount = AtomicInteger(0)

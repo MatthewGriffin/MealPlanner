@@ -7,6 +7,11 @@ async function sign(secret: string, data: string): Promise<string> {
   return btoa(String.fromCharCode(...new Uint8Array(sig))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
+/** A keyed one-way hash, for counters that must not hold personal data such as an IP address. */
+export async function hashOf(secret: string, value: string): Promise<string> {
+  return (await sign(secret, "hash:" + value)).slice(0, 22);
+}
+
 export async function makeToken(secret: string, userId: string): Promise<string> {
   return `${userId}.${await sign(secret, userId)}`;
 }

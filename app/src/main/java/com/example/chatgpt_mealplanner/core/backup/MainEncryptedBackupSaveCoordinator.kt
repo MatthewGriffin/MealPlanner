@@ -55,11 +55,18 @@ open class MainEncryptedBackupSaveCoordinator @Inject constructor(
             throw e
         } catch (e: Exception) {
             return SafBackupOutcome.NoDocumentIoAttempted(
-                DomainError.TransactionFailed("No document I/O attempted: Failed creating the household backup: ${e.message}")
+                DomainError.TransactionFailed("No document I/O attempted: Failed creating the household backup: ${describe(e)}")
             )
         }
         return safWriter.writeAndVerifyFullBackup(appContext, destinationUri, encryptedBackup) { saved ->
             fullBackupManager.verifyEncryptedBackup(saved, passphrase)
         }
+    }
+
+    /** A message that always says something useful: many exceptions carry no text of their own. */
+    private fun describe(e: Throwable): String {
+        val where = e.stackTrace.firstOrNull()?.let { " at ${it.className.substringAfterLast('.')}.${it.methodName}:${it.lineNumber}" }.orEmpty()
+        val cause = e.cause?.let { "; caused by ${it.javaClass.simpleName}: ${it.message}" }.orEmpty()
+        return "${e.javaClass.simpleName}: ${e.message}$where$cause"
     }
 }
