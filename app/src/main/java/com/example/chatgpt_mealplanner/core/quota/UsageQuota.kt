@@ -14,7 +14,7 @@ enum class UsageTier { FREE, PAID }
 /** Daily AI allowance per tier, in millionths of a dollar of Claude cost. Paid is bigger but not unlimited. */
 object QuotaLimits {
     const val FREE_MICRO_DOLLARS = 20_000L   // 2 cents a day
-    const val PAID_MICRO_DOLLARS = 100_000L  // 10 cents a day
+    const val PAID_MICRO_DOLLARS = 80_000L  // 8 cents a day: 4x the free allowance
     fun forTier(tier: UsageTier) = if (tier == UsageTier.FREE) FREE_MICRO_DOLLARS else PAID_MICRO_DOLLARS
 
     /** How many times bigger the paid allowance is, for the comparison page. */
@@ -27,7 +27,10 @@ data class UsageSnapshot(
     val percentLeft: Int = 100,
     val example: Boolean = false,
     /** True when usage is not tracked at all (no quota wired in): the screens show nothing. */
-    val unlimited: Boolean = false
+    val unlimited: Boolean = false,
+    /** For the debug section of the plans page: real cost so far today and of the latest reply, in millionths of a dollar. */
+    val spentMicros: Long = 0,
+    val lastMicros: Long = 0
 )
 
 /**
@@ -49,12 +52,12 @@ open class UsageQuota @Inject constructor(
     fun refresh() {
         if (limitsBypassed()) {
             // Debug builds have no real limits, so show an example to see how the screens look.
-            _snapshot.value = UsageSnapshot(tier = tier(), percentLeft = 70, example = true)
+            _snapshot.value = UsageSnapshot(tier = tier(), percentLeft = 70, example = true, spentMicros = spentMicros(), lastMicros = lastMicros())
             return
         }
         val limit = QuotaLimits.forTier(tier())
         val left = ((limit - spentMicros()).coerceAtLeast(0) * 100 / limit).toInt()
-        _snapshot.value = UsageSnapshot(tier = tier(), percentLeft = left)
+        _snapshot.value = UsageSnapshot(tier = tier(), percentLeft = left, spentMicros = spentMicros(), lastMicros = lastMicros())
     }
 
     /** Replace when billing arrives (read the active subscription here). */
@@ -80,6 +83,8 @@ open class UsageQuota @Inject constructor(
         }.getOrDefault(0L)
     }
 
+    open fun lastMicros(): Long = runCatching { prefs?.getLong("last", 0L) }.getOrNull() ?: 0L
+
     /** True while today's allowance is not used up. */
     open fun canUse(): Boolean = limitsBypassed() || spentMicros() < QuotaLimits.forTier(tier())
 
@@ -91,7 +96,7 @@ open class UsageQuota @Inject constructor(
         runCatching {
             val day = today().toString()
             val before = if (p.getString("day", null) == day) p.getLong("spent", 0L) else 0L
-            p.edit().putString("day", day).putLong("spent", before + micros).apply()
+            p.edit().putString("day", day).putLong("spent", before + micros).putLong("last", micros).apply()
         }
         refresh()
     }

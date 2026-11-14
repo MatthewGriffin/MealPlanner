@@ -10,8 +10,8 @@ class UsageQuotaTest {
     @Test
     fun agreedLimits() {
         assertEquals(20_000L, QuotaLimits.FREE_MICRO_DOLLARS)   // 2 cents
-        assertEquals(100_000L, QuotaLimits.PAID_MICRO_DOLLARS)  // 10 cents
-        assertEquals(5, QuotaLimits.PAID_MULTIPLE)
+        assertEquals(80_000L, QuotaLimits.PAID_MICRO_DOLLARS)  // 8 cents
+        assertEquals(4, QuotaLimits.PAID_MULTIPLE)
     }
 
     @Test

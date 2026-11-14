@@ -66,6 +66,11 @@ fun SubscriptionScreen(modifier: Modifier = Modifier, viewModel: SubscriptionVie
         if (viewModel.isDebugBuild) {
             Spacer(Modifier.height(8.dp))
             Text("Debug only", style = MaterialTheme.typography.labelLarge)
+            Text(
+                "Real cost: spent today $" + String.format(java.util.Locale.UK, "%.4f", usage.spentMicros / 1_000_000.0) +
+                    ", last reply $" + String.format(java.util.Locale.UK, "%.4f", usage.lastMicros / 1_000_000.0),
+                style = MaterialTheme.typography.bodyMedium
+            )
             OutlinedButton(onClick = { viewModel.debugSetTier(UsageTier.FREE) }, modifier = Modifier.fillMaxWidth()) { Text("Show as Free plan") }
             OutlinedButton(onClick = { viewModel.debugSetTier(UsageTier.PAID) }, modifier = Modifier.fillMaxWidth()) { Text("Show as Pro plan") }
         }
