@@ -187,15 +187,22 @@ fun SettingsScreen(
         }
         Spacer(modifier = Modifier.height(8.dp))
         // AI SECTION
-        SettingsSection("AI Configuration", initiallyExpanded = !uiState.isApiKeyConfigured) {
+        SettingsSection("AI Configuration", initiallyExpanded = false) {
         Spacer(modifier = Modifier.height(4.dp))
         Text("Model: $CLAUDE_MODEL_ID (Anthropic Claude API)", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.secondary)
         Spacer(modifier = Modifier.height(8.dp))
 
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text("Claude API Key", fontWeight = FontWeight.Bold)
+                Text("Your own Claude API key (optional)", fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    "Without a key the app uses its built-in AI service, which has a usage allowance. " +
+                        "With your own key there are no limits and you pay Anthropic directly.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(8.dp))
 
                 if (uiState.credentialStorageError != null) {
                     Text(

@@ -72,8 +72,8 @@ fun SubscriptionScreen(modifier: Modifier = Modifier, viewModel: SubscriptionVie
             Spacer(Modifier.height(8.dp))
             Text("Debug only", style = MaterialTheme.typography.labelLarge)
             Text(
-                "Real cost: spent this period $" + String.format(java.util.Locale.UK, "%.4f", usage.spentMicros / 1_000_000.0) +
-                    ", last reply $" + String.format(java.util.Locale.UK, "%.4f", usage.lastMicros / 1_000_000.0),
+                usage.real?.let { "The Worker says: ${it.tier}, ${it.percentLeft}% left" + (it.resetsOn?.let { d -> ", refreshes $d" } ?: ", period not started") }
+                    ?: "No answer from the Worker yet (own Claude key saved, or nothing sent so far).",
                 style = MaterialTheme.typography.bodyMedium
             )
             OutlinedButton(onClick = { viewModel.debugSetTier(UsageTier.FREE) }, modifier = Modifier.fillMaxWidth()) { Text("Show as Free plan") }
