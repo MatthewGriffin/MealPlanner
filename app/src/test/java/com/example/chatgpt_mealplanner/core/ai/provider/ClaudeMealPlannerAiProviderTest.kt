@@ -364,22 +364,75 @@ class ClaudeMealPlannerAiProviderTest {
         assertEquals(5L, usage.single().output)
     }
 
+    private class FakeProxyAccount(private val url: String, private var token: String? = "acct-token") :
+        com.example.chatgpt_mealplanner.core.ai.provider.ProxyAccount(null) {
+        var forgotten = false
+        override val baseUrl = url
+        override fun token() = token
+        override fun isToken(key: String) = key == token
+        override fun forget() { forgotten = true; token = null }
+    }
+
+    private class RecordingQuota : com.example.chatgpt_mealplanner.core.quota.UsageQuota(FakeCredentialStore(null), null) {
+        override fun limitsBypassed() = false
+        override fun ownKeyMode() = false
+    }
+
+    private fun proxied(quota: com.example.chatgpt_mealplanner.core.quota.UsageQuota, account: FakeProxyAccount) =
+        ClaudeMealPlannerAiProvider(FakeCredentialStore(null), Dispatchers.Unconfined, quota, account).apply { maxRetries = 0 }
+
     @Test
-    fun everyReplyIsChargedToTheDailyAllowance() = runBlocking {
-        val spent = mutableListOf<Long>()
-        val quota = object : com.example.chatgpt_mealplanner.core.quota.UsageQuota(null) {
-            override fun recordSpend(micros: Long) { spent += micros }
-        }
-        val charged = ClaudeMealPlannerAiProvider(FakeCredentialStore("sk-ant-test"), Dispatchers.Unconfined, quota).apply {
-            baseUrl = server.url("/").toString().removeSuffix("/")
-            maxRetries = 0
-        }
-        server.enqueue(reply("max_tokens", text("Half a plan")))
+    fun withoutAnOwnKey_theAccountTokenGoesToTheWorkerAndItsNumbersAreKept() = runBlocking {
+        val quota = RecordingQuota()
+        val account = FakeProxyAccount(server.url("/").toString().removeSuffix("/"))
+        server.enqueue(reply("end_turn", text("hi")).setHeader("x-pp-tier", "pro").setHeader("x-pp-percent-left", "63").setHeader("x-pp-resets-on", "2026-11-17"))
 
-        charged.send(request())
+        proxied(quota, account).send(request())
 
-        // 10 input tokens at 0.10 + 5 output at 0.50 = 3.5 micro-dollars, rounded.
-        assertEquals(listOf(4L), spent)
+        // This SDK version sends the key as a Bearer token; the Worker reads that (or x-api-key).
+        assertEquals("Bearer acct-token", server.takeRequest().getHeader("Authorization"))
+        val snap = quota.snapshot.value
+        assertEquals(com.example.chatgpt_mealplanner.core.quota.UsageTier.PRO, snap.tier)
+        assertEquals(63, snap.percentLeft)
+    }
+
+    @Test
+    fun anOwnKeyGoesStraightToClaudeNotTheWorker() = runBlocking {
+        val account = FakeProxyAccount("http://127.0.0.1:1")
+        server.enqueue(textReply("hi"))
+        // The test provider's baseUrl points at the mock server; an own key must not be replaced by the account token.
+        provider.send(request())
+        assertEquals("Bearer sk-ant-test", server.takeRequest().getHeader("Authorization"))
+        assertFalse(account.forgotten)
+    }
+
+    @Test
+    fun aUsedUpAllowance_answers402AndShowsTheLimitMessage() = runBlocking {
+        val quota = RecordingQuota()
+        val account = FakeProxyAccount(server.url("/").toString().removeSuffix("/"))
+        server.enqueue(
+            MockResponse().setResponseCode(402).setHeader("Content-Type", "application/json")
+                .setHeader("x-pp-tier", "free").setHeader("x-pp-percent-left", "0").setHeader("x-pp-resets-on", "2026-11-23")
+                .setBody("""{"type":"error","error":{"type":"usage_limit","message":"You have used this week's free AI allowance."}}""")
+        )
+
+        val response = proxied(quota, account).send(request()) as AiProviderResponse.Error
+
+        assertEquals("USAGE_LIMIT", response.code)
+        assertTrue(response.message.contains("free AI allowance"))
+        assertTrue(response.message.contains("by hand"))
+        assertFalse(quota.canUse())
+        assertEquals(1, server.requestCount) // 402 is not retried
+    }
+
+    @Test
+    fun aRejectedAccountToken_isForgottenSoANewAccountIsMade() = runBlocking {
+        val account = FakeProxyAccount(server.url("/").toString().removeSuffix("/"))
+        server.enqueue(MockResponse().setResponseCode(401).setBody("""{"type":"error","error":{"type":"authentication_error","message":"x"}}"""))
+
+        proxied(RecordingQuota(), account).send(request())
+
+        assertTrue(account.forgotten)
     }
 
     @Test

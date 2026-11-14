@@ -81,7 +81,8 @@ data class TokenUsage(val input: Long, val output: Long, val cacheRead: Long, va
 class ClaudeMealPlannerAiProvider @Inject constructor(
     private val credentialStore: CredentialStore,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
-    private val usageQuota: com.example.chatgpt_mealplanner.core.quota.UsageQuota? = null
+    private val usageQuota: com.example.chatgpt_mealplanner.core.quota.UsageQuota? = null,
+    private val proxyAccount: ProxyAccount? = null
 ) : MealPlannerAiProvider {
 
     /** The live evaluation sets this to compare models. */
@@ -326,8 +327,6 @@ class ClaudeMealPlannerAiProvider @Inject constructor(
             webSearches = usage.serverToolUse().map { it.webSearchRequests() }.orElse(0L)
         )
         usageObserver?.invoke(tokens)
-        // Every reply is charged against today's allowance, including ones that were cut off or refused.
-        usageQuota?.recordSpend(com.example.chatgpt_mealplanner.core.quota.ClaudePricing.microDollars(model, tokens))
     }
 
     private fun readReply(message: Message, conversationId: String, conversation: Conversation): AiProviderResponse {
@@ -391,9 +390,30 @@ class ClaudeMealPlannerAiProvider @Inject constructor(
         val started = System.currentTimeMillis()
         val result = withTimeoutOrNull(GLOBAL_TIMEOUT_CAP_MS) {
             try {
-                CallResult.Succeeded(runInterruptible { client(key).messages().create(params) })
+                CallResult.Succeeded(runInterruptible {
+                    // The Worker adds the allowance to every reply's headers; the raw response lets the app read them.
+                    val raw = client(key).messages().withRawResponse().create(params)
+                    try {
+                        usageQuota?.applyServer(
+                            raw.headers().values("x-pp-tier").firstOrNull(),
+                            raw.headers().values("x-pp-percent-left").firstOrNull()?.toIntOrNull(),
+                            raw.headers().values("x-pp-resets-on").firstOrNull()
+                        )
+                        raw.parse()
+                    } finally {
+                        raw.close()
+                    }
+                })
             } catch (e: Exception) {
                 rethrowIfCancelled()
+                if (e is AnthropicServiceException) {
+                    if (e.statusCode() == 401 && proxyAccount?.isToken(key) == true) proxyAccount.forget()
+                    usageQuota?.applyServer(
+                        e.headers().values("x-pp-tier").firstOrNull(),
+                        e.headers().values("x-pp-percent-left").firstOrNull()?.toIntOrNull(),
+                        e.headers().values("x-pp-resets-on").firstOrNull()
+                    )
+                }
                 CallResult.Failed(errorFor(e))
             }
         }
@@ -410,6 +430,9 @@ class ClaudeMealPlannerAiProvider @Inject constructor(
         if (e is AnthropicServiceException) {
             val status = e.statusCode()
             val detail = e.message?.take(500).orEmpty()
+            if (status == 402) {
+                return AiProviderResponse.Error("USAGE_LIMIT", usageQuota?.limitMessage() ?: "You have used your AI allowance.")
+            }
             val message = when (status) {
                 401, 403 -> KEY_MESSAGE
                 429 -> "Claude's rate limit was reached. Please wait a minute and try again. ($detail)"
@@ -443,15 +466,18 @@ class ClaudeMealPlannerAiProvider @Inject constructor(
     }
 
     private fun client(key: String): AnthropicClient {
-        cachedClient?.let { (cachedKey, client) -> if (cachedKey == key) return client }
+        // The user's own key goes straight to Claude; otherwise the install's account token goes to the Worker.
+        val url = baseUrl ?: proxyAccount?.takeIf { it.isToken(key) }?.baseUrl
+        val cacheKey = "$key|$url"
+        cachedClient?.let { (cachedKey, client) -> if (cachedKey == cacheKey) return client }
         val client = AnthropicOkHttpClient.builder()
             .apiKey(key)
-            .apply { baseUrl?.let { baseUrl(it) } }
+            .apply { url?.let { baseUrl(it) } }
             .maxRetries(maxRetries)
             .timeout(requestTimeout)
             .build()
         cachedClient?.second?.close()
-        cachedClient = key to client
+        cachedClient = cacheKey to client
         return client
     }
 
@@ -532,13 +558,16 @@ class ClaudeMealPlannerAiProvider @Inject constructor(
         }
     }
 
+    /** The user's own Claude key if they saved one, otherwise this install's account on the Worker. */
     private fun apiKey(): String? = try {
-        credentialStore.loadKey()?.trim()?.takeIf { it.isNotEmpty() }
+        credentialStore.loadKey()?.trim()?.takeIf { it.isNotEmpty() } ?: proxyAccount?.token()
     } catch (_: Exception) {
         null
     }
 
-    private fun noKey() = AiProviderResponse.Error("NO_API_KEY", "No Claude API key saved. Add one in Settings.")
+    private fun noKey() =
+        if (proxyAccount != null) AiProviderResponse.Error("NO_CONNECTION", "Couldn't reach the AI service. Check the internet connection and try again.")
+        else AiProviderResponse.Error("NO_API_KEY", "No Claude API key saved. Add one in Settings.")
 
     private fun safeLog(msg: String) {
         if (!com.example.chatgpt_mealplanner.BuildConfig.DEBUG) return
