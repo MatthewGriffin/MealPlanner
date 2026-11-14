@@ -62,10 +62,22 @@ open class FullBackupManager @Inject constructor(
         }
     }
 
+    /** Secrets the last backup had to leave out because this phone could not read them (see [readSecrets]). */
+    @Volatile
+    open var lastSkippedSecrets: List<String> = emptyList()
+        protected set
+
+    /**
+     * A secret that the phone's secure storage can no longer decrypt (its key was lost or replaced) must not stop
+     * the backup of the user's data. It is left out and named, so the user knows what to set up again.
+     */
     private fun readSecrets(): FullBackupSecrets {
-        val tlsIdentity = tlsKeyManager.exportTlsIdentity()
+        val skipped = mutableListOf<String>()
+        val claudeKey = runCatching { credentialStore.loadKey() }.getOrElse { skipped += "your saved Claude key"; null }
+        val tlsIdentity = runCatching { tlsKeyManager.exportTlsIdentity() }.getOrElse { skipped += "the household sync identity"; null }
+        lastSkippedSecrets = skipped
         return FullBackupSecrets(
-            claudeApiKey = credentialStore.loadKey(),
+            claudeApiKey = claudeKey,
             tlsKeystoreBase64 = tlsIdentity?.first?.let { Base64.getEncoder().encodeToString(it) },
             tlsKeystorePassword = tlsIdentity?.second
         )

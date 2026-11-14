@@ -74,6 +74,29 @@ class FullBackupCompatibilityTest {
         manager = FullBackupManager(context, database, FakeCredentialStore("current-key"), tlsKeyManager, codec, streamProvider)
     }
 
+    @Test
+    fun aSecretTheKeystoreCannotDecrypt_isLeftOutAndNamed_insteadOfBlockingTheBackup() {
+        val brokenKeys = object : com.example.chatgpt_mealplanner.core.security.CredentialStore {
+            override fun hasKey() = true
+            override fun saveKey(key: String) {}
+            override fun loadKey(): String? = throw java.security.GeneralSecurityException("bad tag")
+            override fun deleteKey() {}
+        }
+        val brokenTls = object : PantryTlsKeyManager(null) {
+            override fun exportTlsIdentity(): Pair<ByteArray, String>? = throw javax.crypto.AEADBadTagException()
+        }
+        val broken = FullBackupManager(context, database, brokenKeys, brokenTls, codec, streamProvider)
+
+        val backup = broken.createEncryptedBackup("passphrase".toCharArray())
+
+        assertTrue(backup.isNotEmpty())
+        assertTrue(broken.verifyEncryptedBackup(backup, "passphrase".toCharArray()))
+        assertEquals(listOf("your saved Claude key", "the household sync identity"), broken.lastSkippedSecrets)
+        // A healthy phone leaves nothing out.
+        manager.createEncryptedBackup("passphrase".toCharArray())
+        assertTrue(manager.lastSkippedSecrets.isEmpty())
+    }
+
     @After
     fun tearDown() {
         runCatching { database.close() }
