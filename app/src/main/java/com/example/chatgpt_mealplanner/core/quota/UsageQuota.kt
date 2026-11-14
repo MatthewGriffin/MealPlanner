@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-enum class UsageTier { FREE, PAID }
+enum class UsageTier { FREE, PRO, MAX }
 
 /**
  * AI allowance per tier, in millionths of a dollar of Claude cost.
@@ -19,14 +19,22 @@ enum class UsageTier { FREE, PAID }
 object QuotaLimits {
     const val FREE_MICRO_DOLLARS = 70_000L   // 7 cents a week (1 cent a day, bundled)
     const val FREE_PERIOD_DAYS = 7L
-    const val PAID_MICRO_DOLLARS = 80_000L   // 8 cents a day
+    const val PRO_MICRO_DOLLARS = 90_000L    // 9 cents a day, about 20 meal requests
+    const val MAX_MICRO_DOLLARS = 180_000L   // double Pro: 18 cents a day, about 40 requests
     const val PAID_PERIOD_DAYS = 1L
 
-    fun limitFor(tier: UsageTier) = if (tier == UsageTier.FREE) FREE_MICRO_DOLLARS else PAID_MICRO_DOLLARS
+    fun limitFor(tier: UsageTier) = when (tier) {
+        UsageTier.FREE -> FREE_MICRO_DOLLARS
+        UsageTier.PRO -> PRO_MICRO_DOLLARS
+        UsageTier.MAX -> MAX_MICRO_DOLLARS
+    }
     fun periodDays(tier: UsageTier) = if (tier == UsageTier.FREE) FREE_PERIOD_DAYS else PAID_PERIOD_DAYS
 
     /** How many times more AI Pro gets than Free over the same time (Pro's daily allowance x7 against Free's week). */
-    val PAID_MULTIPLE: Int get() = ((PAID_MICRO_DOLLARS * FREE_PERIOD_DAYS) / FREE_MICRO_DOLLARS).toInt()
+    val PRO_MULTIPLE: Int get() = ((PRO_MICRO_DOLLARS * FREE_PERIOD_DAYS) / FREE_MICRO_DOLLARS).toInt()
+
+    /** How many times Pro's allowance Max gets. */
+    val MAX_MULTIPLE_OF_PRO: Int get() = (MAX_MICRO_DOLLARS / PRO_MICRO_DOLLARS).toInt()
 }
 
 /**

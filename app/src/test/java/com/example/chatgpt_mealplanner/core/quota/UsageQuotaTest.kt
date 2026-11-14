@@ -27,8 +27,10 @@ class UsageQuotaTest {
     fun agreedLimits() {
         assertEquals(70_000L, QuotaLimits.FREE_MICRO_DOLLARS)  // 1 cent a day bundled into a week
         assertEquals(7L, QuotaLimits.FREE_PERIOD_DAYS)
-        assertEquals(80_000L, QuotaLimits.PAID_MICRO_DOLLARS)  // 8 cents a day
-        assertEquals(8, QuotaLimits.PAID_MULTIPLE)
+        assertEquals(90_000L, QuotaLimits.PRO_MICRO_DOLLARS)   // 9 cents a day = 20 meal requests at $0.0045
+        assertEquals(180_000L, QuotaLimits.MAX_MICRO_DOLLARS)  // double Pro
+        assertEquals(9, QuotaLimits.PRO_MULTIPLE)
+        assertEquals(2, QuotaLimits.MAX_MULTIPLE_OF_PRO)
     }
 
     @Test
@@ -66,11 +68,21 @@ class UsageQuotaTest {
     @Test
     fun proIsADailyAllowance() {
         val q = TestQuota()
-        q.setTier(UsageTier.PAID)
-        q.recordSpend(80_000)
+        q.setTier(UsageTier.PRO)
+        repeat(20) { assertTrue(q.canUse()); q.recordSpend(4_500) }  // 20 meal requests fit in a day
         assertFalse(q.canUse())
         q.day = q.day.plusDays(1)
         assertTrue(q.canUse())
+    }
+
+    @Test
+    fun maxAllowsDoubleProsDay() {
+        val q = TestQuota()
+        q.setTier(UsageTier.MAX)
+        q.recordSpend(90_000)
+        assertTrue(q.canUse())
+        q.recordSpend(90_000)
+        assertFalse(q.canUse())
     }
 
     @Test
@@ -78,7 +90,7 @@ class UsageQuotaTest {
         val q = TestQuota()
         q.recordSpend(70_000)
         assertFalse(q.canUse())
-        q.setTier(UsageTier.PAID)
+        q.setTier(UsageTier.PRO)
         assertTrue(q.canUse())
     }
 

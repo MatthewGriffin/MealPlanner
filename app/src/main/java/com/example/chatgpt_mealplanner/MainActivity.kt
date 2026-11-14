@@ -201,7 +201,7 @@ class MainActivity : ComponentActivity() {
                                 if (currentScreen != Screen.SUBSCRIPTION) {
                                     val planUsage by planViewModel.usage.collectAsState()
                                     androidx.compose.material3.TextButton(onClick = { openFromTopBar(Screen.SUBSCRIPTION) }) {
-                                        Text(if (planUsage.tier == com.example.chatgpt_mealplanner.core.quota.UsageTier.PAID) "My plan" else "Upgrade")
+                                        Text(if (planUsage.tier == com.example.chatgpt_mealplanner.core.quota.UsageTier.FREE) "Upgrade" else "My plan")
                                     }
                                 }
                                 var showMore by remember { mutableStateOf(false) }

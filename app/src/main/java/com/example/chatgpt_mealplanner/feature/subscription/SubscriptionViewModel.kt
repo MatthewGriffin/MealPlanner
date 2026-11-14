@@ -20,7 +20,7 @@ class SubscriptionViewModel @Inject constructor(
     val message: StateFlow<String?> = _message
     val isDebugBuild: Boolean = com.example.chatgpt_mealplanner.BuildConfig.DEBUG
 
-    fun subscribe() { _message.value = subscriptions.startPurchase() }
+    fun subscribe(tier: UsageTier) { _message.value = subscriptions.startPurchase(tier) }
     fun manage() { _message.value = subscriptions.manageSubscription() }
     fun restore() { _message.value = subscriptions.restorePurchases() }
     fun clearMessage() { _message.value = null }

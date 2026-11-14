@@ -38,7 +38,7 @@ fun SubscriptionScreen(modifier: Modifier = Modifier, viewModel: SubscriptionVie
 
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("Your plan: ${if (usage.tier == UsageTier.PAID) "Pro" else "Free"}", fontWeight = FontWeight.Bold)
+                Text("Your plan: ${when (usage.tier) { UsageTier.FREE -> "Free"; UsageTier.PRO -> "Pro"; UsageTier.MAX -> "Max" }}", fontWeight = FontWeight.Bold)
                 if (usage.unlimited) {
                     Text("Limits are not tracked here.", style = MaterialTheme.typography.bodyMedium)
                 } else {
@@ -51,12 +51,17 @@ fun SubscriptionScreen(modifier: Modifier = Modifier, viewModel: SubscriptionVie
         }
 
         PlanCard("Free", listOf("Limited trial usage of the AI features, refreshed every week"), highlighted = usage.tier == UsageTier.FREE)
-        PlanCard("Pro", listOf("${QuotaLimits.PAID_MULTIPLE}x the AI usage of Free, refreshed every day"), highlighted = usage.tier == UsageTier.PAID)
+        PlanCard("Pro", listOf("${QuotaLimits.PRO_MULTIPLE}x the AI usage of Free, refreshed every day"), highlighted = usage.tier == UsageTier.PRO)
+        PlanCard("Max", listOf("${QuotaLimits.MAX_MULTIPLE_OF_PRO}x the AI usage of Pro, refreshed every day"), highlighted = usage.tier == UsageTier.MAX)
 
         if (usage.tier == UsageTier.FREE) {
-            Button(onClick = viewModel::subscribe, modifier = Modifier.fillMaxWidth()) { Text("Subscribe to Pro") }
+            Button(onClick = { viewModel.subscribe(UsageTier.PRO) }, modifier = Modifier.fillMaxWidth()) { Text("Subscribe to Pro") }
+            OutlinedButton(onClick = { viewModel.subscribe(UsageTier.MAX) }, modifier = Modifier.fillMaxWidth()) { Text("Subscribe to Max") }
             OutlinedButton(onClick = viewModel::restore, modifier = Modifier.fillMaxWidth()) { Text("Restore purchase") }
         } else {
+            if (usage.tier == UsageTier.PRO) {
+                Button(onClick = { viewModel.subscribe(UsageTier.MAX) }, modifier = Modifier.fillMaxWidth()) { Text("Upgrade to Max") }
+            }
             Button(onClick = viewModel::manage, modifier = Modifier.fillMaxWidth()) { Text("Change or cancel subscription") }
         }
         message?.let {
@@ -72,7 +77,8 @@ fun SubscriptionScreen(modifier: Modifier = Modifier, viewModel: SubscriptionVie
                 style = MaterialTheme.typography.bodyMedium
             )
             OutlinedButton(onClick = { viewModel.debugSetTier(UsageTier.FREE) }, modifier = Modifier.fillMaxWidth()) { Text("Show as Free plan") }
-            OutlinedButton(onClick = { viewModel.debugSetTier(UsageTier.PAID) }, modifier = Modifier.fillMaxWidth()) { Text("Show as Pro plan") }
+            OutlinedButton(onClick = { viewModel.debugSetTier(UsageTier.PRO) }, modifier = Modifier.fillMaxWidth()) { Text("Show as Pro plan") }
+            OutlinedButton(onClick = { viewModel.debugSetTier(UsageTier.MAX) }, modifier = Modifier.fillMaxWidth()) { Text("Show as Max plan") }
         }
     }
 }

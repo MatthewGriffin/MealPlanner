@@ -6,14 +6,14 @@ import javax.inject.Singleton
 /**
  * The seam for Google Play Billing. Until the app is set up on Google Play there is no store to buy from,
  * so [storeAvailable] is false and [startPurchase] only explains that. When billing is added, check the
- * active subscription here and call [UsageQuota.setTier] with PAID or FREE.
+ * active subscription here and call [UsageQuota.setTier] with PRO, MAX or FREE.
  */
 @Singleton
 open class SubscriptionManager @Inject constructor(private val usageQuota: UsageQuota) {
     open val storeAvailable: Boolean = false
 
     /** Starts the purchase flow; returns a message to show the user. */
-    open fun startPurchase(): String =
+    open fun startPurchase(tier: UsageTier): String =
         "Subscriptions will be available once the app is on Google Play."
 
     /** Opens the store's page to change or cancel the subscription. */
