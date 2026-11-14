@@ -22,3 +22,14 @@ class IngredientNameSynonymTest {
     }
     @Test fun stillDistinct() = assertFalse(IngredientNameMatcher.matches("beef stock", "beef mince"))
 }
+
+class IngredientKitMatchTest {
+    @Test fun kitNameInRecipeMatchesStoredKit() {
+        assertTrue(IngredientNameMatcher.matchesKit("Chicken risotto", "Chicken risotto seasoning kit (Schwartz sachet)"))
+        assertTrue(IngredientNameMatcher.matchesKit("Tandoori wrap kit", "Tandoori wrap kit"))
+    }
+    @Test fun differentKitsStayApart() {
+        assertFalse(IngredientNameMatcher.matchesKit("Risotto", "Chicken risotto seasoning kit"))
+        assertFalse(IngredientNameMatcher.matchesKit("Chicken risotto", "Mushroom risotto kit"))
+    }
+}

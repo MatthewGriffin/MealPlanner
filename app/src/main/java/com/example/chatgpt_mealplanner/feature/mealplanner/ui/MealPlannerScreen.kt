@@ -45,6 +45,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -172,6 +173,7 @@ fun MealPlannerScreen(
                                         navController.navigate("recipe_details/${mealWithIngredients.meal.id}")
                                     },
                                     onDeleteClicked = { mealId -> onEvent(MealPlannerUiEvent.DeleteMeal(mealId)) },
+                                    onChangeSlot = { mealId, type -> onEvent(MealPlannerUiEvent.ChangeMealSlot(mealId, type)) },
                                     belowContent = {
                                         if (uiState.isFollower && requestsForSelectedDate.isNotEmpty()) {
                                             FollowerRequestStatusSection(requestsForSelectedDate, uiState.mealTitleMap)
@@ -315,6 +317,7 @@ fun MealPlanContent(
     meals: List<MealWithIngredients>,
     onMealClicked: (MealWithIngredients) -> Unit,
     onDeleteClicked: (String) -> Unit,
+    onChangeSlot: (String, com.example.chatgpt_mealplanner.core.model.MealType) -> Unit = { _, _ -> },
     isLoading: Boolean = false,
     belowContent: @Composable () -> Unit = {}
 ) {
@@ -367,7 +370,8 @@ fun MealPlanContent(
                 MealCard(
                     mealWithIngredients = mealWithIngredients,
                     onMealClicked = { onMealClicked(mealWithIngredients) },
-                    onDeleteClicked = { onDeleteClicked(mealWithIngredients.meal.id) }
+                    onDeleteClicked = { onDeleteClicked(mealWithIngredients.meal.id) },
+                    onChangeSlot = { onChangeSlot(mealWithIngredients.meal.id, it) }
                 )
             }
         }
@@ -383,7 +387,8 @@ fun MealPlanContent(
 fun MealCard(
     mealWithIngredients: MealWithIngredients,
     onMealClicked: () -> Unit,
-    onDeleteClicked: () -> Unit
+    onDeleteClicked: () -> Unit,
+    onChangeSlot: (com.example.chatgpt_mealplanner.core.model.MealType) -> Unit = {}
 ) {
     val meal = mealWithIngredients.meal
 
@@ -436,6 +441,27 @@ fun MealCard(
                 horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // A planned "Leftovers" day can be moved to another meal of the same day.
+                if (meal.status == MealStatus.PLANNED &&
+                    com.example.chatgpt_mealplanner.core.util.LeftoverMeals.sourceMealId(meal.notes) != null
+                ) {
+                    var slotMenuOpen by remember { mutableStateOf(false) }
+                    Box {
+                        TextButton(onClick = { slotMenuOpen = true }) { Text("Move to another meal ▾") }
+                        androidx.compose.material3.DropdownMenu(expanded = slotMenuOpen, onDismissRequest = { slotMenuOpen = false }) {
+                            listOf(
+                                com.example.chatgpt_mealplanner.core.model.MealType.BREAKFAST,
+                                com.example.chatgpt_mealplanner.core.model.MealType.LUNCH,
+                                com.example.chatgpt_mealplanner.core.model.MealType.DINNER
+                            ).filter { it != meal.mealType }.forEach { type ->
+                                androidx.compose.material3.DropdownMenuItem(
+                                    text = { Text(type.name.lowercase().replaceFirstChar { it.uppercase() }) },
+                                    onClick = { slotMenuOpen = false; onChangeSlot(type) }
+                                )
+                            }
+                        }
+                    }
+                }
                 IconButton(onClick = onDeleteClicked) {
                     Icon(
                         Icons.Default.Delete,

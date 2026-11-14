@@ -53,7 +53,10 @@ class ShoppingDomainServiceImpl @Inject constructor(
 
         val plannedMeals = mealDao.getUpcomingPlannedMeals(effectiveStartDate, effectiveEndDate)
 
-        val allIngredientsWithMeals = plannedMeals.flatMap { mealWithIngs ->
+        val allIngredientsWithMeals = plannedMeals
+            // A "Leftovers" day eats portions already cooked and in the pantry: nothing to buy for it.
+            .filterNot { com.example.chatgpt_mealplanner.core.util.LeftoverMeals.sourceMealId(it.meal.notes) != null || it.meal.title.startsWith("Leftovers:", ignoreCase = true) }
+            .flatMap { mealWithIngs ->
             val mealDomain = mealWithIngs.meal.toDomainModel()
             mealWithIngs.ingredients.map { ingEntity ->
                 Pair(mealDomain, ingEntity.toDomainModel())
@@ -109,11 +112,25 @@ class ShoppingDomainServiceImpl @Inject constructor(
             }
 
             val matchingLots = allInventoryItems.filter { lot ->
-                isLotMatchingRuleOrIngredient(lot, canonicalId)
+                isLotMatchingRuleOrIngredient(lot, canonicalId) ||
+                    (lot.status != ItemStatus.DISCARDED && lotNameMatches(lot, displayName))
             }
-            val availableLotQuantity = matchingLots.sumOf { lot ->
+            // Stock counted in packs against a recipe in grams can't be compared. The item stays on the list,
+            // with a note to check, because the household may own the wrong kind or plenty of it.
+            val mismatchedLots = mutableListOf<com.example.chatgpt_mealplanner.core.model.InventoryItem>()
+            var stockOfUnknownQuantity = false
+            val convertedLotQuantity = matchingLots.sumOf { lot ->
                 val lotQty = lot.quantity ?: 0.0
-                UnitConverter.convert(lotQty, lot.quantityUnit ?: primaryUnit, primaryUnit).getOrNull() ?: lotQty
+                val converted = UnitConverter.convert(lotQty, lot.quantityUnit ?: primaryUnit, primaryUnit, lot.packSize, lot.packSizeUnit).getOrNull()
+                if (converted == null && lotQty > 0.0) mismatchedLots += lot
+                // In stock but nobody recorded how much: assume it covers the need rather than asking to buy it.
+                if (lot.quantity == null && lot.status != ItemStatus.OUT && lot.status != ItemStatus.DISCARDED) stockOfUnknownQuantity = true
+                converted ?: 0.0
+            }
+            val availableLotQuantity = if (stockOfUnknownQuantity) maxOf(convertedLotQuantity, totalPlannedQuantity) else convertedLotQuantity
+            val mismatchNote = mismatchedLots.takeIf { it.isNotEmpty() }?.let { lots ->
+                val have = lots.joinToString(", ") { "${it.displayName} (${formatStock(it.quantity, it.quantityUnit)})" }
+                "You have $have, but this recipe needs ${primaryUnit.name.lowercase()}. Check you have enough, or that it is the right item, and fix its quantity in your pantry if needed."
             }
 
             val requirementConfidence = if (matchingLots.any { it.quantityConfidence == QuantityConfidence.EXACT }) {
@@ -145,8 +162,8 @@ class ShoppingDomainServiceImpl @Inject constructor(
                     stapleReserveTopUpQuantity = 0.0,
                     expectedFinalInventory = ownedForBatch,
                     expectedFinalInventoryUnit = primaryUnit,
-                    quantityUncertain = matchingLots.any { it.quantityConfidence == QuantityConfidence.UNKNOWN || it.quantityConfidence == QuantityConfidence.APPROXIMATE },
-                    uncertaintyReason = if (matchingLots.any { it.quantityConfidence == QuantityConfidence.UNKNOWN }) "Inventory lot quantity is unknown" else null,
+                    quantityUncertain = mismatchNote != null || matchingLots.any { it.quantityConfidence == QuantityConfidence.UNKNOWN || it.quantityConfidence == QuantityConfidence.APPROXIMATE },
+                    uncertaintyReason = mismatchNote ?: if (matchingLots.any { it.quantityConfidence == QuantityConfidence.UNKNOWN }) "Inventory lot quantity is unknown" else null,
                     requirementConfidence = requirementConfidence,
                     wasteRisk = wasteRisk
                 )
@@ -161,8 +178,11 @@ class ShoppingDomainServiceImpl @Inject constructor(
             } else {
                 listOf(sources.toList())
             }
+            // Stock that covers the plan is not shopping: only what is short goes on the list.
             if (batches.size <= 1) {
-                calculatedItems.add(buildItem(sources, totalPlannedQuantity, availableLotQuantity))
+                if (totalPlannedQuantity - availableLotQuantity > 0.0) {
+                    calculatedItems.add(buildItem(sources, totalPlannedQuantity, availableLotQuantity))
+                }
             } else {
                 var ownedLeft = availableLotQuantity
                 val perBatch = batches.map { batch ->
@@ -172,9 +192,7 @@ class ShoppingDomainServiceImpl @Inject constructor(
                     Triple(batch, qty, covered)
                 }
                 val needed = perBatch.filter { (_, qty, covered) -> qty - covered > 0.0 }
-                if (needed.isEmpty()) {
-                    calculatedItems.add(buildItem(sources, totalPlannedQuantity, availableLotQuantity))
-                } else {
+                if (needed.isNotEmpty()) {
                     needed.forEach { (batch, qty, covered) ->
                         calculatedItems.add(buildItem(batch, qty, covered))
                     }
@@ -392,6 +410,17 @@ class ShoppingDomainServiceImpl @Inject constructor(
             .replace(Regex("[^a-z0-9]+"), " ")
             .trim()
             .replace(Regex("\\s+"), " ")
+
+    private fun formatStock(quantity: Double?, unit: com.example.chatgpt_mealplanner.core.model.QuantityUnit?): String {
+        val q = quantity?.let { if (it % 1.0 == 0.0) it.toLong().toString() else it.toString() } ?: "unknown amount"
+        return listOfNotNull(q, unit?.name?.lowercase()).joinToString(" ")
+    }
+
+    /** Ingredients Claude names have no canonical ID, so "dried oregano" has to find the "oregano" in stock by name. */
+    private fun lotNameMatches(lot: com.example.chatgpt_mealplanner.core.model.InventoryItem, ingredientName: String): Boolean =
+        com.example.chatgpt_mealplanner.core.util.IngredientNameMatcher.matches(lot.displayName, ingredientName) ||
+            (lot.category == com.example.chatgpt_mealplanner.core.model.FoodCategory.KITS_MIXES &&
+                com.example.chatgpt_mealplanner.core.util.IngredientNameMatcher.matchesKit(lot.displayName, ingredientName))
 
     private fun isLotMatchingRuleOrIngredient(lot: com.example.chatgpt_mealplanner.core.model.InventoryItem, canonicalId: String?): Boolean {
         if (lot.status == ItemStatus.DISCARDED || canonicalId == null) return false

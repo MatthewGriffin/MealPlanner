@@ -46,6 +46,7 @@ sealed interface MealPlannerUiEvent {
     data class RequestEditMeal(val mealWithIngredients: MealWithIngredients) : MealPlannerUiEvent
     data class SaveMeal(val meal: Meal, val ingredients: List<MealIngredient>) : MealPlannerUiEvent
     data class DeleteMeal(val mealId: String) : MealPlannerUiEvent
+    data class ChangeMealSlot(val mealId: String, val mealType: com.example.chatgpt_mealplanner.core.model.MealType) : MealPlannerUiEvent
     data class RequestCookMeal(val mealWithIngredients: MealWithIngredients) : MealPlannerUiEvent
     data class ConfirmCookMeal(
         val mealId: String,

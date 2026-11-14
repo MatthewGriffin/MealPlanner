@@ -17,6 +17,8 @@ data class ChatUiState(
     val activeConversationId: String = "default_conversation",
     val messages: List<ChatMessageEntity> = emptyList(),
     val latestProposal: ValidatedMealProposal? = null,
+    /** What the latest recipe card says about its extra portions, such as which days they will be saved against. */
+    val leftoverNote: String? = null,
     val latestProposedAction: AiProposedAction? = null,
     val isSavingProposal: Boolean = false,
     val isLoading: Boolean = false,

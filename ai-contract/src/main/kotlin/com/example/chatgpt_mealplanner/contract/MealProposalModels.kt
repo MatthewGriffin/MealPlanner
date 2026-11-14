@@ -63,7 +63,11 @@ data class MealProposal(
     /** The web recipe this was adapted from, such as "BBC Good Food: https://...". */
     val source: String? = null,
     /** Optional extras worth buying that would lift the dish, each with what it adds. Not on the shopping list. */
-    val worthAdding: List<String> = emptyList()
+    val worthAdding: List<String> = emptyList(),
+    /** What happens to portions beyond [servings]: null or PLAN_DAYS puts them on later dinners of the plan, FREEZE freezes them. */
+    val extrasPlan: String? = null,
+    /** Dinners (YYYY-MM-DD) the user asked the extra portions to go on, instead of the next free days of the plan. */
+    val extraDates: List<String> = emptyList()
 ) {
     /** Null when the recipe gave no time, so a card never shows an invented one. */
     fun totalMinutes(): Int? =

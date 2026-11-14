@@ -7,7 +7,17 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -29,20 +39,33 @@ internal fun ShopPriceComparisonCard(
     modifier: Modifier = Modifier
 ) {
     val itemsWithPrices = items.filter { !optionsByItemId[it.item.id].isNullOrEmpty() }
+    // Until prices have been recorded there is nothing to compare, so the card stays out of the way.
+    if (itemsWithPrices.isEmpty()) return
+    var showInfo by remember { mutableStateOf(false) }
+    if (showInfo) {
+        AlertDialog(
+            onDismissRequest = { showInfo = false },
+            confirmButton = { TextButton(onClick = { showInfo = false }) { Text("Got it") } },
+            title = { Text("Best shop") },
+            text = {
+                Text(
+                    "The shop with the lowest total cost that covers what you need, using only prices you recorded " +
+                        "(no live shop prices), which may be out of date."
+                )
+            }
+        )
+    }
     Card(modifier = modifier) {
         Column(modifier = Modifier.padding(12.dp)) {
-            Text("Best shop from your recorded prices", fontWeight = FontWeight.SemiBold)
-            Text(
-                "Lowest total cost that covers what you need · based on prices you recorded, which may be out of date",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            if (itemsWithPrices.isEmpty()) {
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    "No matching prices yet. Record a price when you scan a barcode, or link items when you save a receipt.",
-                    style = MaterialTheme.typography.bodySmall
-                )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Best shop from your recorded prices", fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                IconButton(onClick = { showInfo = true }) {
+                    Icon(Icons.Default.Info, contentDescription = "How the best shop is worked out")
+                }
             }
             itemsWithPrices.forEach { entry ->
                 Spacer(modifier = Modifier.height(8.dp))

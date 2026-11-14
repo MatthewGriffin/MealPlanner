@@ -10,7 +10,6 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 private const val QUICK_REPLIES_MARKER = "QUICK_REPLIES:"
-private const val PLAN_LEFT_MARKER = "PLAN_LEFT:"
 
 /** Reads the meal plan or recipe the model writes into a text reply, and hides the JSON from the user. */
 internal object ModelReplyText {
@@ -37,18 +36,6 @@ internal object ModelReplyText {
         }
         val cleaned = lines.filterIndexed { i, _ -> i != index }.joinToString("\n").trim()
         return cleaned to replies
-    }
-
-    /**
-     * While building a plan the model ends each reply with PLAN_LEFT: n, the meals still to propose after the current one.
-     * The line is for the app, so it comes out of the text.
-     */
-    fun withoutPlanLeft(text: String): Pair<String, Int?> {
-        val lines = text.lines()
-        val index = lines.indexOfLast { it.trim().startsWith(PLAN_LEFT_MARKER) }
-        if (index < 0) return text to null
-        val left = lines[index].trim().removePrefix(PLAN_LEFT_MARKER).trim().toIntOrNull()?.coerceIn(0, 30)
-        return lines.filterIndexed { i, _ -> i != index }.joinToString("\n").trim() to left
     }
 
     private const val MAX_QUICK_REPLIES = 4

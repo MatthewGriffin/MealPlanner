@@ -1,6 +1,20 @@
 package com.example.chatgpt_mealplanner.feature.mealplanner.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.remember
+import androidx.compose.ui.draw.clip
+import com.example.chatgpt_mealplanner.core.util.RecipeTextParser
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -46,6 +60,32 @@ internal fun MealRatingChips(rating: MealRating?, onRate: (MealRating?) -> Unit)
             onClick = { onRate(MealRating.DOWN.takeUnless { rating == it }) },
             label = { Text("👎 Not for us") }
         )
+    }
+}
+
+@Composable
+private fun InfoPill(text: String) {
+    Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.surface) {
+        Text(
+            text,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+        )
+    }
+}
+
+@Composable
+private fun SectionCard(title: String, content: @Composable ColumnScope.() -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(4.dp))
+            content()
+        }
     }
 }
 
@@ -106,6 +146,10 @@ fun RecipeDetailsScreen(
             val meal = mealWithIngredients.meal
             val ingredients = mealWithIngredients.ingredients
 
+            val parsed = remember(meal.instructions) { RecipeTextParser.parse(meal.instructions.orEmpty()) }
+            val totalMinutes = listOfNotNull(parsed.prepMinutes, parsed.cookMinutes).sum().takeIf { it > 0 }
+            val linkColor = MaterialTheme.colorScheme.primary
+
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
@@ -113,81 +157,156 @@ fun RecipeDetailsScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 item {
-                    Text(
-                        text = meal.title,
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Row(
+                    Card(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
                     ) {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text(
+                                text = meal.title,
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            Text(
+                                text = "${meal.mealType.name.lowercase().replaceFirstChar { it.uppercase() }} \u2022 ${meal.status.name.lowercase().replaceFirstChar { it.uppercase() }}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                InfoPill("${meal.servings} servings")
+                                parsed.prepMinutes?.let { InfoPill("Prep $it min") }
+                                parsed.cookMinutes?.let { InfoPill("Cook $it min") }
+                                if (parsed.prepMinutes == null && parsed.cookMinutes == null) totalMinutes?.let { InfoPill("$it min") }
+                            }
+                            // A follower's meals come from the main phone, which holds the ratings.
+                            if (!uiState.isFollower) {
+                                MealRatingChips(
+                                    rating = meal.rating,
+                                    onRate = { viewModel.onEvent(MealPlannerUiEvent.RateMeal(meal.id, it)) }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (parsed.equipment.isNotEmpty()) {
+                    item {
                         Text(
-                            text = "${meal.mealType.name} • ${meal.servings} servings",
+                            text = "You'll need: " + parsed.equipment.joinToString(", "),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                    }
+                }
+
+                item {
+                    SectionCard("Ingredients") {
+                        ingredients.forEachIndexed { index, ing ->
+                            if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            Row(
+                                Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(ing.displayName, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                                Spacer(Modifier.width(12.dp))
+                                Text(
+                                    formatQuantityAndUnit(ing.plannedQuantity, ing.plannedUnit),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (meal.instructions.isNullOrBlank()) {
+                    item {
+                        SectionCard("Method") {
+                            Text(
+                                "Cooking instructions aren't available for this planned meal.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                } else {
+                    item {
+                        SectionCard("Method") {
+                            if (parsed.steps.isEmpty()) {
+                                Text(
+                                    text = com.example.chatgpt_mealplanner.ui.text.withTappableLinks(meal.instructions, linkColor),
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                            parsed.steps.forEach { step ->
+                                Row(
+                                    Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(28.dp)
+                                            .clip(CircleShape)
+                                            .background(MaterialTheme.colorScheme.primary),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            step.number.toString(),
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onPrimary
+                                        )
+                                    }
+                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Text(step.text, style = MaterialTheme.typography.bodyLarge)
+                                        step.minutes?.let {
+                                            Text("\u23F1 $it min", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                    }
+                                }
+                            }
+                            parsed.other.forEach {
+                                Text(it, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 8.dp))
+                            }
+                        }
+                    }
+                }
+
+                if (parsed.swaps.isNotEmpty() || parsed.worthAdding.isNotEmpty()) {
+                    item {
+                        SectionCard("Tips") {
+                            parsed.swaps.forEach {
+                                Text("\uD83D\uDD01 $it", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 4.dp))
+                            }
+                            if (parsed.worthAdding.isNotEmpty()) {
+                                Text(
+                                    "Worth adding (not on your shopping list)",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
+                                )
+                                parsed.worthAdding.forEach {
+                                    Text("\u2022 $it", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 2.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+
+                parsed.basedOn?.let { source ->
+                    item {
                         Text(
-                            text = "Status: ${meal.status.name}",
+                            text = com.example.chatgpt_mealplanner.ui.text.withTappableLinks("Based on: $source", linkColor),
                             style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                    // A follower's meals come from the main phone, which holds the ratings.
-                    if (!uiState.isFollower) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        MealRatingChips(
-                            rating = meal.rating,
-                            onRate = { viewModel.onEvent(MealPlannerUiEvent.RateMeal(meal.id, it)) }
-                        )
-                    }
-                }
-
-                item {
-                    Text(
-                        text = "Ingredients",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                }
-
-                items(ingredients, key = { it.id }) { ing ->
-                    val qtyFormatted = formatQuantityAndUnit(ing.plannedQuantity, ing.plannedUnit)
-                    Text(
-                        text = "• ${ing.displayName} — $qtyFormatted",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                }
-
-                item {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Method",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    if (!meal.instructions.isNullOrBlank()) {
-                        Text(
-                            // A recipe adapted from the web ends with "Based on:" and the page's address.
-                            text = com.example.chatgpt_mealplanner.ui.text.withTappableLinks(meal.instructions, MaterialTheme.colorScheme.primary),
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                    } else {
-                        Text(
-                            text = "Cooking instructions aren't available for this planned meal.",
-                            style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
 
                 item {
-                    Spacer(modifier = Modifier.height(16.dp))
                     Button(
                         onClick = { onCookNowClicked(meal.id) },
                         modifier = Modifier.fillMaxWidth()

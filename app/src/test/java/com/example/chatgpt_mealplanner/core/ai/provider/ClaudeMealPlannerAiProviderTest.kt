@@ -447,14 +447,6 @@ class ClaudeMealPlannerAiProviderTest {
     }
 
     @Test
-    fun planLeftLine_isReadAndHidden() {
-        val final = finalReplyFor("Meal 1 of 3, Monday dinner.\nPLAN_LEFT: 2") as AiProviderResponse.FinalResponse
-
-        assertEquals("Meal 1 of 3, Monday dinner.", final.text)
-        assertEquals(2, final.mealsLeftInPlan)
-    }
-
-    @Test
     fun otherCodeFencesAndBoldWords_areLeftAlone() {
         val reply = "Try this:\n```json\n[1, 2]\n```"
         val fenced = finalReplyFor(reply) as AiProviderResponse.FinalResponse

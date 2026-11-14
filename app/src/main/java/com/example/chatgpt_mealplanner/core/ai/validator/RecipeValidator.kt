@@ -81,7 +81,9 @@ class RecipeValidator @Inject constructor(
             val matchingLots = byId.ifEmpty {
                 allInventory.filter {
                     it.displayName.equals(ing.displayName, ignoreCase = true) ||
-                        com.example.chatgpt_mealplanner.core.util.IngredientNameMatcher.matches(it.displayName, ing.displayName)
+                        com.example.chatgpt_mealplanner.core.util.IngredientNameMatcher.matches(it.displayName, ing.displayName) ||
+                        (it.category == com.example.chatgpt_mealplanner.core.model.FoodCategory.KITS_MIXES &&
+                            com.example.chatgpt_mealplanner.core.util.IngredientNameMatcher.matchesKit(it.displayName, ing.displayName))
                 }
             }
             val hasUncertain = matchingLots.any {
@@ -94,14 +96,18 @@ class RecipeValidator @Inject constructor(
             }
 
             var ownedTotal = 0.0
+            var stockInIncompatibleUnit = false
             usableMatchingLots.forEach { lot ->
                 val qty = lot.quantity ?: 0.0
-                val converted = UnitConverter.convert(qty, lot.quantityUnit ?: parsedUnit, parsedUnit).getOrNull() ?: qty
-                ownedTotal += converted
+                val converted = UnitConverter.convert(qty, lot.quantityUnit ?: parsedUnit, parsedUnit, lot.packSize, lot.packSizeUnit).getOrNull()
+                if (converted == null && qty > 0.0) stockInIncompatibleUnit = true
+                ownedTotal += converted ?: 0.0
             }
 
+
             val availability = when {
-                hasUncertain -> IngredientAvailability.UNCERTAIN
+                // Packs against grams can't be compared: ask the user to check instead of guessing either way.
+                hasUncertain || stockInIncompatibleUnit -> IngredientAvailability.UNCERTAIN
                 ownedTotal >= ing.quantity -> IngredientAvailability.AVAILABLE
                 ownedTotal > 0.0 -> IngredientAvailability.PARTIAL
                 else -> IngredientAvailability.MISSING
@@ -161,8 +167,15 @@ class RecipeValidator @Inject constructor(
             else -> RecipeValidationStatus.VALID
         }
 
+        // Don't suggest buying an extra the household already owns (fresh coriander when dried coriander is in stock).
+        val ownedNames = usableInventory.map { it.displayName }
+        val extras = proposal.worthAdding.filterNot { idea ->
+            val name = idea.substringBefore(':')
+            ownedNames.any { com.example.chatgpt_mealplanner.core.util.IngredientNameMatcher.matches(it, name) }
+        }
+
         return ValidatedMealProposal(
-            proposal = proposal,
+            proposal = proposal.copy(worthAdding = extras),
             validatedIngredients = validatedIngredients,
             shoppingNeeded = shoppingNeeded,
             status = status,

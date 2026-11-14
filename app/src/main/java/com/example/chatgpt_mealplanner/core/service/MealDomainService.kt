@@ -27,6 +27,12 @@ interface MealDomainService {
 
     suspend fun deletePlannedMeal(mealId: String): DomainResult<Unit>
 
+    /** The uncooked "Leftovers: X" days planned for the batch that [sourceMealId] makes. */
+    suspend fun leftoverDaysFor(sourceMealId: String): List<Meal>
+
+    /** Moves a planned meal to another slot of the same day (breakfast, lunch, dinner). */
+    suspend fun changeMealSlot(mealId: String, mealType: com.example.chatgpt_mealplanner.core.model.MealType): DomainResult<Unit>
+
     suspend fun markMealSkipped(mealId: String): DomainResult<Unit>
 
     suspend fun markMealCancelled(mealId: String): DomainResult<Unit>
@@ -48,4 +54,7 @@ interface MealDomainService {
     suspend fun discardLeftover(
         leftoverId: String
     ): DomainResult<Unit>
+
+    /** Takes eaten portions of a batch out of the pantry's "Leftover X" item. */
+    suspend fun takePantryPortions(sourceMealId: String, portions: Int)
 }

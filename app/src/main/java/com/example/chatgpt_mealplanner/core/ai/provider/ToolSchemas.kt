@@ -31,6 +31,13 @@ internal object ToolSchemas {
                 choice("mealType", "Meal type", MealType.entries.map { it.name })
                 number("servings", "Number of servings (default 2)")
                 if (tool == AiToolId.OFFER_ADD_PLANNED_MEAL) {
+                    number("batchPortions", "Only when an ingredient cannot sensibly be scaled down to servings (a kit or packet made for 4, a whole tin) and the recipe therefore makes more than the household eats now: the total portions it makes. The app uses the extra portions on later days or freezes them. Leave out when the recipe makes exactly servings")
+                    choice("extrasPlan", "What to do with extra portions (batchPortions above servings). PLAN_DAYS (the default) puts them on the next free dinners of the user's plan; FREEZE freezes them. Use FREEZE only when the user asks for it", listOf("PLAN_DAYS", "FREEZE"))
+                    putJsonObject("extraDates") {
+                        put("type", "array")
+                        put("description", "Only when the user asks for the extra portions to go on particular days: those dinner dates as YYYY-MM-DD")
+                        putJsonObject("items") { put("type", "string") }
+                    }
                     number("prepMinutes", "Honest preparation time in minutes")
                     number("cookMinutes", "Honest cooking time in minutes")
                     string("whyThisSuits", "One short, specific reason this recipe suits this user today")

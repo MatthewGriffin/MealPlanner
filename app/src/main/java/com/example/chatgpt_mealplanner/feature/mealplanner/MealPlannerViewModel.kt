@@ -213,6 +213,7 @@ class MealPlannerViewModel @Inject constructor(
             }
             is MealPlannerUiEvent.SaveMeal -> saveMeal(event.meal, event.ingredients)
             is MealPlannerUiEvent.DeleteMeal -> deleteMeal(event.mealId)
+            is MealPlannerUiEvent.ChangeMealSlot -> changeMealSlot(event.mealId, event.mealType)
             is MealPlannerUiEvent.RequestCookMeal -> mealToCookFlow.value = event.mealWithIngredients
             is MealPlannerUiEvent.DismissCookDialog -> mealToCookFlow.value = null
             is MealPlannerUiEvent.ConfirmCookMeal -> cookMeal(
@@ -257,6 +258,15 @@ class MealPlannerViewModel @Inject constructor(
         viewModelScope.launch {
             mealRepository.setMealRating(mealId, rating)
             recentCookedRefreshFlow.value++
+        }
+    }
+
+    private fun changeMealSlot(mealId: String, mealType: com.example.chatgpt_mealplanner.core.model.MealType) {
+        viewModelScope.launch {
+            when (val result = mealDomainService.changeMealSlot(mealId, mealType)) {
+                is DomainResult.Success<*> -> userMessageFlow.value = "Moved to ${mealType.name.lowercase()}"
+                is DomainResult.Failure -> userMessageFlow.value = formatDomainError(result.error)
+            }
         }
     }
 

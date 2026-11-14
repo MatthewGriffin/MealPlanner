@@ -57,7 +57,8 @@ object FreshnessPlanner {
     private val LONG_LIFE_WORDS = listOf(
         "frozen", "tinned", "canned", "dried", "dry ", "jar", "powder", "stock cube", "sauce",
         "paste", "oil", "vinegar", "flour", "sugar", "rice", "pasta", "noodle", "lentil", "beans",
-        "tin of", "ground", "spice", "salt", "black pepper"
+        "tin of", "ground", "spice", "salt", "black pepper", "juice", "puree", "ketchup", "mustard",
+        "mayonnaise", "dressing", "extract", "syrup", "honey", "seasoning", "stock", "concentrate"
     )
 
     private val RULES: List<Pair<List<String>, Int>> = listOf(

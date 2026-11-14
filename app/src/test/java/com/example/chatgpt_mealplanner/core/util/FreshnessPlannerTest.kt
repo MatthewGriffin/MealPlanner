@@ -15,6 +15,13 @@ class FreshnessPlannerTest {
         assertNull(FreshnessPlanner.shelfLifeDays("Rice"))
     }
 
+    @Test fun shelfStableLiquidsAndSaucesAreNeverSplit() {
+        assertNull(FreshnessPlanner.shelfLifeDays("Lemon juice"))
+        assertNull(FreshnessPlanner.shelfLifeDays("Lime juice"))
+        assertNull(FreshnessPlanner.shelfLifeDays("Chicken stock"))
+        assertEquals(6, FreshnessPlanner.shelfLifeDays("Lemon"))
+    }
+
     @Test fun mealsFarApartAreSplitIntoTrips() {
         val dates = listOf(today, today.plusDays(1), today.plusDays(6))
         val batches = FreshnessPlanner.batchByShelfLife(dates, { it }, 2, today)
