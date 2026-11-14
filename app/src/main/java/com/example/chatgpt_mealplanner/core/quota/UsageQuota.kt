@@ -30,7 +30,9 @@ data class UsageSnapshot(
     val percentLeft: Int = 100,
     val resetsOn: LocalDate? = null,
     val example: Boolean = false,
-    val unlimited: Boolean = false
+    val unlimited: Boolean = false,
+    /** What the Worker last reported, whatever the screens show (debug builds show an example). Null before its first answer. */
+    val real: UsageReading? = null
 )
 
 /**
@@ -79,9 +81,9 @@ open class UsageQuota @Inject constructor(
     fun refresh() {
         val r = reading
         _snapshot.value = when {
-            limitsBypassed() -> UsageSnapshot(tier = debugTier ?: tierOf(r?.tier), percentLeft = 70, resetsOn = resetDate(), example = true)
-            ownKeyMode() -> UsageSnapshot(unlimited = true)
-            else -> UsageSnapshot(tier = tierOf(r?.tier), percentLeft = r?.percentLeft ?: 100, resetsOn = resetDate())
+            limitsBypassed() -> UsageSnapshot(tier = debugTier ?: tierOf(r?.tier), percentLeft = 70, resetsOn = resetDate(), example = true, real = r)
+            ownKeyMode() -> UsageSnapshot(unlimited = true, real = r)
+            else -> UsageSnapshot(tier = tierOf(r?.tier), percentLeft = r?.percentLeft ?: 100, resetsOn = resetDate(), real = r)
         }
     }
 
