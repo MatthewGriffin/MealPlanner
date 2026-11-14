@@ -21,6 +21,7 @@ class SubscriptionViewModel @Inject constructor(
     val isDebugBuild: Boolean = com.example.chatgpt_mealplanner.BuildConfig.DEBUG
 
     fun subscribe() { _message.value = subscriptions.startPurchase() }
+    fun manage() { _message.value = subscriptions.manageSubscription() }
     fun restore() { _message.value = subscriptions.restorePurchases() }
     fun clearMessage() { _message.value = null }
 

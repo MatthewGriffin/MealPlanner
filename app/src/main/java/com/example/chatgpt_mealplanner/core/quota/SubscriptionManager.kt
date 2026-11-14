@@ -16,6 +16,10 @@ open class SubscriptionManager @Inject constructor(private val usageQuota: Usage
     open fun startPurchase(): String =
         "Subscriptions will be available once the app is on Google Play."
 
+    /** Opens the store's page to change or cancel the subscription. */
+    open fun manageSubscription(): String =
+        "You will be able to change or cancel your subscription here once the app is on Google Play."
+
     open fun restorePurchases(): String =
         "There is nothing to restore until the app is on Google Play."
 }

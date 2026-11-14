@@ -57,17 +57,12 @@ fun SubscriptionScreen(modifier: Modifier = Modifier, viewModel: SubscriptionVie
         PlanCard("Free", listOf("${free.chatMessages} assistant messages a day", "${free.itemEntries} typed or bulk items a day"), highlighted = usage.tier == UsageTier.FREE)
         PlanCard("Plus", listOf("${paid.chatMessages} assistant messages a day", "${paid.itemEntries} typed or bulk items a day"), highlighted = usage.tier == UsageTier.PAID)
 
-        Text(
-            "Only things that use the AI count: assistant messages (including photos and recipe imports, and each meal of a plan) and typed or bulk item lists. " +
-                "Adding and editing things by hand, scanning barcodes and everything else in the app is never limited.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-
         if (usage.tier == UsageTier.FREE) {
             Button(onClick = viewModel::subscribe, modifier = Modifier.fillMaxWidth()) { Text("Subscribe to Plus") }
+            OutlinedButton(onClick = viewModel::restore, modifier = Modifier.fillMaxWidth()) { Text("Restore purchase") }
+        } else {
+            Button(onClick = viewModel::manage, modifier = Modifier.fillMaxWidth()) { Text("Change or cancel subscription") }
         }
-        OutlinedButton(onClick = viewModel::restore, modifier = Modifier.fillMaxWidth()) { Text("Restore purchase") }
         message?.let {
             Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
         }

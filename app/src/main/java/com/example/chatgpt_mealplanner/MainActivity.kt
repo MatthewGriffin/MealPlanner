@@ -182,6 +182,7 @@ class MainActivity : ComponentActivity() {
                     else -> null
                 }
 
+                val planViewModel: com.example.chatgpt_mealplanner.feature.subscription.SubscriptionViewModel = hiltViewModel()
                 Scaffold(
                     topBar = {
                         TopAppBar(
@@ -197,6 +198,12 @@ class MainActivity : ComponentActivity() {
                                 }
                             },
                             actions = {
+                                if (currentScreen != Screen.SUBSCRIPTION) {
+                                    val planUsage by planViewModel.usage.collectAsState()
+                                    androidx.compose.material3.TextButton(onClick = { openFromTopBar(Screen.SUBSCRIPTION) }) {
+                                        Text(if (planUsage.tier == com.example.chatgpt_mealplanner.core.quota.UsageTier.PAID) "My plan" else "Upgrade")
+                                    }
+                                }
                                 var showMore by remember { mutableStateOf(false) }
                                 val canOpenRecipes = currentScreen != Screen.RECIPES && !isFollower
                                 val canOpenHousehold = currentScreen != Screen.HOUSEHOLD
