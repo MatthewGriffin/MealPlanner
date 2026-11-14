@@ -43,8 +43,9 @@ fun SubscriptionScreen(modifier: Modifier = Modifier, viewModel: SubscriptionVie
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("Your plan: ${if (usage.tier == UsageTier.PAID) "Plus" else "Free"}", fontWeight = FontWeight.Bold)
                 if (usage.unlimited) {
-                    Text("Test build: limits are switched off.", style = MaterialTheme.typography.bodyMedium)
+                    Text("Limits are not tracked here.", style = MaterialTheme.typography.bodyMedium)
                 } else {
+                    if (usage.example) Text("Test build: limits are off, so these numbers are only an example.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                     Text("Today", style = MaterialTheme.typography.labelLarge)
                     Text(usageText(usage, QuotaKind.CHAT_MESSAGE) ?: "", style = MaterialTheme.typography.bodyMedium)
                     Text(usageText(usage, QuotaKind.ITEM_ENTRY) ?: "", style = MaterialTheme.typography.bodyMedium)

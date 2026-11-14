@@ -59,6 +59,9 @@ class UsageQuotaTest {
         assertEquals(4, snap.chatLeft); assertEquals(5, snap.itemsLeft); assertFalse(snap.unlimited)
         val bypassed = object : UsageQuota(null) { override fun limitsBypassed() = true }
         bypassed.refresh()
-        assertTrue(bypassed.snapshot.value.unlimited)
+        val example = bypassed.snapshot.value
+        assertTrue(example.example); assertFalse(example.unlimited)
+        assertTrue(example.chatLeft in 1 until example.chatLimit)
+        assertTrue(bypassed.canUse(QuotaKind.CHAT_MESSAGE, 1000))
     }
 }

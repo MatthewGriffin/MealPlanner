@@ -18,7 +18,9 @@ data class UsageSnapshot(
     val chatLimit: Int = 0,
     val itemsLeft: Int = 0,
     val itemsLimit: Int = 0,
-    val unlimited: Boolean = false
+    val unlimited: Boolean = false,
+    /** True in debug builds: the numbers are made-up examples, not real use. */
+    val example: Boolean = false
 )
 
 enum class QuotaKind { CHAT_MESSAGE, ITEM_ENTRY }
@@ -52,13 +54,25 @@ open class UsageQuota @Inject constructor(
     /** Recomputes what the screens show; called after every change and when a screen asks. */
     fun refresh() {
         val limits = QuotaLimits.forTier(tier())
+        if (limitsBypassed()) {
+            // Debug builds have no real limits, so show example numbers to see how the screens look.
+            _snapshot.value = UsageSnapshot(
+                tier = tier(),
+                chatLeft = limits.chatMessages - 1,
+                chatLimit = limits.chatMessages,
+                itemsLeft = limits.itemEntries - 1,
+                itemsLimit = limits.itemEntries,
+                example = true
+            )
+            return
+        }
         _snapshot.value = UsageSnapshot(
             tier = tier(),
             chatLeft = remaining(QuotaKind.CHAT_MESSAGE).coerceAtMost(limits.chatMessages),
             chatLimit = limits.chatMessages,
             itemsLeft = remaining(QuotaKind.ITEM_ENTRY).coerceAtMost(limits.itemEntries),
             itemsLimit = limits.itemEntries,
-            unlimited = limitsBypassed()
+            unlimited = false
         )
     }
 

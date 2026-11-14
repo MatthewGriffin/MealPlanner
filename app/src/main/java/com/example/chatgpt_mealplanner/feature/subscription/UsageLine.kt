@@ -19,7 +19,7 @@ fun usageText(usage: UsageSnapshot, kind: QuotaKind): String? {
     val (left, limit, what) = if (kind == QuotaKind.CHAT_MESSAGE)
         Triple(usage.chatLeft, usage.chatLimit, "assistant messages")
     else Triple(usage.itemsLeft, usage.itemsLimit, "typed items")
-    return "$left of $limit $what left today"
+    return "$left of $limit $what left today" + if (usage.example) " (example)" else ""
 }
 
 /** One line showing what is left today; tapping it opens the plans screen. Manual adds and edits are never limited. */
