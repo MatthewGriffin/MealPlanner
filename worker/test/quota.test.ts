@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { NEW_STATE, activePeriodStart, canUse, record, setTier, snapshot } from "../src/quota";
 import { microDollars } from "../src/pricing";
-import { makeToken, verifyToken } from "../src/token";
+import { hashOf, makeToken, verifyToken } from "../src/token";
 
 const D = "2026-11-16";
 
@@ -70,5 +70,15 @@ describe("tokens", () => {
     expect(await verifyToken("secret", "user-2." + t.split(".")[1])).toBeNull();
     expect(await verifyToken("secret", "garbage")).toBeNull();
     expect(await verifyToken("secret", null)).toBeNull();
+  });
+});
+
+describe("hashOf", () => {
+  it("is stable, keyed, and does not contain the input", async () => {
+    const a = await hashOf("secret", "203.0.113.7");
+    expect(a).toBe(await hashOf("secret", "203.0.113.7"));
+    expect(a).not.toBe(await hashOf("other", "203.0.113.7"));
+    expect(a).not.toBe(await hashOf("secret", "203.0.113.8"));
+    expect(a).not.toContain("203");
   });
 });
