@@ -82,7 +82,8 @@ class ChatViewModel @Inject constructor(
     private val mealChangeRequestRepository: MealChangeRequestRepository = UnavailableMealChangeRequestRepository,
     @param:ApplicationContext private val appContext: Context? = null,
     private val inventoryDao: com.example.chatgpt_mealplanner.core.database.dao.InventoryDao? = null,
-    private val kitInstructionDao: com.example.chatgpt_mealplanner.core.database.dao.KitInstructionDao? = null
+    private val kitInstructionDao: com.example.chatgpt_mealplanner.core.database.dao.KitInstructionDao? = null,
+    private val usageQuota: com.example.chatgpt_mealplanner.core.quota.UsageQuota? = null
 ) : ViewModel() {
 
     private val conversationIdFlow = MutableStateFlow("default_conversation")
@@ -443,7 +444,14 @@ class ChatViewModel @Inject constructor(
         val text = userMessageTextFlow.value.trim()
         if (text.isBlank()) return
         if (requestStateHolderFlow.value.requestState == ChatRequestState.IN_FLIGHT) return
+        if (text != STOP_PLAN && usageQuota != null &&
+            !usageQuota.canUse(com.example.chatgpt_mealplanner.core.quota.QuotaKind.CHAT_MESSAGE)
+        ) {
+            errorMessageFlow.value = usageQuota.limitMessage(com.example.chatgpt_mealplanner.core.quota.QuotaKind.CHAT_MESSAGE)
+            return
+        }
         userMessageTextFlow.value = ""
+        if (text != STOP_PLAN) usageQuota?.record(com.example.chatgpt_mealplanner.core.quota.QuotaKind.CHAT_MESSAGE)
         if (text == STOP_PLAN && planQueue.isNotEmpty()) {
             planQueue.clear()
             errorMessageFlow.value = "Plan stopped. Meals you already saved stay in your planner."
