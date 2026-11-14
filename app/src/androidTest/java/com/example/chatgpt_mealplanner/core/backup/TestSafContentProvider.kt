@@ -55,7 +55,7 @@ class TestSafContentProvider : ContentProvider() {
     }
 
     companion object {
-        const val AUTHORITY = "com.example.chatgpt_mealplanner.test.saf"
+        const val AUTHORITY = "app.pantrypal.mealplanner.test.saf"
         val CONTENT_URI: Uri = Uri.parse("content://$AUTHORITY/test_saf_document.pantrybak")
     }
 }

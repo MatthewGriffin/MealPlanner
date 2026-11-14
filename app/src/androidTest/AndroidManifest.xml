@@ -8,13 +8,13 @@
 
         <provider
             android:name="com.example.chatgpt_mealplanner.core.backup.TestSafContentProvider"
-            android:authorities="com.example.chatgpt_mealplanner.test.saf"
+            android:authorities="app.pantrypal.mealplanner.test.saf"
             android:exported="true"
             android:grantUriPermissions="true" />
 
         <provider
             android:name="com.example.chatgpt_mealplanner.core.backup.TestSafDocumentsProvider"
-            android:authorities="com.example.chatgpt_mealplanner.test.documents"
+            android:authorities="app.pantrypal.mealplanner.test.documents"
             android:exported="true"
             android:grantUriPermissions="true">
             <intent-filter>
