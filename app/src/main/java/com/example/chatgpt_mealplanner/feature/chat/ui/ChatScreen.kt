@@ -428,7 +428,7 @@ fun ChatScreen(
                 }
             }
 
-            com.example.chatgpt_mealplanner.feature.subscription.UsageLine(usage, com.example.chatgpt_mealplanner.core.quota.QuotaKind.CHAT_MESSAGE, onOpenPlans)
+            com.example.chatgpt_mealplanner.feature.subscription.UsageLine(usage, onOpenPlans)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()

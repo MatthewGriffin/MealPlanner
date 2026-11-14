@@ -230,28 +230,18 @@ class InventoryViewModel @Inject constructor(
             updateBulk { it.copy(error = "Reading a list needs the AI, which isn't available here.") }
             return
         }
-        val itemKind = com.example.chatgpt_mealplanner.core.quota.QuotaKind.ITEM_ENTRY
-        if (usageQuota != null && !usageQuota.canUse(itemKind)) {
-            updateBulk { it.copy(error = usageQuota.limitMessage(itemKind)) }
+        if (usageQuota != null && !usageQuota.canUse()) {
+            updateBulk { it.copy(error = usageQuota.limitMessage()) }
             return
         }
         updateBulk { it.copy(isReading = true, error = null, lookupNote = null, progress = "Reading your list…") }
-        var capNote: String? = null
         viewModelScope.launch {
             val items = when (val result = provider.parsePantryList(bulk.text)) {
                 is PantryListResult.Failed -> {
                     updateBulk { it.copy(isReading = false, progress = null, error = result.message) }
                     return@launch
                 }
-                is PantryListResult.Items -> {
-                    // The whole list was read, so it is counted; only as many items as are left today are kept.
-                    val left = usageQuota?.remaining(itemKind) ?: Int.MAX_VALUE
-                    usageQuota?.record(itemKind, result.items.size.coerceAtMost(left))
-                    if (result.items.size > left) {
-                        capNote = usageQuota?.limitMessage(itemKind)
-                    }
-                    result.items.take(left)
-                }
+                is PantryListResult.Items -> result.items
             }
             val base = items.map { item ->
                 BulkAddRow(
@@ -270,7 +260,7 @@ class InventoryViewModel @Inject constructor(
             }
             val resolved = resolveProducts(provider, base.map { it.searchText })
             val rows = base.mapIndexed { i, row -> row.withResolution(resolved[i]) }
-            updateBulk { it.copy(isReading = false, progress = null, rows = rows.sortedBy { r -> r.decided }, lookupNote = listOfNotNull(capNote, lookupNote(rows)).joinToString("\n").ifEmpty { null }) }
+            updateBulk { it.copy(isReading = false, progress = null, rows = rows.sortedBy { r -> r.decided }, lookupNote = lookupNote(rows)) }
         }
     }
 

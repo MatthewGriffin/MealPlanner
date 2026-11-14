@@ -3,84 +3,64 @@ package com.example.chatgpt_mealplanner.core.quota
 import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.time.LocalDate
+import javax.inject.Inject
+import javax.inject.Singleton
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import javax.inject.Inject
-import javax.inject.Singleton
 
 enum class UsageTier { FREE, PAID }
 
-/** What the screens show: how much of today's allowance is left. [unlimited] is true for debug builds. */
+/** Daily AI allowance per tier, in millionths of a dollar of Claude cost. Paid is bigger but not unlimited. */
+object QuotaLimits {
+    const val FREE_MICRO_DOLLARS = 20_000L   // 2 cents a day
+    const val PAID_MICRO_DOLLARS = 100_000L  // 10 cents a day
+    fun forTier(tier: UsageTier) = if (tier == UsageTier.FREE) FREE_MICRO_DOLLARS else PAID_MICRO_DOLLARS
+
+    /** How many times bigger the paid allowance is, for the comparison page. */
+    val PAID_MULTIPLE: Int get() = (PAID_MICRO_DOLLARS / FREE_MICRO_DOLLARS).toInt()
+}
+
+/** What the screens show. [percentLeft] is 0..100. [example] is true in debug builds: made-up numbers. */
 data class UsageSnapshot(
     val tier: UsageTier = UsageTier.FREE,
-    val chatLeft: Int = 0,
-    val chatLimit: Int = 0,
-    val itemsLeft: Int = 0,
-    val itemsLimit: Int = 0,
-    val unlimited: Boolean = false,
-    /** True in debug builds: the numbers are made-up examples, not real use. */
-    val example: Boolean = false
+    val percentLeft: Int = 100,
+    val example: Boolean = false,
+    /** True when usage is not tracked at all (no quota wired in): the screens show nothing. */
+    val unlimited: Boolean = false
 )
 
-enum class QuotaKind { CHAT_MESSAGE, ITEM_ENTRY }
-
-/** Daily allowance per tier. Paid is bigger but deliberately not unlimited. Tune these numbers freely. */
-data class TierLimits(val chatMessages: Int, val itemEntries: Int) {
-    fun limitFor(kind: QuotaKind) = if (kind == QuotaKind.CHAT_MESSAGE) chatMessages else itemEntries
-}
-
-object QuotaLimits {
-    val FREE = TierLimits(chatMessages = 4, itemEntries = 5)
-    val PAID = TierLimits(chatMessages = 20, itemEntries = 100)
-    fun forTier(tier: UsageTier) = if (tier == UsageTier.FREE) FREE else PAID
-}
-
 /**
- * Counts AI use per calendar day (device local time) and says whether more is allowed.
- * The tier comes from [tierSource]; until Play billing exists, release builds are FREE; debug builds bypass the limits.
+ * Adds up what today's AI use cost (Claude token prices, see [ClaudePricing]) and says whether more is allowed.
+ * Only AI use counts; manual adds, edits and barcode scans never touch this.
+ * A request that starts under the limit is allowed to finish, so a day can end slightly over.
  */
 @Singleton
 open class UsageQuota @Inject constructor(
     @param:ApplicationContext private val context: Context?
 ) {
     private val prefs by lazy {
-        context?.let { runCatching { it.getSharedPreferences("usage_quota_v1", Context.MODE_PRIVATE) }.getOrNull() }
+        context?.let { runCatching { it.getSharedPreferences("usage_quota_v2", Context.MODE_PRIVATE) }.getOrNull() }
     }
 
     private val _snapshot = MutableStateFlow(UsageSnapshot())
     val snapshot: StateFlow<UsageSnapshot> get() { refresh(); return _snapshot.asStateFlow() }
 
-    /** Recomputes what the screens show; called after every change and when a screen asks. */
     fun refresh() {
-        val limits = QuotaLimits.forTier(tier())
         if (limitsBypassed()) {
-            // Debug builds have no real limits, so show example numbers to see how the screens look.
-            _snapshot.value = UsageSnapshot(
-                tier = tier(),
-                chatLeft = limits.chatMessages - 1,
-                chatLimit = limits.chatMessages,
-                itemsLeft = limits.itemEntries - 1,
-                itemsLimit = limits.itemEntries,
-                example = true
-            )
+            // Debug builds have no real limits, so show an example to see how the screens look.
+            _snapshot.value = UsageSnapshot(tier = tier(), percentLeft = 70, example = true)
             return
         }
-        _snapshot.value = UsageSnapshot(
-            tier = tier(),
-            chatLeft = remaining(QuotaKind.CHAT_MESSAGE).coerceAtMost(limits.chatMessages),
-            chatLimit = limits.chatMessages,
-            itemsLeft = remaining(QuotaKind.ITEM_ENTRY).coerceAtMost(limits.itemEntries),
-            itemsLimit = limits.itemEntries,
-            unlimited = false
-        )
+        val limit = QuotaLimits.forTier(tier())
+        val left = ((limit - spentMicros()).coerceAtLeast(0) * 100 / limit).toInt()
+        _snapshot.value = UsageSnapshot(tier = tier(), percentLeft = left)
     }
 
     /** Replace when billing arrives (read the active subscription here). */
     open fun tier(): UsageTier {
         val saved = runCatching { prefs?.getString("tier", null) }.getOrNull()
-        if (saved != null) return runCatching { UsageTier.valueOf(saved) }.getOrDefault(UsageTier.FREE)
-        return UsageTier.FREE
+        return saved?.let { runCatching { UsageTier.valueOf(it) }.getOrNull() } ?: UsageTier.FREE
     }
 
     open fun setTier(tier: UsageTier) {
@@ -90,46 +70,35 @@ open class UsageQuota @Inject constructor(
 
     protected open fun today(): LocalDate = LocalDate.now()
 
-    open fun used(kind: QuotaKind): Int {
-        val p = prefs ?: return 0
-        return runCatching {
-            if (p.getString("day", null) != today().toString()) 0 else p.getInt(kind.name, 0)
-        }.getOrDefault(0)
-    }
-
     /** Debug builds (dev testing) ignore the limits completely. Tests can override this to check the limits. */
     protected open fun limitsBypassed(): Boolean = com.example.chatgpt_mealplanner.BuildConfig.DEBUG
 
-    open fun remaining(kind: QuotaKind): Int =
-        if (limitsBypassed()) Int.MAX_VALUE else (QuotaLimits.forTier(tier()).limitFor(kind) - used(kind)).coerceAtLeast(0)
+    open fun spentMicros(): Long {
+        val p = prefs ?: return 0L
+        return runCatching {
+            if (p.getString("day", null) != today().toString()) 0L else p.getLong("spent", 0L)
+        }.getOrDefault(0L)
+    }
 
-    /** True when [amount] more fits today. Does not count anything. */
-    open fun canUse(kind: QuotaKind, amount: Int = 1): Boolean = remaining(kind) >= amount
+    /** True while today's allowance is not used up. */
+    open fun canUse(): Boolean = limitsBypassed() || spentMicros() < QuotaLimits.forTier(tier())
 
-    open fun record(kind: QuotaKind, amount: Int = 1) {
+    /** Adds the cost of one Claude reply (millionths of a dollar). */
+    @Synchronized
+    open fun recordSpend(micros: Long) {
         val p = prefs ?: return
+        if (micros <= 0) return
         runCatching {
             val day = today().toString()
-            val edit = p.edit()
-            if (p.getString("day", null) != day) {
-                edit.putString("day", day)
-                QuotaKind.values().forEach { edit.putInt(it.name, 0) }
-                edit.putInt(kind.name, amount)
-            } else {
-                edit.putInt(kind.name, p.getInt(kind.name, 0) + amount)
-            }
-            edit.apply()
+            val before = if (p.getString("day", null) == day) p.getLong("spent", 0L) else 0L
+            p.edit().putString("day", day).putLong("spent", before + micros).apply()
         }
         refresh()
     }
 
-    fun limitMessage(kind: QuotaKind): String {
-        val tier = tier()
-        val what = if (kind == QuotaKind.CHAT_MESSAGE) "assistant messages" else "item entries"
-        val limit = QuotaLimits.forTier(tier).limitFor(kind)
-        return if (tier == UsageTier.FREE)
-            "You have used today's $limit free $what. The limit resets tomorrow, or upgrade for a higher daily limit."
+    fun limitMessage(): String =
+        if (tier() == UsageTier.FREE)
+            "You have used today's free AI allowance. It resets tomorrow, or upgrade for more."
         else
-            "You have reached today's limit of $limit $what. It resets tomorrow."
-    }
+            "You have used today's AI allowance. It resets tomorrow."
 }

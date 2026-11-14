@@ -365,6 +365,24 @@ class ClaudeMealPlannerAiProviderTest {
     }
 
     @Test
+    fun everyReplyIsChargedToTheDailyAllowance() = runBlocking {
+        val spent = mutableListOf<Long>()
+        val quota = object : com.example.chatgpt_mealplanner.core.quota.UsageQuota(null) {
+            override fun recordSpend(micros: Long) { spent += micros }
+        }
+        val charged = ClaudeMealPlannerAiProvider(FakeCredentialStore("sk-ant-test"), Dispatchers.Unconfined, quota).apply {
+            baseUrl = server.url("/").toString().removeSuffix("/")
+            maxRetries = 0
+        }
+        server.enqueue(reply("max_tokens", text("Half a plan")))
+
+        charged.send(request())
+
+        // 10 input tokens at 0.10 + 5 output at 0.50 = 3.5 micro-dollars, rounded.
+        assertEquals(listOf(4L), spent)
+    }
+
+    @Test
     fun aRejectedKey_pointsToSettings() = runBlocking {
         server.enqueue(error(401, "authentication_error", "invalid x-api-key"))
 

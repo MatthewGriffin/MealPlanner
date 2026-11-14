@@ -448,10 +448,8 @@ class ChatViewModel @Inject constructor(
         val text = userMessageTextFlow.value.trim()
         if (text.isBlank()) return
         if (requestStateHolderFlow.value.requestState == ChatRequestState.IN_FLIGHT) return
-        if (text != STOP_PLAN && usageQuota != null &&
-            !usageQuota.canUse(com.example.chatgpt_mealplanner.core.quota.QuotaKind.CHAT_MESSAGE)
-        ) {
-            errorMessageFlow.value = usageQuota.limitMessage(com.example.chatgpt_mealplanner.core.quota.QuotaKind.CHAT_MESSAGE)
+        if (text != STOP_PLAN && usageQuota != null && !usageQuota.canUse()) {
+            errorMessageFlow.value = usageQuota.limitMessage()
             return
         }
         userMessageTextFlow.value = ""
@@ -509,14 +507,13 @@ class ChatViewModel @Inject constructor(
     }
 
     private fun startSend(text: String, displayMessageText: String?, packet: com.example.chatgpt_mealplanner.core.ai.packet.PacketPhoto?) {
-        // Every request to Claude (typed messages, photos of packets and recipes, recipe links, each meal of a plan) is one message.
+        // Every request to Claude (typed messages, photos, recipe links, each meal of a plan) needs some of today's allowance left; the provider charges the real cost.
         if (usageQuota != null) {
-            if (!usageQuota.canUse(com.example.chatgpt_mealplanner.core.quota.QuotaKind.CHAT_MESSAGE)) {
+            if (!usageQuota.canUse()) {
                 planQueue.clear()
-                errorMessageFlow.value = usageQuota.limitMessage(com.example.chatgpt_mealplanner.core.quota.QuotaKind.CHAT_MESSAGE)
+                errorMessageFlow.value = usageQuota.limitMessage()
                 return
             }
-            usageQuota.record(com.example.chatgpt_mealplanner.core.quota.QuotaKind.CHAT_MESSAGE)
         }
         // A proposal belongs to the previous assistant turn. Do not leave its Save card
         // visible while a new request (especially a multi-day plan) is being processed.

@@ -79,7 +79,7 @@ fun BulkAddDialog(
                     }
                 }
                 if (state.rows.isEmpty()) {
-                    com.example.chatgpt_mealplanner.feature.subscription.UsageLine(usage, com.example.chatgpt_mealplanner.core.quota.QuotaKind.ITEM_ENTRY, onOpenPlans)
+                    com.example.chatgpt_mealplanner.feature.subscription.UsageLine(usage, onOpenPlans)
                     BulkAddInput(state, onEvent)
                 } else BulkAddReview(state, onEvent)
             }

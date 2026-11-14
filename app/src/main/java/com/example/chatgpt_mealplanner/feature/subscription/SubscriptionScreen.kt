@@ -22,7 +22,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.example.chatgpt_mealplanner.core.quota.QuotaKind
 import com.example.chatgpt_mealplanner.core.quota.QuotaLimits
 import com.example.chatgpt_mealplanner.core.quota.UsageTier
 
@@ -30,8 +29,6 @@ import com.example.chatgpt_mealplanner.core.quota.UsageTier
 fun SubscriptionScreen(modifier: Modifier = Modifier, viewModel: SubscriptionViewModel = hiltViewModel()) {
     val usage by viewModel.usage.collectAsState()
     val message by viewModel.message.collectAsState()
-    val free = QuotaLimits.FREE
-    val paid = QuotaLimits.PAID
 
     Column(
         modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -47,15 +44,14 @@ fun SubscriptionScreen(modifier: Modifier = Modifier, viewModel: SubscriptionVie
                 } else {
                     if (usage.example) Text("Test build: limits are off, so these numbers are only an example.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                     Text("Today", style = MaterialTheme.typography.labelLarge)
-                    Text(usageText(usage, QuotaKind.CHAT_MESSAGE) ?: "", style = MaterialTheme.typography.bodyMedium)
-                    Text(usageText(usage, QuotaKind.ITEM_ENTRY) ?: "", style = MaterialTheme.typography.bodyMedium)
+                    Text(usageText(usage) ?: "", style = MaterialTheme.typography.bodyMedium)
                     Text("Limits reset every day at midnight.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
 
-        PlanCard("Free", listOf("${free.chatMessages} assistant messages a day", "${free.itemEntries} typed or bulk items a day"), highlighted = usage.tier == UsageTier.FREE)
-        PlanCard("Plus", listOf("${paid.chatMessages} assistant messages a day", "${paid.itemEntries} typed or bulk items a day"), highlighted = usage.tier == UsageTier.PAID)
+        PlanCard("Free", listOf("Try the AI features every day"), highlighted = usage.tier == UsageTier.FREE)
+        PlanCard("Plus", listOf("${QuotaLimits.PAID_MULTIPLE}x the daily AI usage"), highlighted = usage.tier == UsageTier.PAID)
 
         if (usage.tier == UsageTier.FREE) {
             Button(onClick = viewModel::subscribe, modifier = Modifier.fillMaxWidth()) { Text("Subscribe to Plus") }
