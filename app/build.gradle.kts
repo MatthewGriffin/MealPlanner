@@ -24,7 +24,7 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.example.chatgpt_mealplanner"
+        applicationId = "app.pantrypal.mealplanner"
         minSdk = 30
         targetSdk = 35
         versionCode = 1
