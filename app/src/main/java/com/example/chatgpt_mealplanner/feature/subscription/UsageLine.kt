@@ -12,10 +12,12 @@ import androidx.compose.ui.unit.dp
 import com.example.chatgpt_mealplanner.core.quota.UsageSnapshot
 import com.example.chatgpt_mealplanner.core.quota.UsageTier
 
-/** Plain-text summary used by the screens: "AI usage left today: 70%". Null when usage is not tracked. */
+/** Plain-text summary used by the screens: "AI usage left this week: 70% · refreshes Mon 20 Nov". Null when usage is not tracked. */
 fun usageText(usage: UsageSnapshot): String? {
     if (usage.unlimited) return null
-    return "AI usage left today: ${usage.percentLeft}%" + if (usage.example) " (example)" else ""
+    val period = if (usage.tier == UsageTier.FREE) "this week" else "today"
+    val refresh = usage.resetsOn?.let { " · refreshes ${com.example.chatgpt_mealplanner.core.quota.UsageQuota.formatDate(it)}" } ?: ""
+    return "AI usage left $period: ${usage.percentLeft}%" + refresh + if (usage.example) " (example)" else ""
 }
 
 /** One line showing what is left today; tapping it opens the plans screen. Manual adds and edits are never limited. */

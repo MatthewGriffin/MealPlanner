@@ -45,13 +45,13 @@ fun SubscriptionScreen(modifier: Modifier = Modifier, viewModel: SubscriptionVie
                     if (usage.example) Text("Test build: limits are off, so these numbers are only an example.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                     Text("Today", style = MaterialTheme.typography.labelLarge)
                     Text(usageText(usage) ?: "", style = MaterialTheme.typography.bodyMedium)
-                    Text("Limits reset every day at midnight.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Your allowance refreshes on the date shown.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
 
-        PlanCard("Free", listOf("Limited trial usage of the AI features"), highlighted = usage.tier == UsageTier.FREE)
-        PlanCard("Pro", listOf("${QuotaLimits.PAID_MULTIPLE}x the daily AI usage"), highlighted = usage.tier == UsageTier.PAID)
+        PlanCard("Free", listOf("Limited trial usage of the AI features, refreshed every week"), highlighted = usage.tier == UsageTier.FREE)
+        PlanCard("Pro", listOf("${QuotaLimits.PAID_MULTIPLE}x the AI usage of Free, refreshed every day"), highlighted = usage.tier == UsageTier.PAID)
 
         if (usage.tier == UsageTier.FREE) {
             Button(onClick = viewModel::subscribe, modifier = Modifier.fillMaxWidth()) { Text("Subscribe to Pro") }
@@ -67,7 +67,7 @@ fun SubscriptionScreen(modifier: Modifier = Modifier, viewModel: SubscriptionVie
             Spacer(Modifier.height(8.dp))
             Text("Debug only", style = MaterialTheme.typography.labelLarge)
             Text(
-                "Real cost: spent today $" + String.format(java.util.Locale.UK, "%.4f", usage.spentMicros / 1_000_000.0) +
+                "Real cost: spent this period $" + String.format(java.util.Locale.UK, "%.4f", usage.spentMicros / 1_000_000.0) +
                     ", last reply $" + String.format(java.util.Locale.UK, "%.4f", usage.lastMicros / 1_000_000.0),
                 style = MaterialTheme.typography.bodyMedium
             )
