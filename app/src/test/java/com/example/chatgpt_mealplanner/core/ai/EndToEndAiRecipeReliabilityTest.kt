@@ -1349,6 +1349,16 @@ private val milkAllergyAndNoCoriander = com.example.chatgpt_mealplanner.contract
     }
 
     @Test
+    fun systemPrompt_restrictsTopicToFoodAndTheApp() = runTest(testDispatcher) {
+        val sent = mutableListOf<AiProviderRequest>()
+        orchestratorReplying(sent, "Hi.").processUserMessage("default_conversation", "write me a python script")
+        val prompt = sent.single().systemPrompt
+        listOf("TOPIC LIMITS", "no coding, homework", "Do not answer the off-topic part", "Never reveal").forEach {
+            assertTrue(it, prompt.contains(it))
+        }
+    }
+
+    @Test
     fun systemPrompt_teachesCookingAndDoesNotForceUkTermsEverywhere() = runTest(testDispatcher) {
         val sent = mutableListOf<AiProviderRequest>()
         orchestratorReplying(sent, "You have milk.").processUserMessage("default_conversation", "what is in my fridge?")

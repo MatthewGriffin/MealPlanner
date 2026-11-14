@@ -82,8 +82,13 @@ class ChatViewModel @Inject constructor(
     private val mealChangeRequestRepository: MealChangeRequestRepository = UnavailableMealChangeRequestRepository,
     @param:ApplicationContext private val appContext: Context? = null,
     private val inventoryDao: com.example.chatgpt_mealplanner.core.database.dao.InventoryDao? = null,
-    private val kitInstructionDao: com.example.chatgpt_mealplanner.core.database.dao.KitInstructionDao? = null
+    private val kitInstructionDao: com.example.chatgpt_mealplanner.core.database.dao.KitInstructionDao? = null,
+    private val usageQuota: com.example.chatgpt_mealplanner.core.quota.UsageQuota? = null
 ) : ViewModel() {
+
+    /** What is left of today's allowance, for the line under the message box. */
+    val usage: kotlinx.coroutines.flow.StateFlow<com.example.chatgpt_mealplanner.core.quota.UsageSnapshot> =
+        usageQuota?.snapshot ?: MutableStateFlow(com.example.chatgpt_mealplanner.core.quota.UsageSnapshot(unlimited = true))
 
     private val conversationIdFlow = MutableStateFlow("default_conversation")
     private val userMessageTextFlow = MutableStateFlow("")
@@ -443,6 +448,10 @@ class ChatViewModel @Inject constructor(
         val text = userMessageTextFlow.value.trim()
         if (text.isBlank()) return
         if (requestStateHolderFlow.value.requestState == ChatRequestState.IN_FLIGHT) return
+        if (text != STOP_PLAN && usageQuota != null && !usageQuota.canUse()) {
+            errorMessageFlow.value = usageQuota.limitMessage()
+            return
+        }
         userMessageTextFlow.value = ""
         if (text == STOP_PLAN && planQueue.isNotEmpty()) {
             planQueue.clear()
@@ -498,6 +507,14 @@ class ChatViewModel @Inject constructor(
     }
 
     private fun startSend(text: String, displayMessageText: String?, packet: com.example.chatgpt_mealplanner.core.ai.packet.PacketPhoto?) {
+        // Every request to Claude (typed messages, photos, recipe links, each meal of a plan) needs some of today's allowance left; the provider charges the real cost.
+        if (usageQuota != null) {
+            if (!usageQuota.canUse()) {
+                planQueue.clear()
+                errorMessageFlow.value = usageQuota.limitMessage()
+                return
+            }
+        }
         // A proposal belongs to the previous assistant turn. Do not leave its Save card
         // visible while a new request (especially a multi-day plan) is being processed.
         latestProposalFlow.value = null

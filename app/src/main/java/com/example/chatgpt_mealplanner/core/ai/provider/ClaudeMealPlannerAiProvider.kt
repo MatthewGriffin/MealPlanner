@@ -80,7 +80,8 @@ data class TokenUsage(val input: Long, val output: Long, val cacheRead: Long, va
 @Singleton
 class ClaudeMealPlannerAiProvider @Inject constructor(
     private val credentialStore: CredentialStore,
-    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val usageQuota: com.example.chatgpt_mealplanner.core.quota.UsageQuota? = null
 ) : MealPlannerAiProvider {
 
     /** The live evaluation sets this to compare models. */
@@ -317,15 +318,16 @@ class ClaudeMealPlannerAiProvider @Inject constructor(
 
     private fun recordUsage(message: Message) {
         val usage = message.usage()
-        usageObserver?.invoke(
-            TokenUsage(
-                input = usage.inputTokens(),
-                output = usage.outputTokens(),
-                cacheRead = usage.cacheReadInputTokens().orElse(0L),
-                cacheWrite = usage.cacheCreationInputTokens().orElse(0L),
-                webSearches = usage.serverToolUse().map { it.webSearchRequests() }.orElse(0L)
-            )
+        val tokens = TokenUsage(
+            input = usage.inputTokens(),
+            output = usage.outputTokens(),
+            cacheRead = usage.cacheReadInputTokens().orElse(0L),
+            cacheWrite = usage.cacheCreationInputTokens().orElse(0L),
+            webSearches = usage.serverToolUse().map { it.webSearchRequests() }.orElse(0L)
         )
+        usageObserver?.invoke(tokens)
+        // Every reply is charged against today's allowance, including ones that were cut off or refused.
+        usageQuota?.recordSpend(com.example.chatgpt_mealplanner.core.quota.ClaudePricing.microDollars(model, tokens))
     }
 
     private fun readReply(message: Message, conversationId: String, conversation: Conversation): AiProviderResponse {

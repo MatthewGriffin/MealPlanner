@@ -87,7 +87,8 @@ enum class Screen(val label: String) {
     RECEIPT_SPEND("Shopping Spend"),
     HOUSEHOLD("Household Sync"),
     PAIR_DEVICE("Pair New Device"),
-    JOIN_HOUSEHOLD("Join Household")
+    JOIN_HOUSEHOLD("Join Household"),
+    SUBSCRIPTION("Plan and usage")
 }
 
 @AndroidEntryPoint
@@ -144,7 +145,7 @@ class MainActivity : ComponentActivity() {
                 /** Where Back goes from the screens opened from the top bar. */
                 var returnScreen by remember { mutableStateOf(Screen.INVENTORY) }
                 fun openFromTopBar(screen: Screen) {
-                    if (currentScreen != Screen.SETTINGS && currentScreen != Screen.HOUSEHOLD && currentScreen != Screen.RECIPES) returnScreen = currentScreen
+                    if (currentScreen != Screen.SETTINGS && currentScreen != Screen.HOUSEHOLD && currentScreen != Screen.RECIPES && currentScreen != Screen.SUBSCRIPTION) returnScreen = currentScreen
                     currentScreen = screen
                 }
                 var lowStockItemToAdd by remember { mutableStateOf<com.example.chatgpt_mealplanner.core.model.InventoryItem?>(null) }
@@ -172,7 +173,7 @@ class MainActivity : ComponentActivity() {
                     currentScreen == Screen.PAIR_DEVICE || currentScreen == Screen.JOIN_HOUSEHOLD -> {
                         { currentScreen = Screen.HOUSEHOLD }
                     }
-                    currentScreen == Screen.SETTINGS || currentScreen == Screen.HOUSEHOLD || currentScreen == Screen.RECIPES -> {
+                    currentScreen == Screen.SETTINGS || currentScreen == Screen.HOUSEHOLD || currentScreen == Screen.RECIPES || currentScreen == Screen.SUBSCRIPTION -> {
                         { currentScreen = returnScreen }
                     }
                     currentScreen == Screen.SCANNER -> {
@@ -181,6 +182,7 @@ class MainActivity : ComponentActivity() {
                     else -> null
                 }
 
+                val planViewModel: com.example.chatgpt_mealplanner.feature.subscription.SubscriptionViewModel = hiltViewModel()
                 Scaffold(
                     topBar = {
                         TopAppBar(
@@ -196,6 +198,12 @@ class MainActivity : ComponentActivity() {
                                 }
                             },
                             actions = {
+                                if (currentScreen != Screen.SUBSCRIPTION) {
+                                    val planUsage by planViewModel.usage.collectAsState()
+                                    androidx.compose.material3.TextButton(onClick = { openFromTopBar(Screen.SUBSCRIPTION) }) {
+                                        Text(if (planUsage.tier == com.example.chatgpt_mealplanner.core.quota.UsageTier.FREE) "Upgrade" else "My plan")
+                                    }
+                                }
                                 var showMore by remember { mutableStateOf(false) }
                                 val canOpenRecipes = currentScreen != Screen.RECIPES && !isFollower
                                 val canOpenHousehold = currentScreen != Screen.HOUSEHOLD
@@ -295,23 +303,29 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                             val state by chatViewModel.uiState.collectAsState()
+                            val chatUsage by chatViewModel.usage.collectAsState()
                             ChatScreen(
                                 uiState = state,
                                 onEvent = chatViewModel::onEvent,
                                 innerPadding = innerPadding,
-                                onOpenRecipes = { openFromTopBar(Screen.RECIPES) }
+                                onOpenRecipes = { openFromTopBar(Screen.RECIPES) },
+                                usage = chatUsage,
+                                onOpenPlans = { openFromTopBar(Screen.SUBSCRIPTION) }
                             )
                         }
 
                         Screen.INVENTORY -> {
                             val inventoryViewModel: InventoryViewModel = hiltViewModel()
                             val state by inventoryViewModel.uiState.collectAsState()
+                            val inventoryUsage by inventoryViewModel.usage.collectAsState()
                             InventoryScreen(
                                 state = state,
                                 onEvent = inventoryViewModel::onEvent,
                                 onScanBarcodeClicked = { currentScreen = Screen.SCANNER },
                                 onOpenAssistant = { kit -> scanPacketForKit = kit; currentScreen = Screen.CHAT },
                                 onSearchProducts = inventoryViewModel::searchProductsByName,
+                                usage = inventoryUsage,
+                                onOpenPlans = { openFromTopBar(Screen.SUBSCRIPTION) },
                                 modifier = Modifier.padding(innerPadding),
                                 onAddLowStockToShopping = if (isFollower) null else { item ->
                                     lowStockItemToAdd = item
@@ -390,6 +404,13 @@ class MainActivity : ComponentActivity() {
 
                         Screen.SETTINGS -> {
                             SettingsScreen(
+                                modifier = Modifier.padding(innerPadding),
+                                onOpenPlans = { currentScreen = Screen.SUBSCRIPTION }
+                            )
+                        }
+
+                        Screen.SUBSCRIPTION -> {
+                            com.example.chatgpt_mealplanner.feature.subscription.SubscriptionScreen(
                                 modifier = Modifier.padding(innerPadding)
                             )
                         }

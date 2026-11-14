@@ -48,8 +48,13 @@ class InventoryViewModel @Inject constructor(
     private val followerDatabase: FollowerDatabase? = null,
     private val barcodeLookupCoordinator: BarcodeLookupCoordinator? = null,
     private val aiProvider: MealPlannerAiProvider? = null,
-    private val kitInstructionDao: com.example.chatgpt_mealplanner.core.database.dao.KitInstructionDao? = null
+    private val kitInstructionDao: com.example.chatgpt_mealplanner.core.database.dao.KitInstructionDao? = null,
+    private val usageQuota: com.example.chatgpt_mealplanner.core.quota.UsageQuota? = null
 ) : ViewModel() {
+
+    /** What is left of today's allowance for reading typed lists. */
+    val usage: kotlinx.coroutines.flow.StateFlow<com.example.chatgpt_mealplanner.core.quota.UsageSnapshot> =
+        usageQuota?.snapshot ?: kotlinx.coroutines.flow.MutableStateFlow(com.example.chatgpt_mealplanner.core.quota.UsageSnapshot(unlimited = true))
 
     private val _uiState = MutableStateFlow(InventoryUiState())
     val uiState: StateFlow<InventoryUiState> = _uiState.asStateFlow()
@@ -223,6 +228,10 @@ class InventoryViewModel @Inject constructor(
         val provider = aiProvider
         if (provider == null) {
             updateBulk { it.copy(error = "Reading a list needs the AI, which isn't available here.") }
+            return
+        }
+        if (usageQuota != null && !usageQuota.canUse()) {
+            updateBulk { it.copy(error = usageQuota.limitMessage()) }
             return
         }
         updateBulk { it.copy(isReading = true, error = null, lookupNote = null, progress = "Reading your list…") }
