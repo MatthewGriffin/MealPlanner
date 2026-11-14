@@ -86,6 +86,10 @@ class ChatViewModel @Inject constructor(
     private val usageQuota: com.example.chatgpt_mealplanner.core.quota.UsageQuota? = null
 ) : ViewModel() {
 
+    /** What is left of today's allowance, for the line under the message box. */
+    val usage: kotlinx.coroutines.flow.StateFlow<com.example.chatgpt_mealplanner.core.quota.UsageSnapshot> =
+        usageQuota?.snapshot ?: MutableStateFlow(com.example.chatgpt_mealplanner.core.quota.UsageSnapshot(unlimited = true))
+
     private val conversationIdFlow = MutableStateFlow("default_conversation")
     private val userMessageTextFlow = MutableStateFlow("")
     private val kitPacketRequestFlow = MutableStateFlow<String?>(null)
@@ -451,7 +455,6 @@ class ChatViewModel @Inject constructor(
             return
         }
         userMessageTextFlow.value = ""
-        if (text != STOP_PLAN) usageQuota?.record(com.example.chatgpt_mealplanner.core.quota.QuotaKind.CHAT_MESSAGE)
         if (text == STOP_PLAN && planQueue.isNotEmpty()) {
             planQueue.clear()
             errorMessageFlow.value = "Plan stopped. Meals you already saved stay in your planner."
@@ -506,6 +509,15 @@ class ChatViewModel @Inject constructor(
     }
 
     private fun startSend(text: String, displayMessageText: String?, packet: com.example.chatgpt_mealplanner.core.ai.packet.PacketPhoto?) {
+        // Every request to Claude (typed messages, photos of packets and recipes, recipe links, each meal of a plan) is one message.
+        if (usageQuota != null) {
+            if (!usageQuota.canUse(com.example.chatgpt_mealplanner.core.quota.QuotaKind.CHAT_MESSAGE)) {
+                planQueue.clear()
+                errorMessageFlow.value = usageQuota.limitMessage(com.example.chatgpt_mealplanner.core.quota.QuotaKind.CHAT_MESSAGE)
+                return
+            }
+            usageQuota.record(com.example.chatgpt_mealplanner.core.quota.QuotaKind.CHAT_MESSAGE)
+        }
         // A proposal belongs to the previous assistant turn. Do not leave its Save card
         // visible while a new request (especially a multi-day plan) is being processed.
         latestProposalFlow.value = null

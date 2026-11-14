@@ -52,7 +52,8 @@ import com.example.chatgpt_mealplanner.core.ai.provider.CLAUDE_MODEL_ID
 @Composable
 fun SettingsScreen(
     modifier: Modifier = Modifier,
-    viewModel: SettingsViewModel = hiltViewModel()
+    viewModel: SettingsViewModel = hiltViewModel(),
+    onOpenPlans: () -> Unit = {}
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val createDocumentLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
@@ -172,6 +173,19 @@ fun SettingsScreen(
             .verticalScroll(rememberScrollState())
             .padding(16.dp)
     ) {
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Plan and usage", fontWeight = FontWeight.Bold)
+                    Text("See what is left today and subscribe for more.", style = MaterialTheme.typography.bodySmall)
+                }
+                Button(onClick = onOpenPlans) { Text("Open") }
+            }
+        }
+        Spacer(modifier = Modifier.height(8.dp))
         // AI SECTION
         SettingsSection("AI Configuration", initiallyExpanded = !uiState.isApiKeyConfigured) {
         Spacer(modifier = Modifier.height(4.dp))

@@ -82,7 +82,9 @@ fun ChatScreen(
     onEvent: (ChatUiEvent) -> Unit,
     modifier: Modifier = Modifier,
     innerPadding: PaddingValues = PaddingValues(0.dp),
-    onOpenRecipes: () -> Unit = {}
+    onOpenRecipes: () -> Unit = {},
+    usage: com.example.chatgpt_mealplanner.core.quota.UsageSnapshot = com.example.chatgpt_mealplanner.core.quota.UsageSnapshot(unlimited = true),
+    onOpenPlans: (() -> Unit)? = null
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     val listState = rememberLazyListState()
@@ -426,6 +428,7 @@ fun ChatScreen(
                 }
             }
 
+            com.example.chatgpt_mealplanner.feature.subscription.UsageLine(usage, com.example.chatgpt_mealplanner.core.quota.QuotaKind.CHAT_MESSAGE, onOpenPlans)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()

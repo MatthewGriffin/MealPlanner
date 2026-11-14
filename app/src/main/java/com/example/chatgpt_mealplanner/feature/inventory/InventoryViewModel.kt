@@ -52,6 +52,10 @@ class InventoryViewModel @Inject constructor(
     private val usageQuota: com.example.chatgpt_mealplanner.core.quota.UsageQuota? = null
 ) : ViewModel() {
 
+    /** What is left of today's allowance for reading typed lists. */
+    val usage: kotlinx.coroutines.flow.StateFlow<com.example.chatgpt_mealplanner.core.quota.UsageSnapshot> =
+        usageQuota?.snapshot ?: kotlinx.coroutines.flow.MutableStateFlow(com.example.chatgpt_mealplanner.core.quota.UsageSnapshot(unlimited = true))
+
     private val _uiState = MutableStateFlow(InventoryUiState())
     val uiState: StateFlow<InventoryUiState> = _uiState.asStateFlow()
 

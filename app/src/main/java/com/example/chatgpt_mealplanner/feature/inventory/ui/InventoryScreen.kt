@@ -86,7 +86,9 @@ fun InventoryScreen(
     onSearchProducts: (suspend (String) -> List<com.example.chatgpt_mealplanner.core.barcode.BarcodeLookupResult>)? = null,
     modifier: Modifier = Modifier,
     onAddLowStockToShopping: ((InventoryItem) -> Unit)? = null,
-    onOpenAssistant: (kitName: String) -> Unit = {}
+    onOpenAssistant: (kitName: String) -> Unit = {},
+    usage: com.example.chatgpt_mealplanner.core.quota.UsageSnapshot = com.example.chatgpt_mealplanner.core.quota.UsageSnapshot(unlimited = true),
+    onOpenPlans: (() -> Unit)? = null
 ) {
     var kitPromptName by remember { mutableStateOf<String?>(null) }
     var viewKit by remember { mutableStateOf<Pair<InventoryItem, com.example.chatgpt_mealplanner.core.database.entity.KitInstructionEntity>?>(null) }
@@ -228,7 +230,7 @@ fun InventoryScreen(
         }
     }
 
-    state.bulkAdd?.let { BulkAddDialog(state = it, onEvent = onEvent) }
+    state.bulkAdd?.let { BulkAddDialog(state = it, onEvent = onEvent, usage = usage, onOpenPlans = onOpenPlans) }
 
     if (showAddDialog) {
         AddEditItemDialog(

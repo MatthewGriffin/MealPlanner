@@ -41,4 +41,24 @@ class UsageQuotaTest {
         assertTrue(enforced.canUse(QuotaKind.CHAT_MESSAGE, QuotaLimits.FREE.chatMessages))
         assertFalse(enforced.canUse(QuotaKind.CHAT_MESSAGE, QuotaLimits.FREE.chatMessages + 1))
     }
+
+    @Test
+    fun agreedLimits() {
+        assertEquals(TierLimits(4, 5), QuotaLimits.FREE)
+        assertEquals(TierLimits(20, 100), QuotaLimits.PAID)
+    }
+
+    @Test
+    fun snapshotShowsWhatIsLeftAndUnlimitedWhenBypassed() {
+        val enforced = object : UsageQuota(null) {
+            override fun limitsBypassed() = false
+            override fun tier() = UsageTier.FREE
+        }
+        enforced.refresh()
+        val snap = enforced.snapshot.value
+        assertEquals(4, snap.chatLeft); assertEquals(5, snap.itemsLeft); assertFalse(snap.unlimited)
+        val bypassed = object : UsageQuota(null) { override fun limitsBypassed() = true }
+        bypassed.refresh()
+        assertTrue(bypassed.snapshot.value.unlimited)
+    }
 }

@@ -58,7 +58,9 @@ import com.example.chatgpt_mealplanner.feature.inventory.choiceLabel
 @Composable
 fun BulkAddDialog(
     state: BulkAddState,
-    onEvent: (InventoryUiEvent) -> Unit
+    onEvent: (InventoryUiEvent) -> Unit,
+    usage: com.example.chatgpt_mealplanner.core.quota.UsageSnapshot = com.example.chatgpt_mealplanner.core.quota.UsageSnapshot(unlimited = true),
+    onOpenPlans: (() -> Unit)? = null
 ) {
     Dialog(
         onDismissRequest = { if (!state.isSaving) onEvent(InventoryUiEvent.CloseBulkAdd) },
@@ -76,7 +78,10 @@ fun BulkAddDialog(
                         Icon(Icons.Default.Close, contentDescription = "Close")
                     }
                 }
-                if (state.rows.isEmpty()) BulkAddInput(state, onEvent) else BulkAddReview(state, onEvent)
+                if (state.rows.isEmpty()) {
+                    com.example.chatgpt_mealplanner.feature.subscription.UsageLine(usage, com.example.chatgpt_mealplanner.core.quota.QuotaKind.ITEM_ENTRY, onOpenPlans)
+                    BulkAddInput(state, onEvent)
+                } else BulkAddReview(state, onEvent)
             }
         }
     }

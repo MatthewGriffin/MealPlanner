@@ -3,10 +3,23 @@ package com.example.chatgpt_mealplanner.core.quota
 import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.time.LocalDate
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import javax.inject.Inject
 import javax.inject.Singleton
 
 enum class UsageTier { FREE, PAID }
+
+/** What the screens show: how much of today's allowance is left. [unlimited] is true for debug builds. */
+data class UsageSnapshot(
+    val tier: UsageTier = UsageTier.FREE,
+    val chatLeft: Int = 0,
+    val chatLimit: Int = 0,
+    val itemsLeft: Int = 0,
+    val itemsLimit: Int = 0,
+    val unlimited: Boolean = false
+)
 
 enum class QuotaKind { CHAT_MESSAGE, ITEM_ENTRY }
 
@@ -16,8 +29,8 @@ data class TierLimits(val chatMessages: Int, val itemEntries: Int) {
 }
 
 object QuotaLimits {
-    val FREE = TierLimits(chatMessages = 8, itemEntries = 20)
-    val PAID = TierLimits(chatMessages = 100, itemEntries = 300)
+    val FREE = TierLimits(chatMessages = 4, itemEntries = 5)
+    val PAID = TierLimits(chatMessages = 20, itemEntries = 100)
     fun forTier(tier: UsageTier) = if (tier == UsageTier.FREE) FREE else PAID
 }
 
@@ -33,6 +46,22 @@ open class UsageQuota @Inject constructor(
         context?.let { runCatching { it.getSharedPreferences("usage_quota_v1", Context.MODE_PRIVATE) }.getOrNull() }
     }
 
+    private val _snapshot = MutableStateFlow(UsageSnapshot())
+    val snapshot: StateFlow<UsageSnapshot> get() { refresh(); return _snapshot.asStateFlow() }
+
+    /** Recomputes what the screens show; called after every change and when a screen asks. */
+    fun refresh() {
+        val limits = QuotaLimits.forTier(tier())
+        _snapshot.value = UsageSnapshot(
+            tier = tier(),
+            chatLeft = remaining(QuotaKind.CHAT_MESSAGE).coerceAtMost(limits.chatMessages),
+            chatLimit = limits.chatMessages,
+            itemsLeft = remaining(QuotaKind.ITEM_ENTRY).coerceAtMost(limits.itemEntries),
+            itemsLimit = limits.itemEntries,
+            unlimited = limitsBypassed()
+        )
+    }
+
     /** Replace when billing arrives (read the active subscription here). */
     open fun tier(): UsageTier {
         val saved = runCatching { prefs?.getString("tier", null) }.getOrNull()
@@ -42,6 +71,7 @@ open class UsageQuota @Inject constructor(
 
     open fun setTier(tier: UsageTier) {
         runCatching { prefs?.edit()?.putString("tier", tier.name)?.apply() }
+        refresh()
     }
 
     protected open fun today(): LocalDate = LocalDate.now()
@@ -76,6 +106,7 @@ open class UsageQuota @Inject constructor(
             }
             edit.apply()
         }
+        refresh()
     }
 
     fun limitMessage(kind: QuotaKind): String {
