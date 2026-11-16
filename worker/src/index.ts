@@ -2,9 +2,10 @@ import { ALLOWED_MODELS, microDollars } from "./pricing";
 import { Tier } from "./quota";
 import { hashOf, makeToken, verifyToken } from "./token";
 import { Env } from "./objects";
+import { entitlementFrom, fetchSubscription } from "./play";
 import { decodeToken, judgeVerdict, makeNonce, nonceIsFresh } from "./integrity";
 
-export { UserQuota, Counters } from "./objects";
+export { UserQuota, Counters, PurchaseOwner } from "./objects";
 
 const MAX_BODY_BYTES = 12 * 1024 * 1024; // photos of packets and recipes arrive as base64
 const MAX_OUTPUT_TOKENS = 16_000;
@@ -36,6 +37,7 @@ export default {
       if (request.method === "POST" && url.pathname === "/v1/register/challenge") return json(200, { nonce: await makeNonce(env.TOKEN_SECRET) });
       if (request.method === "POST" && url.pathname === "/v1/register") return await register(request, env);
       if (request.method === "GET" && url.pathname === "/v1/usage") return await usage(request, env);
+      if (request.method === "POST" && url.pathname === "/v1/purchase") return await purchase(request, env);
       if (request.method === "POST" && url.pathname === "/v1/messages") return await messages(request, env);
       if (request.method === "POST" && url.pathname === "/admin/tier") return await adminTier(request, env);
       return json(404, { error: "not found" });
@@ -164,6 +166,35 @@ async function messages(request: Request, env: Env): Promise<Response> {
 }
 
 /** Sets an account's plan. Used for testing now and for the billing webhook later. */
+/**
+ * The app reports a Google Play purchase; the Worker asks Google whether it is good and which plan it is, then sets the
+ * plan with an end date. A purchase belongs to one account at a time: claiming it moves it, so it cannot be shared.
+ */
+async function purchase(request: Request, env: Env): Promise<Response> {
+  const user = await userFor(request, env);
+  if (!user) return json(401, { error: "unknown account" });
+  const userId = await verifyToken(env.TOKEN_SECRET, request.headers.get("x-api-key") ?? bearer(request));
+  const body = (await request.json().catch(() => ({}))) as { purchaseToken?: string };
+  const token = body.purchaseToken;
+  if (!token || token.length > 2000 || !userId) return json(400, { error: "need a purchaseToken" });
+  if (!env.GOOGLE_SA_JSON) return json(503, { error: "Subscriptions are not available yet." });
+
+  let payload: unknown;
+  try {
+    payload = await fetchSubscription(env.GOOGLE_SA_JSON, env.PACKAGE_NAME ?? "app.pantrypal.mealplanner", token);
+  } catch (e) {
+    return json(502, { error: "Could not check the purchase with Google. Please try again." });
+  }
+  const ent = entitlementFrom(payload, Date.now());
+  if (!ent) return json(200, { entitled: false, ...(await user.view(today())) });
+
+  const owner = env.PURCHASE_OWNER.get(env.PURCHASE_OWNER.idFromName(await hashOf(env.TOKEN_SECRET, "purchase:" + token)));
+  const previous = await owner.claim(userId);
+  if (previous) await env.USER_QUOTA.get(env.USER_QUOTA.idFromName(previous)).setPlan(today(), "free");
+  const snap = await user.setPaid(today(), ent.tier, ent.paidUntil, token);
+  return json(200, { entitled: true, ...snap }, usageHeaders(snap));
+}
+
 async function adminTier(request: Request, env: Env): Promise<Response> {
   if (!env.ADMIN_SECRET || bearer(request) !== env.ADMIN_SECRET) return json(401, { error: "no" });
   const { token, tier } = (await request.json()) as { token?: string; tier?: string };

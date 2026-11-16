@@ -53,7 +53,7 @@ export function judgeVerdict(payload: any, expect: { nonce: string; packageName:
   return { ok: reasons.length === 0, reasons };
 }
 
-let cachedAccess: { token: string; expiresAt: number } | null = null;
+const cachedAccess = new Map<string, { token: string; expiresAt: number }>();
 
 function pemToDer(pem: string): ArrayBuffer {
   const body = pem.replace(/-----[A-Z ]+-----/g, "").replace(/\s+/g, "");
@@ -63,13 +63,14 @@ function pemToDer(pem: string): ArrayBuffer {
   return out.buffer;
 }
 
-async function googleAccessToken(saJson: string, now = Date.now()): Promise<string> {
-  if (cachedAccess && cachedAccess.expiresAt - 60_000 > now) return cachedAccess.token;
+export async function googleAccessToken(saJson: string, scope: string, now = Date.now()): Promise<string> {
+  const hit = cachedAccess.get(scope);
+  if (hit && hit.expiresAt - 60_000 > now) return hit.token;
   const sa = JSON.parse(saJson) as { client_email: string; private_key: string };
   const iat = Math.floor(now / 1000);
   const claims = {
     iss: sa.client_email,
-    scope: "https://www.googleapis.com/auth/playintegrity",
+    scope,
     aud: "https://oauth2.googleapis.com/token",
     iat,
     exp: iat + 3600,
@@ -86,13 +87,13 @@ async function googleAccessToken(saJson: string, now = Date.now()): Promise<stri
   });
   if (!res.ok) throw new Error(`google token ${res.status}`);
   const data = (await res.json()) as { access_token: string; expires_in: number };
-  cachedAccess = { token: data.access_token, expiresAt: now + data.expires_in * 1000 };
+  cachedAccess.set(scope, { token: data.access_token, expiresAt: now + data.expires_in * 1000 });
   return data.access_token;
 }
 
 /** Asks Google to decode a token, and returns the payload. */
 export async function decodeToken(saJson: string, packageName: string, integrityToken: string): Promise<any> {
-  const access = await googleAccessToken(saJson);
+  const access = await googleAccessToken(saJson, "https://www.googleapis.com/auth/playintegrity");
   const res = await fetch(`https://playintegrity.googleapis.com/v1/${packageName}:decodeIntegrityToken`, {
     method: "POST",
     headers: { authorization: `Bearer ${access}`, "content-type": "application/json" },
