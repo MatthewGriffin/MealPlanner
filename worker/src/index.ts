@@ -2,6 +2,7 @@ import { ALLOWED_MODELS, microDollars } from "./pricing";
 import { Tier } from "./quota";
 import { hashOf, makeToken, verifyToken } from "./token";
 import { Env } from "./objects";
+import { decodeToken, judgeVerdict, makeNonce, nonceIsFresh } from "./integrity";
 
 export { UserQuota, Counters } from "./objects";
 
@@ -32,6 +33,7 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     try {
+      if (request.method === "POST" && url.pathname === "/v1/register/challenge") return json(200, { nonce: await makeNonce(env.TOKEN_SECRET) });
       if (request.method === "POST" && url.pathname === "/v1/register") return await register(request, env);
       if (request.method === "GET" && url.pathname === "/v1/usage") return await usage(request, env);
       if (request.method === "POST" && url.pathname === "/v1/messages") return await messages(request, env);
@@ -45,6 +47,15 @@ export default {
 
 /** Gives an install its own account. Limited per IP address so accounts cannot be farmed for free allowances. */
 async function register(request: Request, env: Env): Promise<Response> {
+  const mode = env.INTEGRITY_MODE ?? "off";
+  if (mode !== "off") {
+    const verdict = await integrityVerdict(request, env);
+    // "log" only reports, so installs that cannot prove themselves still work while the check is being proven out.
+    console.log(`integrity ${mode}: ${verdict.ok ? "pass" : "fail"}${verdict.reasons.length ? " (" + verdict.reasons.join(", ") + ")" : ""}`);
+    if (!verdict.ok && mode === "enforce") {
+      return json(403, { error: "This device or app version could not be verified. Install Pantry Pal from Google Play.", code: "integrity" });
+    }
+  }
   // Only a keyed hash of the address is kept, so no raw IP address is stored anywhere.
   const ip = await hashOf(env.TOKEN_SECRET, request.headers.get("cf-connecting-ip") ?? "unknown");
   const gate = env.COUNTERS.get(env.COUNTERS.idFromName(`reg:${ip}:${today()}`));
@@ -54,6 +65,24 @@ async function register(request: Request, env: Env): Promise<Response> {
   }
   const userId = crypto.randomUUID();
   return json(200, { token: await makeToken(env.TOKEN_SECRET, userId) });
+}
+
+async function integrityVerdict(request: Request, env: Env) {
+  let body: { nonce?: string; integrityToken?: string } = {};
+  try {
+    body = JSON.parse((await request.text()) || "{}");
+  } catch {
+    return { ok: false, reasons: ["unreadable body"] };
+  }
+  if (!body.nonce || !body.integrityToken) return { ok: false, reasons: ["no token sent"] };
+  if (!(await nonceIsFresh(env.TOKEN_SECRET, body.nonce))) return { ok: false, reasons: ["challenge invalid or expired"] };
+  if (!env.GOOGLE_SA_JSON) return { ok: false, reasons: ["server has no Google key"] };
+  const packageName = env.PACKAGE_NAME ?? "app.pantrypal.mealplanner";
+  try {
+    return judgeVerdict(await decodeToken(env.GOOGLE_SA_JSON, packageName, body.integrityToken), { nonce: body.nonce, packageName });
+  } catch (e) {
+    return { ok: false, reasons: ["could not ask Google: " + (e as Error).message] };
+  }
 }
 
 async function userFor(request: Request, env: Env) {

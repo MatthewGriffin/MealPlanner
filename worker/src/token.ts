@@ -1,7 +1,7 @@
 // A token is "<userId>.<signature>". Only this Worker can make one, so a client cannot invent accounts or pick someone else's.
 const enc = new TextEncoder();
 
-async function sign(secret: string, data: string): Promise<string> {
+export async function sign(secret: string, data: string): Promise<string> {
   const key = await crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   const sig = await crypto.subtle.sign("HMAC", key, enc.encode(data));
   return btoa(String.fromCharCode(...new Uint8Array(sig))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");

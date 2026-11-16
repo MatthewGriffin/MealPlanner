@@ -8,10 +8,13 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -73,8 +76,40 @@ open class ProxyAccount @Inject constructor(
         }.getOrNull()
     }
 
+    /**
+     * Asks Google Play to vouch for this install (genuine app, from Play, on a real device). The Worker checks the
+     * answer when it makes the account. Null when Play cannot answer (no Play services, sideloaded, offline); the
+     * Worker decides whether that is acceptable.
+     */
+    protected open fun integrityToken(nonce: String): String? {
+        val appContext = context ?: return null
+        // A blocking wait must never happen on the main thread.
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) return null
+        return runCatching {
+            val manager = com.google.android.play.core.integrity.IntegrityManagerFactory.create(appContext)
+            val request = com.google.android.play.core.integrity.IntegrityTokenRequest.builder().setNonce(nonce).build()
+            com.google.android.gms.tasks.Tasks.await(manager.requestIntegrityToken(request), 15, TimeUnit.SECONDS).token()
+        }.getOrNull()
+    }
+
+    private fun challenge(): String? {
+        val request = Request.Builder().url("$baseUrl/v1/register/challenge").post("".toRequestBody()).build()
+        return runCatching {
+            http.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return null
+                Json.parseToJsonElement(response.body?.string().orEmpty()).jsonObject["nonce"]?.jsonPrimitive?.contentOrNull
+            }
+        }.getOrNull()
+    }
+
     private fun register(): String? {
-        val request = Request.Builder().url("$baseUrl/v1/register").post("".toRequestBody()).build()
+        val nonce = challenge()
+        val integrity = nonce?.let { integrityToken(it) }
+        val body = if (nonce != null && integrity != null) {
+            buildJsonObject { put("nonce", nonce); put("integrityToken", integrity) }.toString()
+        } else ""
+        val request = Request.Builder().url("$baseUrl/v1/register")
+            .post(body.toRequestBody("application/json".toMediaType())).build()
         return runCatching {
             http.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) return null
