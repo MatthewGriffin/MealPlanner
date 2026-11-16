@@ -9,7 +9,10 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.DropdownMenuItem
@@ -278,6 +281,9 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 ) { innerPadding ->
+                    // On tablets and desktop windows keep the content in a comfortable centred column instead of stretching edge to edge.
+                    Box(Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.TopCenter) {
+                    Box(Modifier.widthIn(max = 640.dp).fillMaxSize()) {
                     when (currentScreen) {
                         Screen.CHAT -> {
                             val chatViewModel: ChatViewModel = hiltViewModel()
@@ -465,6 +471,8 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                     }
+                    } // widthIn
+                    } // centre
                 }
             }
         }
