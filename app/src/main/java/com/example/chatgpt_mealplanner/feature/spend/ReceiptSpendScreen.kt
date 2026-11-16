@@ -587,7 +587,7 @@ fun ReceiptSpendScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Text(ret.retailerId, fontWeight = FontWeight.Bold)
-                                Text("£${"%.2f".format(ret.totalPence / 100.0)} (${ret.receiptCount} receipts)")
+                                Text("£${"%.2f".format(ret.totalPence / 100.0)} (${ret.receiptCount} ${if (ret.receiptCount == 1) "receipt" else "receipts"})")
                             }
                         }
                     }
