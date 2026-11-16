@@ -82,8 +82,23 @@ fun ChatGPT_MealPlannerTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit
 ) {
+    val custom = AppThemeState.useCustom
+    val scheme = if (custom) customColorScheme(AppThemeState.accent, AppThemeState.background, darkTheme)
+    else if (darkTheme) DarkColorScheme else LightColorScheme
+    // With a hand-picked background the status bar icons must follow that colour, not the phone's setting.
+    val view = androidx.compose.ui.platform.LocalView.current
+    if (!view.isInEditMode) {
+        androidx.compose.runtime.SideEffect {
+            val window = (view.context as? android.app.Activity)?.window ?: return@SideEffect
+            val darkSurface = if (custom) AppThemeState.background?.let { isDarkBackground(it) } ?: darkTheme else darkTheme
+            androidx.core.view.WindowCompat.getInsetsController(window, view).apply {
+                isAppearanceLightStatusBars = !darkSurface
+                isAppearanceLightNavigationBars = !darkSurface
+            }
+        }
+    }
     MaterialTheme(
-        colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme,
+        colorScheme = scheme,
         typography = Typography,
         shapes = AppShapes,
         content = content
