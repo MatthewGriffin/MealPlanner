@@ -1,5 +1,6 @@
 package com.example.chatgpt_mealplanner.feature.spend
 
+import androidx.compose.material3.LoadingIndicator
 import android.Manifest
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -38,7 +39,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -531,7 +531,7 @@ fun ReceiptSpendScreen(
                     if (uiState.isScanning) {
                         Spacer(modifier = Modifier.height(16.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                            LoadingIndicator(modifier = Modifier.size(24.dp))
                             Spacer(modifier = Modifier.width(12.dp))
                             Text("Reading receipt line items & prices...", style = MaterialTheme.typography.bodyMedium)
                             Spacer(modifier = Modifier.width(12.dp))

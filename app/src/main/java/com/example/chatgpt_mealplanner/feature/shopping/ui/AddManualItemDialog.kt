@@ -1,5 +1,6 @@
 package com.example.chatgpt_mealplanner.feature.shopping.ui
 
+import androidx.compose.material3.ExposedDropdownMenu
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer

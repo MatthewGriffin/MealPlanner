@@ -1,5 +1,6 @@
 package com.example.chatgpt_mealplanner.feature.settings
 
+import androidx.compose.material3.ExposedDropdownMenu
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenuItem
@@ -19,6 +21,7 @@ import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -111,21 +114,26 @@ fun ColourPicker(label: String, argb: Int, onChange: (Int) -> Unit) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SliderRow(name: String, value: Float, range: ClosedFloatingPointRange<Float>, track: List<Color>, onChange: (Float) -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(name, style = MaterialTheme.typography.bodySmall, modifier = Modifier.size(width = 72.dp, height = 20.dp))
-        Slider(
-            value = value, onValueChange = onChange, valueRange = range, modifier = Modifier.weight(1f),
-            // The coloured strip is the track, so it shows what moving the control does.
-            track = {
-                Box(
-                    Modifier.fillMaxWidth().height(14.dp)
-                        .background(Brush.horizontalGradient(track), RoundedCornerShape(7.dp))
-                        .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(7.dp))
+        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+            // The coloured strip shows what moving the control does; the slider's own track is see-through.
+            Box(
+                Modifier.fillMaxWidth().padding(horizontal = 12.dp).height(14.dp)
+                    .background(Brush.horizontalGradient(track), RoundedCornerShape(7.dp))
+                    .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(7.dp))
+            )
+            val clear = Color.Transparent
+            Slider(
+                value = value, onValueChange = onChange, valueRange = range,
+                colors = SliderDefaults.colors(
+                    activeTrackColor = clear, inactiveTrackColor = clear,
+                    activeTickColor = clear, inactiveTickColor = clear,
+                    disabledActiveTrackColor = clear, disabledInactiveTrackColor = clear
                 )
-            }
-        )
+            )
+        }
     }
 }

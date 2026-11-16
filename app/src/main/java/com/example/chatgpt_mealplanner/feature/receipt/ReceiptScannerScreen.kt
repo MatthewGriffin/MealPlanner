@@ -1,5 +1,6 @@
 package com.example.chatgpt_mealplanner.feature.receipt
 
+import androidx.compose.material3.LoadingIndicator
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -19,7 +20,6 @@ import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -112,7 +112,7 @@ fun ReceiptScannerScreen(
                     Spacer(modifier = Modifier.height(24.dp))
 
                     if (uiState.isScanning) {
-                        CircularProgressIndicator()
+                        LoadingIndicator()
                         Spacer(modifier = Modifier.height(8.dp))
                         Text("Reading receipt with ML Kit OCR...")
                     } else {

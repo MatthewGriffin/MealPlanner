@@ -32,8 +32,8 @@ import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.ShortNavigationBar
+import androidx.compose.material3.ShortNavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -256,34 +256,34 @@ class MainActivity : ComponentActivity() {
                         )
                     },
                     bottomBar = {
-                        NavigationBar {
+                        ShortNavigationBar {
                             if (!isFollower) {
-                                NavigationBarItem(
+                                ShortNavigationBarItem(
                                     selected = currentScreen == Screen.CHAT,
                                     onClick = { currentScreen = Screen.CHAT },
                                     icon = { Icon(Icons.Default.AutoAwesome, contentDescription = "Assistant") },
                                     label = { Text("Assistant") }
                                 )
                             }
-                            NavigationBarItem(
+                            ShortNavigationBarItem(
                                 selected = currentScreen == Screen.INVENTORY,
                                 onClick = { currentScreen = Screen.INVENTORY },
                                 icon = { Icon(Icons.Default.Inventory, contentDescription = "Inventory") },
                                 label = { Text("Inventory") }
                             )
-                            NavigationBarItem(
+                            ShortNavigationBarItem(
                                 selected = currentScreen == Screen.MEAL_PLANNER,
                                 onClick = { currentScreen = Screen.MEAL_PLANNER },
                                 icon = { Icon(Icons.Default.CalendarMonth, contentDescription = "Planner") },
                                 label = { Text("Planner") }
                             )
-                            NavigationBarItem(
+                            ShortNavigationBarItem(
                                 selected = currentScreen == Screen.SHOPPING,
                                 onClick = { currentScreen = Screen.SHOPPING },
                                 icon = { Icon(Icons.Default.ShoppingCart, contentDescription = "Shopping") },
                                 label = { Text("Shopping") }
                             )
-                            NavigationBarItem(
+                            ShortNavigationBarItem(
                                 selected = currentScreen == Screen.RECEIPT_SPEND,
                                 onClick = { currentScreen = Screen.RECEIPT_SPEND },
                                 icon = { Icon(Icons.Default.Receipt, contentDescription = "Spend") },
