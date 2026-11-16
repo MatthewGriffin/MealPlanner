@@ -91,6 +91,12 @@ tasks.withType<Test>().configureEach {
     })
 }
 
+kotlin {
+    compilerOptions {
+        optIn.add("androidx.compose.material3.ExperimentalMaterial3ExpressiveApi")
+    }
+}
+
 dependencies {
     implementation(project(":sync-contract"))
     implementation(project(":ai-contract"))

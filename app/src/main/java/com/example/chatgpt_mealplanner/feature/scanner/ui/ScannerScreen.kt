@@ -1,5 +1,6 @@
 package com.example.chatgpt_mealplanner.feature.scanner.ui
 
+import androidx.compose.material3.LoadingIndicator
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
@@ -19,7 +20,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -111,7 +111,7 @@ fun ScannerScreen(
                                 modifier = Modifier.padding(24.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
-                                CircularProgressIndicator(color = Color.White)
+                                LoadingIndicator(color = Color.White)
                                 Spacer(modifier = Modifier.height(12.dp))
                                 Text("Looking up barcode...", color = Color.White)
                             }
@@ -166,13 +166,13 @@ fun ScannerScreen(
 
                 is ScannerState.Saving -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator()
+                        LoadingIndicator()
                     }
                 }
 
                 is ScannerState.Saved -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator()
+                        LoadingIndicator()
                     }
                 }
 

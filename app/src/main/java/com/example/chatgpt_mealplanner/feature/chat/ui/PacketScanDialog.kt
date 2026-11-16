@@ -1,5 +1,6 @@
 package com.example.chatgpt_mealplanner.feature.chat.ui
 
+import androidx.compose.material3.LoadingIndicator
 import android.graphics.BitmapFactory
 import android.util.Base64
 import androidx.compose.foundation.Image
@@ -21,7 +22,6 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -96,7 +96,7 @@ fun PacketScanDialog(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        CircularProgressIndicator()
+                        LoadingIndicator()
                         Text("Getting the photo ready…")
                         TextButton(onClick = viewModel::cancelReading, modifier = Modifier.testTag("scan-cancel-reading")) { Text("Cancel") }
                     }

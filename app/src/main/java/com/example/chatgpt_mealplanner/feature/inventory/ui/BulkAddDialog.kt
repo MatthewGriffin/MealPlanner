@@ -1,5 +1,6 @@
 package com.example.chatgpt_mealplanner.feature.inventory.ui
 
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -22,7 +23,6 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -113,7 +113,7 @@ private fun ColumnScope.BulkAddInput(state: BulkAddState, onEvent: (InventoryUiE
         modifier = Modifier.fillMaxWidth().testTag("bulk-add-read")
     ) {
         if (state.isReading) {
-            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+            LoadingIndicator(modifier = Modifier.size(18.dp))
             Spacer(Modifier.size(8.dp))
             Text(state.progress ?: "Reading your list…")
         } else {
@@ -178,7 +178,7 @@ private fun ColumnScope.BulkAddReview(state: BulkAddState, onEvent: (InventoryUi
             enabled = !state.isSaving && undecided == 0,
             modifier = Modifier.weight(2f).testTag("bulk-add-save")
         ) {
-            if (state.isSaving) CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+            if (state.isSaving) LoadingIndicator(modifier = Modifier.size(18.dp))
             else if (undecided > 0) Text("Choose $undecided product${if (undecided == 1) "" else "s"} first")
             else Text("Save ${state.rows.size} items")
         }
