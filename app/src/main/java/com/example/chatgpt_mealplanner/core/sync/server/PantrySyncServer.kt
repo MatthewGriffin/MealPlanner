@@ -77,7 +77,8 @@ open class PantrySyncServer @Inject constructor(
     private val mealChangeRequestDao: MealChangeRequestDao? = null,
     private val mealDao: com.example.chatgpt_mealplanner.core.database.dao.MealDao? = null,
     private val shoppingDao: ShoppingDao? = null,
-    private val stapleRuleDao: StapleRuleDao? = null
+    private val stapleRuleDao: StapleRuleDao? = null,
+    private val purchasePriceDao: com.example.chatgpt_mealplanner.core.database.dao.PurchasePriceDao? = null
 ) {
     private var engine: io.ktor.server.engine.ApplicationEngine? = null
     private var serverState = PantryServerState.STOPPED
@@ -104,6 +105,7 @@ open class PantrySyncServer @Inject constructor(
 
     companion object {
         const val MAX_BOOTSTRAP_ITEMS = 5000
+        const val MAX_SYNCED_PRICES = 5000
     }
 
     open suspend fun createBootstrapSnapshot(): BootstrapResponseDto {
@@ -155,6 +157,24 @@ open class PantrySyncServer @Inject constructor(
                 wasteRisk = item.wasteRisk.name, createdAt = item.createdAt, updatedAt = item.updatedAt
             )
         } }
+        val shoppingSources = shoppingRows?.flatMap { row -> row.items.flatMap { wrapped -> wrapped.sources.map { src ->
+            com.example.chatgpt_mealplanner.sync.contract.ShoppingSourceSyncDto(
+                id = src.id, shoppingListItemId = src.shoppingListItemId, mealId = src.mealId,
+                mealIngredientId = src.mealIngredientId, mealTitle = src.mealTitle, mealDate = src.mealDate,
+                requiredQuantity = src.requiredQuantity, requiredUnit = src.requiredUnit.name
+            )
+        } } }
+        val userStores = purchasePriceDao?.getAllStores()?.map { st ->
+            com.example.chatgpt_mealplanner.sync.contract.UserStoreSyncDto(st.id, st.name, st.isArchived, st.createdAt, st.updatedAt)
+        }
+        val priceObservations = purchasePriceDao?.getAllPriceObservations()?.take(MAX_SYNCED_PRICES)?.map { o ->
+            com.example.chatgpt_mealplanner.sync.contract.PriceObservationSyncDto(
+                id = o.id, storeId = o.storeId, barcode = o.barcode, productName = o.productName, brand = o.brand,
+                packQuantity = o.packQuantity, packUnit = o.packUnit, packCount = o.packCount,
+                priceMinorUnits = o.priceMinorUnits, currencyCode = o.currencyCode, purchasedAt = o.purchasedAt,
+                createdAt = o.createdAt, source = o.source, canonicalName = o.canonicalName
+            )
+        }
         val stapleRules = stapleRuleDao?.getAllRulesSync()?.map { rule ->
             StapleRuleSyncDto(
                 id = rule.id, canonicalIngredientId = rule.canonicalIngredientId, displayName = rule.displayName,
@@ -199,7 +219,10 @@ open class PantrySyncServer @Inject constructor(
             mealPlan = mealPlan,
             shoppingLists = shoppingLists,
             shoppingItems = shoppingItems,
-            stapleRules = stapleRules
+            stapleRules = stapleRules,
+            shoppingSources = shoppingSources,
+            userStores = userStores,
+            priceObservations = priceObservations
         )
         onAfterSnapshotReadHook?.invoke()
         return dto

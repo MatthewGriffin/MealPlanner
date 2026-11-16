@@ -30,6 +30,13 @@ interface PurchasePriceDao {
     @Query("UPDATE user_stores SET isArchived = 1, updatedAt = :updatedAt WHERE id = :id")
     suspend fun archiveStore(id: String, updatedAt: Long = System.currentTimeMillis())
 
+    /** Used when a follower copies Main's shops and prices: same id updates in place (never delete-then-insert, which prices restrict). */
+    @androidx.room.Upsert
+    suspend fun upsertStores(stores: List<UserStoreEntity>)
+
+    @androidx.room.Upsert
+    suspend fun upsertPriceObservations(observations: List<PurchasePriceObservationEntity>)
+
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertPriceObservation(observation: PurchasePriceObservationEntity)
 

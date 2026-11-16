@@ -138,6 +138,21 @@ val FOLLOWER_MIGRATION_6_7 = object : Migration(6, 7) {
     }
 }
 
+val FOLLOWER_MIGRATION_7_8 = object : Migration(7, 8) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `follower_shopping_sources` (
+                `id` TEXT NOT NULL, `shoppingListItemId` TEXT NOT NULL, `mealId` TEXT NOT NULL,
+                `mealIngredientId` TEXT, `mealTitle` TEXT NOT NULL, `mealDate` TEXT NOT NULL,
+                `requiredQuantity` REAL NOT NULL, `requiredUnit` TEXT NOT NULL, PRIMARY KEY(`id`)
+            )
+            """.trimIndent()
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_follower_shopping_sources_shoppingListItemId` ON `follower_shopping_sources` (`shoppingListItemId`)")
+    }
+}
+
 @Database(
     entities = [
         FollowerInventoryItemEntity::class,
@@ -145,13 +160,15 @@ val FOLLOWER_MIGRATION_6_7 = object : Migration(6, 7) {
         FollowerDeviceSequenceEntity::class,
         FollowerSyncMetadataEntity::class,
         com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerMealEntity::class,
-        FollowerMealRequestEntity::class
+        FollowerMealRequestEntity::class,
+        com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerShoppingSourceEntity::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = true
 )
 abstract class FollowerDatabase : RoomDatabase() {
     abstract fun mealDao(): com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerMealDao
     abstract fun followerDao(): FollowerDao
     abstract fun mealRequestDao(): FollowerMealRequestDao
+    abstract fun shoppingSourceDao(): com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerShoppingSourceDao
 }

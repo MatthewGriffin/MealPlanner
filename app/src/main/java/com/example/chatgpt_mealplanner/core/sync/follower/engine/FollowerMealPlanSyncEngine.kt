@@ -118,6 +118,25 @@ class FollowerMealPlanSyncEngine @Inject constructor(
                 )
             }
         } else null
+        // Meal sources, shops and prices come from Main too. Older hosts leave them out (null), and then nothing is replaced.
+        val sourceRows = snapshot.shoppingSources?.map { dto ->
+            com.example.chatgpt_mealplanner.core.sync.follower.database.entity.FollowerShoppingSourceEntity(
+                id = dto.id, shoppingListItemId = dto.shoppingListItemId, mealId = dto.mealId,
+                mealIngredientId = dto.mealIngredientId, mealTitle = dto.mealTitle, mealDate = dto.mealDate,
+                requiredQuantity = dto.requiredQuantity, requiredUnit = dto.requiredUnit
+            )
+        }
+        val storeRows = snapshot.userStores?.map { dto ->
+            com.example.chatgpt_mealplanner.core.database.entity.UserStoreEntity(dto.id, dto.name, dto.isArchived, dto.createdAt, dto.updatedAt)
+        }
+        val priceRows = snapshot.priceObservations?.map { dto ->
+            com.example.chatgpt_mealplanner.core.database.entity.PurchasePriceObservationEntity(
+                id = dto.id, storeId = dto.storeId, barcode = dto.barcode, productName = dto.productName, brand = dto.brand,
+                packQuantity = dto.packQuantity, packUnit = dto.packUnit, packCount = dto.packCount,
+                priceMinorUnits = dto.priceMinorUnits, currencyCode = dto.currencyCode, purchasedAt = dto.purchasedAt,
+                createdAt = dto.createdAt, source = dto.source, canonicalName = dto.canonicalName
+            )
+        }
         val stapleRules = snapshot.stapleRules?.map { dto ->
             StapleRuleEntity(
                 id = dto.id, canonicalIngredientId = dto.canonicalIngredientId, displayName = dto.displayName,
@@ -140,7 +159,18 @@ class FollowerMealPlanSyncEngine @Inject constructor(
         if (changedIds.isNotEmpty() && changedDate != null) {
             notificationManager?.notifyMealPlanChanged(changedDate, changedIds.size)
         }
+        if (sourceRows != null) {
+            database.withTransaction {
+                database.shoppingSourceDao().clear()
+                if (sourceRows.isNotEmpty()) database.shoppingSourceDao().insertAll(sourceRows)
+            }
+        }
         appDatabase.withTransaction {
+            if (storeRows != null && priceRows != null) {
+                // Shops first: each price points at its shop. Main's records win; anything else here is left alone.
+                if (storeRows.isNotEmpty()) appDatabase.purchasePriceDao().upsertStores(storeRows)
+                if (priceRows.isNotEmpty()) appDatabase.purchasePriceDao().upsertPriceObservations(priceRows)
+            }
             if (shoppingLists != null) {
                 require(shoppingLists.count { it.status == ShoppingListStatus.ACTIVE } <= 1) { "Multiple active shopping lists" }
                 appDatabase.shoppingDao().deleteAllShoppingLists()

@@ -106,6 +106,11 @@ data class BootstrapResponseDto(
     val shoppingLists: List<ShoppingListSyncDto>? = null,
     val shoppingItems: List<ShoppingItemSyncDto>? = null,
     val stapleRules: List<StapleRuleSyncDto>? = null,
+    /** Which meals each shopping item is for (drives the "shop on" trip splitting). Null from older hosts. */
+    val shoppingSources: List<ShoppingSourceSyncDto>? = null,
+    /** The shops and prices recorded on Main (drives the best-shop card). Null from older hosts. */
+    val userStores: List<UserStoreSyncDto>? = null,
+    val priceObservations: List<PriceObservationSyncDto>? = null,
     val basketComparisonFingerprint: String? = null,
     val basketComparisonJson: String? = null
 )
@@ -149,6 +154,45 @@ data class ShoppingItemSyncDto(
     val wasteRisk: String,
     val createdAt: Long,
     val updatedAt: Long
+)
+
+@Serializable
+data class ShoppingSourceSyncDto(
+    val id: String,
+    val shoppingListItemId: String,
+    val mealId: String,
+    val mealIngredientId: String? = null,
+    val mealTitle: String,
+    val mealDate: String,
+    val requiredQuantity: Double,
+    val requiredUnit: String
+)
+
+@Serializable
+data class UserStoreSyncDto(
+    val id: String,
+    val name: String,
+    val isArchived: Boolean = false,
+    val createdAt: Long,
+    val updatedAt: Long
+)
+
+@Serializable
+data class PriceObservationSyncDto(
+    val id: String,
+    val storeId: String,
+    val barcode: String? = null,
+    val productName: String,
+    val brand: String? = null,
+    val packQuantity: Double? = null,
+    val packUnit: String? = null,
+    val packCount: Int? = null,
+    val priceMinorUnits: Long,
+    val currencyCode: String = "GBP",
+    val purchasedAt: Long,
+    val createdAt: Long,
+    val source: String = "MANUAL",
+    val canonicalName: String? = null
 )
 
 @Serializable

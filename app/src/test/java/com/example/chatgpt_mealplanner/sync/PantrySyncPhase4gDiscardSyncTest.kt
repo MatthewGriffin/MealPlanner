@@ -267,6 +267,7 @@ class PantrySyncPhase4gDiscardSyncTest {
                 override fun followerDao(): FollowerDao = followerDao
                 override fun mealDao(): com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerMealDao = error("Meal DAO not used by this fake")
                 override fun mealRequestDao(): com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerMealRequestDao = error("Meal projection not used in this inventory fixture")
+                override fun shoppingSourceDao(): com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerShoppingSourceDao = error("Shopping sources not used in this fixture")
                 @Deprecated("Deprecated in Room")
                 override fun clearAllTables() {}
                 override fun createInvalidationTracker(): androidx.room.InvalidationTracker = mock()
@@ -591,6 +592,7 @@ class PantrySyncPhase4gDiscardSyncTest {
                 override fun followerDao(): FollowerDao = followerDao
                 override fun mealDao(): com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerMealDao = error("Meal DAO not used by this fake")
                 override fun mealRequestDao(): com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerMealRequestDao = error("Meal projection not used in this inventory fixture")
+                override fun shoppingSourceDao(): com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerShoppingSourceDao = error("Shopping sources not used in this fixture")
                 @Deprecated("Deprecated in Room")
                 override fun clearAllTables() {}
                 override fun createInvalidationTracker(): androidx.room.InvalidationTracker = mock()
@@ -672,6 +674,7 @@ class PantrySyncPhase4gDiscardSyncTest {
                 override fun followerDao(): FollowerDao = followerDao
                 override fun mealDao(): com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerMealDao = error("Meal DAO not used by this fake")
                 override fun mealRequestDao(): com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerMealRequestDao = error("Meal projection not used in this inventory fixture")
+                override fun shoppingSourceDao(): com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerShoppingSourceDao = error("Shopping sources not used in this fixture")
                 @Deprecated("Deprecated in Room")
                 override fun clearAllTables() {}
                 override fun createInvalidationTracker(): androidx.room.InvalidationTracker = mock()
@@ -700,6 +703,7 @@ class PantrySyncPhase4gDiscardSyncTest {
                 override fun followerDao(): FollowerDao = followerDao
                 override fun mealDao(): com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerMealDao = error("Meal DAO not used by this fake")
                 override fun mealRequestDao(): com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerMealRequestDao = error("Meal projection not used in this inventory fixture")
+                override fun shoppingSourceDao(): com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerShoppingSourceDao = error("Shopping sources not used in this fixture")
                 @Deprecated("Deprecated in Room")
                 override fun clearAllTables() {}
                 override fun createInvalidationTracker(): androidx.room.InvalidationTracker = mock()
@@ -758,6 +762,7 @@ class PantrySyncPhase4gDiscardSyncTest {
                 override fun followerDao(): FollowerDao = followerDao
                 override fun mealDao(): com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerMealDao = error("Meal DAO not used by this fake")
                 override fun mealRequestDao(): com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerMealRequestDao = error("Meal projection not used in this inventory fixture")
+                override fun shoppingSourceDao(): com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerShoppingSourceDao = error("Shopping sources not used in this fixture")
                 @Deprecated("Deprecated in Room")
                 override fun clearAllTables() {}
                 override fun createInvalidationTracker(): androidx.room.InvalidationTracker = mock()
@@ -790,6 +795,7 @@ class PantrySyncPhase4gDiscardSyncTest {
                 override fun followerDao(): FollowerDao = followerDao
                 override fun mealDao(): com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerMealDao = error("Meal DAO not used by this fake")
                 override fun mealRequestDao(): com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerMealRequestDao = error("Meal projection not used in this inventory fixture")
+                override fun shoppingSourceDao(): com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerShoppingSourceDao = error("Shopping sources not used in this fixture")
                 @Deprecated("Deprecated in Room")
                 override fun clearAllTables() {}
                 override fun createInvalidationTracker(): androidx.room.InvalidationTracker = mock()
