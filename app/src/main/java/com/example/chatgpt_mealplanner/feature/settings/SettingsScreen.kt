@@ -292,6 +292,11 @@ fun SettingsScreen(
         HorizontalDivider()
         Spacer(modifier = Modifier.height(8.dp))
 
+        SettingsSection("Appearance", initiallyExpanded = false) { AppearanceSection() }
+        Spacer(modifier = Modifier.height(8.dp))
+        HorizontalDivider()
+        Spacer(modifier = Modifier.height(8.dp))
+
         // RETAIL SECTION
         // Only the main phone uses the AI, so followers have nothing to set here.
         if (uiState.isMainRole) {

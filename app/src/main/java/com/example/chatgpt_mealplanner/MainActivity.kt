@@ -136,6 +136,7 @@ class MainActivity : ComponentActivity() {
             }
         }
         enableEdgeToEdge()
+        com.example.chatgpt_mealplanner.ui.theme.AppThemeState.load(applicationContext)
         setContent {
             ChatGPT_MealPlannerTheme {
                 val notificationPermissionLauncher = rememberLauncherForActivityResult(
