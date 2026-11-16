@@ -10,6 +10,11 @@ export interface Env {
   UPSTREAM_URL: string;
   GLOBAL_DAILY_LIMIT_MICROS: string;
   REGISTRATIONS_PER_IP_PER_DAY: string;
+  /** "off" (no check), "log" (check and log, never refuse) or "enforce" (refuse a failed check). */
+  INTEGRITY_MODE?: string;
+  PACKAGE_NAME?: string;
+  /** Google service-account key JSON (secret) used to decode Play Integrity tokens. */
+  GOOGLE_SA_JSON?: string;
 }
 
 /** One per user. A Durable Object handles one call at a time, so the counting cannot race. */

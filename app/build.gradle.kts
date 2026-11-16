@@ -27,7 +27,7 @@ android {
         applicationId = "app.pantrypal.mealplanner"
         minSdk = 30
         targetSdk = 36
-        versionCode = 2
+        versionCode = 3
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -123,6 +123,7 @@ dependencies {
     // ZXing for QR Code Rendering
     implementation("com.google.zxing:core:3.5.3")
     implementation(libs.kotlinx.coroutines.play.services)
+    implementation(libs.play.integrity)
 
     // Networking & Serialization
     implementation("io.ktor:ktor-server-core:2.3.12")

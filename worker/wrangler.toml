@@ -9,6 +9,10 @@ GLOBAL_DAILY_LIMIT_MICROS = "10000000"
 # New accounts one IP address may create per day.
 REGISTRATIONS_PER_IP_PER_DAY = "3"
 
+# Play Integrity at sign-up: "off", "log" (check and log, never refuse) or "enforce". Start with "log".
+INTEGRITY_MODE = "log"
+PACKAGE_NAME = "app.pantrypal.mealplanner"
+
 [[durable_objects.bindings]]
 name = "USER_QUOTA"
 class_name = "UserQuota"
@@ -25,3 +29,4 @@ new_sqlite_classes = ["UserQuota", "Counters"]
 #   ANTHROPIC_API_KEY  your Claude key
 #   TOKEN_SECRET       long random string that signs the per-install tokens
 #   ADMIN_SECRET       long random string for the /admin endpoints
+#   GOOGLE_SA_JSON     Google service-account key JSON (Play Integrity decoding); `wrangler secret put GOOGLE_SA_JSON < key.json`
