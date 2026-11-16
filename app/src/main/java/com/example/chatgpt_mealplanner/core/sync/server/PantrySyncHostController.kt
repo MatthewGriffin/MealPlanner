@@ -95,6 +95,25 @@ open class PantrySyncHostController @Inject constructor(
         }
     }
 
+    /**
+     * Starts hosting only when household sync is actually in use: at least one paired device is active. A phone that has
+     * never paired anything does not run the foreground service or show its notification.
+     * Returns true if the host was asked to start.
+     */
+    open suspend fun ensureHostStartedIfInUse(context: Context?, hasActivePairedDevice: suspend () -> Boolean): Boolean {
+        if (!isEligibleToHost()) return false
+        if (!hasActivePairedDevice()) return false
+        ensureHostStarted(context)
+        return true
+    }
+
+    /** Stops the host service when no paired device is left to sync with. */
+    open suspend fun stopHostIfUnused(context: Context?, hasActivePairedDevice: suspend () -> Boolean) {
+        val active = hasActivePairedDevice()
+        if (context == null || active) return
+        stopHost(context)
+    }
+
     open fun stopHost(context: Context) {
         try {
             val intent = Intent(context, PantrySyncHostService::class.java).apply {
@@ -167,39 +186,45 @@ open class PantrySyncHostController @Inject constructor(
             return@withContext false
         }
 
-        val startTime = System.currentTimeMillis()
-        while (System.currentTimeMillis() - startTime < maxWaitMs) {
-            if (PantrySyncHostService.serviceState.value == HostServiceState.FAILED) {
-                return@withContext false
-            }
-
-            if (pantrySyncServer.getServerState() == PantryServerState.RUNNING) {
-                return@withContext true
-            }
-
-            if (pantrySyncServer.getServerState() == PantryServerState.STARTING) {
-                val healthUrl = "https://$hostIp:$port/sync/v1/health"
-                val isHealthy = try {
-                    val request = Request.Builder().url(healthUrl).get().build()
-                    val response = client.newCall(request).execute()
-                    val body = response.body?.string() ?: ""
-                    val dto = runCatching { json.decodeFromString<HealthResponseDto>(body) }.getOrNull()
-                    response.isSuccessful && dto != null && dto.status == "ok" && dto.service == "pantry-household-sync"
-                } catch (e: Exception) {
-                    rethrowIfCancelled()
-                    false
+        try {
+            val startTime = System.currentTimeMillis()
+            while (System.currentTimeMillis() - startTime < maxWaitMs) {
+                if (PantrySyncHostService.serviceState.value == HostServiceState.FAILED) {
+                    return@withContext false
                 }
 
-                if (isHealthy) {
-                    pantrySyncServer.markRunning()
+                if (pantrySyncServer.getServerState() == PantryServerState.RUNNING) {
                     return@withContext true
                 }
+
+                if (pantrySyncServer.getServerState() == PantryServerState.STARTING) {
+                    val healthUrl = "https://$hostIp:$port/sync/v1/health"
+                    val isHealthy = try {
+                        val request = Request.Builder().url(healthUrl).get().build()
+                        val response = client.newCall(request).execute()
+                        val body = response.body?.string() ?: ""
+                        val dto = runCatching { json.decodeFromString<HealthResponseDto>(body) }.getOrNull()
+                        response.isSuccessful && dto != null && dto.status == "ok" && dto.service == "pantry-household-sync"
+                    } catch (e: Exception) {
+                        rethrowIfCancelled()
+                        false
+                    }
+
+                    if (isHealthy) {
+                        pantrySyncServer.markRunning()
+                        return@withContext true
+                    }
+                }
+
+                delay(pollIntervalMs)
             }
 
-            delay(pollIntervalMs)
+            pantrySyncServer.markFailed()
+            false
+        } finally {
+            // Do not leave the health-check connection open: stopping the server later would otherwise race with it.
+            client.connectionPool.evictAll()
+            client.dispatcher.executorService.shutdown()
         }
-
-        pantrySyncServer.markFailed()
-        false
     }
 }

@@ -310,6 +310,9 @@ class HouseholdViewModel @Inject constructor(
                         )
                     }
                     loadHouseholdInfo()
+                    hostController?.stopHostIfUnused(appContext) {
+                        pairedDeviceRepository.getAllDevices().any { it.status == com.example.chatgpt_mealplanner.core.database.entity.PairedDeviceStatus.ACTIVE }
+                    }
                 }
                 is RevocationResult.AlreadyRevoked -> {
                     _uiState.update { current ->

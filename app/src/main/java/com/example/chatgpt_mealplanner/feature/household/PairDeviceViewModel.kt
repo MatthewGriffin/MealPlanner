@@ -39,7 +39,8 @@ class PairDeviceViewModel @Inject constructor(
     private val tlsKeyManager: PantryTlsKeyManager,
     private val invitationManager: PantryEnrollmentInvitationManager,
     private val hostController: PantrySyncHostController? = null,
-    @param:ApplicationContext private val appContext: Context? = null
+    @param:ApplicationContext private val appContext: Context? = null,
+    private val pairedDeviceRepository: com.example.chatgpt_mealplanner.core.sync.repository.PairedDeviceRepository? = null
 ) : ViewModel() {
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -48,12 +49,43 @@ class PairDeviceViewModel @Inject constructor(
 
     private var countdownJob: Job? = null
 
+    override fun onCleared() {
+        super.onCleared()
+        onScreenLeft()
+    }
+
+    /** Leaving the pairing screen with nothing paired: stop hosting so no foreground service or notification is left running. */
+    fun onScreenLeft() {
+        val ctx = appContext
+        val repo = pairedDeviceRepository
+        val host = hostController
+        if (ctx != null && repo != null && host != null) {
+            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO).launch {
+                host.stopHostIfUnused(ctx) {
+                    repo.getAllDevices().any { it.status == com.example.chatgpt_mealplanner.core.database.entity.PairedDeviceStatus.ACTIVE }
+                }
+            }
+        }
+    }
+
     init {
         generateInvitation()
     }
 
+    private var firstEntryPending = true
+
+    /**
+     * Called each time the pairing screen opens. The first time, the invitation made when this was created is used. Later
+     * the host may have been stopped when the screen was left, so an old code would point at nothing: make a fresh one,
+     * which also starts the host again.
+     */
+    fun onScreenEntered() {
+        if (firstEntryPending) firstEntryPending = false else generateInvitation()
+    }
+
     fun generateInvitation() {
         countdownJob?.cancel()
+        _uiState.value = PairDeviceUiState()
         viewModelScope.launch {
             if (hostController != null && !hostController.isEligibleToHost()) {
                 _uiState.update {

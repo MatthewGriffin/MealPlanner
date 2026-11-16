@@ -585,7 +585,7 @@ open class PantrySyncServer @Inject constructor(
     open fun stop() {
         val eng = engine ?: return
         try {
-            eng.stop(100L, 500L)
+            eng.stop(300L, 1500L)
         } catch (_: Throwable) {}
         engine = null
         serverState = PantryServerState.STOPPED
