@@ -566,7 +566,8 @@ class ClaudeMealPlannerAiProvider @Inject constructor(
     }
 
     private fun noKey() =
-        if (proxyAccount != null) AiProviderResponse.Error("NO_CONNECTION", "Couldn't reach the AI service. Check the internet connection and try again.")
+        if (proxyAccount?.refusedByIntegrity == true) AiProviderResponse.Error("NOT_FROM_PLAY", "The AI features only work when Pantry Pal is installed from Google Play on a genuine device. Everything you can do by hand still works.")
+        else if (proxyAccount != null) AiProviderResponse.Error("NO_CONNECTION", "Couldn't reach the AI service. Check the internet connection and try again.")
         else AiProviderResponse.Error("NO_API_KEY", "No Claude API key saved. Add one in Settings.")
 
     private fun safeLog(msg: String) {
