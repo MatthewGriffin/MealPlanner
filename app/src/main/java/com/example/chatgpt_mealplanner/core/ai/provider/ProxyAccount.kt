@@ -42,6 +42,10 @@ open class ProxyAccount @Inject constructor(
 
     @Volatile private var cached: String? = null
 
+    /** True when the Worker refused to make an account because Google Play could not vouch for this install. */
+    @Volatile open var refusedByIntegrity: Boolean = false
+        protected set
+
     open fun isToken(key: String): Boolean = key == cached
 
     /** The account token, registering a new account the first time. Null if that is not possible right now. */
@@ -103,6 +107,7 @@ open class ProxyAccount @Inject constructor(
     }
 
     private fun register(): String? {
+        refusedByIntegrity = false
         val nonce = challenge()
         val integrity = nonce?.let { integrityToken(it) }
         val body = if (nonce != null && integrity != null) {
@@ -112,8 +117,13 @@ open class ProxyAccount @Inject constructor(
             .post(body.toRequestBody("application/json".toMediaType())).build()
         return runCatching {
             http.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return null
-                Json.parseToJsonElement(response.body?.string().orEmpty()).jsonObject["token"]?.jsonPrimitive?.contentOrNull
+                val text = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    refusedByIntegrity = response.code == 403 &&
+                        runCatching { Json.parseToJsonElement(text).jsonObject["code"]?.jsonPrimitive?.contentOrNull == "integrity" }.getOrDefault(false)
+                    return null
+                }
+                Json.parseToJsonElement(text).jsonObject["token"]?.jsonPrimitive?.contentOrNull
             }
         }.getOrNull()
     }
