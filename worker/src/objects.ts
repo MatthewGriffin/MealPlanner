@@ -1,9 +1,11 @@
 import { DurableObject } from "cloudflare:workers";
-import { NEW_STATE, QuotaState, Snapshot, Tier, canUse, record, setTier, snapshot } from "./quota";
+import { NEW_STATE, QuotaState, Snapshot, Tier, canUse, expire, record, setPaid, setTier, snapshot } from "./quota";
+import { entitlementFrom, fetchSubscription } from "./play";
 
 export interface Env {
   USER_QUOTA: DurableObjectNamespace<UserQuota>;
   COUNTERS: DurableObjectNamespace<Counters>;
+  PURCHASE_OWNER: DurableObjectNamespace<PurchaseOwner>;
   ANTHROPIC_API_KEY: string;
   TOKEN_SECRET: string;
   ADMIN_SECRET: string;
@@ -19,11 +21,41 @@ export interface Env {
 
 /** One per user. A Durable Object handles one call at a time, so the counting cannot race. */
 export class UserQuota extends DurableObject<Env> {
+  private async raw(): Promise<QuotaState> {
+    return { ...NEW_STATE, ...((await this.ctx.storage.get<QuotaState>("state")) ?? {}) };
+  }
+
+  /** The state with an expired paid plan counted as free. */
   private async load(): Promise<QuotaState> {
-    return (await this.ctx.storage.get<QuotaState>("state")) ?? NEW_STATE;
+    return expire(await this.raw(), Date.now());
+  }
+
+  /** If a paid plan has run out and a purchase is on file, ask Google once whether it renewed. */
+  private async renewIfDue(): Promise<void> {
+    const now = Date.now();
+    const state = await this.raw();
+    if (!state.purchaseToken || state.paidUntil === null || now <= state.paidUntil) return;
+    if (now - state.lastVerified < 10 * 60_000 || !this.env.GOOGLE_SA_JSON) return;
+    let next: QuotaState = { ...state, lastVerified: now };
+    try {
+      const payload = await fetchSubscription(this.env.GOOGLE_SA_JSON, this.env.PACKAGE_NAME ?? "app.pantrypal.mealplanner", state.purchaseToken);
+      const ent = entitlementFrom(payload, now);
+      next = ent ? setPaid(state, ent.tier, ent.paidUntil, state.purchaseToken, now) : { ...next, purchaseToken: null };
+    } catch {
+      // Google could not be reached: stay on free until the next try, which is at least ten minutes away.
+    }
+    await this.ctx.storage.put("state", next);
+  }
+
+  /** A verified purchase for this account. */
+  async setPaid(today: string, tier: Tier, paidUntil: number, token: string): Promise<Snapshot> {
+    const next = setPaid(await this.raw(), tier, paidUntil, token, Date.now());
+    await this.ctx.storage.put("state", next);
+    return snapshot(expire(next, Date.now()), today);
   }
 
   async check(today: string): Promise<{ allowed: boolean; snapshot: Snapshot }> {
+    await this.renewIfDue();
     const state = await this.load();
     return { allowed: canUse(state, today), snapshot: snapshot(state, today) };
   }
@@ -35,12 +67,13 @@ export class UserQuota extends DurableObject<Env> {
   }
 
   async setPlan(today: string, tier: Tier): Promise<Snapshot> {
-    const next = setTier(await this.load(), tier);
+    const next = setTier(await this.raw(), tier);
     await this.ctx.storage.put("state", next);
     return snapshot(next, today);
   }
 
   async view(today: string): Promise<Snapshot> {
+    await this.renewIfDue();
     return snapshot(await this.load(), today);
   }
 }
@@ -55,5 +88,15 @@ export class Counters extends DurableObject<Env> {
 
   async get(): Promise<number> {
     return (await this.ctx.storage.get<number>("n")) ?? 0;
+  }
+}
+
+/** One per purchase (named by a keyed hash of the purchase token): remembers which account holds it, so one purchase cannot unlock many installs. */
+export class PurchaseOwner extends DurableObject<Env> {
+  /** Makes [userId] the holder and returns the previous holder, if a different account had it. */
+  async claim(userId: string): Promise<string | null> {
+    const previous = (await this.ctx.storage.get<string>("owner")) ?? null;
+    await this.ctx.storage.put("owner", userId);
+    return previous && previous !== userId ? previous : null;
   }
 }

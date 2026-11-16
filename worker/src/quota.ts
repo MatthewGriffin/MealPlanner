@@ -21,9 +21,28 @@ export interface QuotaState {
   periodTier: Tier | null;
   spent: number;
   last: number;
+  /** When a paid plan runs out (epoch ms). Null = no end date (set by hand with /admin/tier, or on the free plan). */
+  paidUntil: number | null;
+  /** The Google Play purchase behind the plan, kept so a renewal can be checked without the app. */
+  purchaseToken: string | null;
+  /** When Google was last asked about that purchase (epoch ms). */
+  lastVerified: number;
 }
 
-export const NEW_STATE: QuotaState = { tier: "free", periodStart: null, periodTier: null, spent: 0, last: 0 };
+export const NEW_STATE: QuotaState = {
+  tier: "free", periodStart: null, periodTier: null, spent: 0, last: 0,
+  paidUntil: null, purchaseToken: null, lastVerified: 0,
+};
+
+/** A paid plan whose end date has passed counts as free; the period check then gives a fresh free week. */
+export function expire(state: QuotaState, nowMs: number): QuotaState {
+  return state.tier !== "free" && state.paidUntil !== null && nowMs > state.paidUntil ? { ...state, tier: "free" } : state;
+}
+
+/** A verified purchase: sets the plan and its end date. Renewing the same plan keeps the current allowance period. */
+export function setPaid(state: QuotaState, tier: Tier, paidUntil: number, token: string, nowMs: number): QuotaState {
+  return { ...state, tier, paidUntil, purchaseToken: token, lastVerified: nowMs };
+}
 
 export function addDays(date: string, days: number): string {
   const [y, m, d] = date.split("-").map(Number);
@@ -57,8 +76,9 @@ export function record(state: QuotaState, today: string, micros: number): QuotaS
   };
 }
 
+/** A hand-set plan (admin): no end date and no purchase behind it. */
 export function setTier(state: QuotaState, tier: Tier): QuotaState {
-  return { ...state, tier };
+  return { ...state, tier, paidUntil: null, purchaseToken: null };
 }
 
 export interface Snapshot {

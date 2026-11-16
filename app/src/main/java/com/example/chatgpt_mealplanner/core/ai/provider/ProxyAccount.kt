@@ -10,6 +10,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
@@ -21,6 +22,9 @@ import okhttp3.RequestBody.Companion.toRequestBody
 
 /** The Cloudflare Worker that holds the Claude key and each install's allowance (see the worker/ folder). */
 const val PROXY_BASE_URL = "https://pantry-planner-proxy.demengies.workers.dev"
+
+/** What the Worker decided about a Google Play purchase. */
+data class PurchaseResult(val entitled: Boolean)
 
 /** What the Worker says about this install's allowance. [resetsOn] is a YYYY-MM-DD date, blank until the period starts. */
 data class UsageReading(val tier: String, val percentLeft: Int, val resetsOn: String?)
@@ -93,6 +97,24 @@ open class ProxyAccount @Inject constructor(
             val manager = com.google.android.play.core.integrity.IntegrityManagerFactory.create(appContext)
             val request = com.google.android.play.core.integrity.IntegrityTokenRequest.builder().setNonce(nonce).build()
             com.google.android.gms.tasks.Tasks.await(manager.requestIntegrityToken(request), 15, TimeUnit.SECONDS).token()
+        }.getOrNull()
+    }
+
+    /**
+     * Tells the Worker about a Google Play purchase; the Worker checks it with Google and sets the plan.
+     * Null if it could not be checked right now (offline, Google busy): try again later, and do not acknowledge.
+     */
+    open fun reportPurchase(purchaseToken: String): PurchaseResult? {
+        val token = token() ?: return null
+        val body = buildJsonObject { put("purchaseToken", purchaseToken) }.toString().toRequestBody("application/json".toMediaType())
+        val request = Request.Builder().url("$baseUrl/v1/purchase").header("x-api-key", token).post(body).build()
+        return runCatching {
+            http.newCall(request).execute().use { response ->
+                if (response.code == 401) { forget(); return null }
+                if (!response.isSuccessful) return null
+                val entitled = Json.parseToJsonElement(response.body?.string().orEmpty()).jsonObject["entitled"]?.jsonPrimitive?.booleanOrNull
+                entitled?.let { PurchaseResult(it) }
+            }
         }.getOrNull()
     }
 

@@ -22,14 +22,18 @@ class SubscriptionViewModel @Inject constructor(
     init {
         // Ask the Worker how much is left whenever the app starts (this screen's model lives with the top bar).
         viewModelScope.launch { usageQuota.refreshFromServer() }
+        // Connect to Google Play, show real prices, and pick up any purchase (restore, renewal, retry).
+        viewModelScope.launch { subscriptions.refresh(); usageQuota.refreshFromServer() }
+        viewModelScope.launch { subscriptions.message.collect { if (it != null) _message.value = it } }
     }
+    val prices: StateFlow<Map<UsageTier, String>> = subscriptions.prices
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message
     val isDebugBuild: Boolean = com.example.chatgpt_mealplanner.BuildConfig.DEBUG
 
-    fun subscribe(tier: UsageTier) { _message.value = subscriptions.startPurchase(tier) }
-    fun manage() { _message.value = subscriptions.manageSubscription() }
-    fun restore() { _message.value = subscriptions.restorePurchases() }
+    fun subscribe(activity: android.app.Activity, tier: UsageTier) { subscriptions.startPurchase(activity, tier)?.let { _message.value = it } }
+    fun manage() { subscriptions.manageSubscription() }
+    fun restore() { viewModelScope.launch { _message.value = subscriptions.restorePurchases(); usageQuota.refreshFromServer() } }
     fun clearMessage() { _message.value = null }
 
     /** Debug builds only: pretend to be on a plan to see how the app looks. Limits stay bypassed in debug. */

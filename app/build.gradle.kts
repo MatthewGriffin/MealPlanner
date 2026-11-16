@@ -27,7 +27,7 @@ android {
         applicationId = "app.pantrypal.mealplanner"
         minSdk = 30
         targetSdk = 36
-        versionCode = 4
+        versionCode = 5
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -124,6 +124,7 @@ dependencies {
     implementation("com.google.zxing:core:3.5.3")
     implementation(libs.kotlinx.coroutines.play.services)
     implementation(libs.play.integrity)
+    implementation(libs.play.billing)
 
     // Networking & Serialization
     implementation("io.ktor:ktor-server-core:2.3.12")

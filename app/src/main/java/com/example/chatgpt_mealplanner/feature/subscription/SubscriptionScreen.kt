@@ -29,6 +29,11 @@ import com.example.chatgpt_mealplanner.core.quota.UsageTier
 fun SubscriptionScreen(modifier: Modifier = Modifier, viewModel: SubscriptionViewModel = hiltViewModel()) {
     val usage by viewModel.usage.collectAsState()
     val message by viewModel.message.collectAsState()
+    val prices by viewModel.prices.collectAsState()
+    var context = androidx.compose.ui.platform.LocalContext.current
+    while (context is android.content.ContextWrapper && context !is android.app.Activity) context = context.baseContext
+    val activity = context as? android.app.Activity
+    val buy: (UsageTier) -> Unit = { tier -> activity?.let { viewModel.subscribe(it, tier) } }
 
     Column(
         modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -50,17 +55,17 @@ fun SubscriptionScreen(modifier: Modifier = Modifier, viewModel: SubscriptionVie
             }
         }
 
-        PlanCard("Free", listOf("Limited trial usage of the AI features, refreshed every week"), highlighted = usage.tier == UsageTier.FREE)
-        PlanCard("Pro", listOf("${QuotaLimits.PRO_MULTIPLE}x the AI usage of Free, refreshed every day"), highlighted = usage.tier == UsageTier.PRO)
-        PlanCard("Max", listOf("${QuotaLimits.MAX_MULTIPLE_OF_PRO}x the AI usage of Pro, refreshed every day"), highlighted = usage.tier == UsageTier.MAX)
+        PlanCard("Free", price = null, points = listOf("Limited trial usage of the AI features, refreshed every week"), highlighted = usage.tier == UsageTier.FREE)
+        PlanCard("Pro", price = prices[UsageTier.PRO], points = listOf("${QuotaLimits.PRO_MULTIPLE}x the AI usage of Free, refreshed every day"), highlighted = usage.tier == UsageTier.PRO)
+        PlanCard("Max", price = prices[UsageTier.MAX], points = listOf("${QuotaLimits.MAX_MULTIPLE_OF_PRO}x the AI usage of Pro, refreshed every day"), highlighted = usage.tier == UsageTier.MAX)
 
         if (usage.tier == UsageTier.FREE) {
-            Button(onClick = { viewModel.subscribe(UsageTier.PRO) }, modifier = Modifier.fillMaxWidth()) { Text("Subscribe to Pro") }
-            OutlinedButton(onClick = { viewModel.subscribe(UsageTier.MAX) }, modifier = Modifier.fillMaxWidth()) { Text("Subscribe to Max") }
+            Button(onClick = { buy(UsageTier.PRO) }, modifier = Modifier.fillMaxWidth()) { Text("Subscribe to Pro") }
+            OutlinedButton(onClick = { buy(UsageTier.MAX) }, modifier = Modifier.fillMaxWidth()) { Text("Subscribe to Max") }
             OutlinedButton(onClick = viewModel::restore, modifier = Modifier.fillMaxWidth()) { Text("Restore purchase") }
         } else {
             if (usage.tier == UsageTier.PRO) {
-                Button(onClick = { viewModel.subscribe(UsageTier.MAX) }, modifier = Modifier.fillMaxWidth()) { Text("Upgrade to Max") }
+                Button(onClick = { buy(UsageTier.MAX) }, modifier = Modifier.fillMaxWidth()) { Text("Upgrade to Max") }
             }
             Button(onClick = viewModel::manage, modifier = Modifier.fillMaxWidth()) { Text("Change or cancel subscription") }
         }
@@ -84,7 +89,7 @@ fun SubscriptionScreen(modifier: Modifier = Modifier, viewModel: SubscriptionVie
 }
 
 @Composable
-private fun PlanCard(name: String, points: List<String>, highlighted: Boolean) {
+private fun PlanCard(name: String, price: String?, points: List<String>, highlighted: Boolean) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -92,7 +97,7 @@ private fun PlanCard(name: String, points: List<String>, highlighted: Boolean) {
         )
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(if (price != null) "$name · $price / month" else name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             points.forEach { Text("• $it", style = MaterialTheme.typography.bodyMedium) }
         }
     }
