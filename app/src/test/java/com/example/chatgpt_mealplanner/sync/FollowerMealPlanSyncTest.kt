@@ -127,6 +127,7 @@ class FollowerMealPlanSyncTest {
             assertEquals("list_1", snapshot.shoppingLists!!.single().id)
             assertEquals("CHECKED", snapshot.shoppingItems!!.single().status)
             assertEquals("staple_1", snapshot.stapleRules!!.single().id)
+            assertTrue(snapshot.shoppingSources!!.isEmpty())
         } finally { main.close() }
     }
 
@@ -197,6 +198,36 @@ class FollowerMealPlanSyncTest {
         } finally { db.close(); appDb.close() }
     }
 
+    @Test fun followerReceivesMealSourcesShopsAndPricesFromMain() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(context, FollowerDatabase::class.java).build()
+        val appDb = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
+        try {
+            val payload = snapshot(emptyList()).copy(
+                shoppingLists = listOf(ShoppingListSyncDto("list_s", "Weekly", status = "ACTIVE", createdAt = 1L, updatedAt = 2L)),
+                shoppingItems = listOf(ShoppingItemSyncDto(
+                    id = "item_s", shoppingListId = "list_s", displayName = "Milk", requiredQuantity = 2.0,
+                    requiredUnit = "LITRE", suggestedPurchaseQuantity = 2.0, suggestedPurchaseUnit = "LITRE", packCount = 1,
+                    reason = "Meal plan", priority = "ESSENTIAL", status = "NEEDED", optional = false, sourceType = "MANUAL",
+                    hasMealRequirement = true, hasStapleRestock = false, quantityUncertain = false,
+                    requirementConfidence = "EXACT", wasteRisk = "NONE", createdAt = 1L, updatedAt = 2L)),
+                shoppingSources = listOf(ShoppingSourceSyncDto("src_1", "item_s", "meal_x", null, "Porridge", "2026-11-20", 1.0, "LITRE")),
+                userStores = listOf(UserStoreSyncDto("store_1", "Aldi", false, 1L, 1L)),
+                priceObservations = listOf(PriceObservationSyncDto(
+                    id = "obs_1", storeId = "store_1", productName = "Milk", packQuantity = 2.0, packUnit = "L",
+                    priceMinorUnits = 150, purchasedAt = 5L, createdAt = 5L, canonicalName = "milk")))
+            val engine = FollowerMealPlanSyncEngine(db, FakeBootstrapSyncTestClient(), appDb)
+            engine.install(payload)
+            engine.install(payload) // a second sync must not fail or duplicate
+            val source = db.shoppingSourceDao().getAll().single()
+            assertEquals("2026-11-20", source.mealDate)
+            assertEquals("Aldi", appDb.purchasePriceDao().getActiveStorePriceHistory().single().storeName)
+            // An older host that sends none of it leaves what the follower already has.
+            engine.install(payload.copy(shoppingSources = null, userStores = null, priceObservations = null))
+            assertEquals(1, db.shoppingSourceDao().getAll().size)
+            assertEquals(1, appDb.purchasePriceDao().getAllPriceObservations().size)
+        } finally { db.close(); appDb.close() }
+    }
+
     @Test fun invalidOrFailedMealSnapshotLeavesExistingProjectionUntouched() = runBlocking {
         val db = Room.inMemoryDatabaseBuilder(context, FollowerDatabase::class.java).build()
         val main = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
@@ -214,7 +245,7 @@ class FollowerMealPlanSyncTest {
 
     @Test fun migration5To6PreservesExistingFollowerData() = runBlocking {
         val name = "meal_migration_${java.util.UUID.randomUUID()}.db"
-        fun open() = Room.databaseBuilder(context, FollowerDatabase::class.java, name).addMigrations(FOLLOWER_MIGRATION_5_6, com.example.chatgpt_mealplanner.core.sync.follower.database.FOLLOWER_MIGRATION_6_7).build()
+        fun open() = Room.databaseBuilder(context, FollowerDatabase::class.java, name).addMigrations(FOLLOWER_MIGRATION_5_6, com.example.chatgpt_mealplanner.core.sync.follower.database.FOLLOWER_MIGRATION_6_7, com.example.chatgpt_mealplanner.core.sync.follower.database.FOLLOWER_MIGRATION_7_8).build()
         var db = open()
         try {
             val local = FollowerLocalSyncEngine(db, null, null, db.mealRequestDao())

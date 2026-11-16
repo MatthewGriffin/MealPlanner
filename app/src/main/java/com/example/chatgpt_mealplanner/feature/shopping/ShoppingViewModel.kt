@@ -37,7 +37,8 @@ class ShoppingViewModel @Inject constructor(
     private val shoppingRepository: ShoppingRepository,
     private val stapleRuleRepository: StapleRuleRepository,
     private val appRoleResolver: AppRoleResolver,
-    private val purchasePriceDao: PurchasePriceDao? = null
+    private val purchasePriceDao: PurchasePriceDao? = null,
+    private val followerDatabase: com.example.chatgpt_mealplanner.core.sync.follower.database.FollowerDatabase? = null
 ) : ViewModel() {
 
     private val activeTabFlow = MutableStateFlow(ShoppingTab.SHOPPING_LIST)
@@ -51,7 +52,29 @@ class ShoppingViewModel @Inject constructor(
     private var localPriceLookupJob: kotlinx.coroutines.Job? = null
     private var lastPriceLookupSignature: String? = null
 
-    private val activeShoppingListFlow = shoppingRepository.observeActiveShoppingListWithItems()
+    /** On a follower the meals behind each item come from Main's sync, so the trip splitting works there too. */
+    private val followerSourcesFlow = if (appRoleResolver.isFollower() && followerDatabase != null)
+        followerDatabase.shoppingSourceDao().observeAll() else kotlinx.coroutines.flow.flowOf(emptyList())
+
+    private val activeShoppingListFlow = kotlinx.coroutines.flow.combine(
+        shoppingRepository.observeActiveShoppingListWithItems(), followerSourcesFlow
+    ) { list, extra ->
+        if (list == null || extra.isEmpty()) list else {
+            val byItem = extra.groupBy { it.shoppingListItemId }
+            list.copy(items = list.items.map { entry ->
+                val rows = byItem[entry.item.id]
+                if (entry.sources.isNotEmpty() || rows == null) entry else entry.copy(sources = rows.map {
+                    com.example.chatgpt_mealplanner.core.model.ShoppingRequirementSource(
+                        id = it.id, shoppingListItemId = it.shoppingListItemId, mealId = it.mealId,
+                        mealIngredientId = it.mealIngredientId, mealTitle = it.mealTitle, mealDate = it.mealDate,
+                        requiredQuantity = it.requiredQuantity,
+                        requiredUnit = runCatching { com.example.chatgpt_mealplanner.core.model.QuantityUnit.valueOf(it.requiredUnit) }
+                            .getOrDefault(com.example.chatgpt_mealplanner.core.model.QuantityUnit.UNIT)
+                    )
+                })
+            })
+        }
+    }
         .onEach { listWithItems ->
             val requirementSignature = listWithItems?.let { list ->
                 list.shoppingList.id + "|" + list.items.joinToString("|") { entry ->

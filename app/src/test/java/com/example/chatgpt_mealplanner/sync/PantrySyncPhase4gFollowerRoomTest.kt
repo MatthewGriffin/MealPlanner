@@ -151,6 +151,7 @@ class PantrySyncPhase4gFollowerRoomTest {
         override fun followerDao(): FollowerDao = dao
         override fun mealDao(): com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerMealDao = error("Meal DAO not used by this fake")
         override fun mealRequestDao(): com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerMealRequestDao = error("Meal projection not used in this inventory fixture")
+        override fun shoppingSourceDao(): com.example.chatgpt_mealplanner.core.sync.follower.database.dao.FollowerShoppingSourceDao = error("Shopping sources not used in this fixture")
         @Deprecated("Deprecated in Room")
         override fun beginTransaction() { conn.setAutoCommit(false) }
         @Deprecated("Deprecated in Room")

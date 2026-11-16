@@ -31,7 +31,8 @@ object FollowerDatabaseModule {
             com.example.chatgpt_mealplanner.core.sync.follower.database.FOLLOWER_MIGRATION_3_4,
             com.example.chatgpt_mealplanner.core.sync.follower.database.FOLLOWER_MIGRATION_4_5,
             com.example.chatgpt_mealplanner.core.sync.follower.database.FOLLOWER_MIGRATION_5_6,
-            com.example.chatgpt_mealplanner.core.sync.follower.database.FOLLOWER_MIGRATION_6_7
+            com.example.chatgpt_mealplanner.core.sync.follower.database.FOLLOWER_MIGRATION_6_7,
+            com.example.chatgpt_mealplanner.core.sync.follower.database.FOLLOWER_MIGRATION_7_8
         ).build()
     }
 
