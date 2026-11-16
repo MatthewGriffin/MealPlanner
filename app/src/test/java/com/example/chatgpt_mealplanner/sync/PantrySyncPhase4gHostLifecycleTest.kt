@@ -2194,4 +2194,37 @@ class PantrySyncPhase4gHostLifecycleTest {
         assertEquals(1L, reqAfterTap)
         assertEquals(0L, compAfterTap)
     }
+
+    @Test
+    fun ensureHostStartedIfInUse_doesNothingWhenNoDeviceIsPaired() = runTest {
+        var asked = 0
+        val started = hostController.ensureHostStartedIfInUse(null) { asked++; false }
+        assertFalse(started)
+        assertEquals(1, asked)
+        assertFalse(hostController.isServerRunning())
+    }
+
+    @Test
+    fun ensureHostStartedIfInUse_doesNotEvenCheckOnAFollowerPhone() = runTest {
+        // A paired follower never hosts, so the question about paired devices is not asked.
+        val followerController = object : PantrySyncHostController(server, pairingStore, com.example.chatgpt_mealplanner.core.sync.AppRoleResolver(pairingStore)) {
+            override fun isEligibleToHost() = false
+        }
+        var asked = false
+        assertFalse(followerController.ensureHostStartedIfInUse(null) { asked = true; true })
+        assertFalse(asked)
+    }
+
+    @Test
+    fun stopHostIfUnused_leavesTheHostAloneWhileADeviceIsPaired() = runTest {
+        var stopped = false
+        val controller = object : PantrySyncHostController(server, pairingStore, com.example.chatgpt_mealplanner.core.sync.AppRoleResolver(pairingStore)) {
+            override fun stopHost(context: android.content.Context) { stopped = true }
+        }
+        val ctx = org.mockito.Mockito.mock(android.content.Context::class.java)
+        controller.stopHostIfUnused(ctx) { true }
+        assertFalse(stopped)
+        controller.stopHostIfUnused(ctx) { false }
+        assertTrue(stopped)
+    }
 }

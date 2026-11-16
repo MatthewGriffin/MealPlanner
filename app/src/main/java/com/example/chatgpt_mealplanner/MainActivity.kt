@@ -10,6 +10,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.unit.dp
@@ -118,13 +120,21 @@ class MainActivity : ComponentActivity() {
     lateinit var hostController: com.example.chatgpt_mealplanner.core.sync.server.PantrySyncHostController
 
     @Inject
+    lateinit var pairedDeviceRepository: com.example.chatgpt_mealplanner.core.sync.repository.PairedDeviceRepository
+
+    @Inject
     lateinit var appRoleResolver: com.example.chatgpt_mealplanner.core.sync.AppRoleResolver
 
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         notificationRouteState.value = NotificationRoute.from(intent)
-        hostController.ensureHostStarted(this)
+        // Household sync hosting (a foreground service with a notification) only runs once a device has been paired.
+        lifecycleScope.launch {
+            hostController.ensureHostStartedIfInUse(this@MainActivity) {
+                pairedDeviceRepository.getAllDevices().any { it.status == com.example.chatgpt_mealplanner.core.database.entity.PairedDeviceStatus.ACTIVE }
+            }
+        }
         enableEdgeToEdge()
         setContent {
             ChatGPT_MealPlannerTheme {
@@ -451,6 +461,11 @@ class MainActivity : ComponentActivity() {
                         Screen.PAIR_DEVICE -> {
                             val pairViewModel: PairDeviceViewModel = hiltViewModel()
                             val state by pairViewModel.uiState.collectAsState()
+                            // The view model outlives this screen, so stop hosting explicitly when the screen is left with nothing paired.
+                            androidx.compose.runtime.DisposableEffect(Unit) {
+                                pairViewModel.onScreenEntered()
+                                onDispose { pairViewModel.onScreenLeft() }
+                            }
                             PairDeviceScreen(
                                 uiState = state,
                                 onGenerateNewCodeClicked = { pairViewModel.generateInvitation() },

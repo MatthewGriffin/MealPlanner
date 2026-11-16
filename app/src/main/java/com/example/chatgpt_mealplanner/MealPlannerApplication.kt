@@ -28,6 +28,7 @@ class MealPlannerApplication : Application(), Configuration.Provider {
         // Runs first because super.onCreate() starts dependency injection, which uses the database.
         com.example.chatgpt_mealplanner.core.backup.FullBackupRestoreInstaller.applyPendingRestore(this)
         super.onCreate()
+        com.example.chatgpt_mealplanner.core.sync.server.NettyShutdownGuard.install()
         followerNetworkCallbackListener.registerListener()
         com.example.chatgpt_mealplanner.core.worker.IcelandCatalogueRefreshScheduler.schedule(this)
         com.example.chatgpt_mealplanner.core.worker.DataCleanupWorker.schedule(this)
