@@ -25,6 +25,10 @@ class_name = "Counters"
 name = "PURCHASE_OWNER"
 class_name = "PurchaseOwner"
 
+[[durable_objects.bindings]]
+name = "DEVICE_OWNER"
+class_name = "DeviceOwner"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["UserQuota", "Counters"]
@@ -32,6 +36,10 @@ new_sqlite_classes = ["UserQuota", "Counters"]
 [[migrations]]
 tag = "v2"
 new_sqlite_classes = ["PurchaseOwner"]
+
+[[migrations]]
+tag = "v3"
+new_sqlite_classes = ["DeviceOwner"]
 
 # Secrets (set with `wrangler secret put NAME`, never written here):
 #   ANTHROPIC_API_KEY  your Claude key

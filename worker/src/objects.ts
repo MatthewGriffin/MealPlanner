@@ -6,6 +6,7 @@ export interface Env {
   USER_QUOTA: DurableObjectNamespace<UserQuota>;
   COUNTERS: DurableObjectNamespace<Counters>;
   PURCHASE_OWNER: DurableObjectNamespace<PurchaseOwner>;
+  DEVICE_OWNER: DurableObjectNamespace<DeviceOwner>;
   ANTHROPIC_API_KEY: string;
   TOKEN_SECRET: string;
   ADMIN_SECRET: string;
@@ -18,6 +19,8 @@ export interface Env {
   /** Google service-account key JSON (secret) used to decode Play Integrity tokens. */
   GOOGLE_SA_JSON?: string;
 }
+
+const MAX_FOLLOWER_KEYS = 10;
 
 /** One per user. A Durable Object handles one call at a time, so the counting cannot race. */
 export class UserQuota extends DurableObject<Env> {
@@ -72,6 +75,24 @@ export class UserQuota extends DurableObject<Env> {
     return snapshot(next, today);
   }
 
+  /** Switches a follower's key on. At most MAX_FOLLOWER_KEYS at once. */
+  async addFollowerKey(keyId: string): Promise<boolean> {
+    const keys = (await this.ctx.storage.get<string[]>("fkeys")) ?? [];
+    if (keys.includes(keyId)) return true;
+    if (keys.length >= MAX_FOLLOWER_KEYS) return false;
+    await this.ctx.storage.put("fkeys", [...keys, keyId]);
+    return true;
+  }
+
+  async removeFollowerKey(keyId: string): Promise<void> {
+    const keys = (await this.ctx.storage.get<string[]>("fkeys")) ?? [];
+    await this.ctx.storage.put("fkeys", keys.filter((k) => k !== keyId));
+  }
+
+  async hasFollowerKey(keyId: string): Promise<boolean> {
+    return ((await this.ctx.storage.get<string[]>("fkeys")) ?? []).includes(keyId);
+  }
+
   async view(today: string): Promise<Snapshot> {
     await this.renewIfDue();
     return snapshot(await this.load(), today);
@@ -98,5 +119,20 @@ export class PurchaseOwner extends DurableObject<Env> {
     const previous = (await this.ctx.storage.get<string>("owner")) ?? null;
     await this.ctx.storage.put("owner", userId);
     return previous && previous !== userId ? previous : null;
+  }
+}
+
+/** One per phone (named by a keyed hash of its Android ID): remembers which account belongs to it, so a reinstall gets the same account back. */
+export class DeviceOwner extends DurableObject<Env> {
+  async get(): Promise<string | null> {
+    return (await this.ctx.storage.get<string>("owner")) ?? null;
+  }
+
+  /** Makes [userId] the owner if nobody is yet, and returns whoever the owner is. */
+  async claim(userId: string): Promise<string> {
+    const existing = await this.get();
+    if (existing) return existing;
+    await this.ctx.storage.put("owner", userId);
+    return userId;
   }
 }
