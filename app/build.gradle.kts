@@ -6,6 +6,7 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
+    alias(libs.plugins.play.publisher)
 }
 
 ksp {
@@ -17,6 +18,16 @@ ksp {
 val keystoreProperties = Properties().apply {
     val file = rootProject.file("keystore.properties")
     if (file.exists()) file.inputStream().use { load(it) }
+}
+
+// Uploading builds to Google Play: ./gradlew :app:publishReleaseBundle [-Ptrack=internal|alpha]
+// Needs "playServiceAccount=/path/to/key.json" in keystore.properties (git-ignored). Without it the plugin does nothing.
+play {
+    (keystoreProperties.getProperty("playServiceAccount"))?.let { serviceAccountCredentials.set(file(it)) }
+    track.set((findProperty("track") as String?) ?: "internal")
+    defaultToAppBundles.set(true)
+    // The first upload to a track must be a draft until the app has a published release; "completed" rolls out to testers.
+    releaseStatus.set(com.github.triplet.gradle.androidpublisher.ReleaseStatus.COMPLETED)
 }
 
 android {
