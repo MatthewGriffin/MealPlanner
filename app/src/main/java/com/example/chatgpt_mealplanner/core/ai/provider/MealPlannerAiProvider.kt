@@ -25,4 +25,8 @@ interface MealPlannerAiProvider {
     /** Picks, for each listed line, the food database product the user most likely means. */
     suspend fun chooseProducts(lines: List<ProductMatchLine>): ProductMatchResult =
         ProductMatchResult.Failed("This AI provider can't match products.")
+
+    /** Reads a till receipt from photos of it (consecutive parts of one receipt, as base64 JPEGs). */
+    suspend fun readReceipt(imagesJpegBase64: List<String>): ReceiptReadResult =
+        ReceiptReadResult.Failed("This AI provider can't read receipts.")
 }

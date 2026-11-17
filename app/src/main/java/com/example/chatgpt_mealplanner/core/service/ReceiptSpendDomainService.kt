@@ -32,6 +32,9 @@ import javax.inject.Singleton
 
 interface ReceiptSpendDomainService {
     suspend fun processReceiptOcr(ocrResult: ReceiptOcrResult, sourceImagePath: String?): DomainResult<ReceiptSpendDraft>
+
+    /** Takes a draft built some other way (Claude reading the photo) through the same duplicate check and remembered categories. */
+    suspend fun finishDraft(draft: ReceiptSpendDraft): DomainResult<ReceiptSpendDraft>
     suspend fun saveReceiptSpend(draft: ReceiptSpendDraft): DomainResult<Unit>
 }
 
@@ -48,8 +51,10 @@ class ReceiptSpendDomainServiceImpl @Inject constructor(
         ocrResult: ReceiptOcrResult,
         sourceImagePath: String?
     ): DomainResult<ReceiptSpendDraft> {
-        val initialDraft = ReceiptSpendParser.parseOcrResult(ocrResult, sourceImagePath)
+        return finishDraft(ReceiptSpendParser.parseOcrResult(ocrResult, sourceImagePath))
+    }
 
+    override suspend fun finishDraft(initialDraft: ReceiptSpendDraft): DomainResult<ReceiptSpendDraft> {
         val existingSpend = receiptSpendDao.getSpendByFingerprint(initialDraft.fingerprint)
         val isDuplicate = existingSpend != null
 
