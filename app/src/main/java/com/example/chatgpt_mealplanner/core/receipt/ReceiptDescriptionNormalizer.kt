@@ -60,6 +60,6 @@ object ReceiptDescriptionNormalizer {
 
     fun isNonProductLine(normalizedText: String): Boolean {
         val lower = normalizedText.lowercase()
-        return nonProductPhrases.any { lower.contains(it) } || nonProductWords.containsMatchIn(lower)
+        return nonProductPhrases.any { lower.contains(it) } || nonProductWords.containsMatchIn(lower) || ReceiptVocabulary.isNonProduct(lower)
     }
 }
