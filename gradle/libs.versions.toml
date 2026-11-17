@@ -1,4 +1,5 @@
 [versions]
+playPublisher = "4.1.2"
 agp = "9.5.1"
 coreKtx = "1.19.0"
 junit = "4.13.2"
@@ -105,3 +106,4 @@ kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
+play-publisher = { id = "com.github.triplet.play", version.ref = "playPublisher" }
