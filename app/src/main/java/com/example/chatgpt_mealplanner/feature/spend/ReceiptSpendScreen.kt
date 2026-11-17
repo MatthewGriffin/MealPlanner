@@ -200,6 +200,7 @@ fun ReceiptSpendScreen(
                 }
                 if (showTotalEditor) {
                     ReceiptTotalDialog(
+                        currencyCode = draft.currencyCode,
                         initialPence = draft.totalMinorPence,
                         onConfirm = {
                             viewModel.updateSummaryPaidTotal(it)
@@ -211,6 +212,7 @@ fun ReceiptSpendScreen(
                 if (showAddItem) {
                     ReceiptItemDialog(
                         title = "Add missed item",
+                        currencyCode = draft.currencyCode,
                         initialDescription = "",
                         initialPence = null,
                         onConfirm = { description, pence ->
@@ -223,6 +225,7 @@ fun ReceiptSpendScreen(
                 itemBeingEdited?.let { item ->
                     ReceiptItemDialog(
                         title = "Edit item",
+                        currencyCode = draft.currencyCode,
                         initialDescription = item.normalizedDescription,
                         initialPence = item.lineAmountMinorPence,
                         onConfirm = { description, pence ->
@@ -262,7 +265,7 @@ fun ReceiptSpendScreen(
                         ) {
                             Column {
                                 Text("Net Paid Total", style = MaterialTheme.typography.labelMedium)
-                                val netPaidDisplay = if (draft.totalMinorPence != null && draft.totalMinorPence > 0L) "£%.2f".format(draft.totalMinorPence / 100.0) else "Not detected"
+                                val netPaidDisplay = if (draft.totalMinorPence != null && draft.totalMinorPence > 0L) com.example.chatgpt_mealplanner.core.util.MoneyFormat.format(draft.totalMinorPence, draft.currencyCode) else "Not detected"
                                 Text(
                                     netPaidDisplay,
                                     style = MaterialTheme.typography.headlineMedium,
@@ -274,8 +277,8 @@ fun ReceiptSpendScreen(
                                 }
                             }
                             Column(horizontalAlignment = Alignment.End) {
-                                Text("Recognised Items: £${"%.2f".format(draft.calculatedItemsSumMinorPence / 100.0)}", style = MaterialTheme.typography.bodySmall)
-                                Text("Receipt Savings: -£${"%.2f".format(draft.discountMinorPence / 100.0)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+                                Text("Recognised Items: ${com.example.chatgpt_mealplanner.core.util.MoneyFormat.format(draft.calculatedItemsSumMinorPence, draft.currencyCode)}", style = MaterialTheme.typography.bodySmall)
+                                Text("Receipt Savings: -${com.example.chatgpt_mealplanner.core.util.MoneyFormat.format(draft.discountMinorPence, draft.currencyCode)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
                             }
                         }
                     }
@@ -335,7 +338,7 @@ fun ReceiptSpendScreen(
                                 ) {
                                     Text(item.normalizedDescription, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                                     Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text("£${"%.2f".format(item.lineAmountMinorPence / 100.0)}")
+                                        Text(com.example.chatgpt_mealplanner.core.util.MoneyFormat.format(item.lineAmountMinorPence, draft.currencyCode))
                                         IconButton(onClick = { itemBeingEdited = item }) {
                                             Icon(Icons.Default.Edit, contentDescription = "Edit Line")
                                         }
@@ -414,7 +417,7 @@ fun ReceiptSpendScreen(
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
-                val saveLabel = if (draft.canSave && draft.totalMinorPence != null) "Save Receipt (£${"%.2f".format(draft.totalMinorPence / 100.0)})" else "Fix Receipt Before Saving"
+                val saveLabel = if (draft.canSave && draft.totalMinorPence != null) "Save Receipt (${com.example.chatgpt_mealplanner.core.util.MoneyFormat.format(draft.totalMinorPence, draft.currencyCode)})" else "Fix Receipt Before Saving"
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     OutlinedButton(
                         onClick = { viewModel.cancelScan() },
@@ -460,6 +463,13 @@ fun ReceiptSpendScreen(
                         Column(modifier = Modifier.padding(16.dp)) {
                             Text("Monthly Grocery Spend", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             Spacer(modifier = Modifier.height(8.dp))
+                            if (uiState.dashboardState.otherCurrencyReceipts > 0) {
+                                Text(
+                                    "${uiState.dashboardState.otherCurrencyReceipts} receipt(s) in other currencies are not included in these totals.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween
@@ -467,16 +477,16 @@ fun ReceiptSpendScreen(
                                 Column {
                                     Text("Net Paid (This Month)", style = MaterialTheme.typography.labelMedium)
                                     Text(
-                                        "£${"%.2f".format(uiState.dashboardState.thisMonthNetPaidPence / 100.0)}",
+                                        com.example.chatgpt_mealplanner.core.util.MoneyFormat.format(uiState.dashboardState.thisMonthNetPaidPence, uiState.dashboardState.currencyCode),
                                         style = MaterialTheme.typography.headlineMedium,
                                         fontWeight = FontWeight.Bold,
                                         color = MaterialTheme.colorScheme.primary
                                     )
                                 }
                                 Column(horizontalAlignment = Alignment.End) {
-                                    Text("Last Month: £${"%.2f".format(uiState.dashboardState.lastMonthNetPaidPence / 100.0)}", style = MaterialTheme.typography.bodySmall)
-                                    Text("Gross Items: £${"%.2f".format(uiState.dashboardState.thisMonthGrossItemsPence / 100.0)}", style = MaterialTheme.typography.bodySmall)
-                                    Text("Savings: -£${"%.2f".format(uiState.dashboardState.thisMonthSavingsPence / 100.0)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+                                    Text("Last Month: ${com.example.chatgpt_mealplanner.core.util.MoneyFormat.format(uiState.dashboardState.lastMonthNetPaidPence, uiState.dashboardState.currencyCode)}", style = MaterialTheme.typography.bodySmall)
+                                    Text("Gross Items: ${com.example.chatgpt_mealplanner.core.util.MoneyFormat.format(uiState.dashboardState.thisMonthGrossItemsPence, uiState.dashboardState.currencyCode)}", style = MaterialTheme.typography.bodySmall)
+                                    Text("Savings: -${com.example.chatgpt_mealplanner.core.util.MoneyFormat.format(uiState.dashboardState.thisMonthSavingsPence, uiState.dashboardState.currencyCode)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
                                 }
                             }
                             Spacer(modifier = Modifier.height(8.dp))
@@ -574,7 +584,7 @@ fun ReceiptSpendScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Text(cat.category, fontWeight = FontWeight.Bold)
-                                Text("£${"%.2f".format(cat.totalPence / 100.0)} (${"%.1f".format(pct)}%)")
+                                Text("${com.example.chatgpt_mealplanner.core.util.MoneyFormat.format(cat.totalPence, uiState.dashboardState.currencyCode)}" + " (${"%.1f".format(pct)}%)")
                             }
                         }
                     }
@@ -595,7 +605,7 @@ fun ReceiptSpendScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Text(ret.retailerId, fontWeight = FontWeight.Bold)
-                                Text("£${"%.2f".format(ret.totalPence / 100.0)} (${ret.receiptCount} ${if (ret.receiptCount == 1) "receipt" else "receipts"})")
+                                Text("${com.example.chatgpt_mealplanner.core.util.MoneyFormat.format(ret.totalPence, uiState.dashboardState.currencyCode)}" + " (${ret.receiptCount} ${if (ret.receiptCount == 1) "receipt" else "receipts"})")
                             }
                         }
                     }
@@ -642,16 +652,17 @@ private fun ReceiptDatePickerDialog(
 
 @Composable
 private fun ReceiptTotalDialog(
+    currencyCode: String,
     initialPence: Long?,
     onConfirm: (Long) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var amountText by remember { mutableStateOf(initialPence?.takeIf { it > 0L }?.let(ReceiptMoneyInput::format).orEmpty()) }
-    val pence = ReceiptMoneyInput.parsePositivePence(amountText)
+    var amountText by remember { mutableStateOf(initialPence?.takeIf { it > 0L }?.let { ReceiptMoneyInput.format(it, currencyCode) }.orEmpty()) }
+    val pence = ReceiptMoneyInput.parsePositivePence(amountText, currencyCode)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Amount paid") },
-        text = { ReceiptPriceField(amountText, "Total paid (£)") { amountText = it } },
+        text = { ReceiptPriceField(amountText, "Total paid (${com.example.chatgpt_mealplanner.core.util.MoneyFormat.symbol(currencyCode)})", currencyCode) { amountText = it } },
         confirmButton = {
             TextButton(enabled = pence != null, onClick = { pence?.let(onConfirm) }) { Text("Save") }
         },
@@ -662,14 +673,15 @@ private fun ReceiptTotalDialog(
 @Composable
 private fun ReceiptItemDialog(
     title: String,
+    currencyCode: String,
     initialDescription: String,
     initialPence: Long?,
     onConfirm: (String, Long) -> Unit,
     onDismiss: () -> Unit
 ) {
     var description by remember { mutableStateOf(initialDescription) }
-    var amountText by remember { mutableStateOf(initialPence?.let(ReceiptMoneyInput::format).orEmpty()) }
-    val pence = ReceiptMoneyInput.parsePositivePence(amountText)
+    var amountText by remember { mutableStateOf(initialPence?.let { ReceiptMoneyInput.format(it, currencyCode) }.orEmpty()) }
+    val pence = ReceiptMoneyInput.parsePositivePence(amountText, currencyCode)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
@@ -681,7 +693,7 @@ private fun ReceiptItemDialog(
                     label = { Text("Item") },
                     singleLine = true
                 )
-                ReceiptPriceField(amountText, "Price (£)") { amountText = it }
+                ReceiptPriceField(amountText, "Price (${com.example.chatgpt_mealplanner.core.util.MoneyFormat.symbol(currencyCode)})", currencyCode) { amountText = it }
             }
         },
         confirmButton = {
@@ -695,14 +707,14 @@ private fun ReceiptItemDialog(
 }
 
 @Composable
-private fun ReceiptPriceField(value: String, label: String, onValueChange: (String) -> Unit) {
+private fun ReceiptPriceField(value: String, label: String, currencyCode: String, onValueChange: (String) -> Unit) {
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
         label = { Text(label) },
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-        isError = value.isNotBlank() && ReceiptMoneyInput.parsePositivePence(value) == null
+        isError = value.isNotBlank() && ReceiptMoneyInput.parsePositivePence(value, currencyCode) == null
     )
 }
 

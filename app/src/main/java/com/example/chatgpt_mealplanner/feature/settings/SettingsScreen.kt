@@ -422,7 +422,7 @@ fun SettingsScreen(
                                 }
                             }
                             Text(
-                                "${observation.currencyCode} ${"%.2f".format(observation.priceMinorUnits / 100.0)}",
+                                com.example.chatgpt_mealplanner.core.util.MoneyFormat.format(observation.priceMinorUnits, observation.currencyCode),
                                 fontWeight = FontWeight.SemiBold
                             )
                         }

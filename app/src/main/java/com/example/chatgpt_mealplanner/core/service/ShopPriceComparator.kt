@@ -57,7 +57,10 @@ object ShopPriceComparator {
         prices: List<PurchasePriceWithStore>
     ): List<ShopPriceOption> {
         val needed = toAmount(neededQuantity, neededUnit)
+        // Prices in different currencies cannot be ranked against each other: use the currency of the latest recorded price.
+        val currency = prices.maxByOrNull { it.observation.purchasedAt }?.observation?.currencyCode
         val latestPerProduct = prices
+            .filter { it.observation.currencyCode == currency }
             .sortedByDescending { it.observation.purchasedAt }
             .distinctBy { price ->
                 val observation = price.observation

@@ -1,5 +1,6 @@
 package com.example.chatgpt_mealplanner.core.database.entity
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -18,7 +19,9 @@ data class ReceiptSpendEntity(
     val discountMinorPence: Long,
     val itemCount: Int,
     val fingerprint: String,
-    val createdAt: Long
+    val createdAt: Long,
+    /** ISO 4217 code of the receipt's currency; amounts above are in its minor units. Older receipts are pounds. */
+    @ColumnInfo(defaultValue = "GBP") val currencyCode: String = "GBP"
 )
 
 @Entity(
