@@ -45,7 +45,9 @@ data class ReceiptSpendDraft(
     val fingerprint: String,
     val sourceImagePath: String?,
     val transactionRef: String? = null,
-    val items: List<ReceiptSpendItemDraft>
+    val items: List<ReceiptSpendItemDraft>,
+    /** ISO 4217 code; every amount in this draft is in the minor units of this currency. */
+    val currencyCode: String = "GBP"
 ) {
     fun recomputeWithPaidTotal(newPaidTotalPence: Long): ReceiptSpendDraft =
         withUserEdits(paidTotalPence = newPaidTotalPence).copy(userConfirmedSummary = true)
@@ -72,7 +74,8 @@ data class ReceiptSpendDraft(
             recognisedGrossPence = recognisedGross,
             itemCount = items.sumOf { it.quantity },
             expectedItemCount = expectedItemCount,
-            summaryArithmeticValid = summaryValid
+            summaryArithmeticValid = summaryValid,
+            currencyCode = currencyCode
         )
         val stillProbableDuplicate = isProbableDuplicate && !identityChanged
 
@@ -114,7 +117,7 @@ internal data class ReceiptReviewState(
     val warning: String?
 )
 
-private fun pounds(pence: Long): String = "£" + "%.2f".format(java.util.Locale.UK, pence / 100.0)
+private fun money(pence: Long, currencyCode: String): String = com.example.chatgpt_mealplanner.core.util.MoneyFormat.format(pence, currencyCode)
 
 internal fun evaluateReceiptReview(
     retailerId: String,
@@ -126,8 +129,10 @@ internal fun evaluateReceiptReview(
     recognisedGrossPence: Long,
     itemCount: Int,
     expectedItemCount: Int?,
-    summaryArithmeticValid: Boolean
+    summaryArithmeticValid: Boolean,
+    currencyCode: String = "GBP"
 ): ReceiptReviewState {
+    fun pounds(pence: Long) = money(pence, currencyCode)
     val unrecognised = if (grossTargetPence != null) maxOf(0L, grossTargetPence - recognisedGrossPence) else 0L
     val overage = if (grossTargetPence != null) maxOf(0L, recognisedGrossPence - grossTargetPence) else 0L
     val discrepancy = if (grossTargetPence != null) grossTargetPence - recognisedGrossPence else 0L
@@ -170,17 +175,40 @@ internal fun receiptFingerprint(retailerId: String, purchasedAt: String?, paidTo
         .joinToString("") { "%02x".format(it) }
 }
 
-/** Reads an amount typed by the user, such as "3.74", "£3.74" or "3,7". */
+/** Reads an amount typed by the user, such as "3.74", "£3.74", "3,7", "1.234,56" or (for a currency with no cents) "350". */
 object ReceiptMoneyInput {
-    private val amount = Regex("""\d{1,5}(\.\d{1,2})?""")
-
-    fun parsePositivePence(text: String): Long? {
-        val cleaned = text.trim().removePrefix("£").trim().replace(',', '.')
-        if (!amount.matches(cleaned)) return null
-        return java.math.BigDecimal(cleaned).movePointRight(2).longValueExact().takeIf { it > 0L }
+    fun parsePositivePence(text: String, currencyCode: String = "GBP"): Long? {
+        val digits = com.example.chatgpt_mealplanner.core.util.MoneyFormat.fractionDigits(currencyCode)
+        if (text.contains('-')) return null
+        // Drop a currency sign or code at either end and any spaces.
+        val core = text.trim().replace(Regex("""^[^\d]+|[^\d]+$"""), "").replace(" ", "")
+        if (core.isEmpty()) return null
+        val marks = core.filter { it == '.' || it == ',' }
+        val number = when {
+            marks.isEmpty() -> core
+            // "1.234.567": the same mark repeated can only be thousands marks.
+            marks.length > 1 && marks.toSet().size == 1 -> {
+                val groups = core.split(marks[0])
+                if (groups[0].length in 1..3 && groups.drop(1).all { it.length == 3 }) groups.joinToString("") else return null
+            }
+            else -> {
+                val last = core.lastIndexOfAny(charArrayOf('.', ','))
+                val whole = core.substring(0, last).replace(".", "").replace(",", "")
+                val fraction = core.substring(last + 1)
+                // One mark followed by exactly three digits is a thousands mark when the currency cannot have three decimals:
+                // "1,234" in most currencies, and also "1.234" where there are no cents at all (yen, won). "1.234" in pounds is a typo.
+                val thousands = marks.length == 1 && fraction.length == 3 &&
+                    ((marks[0] == ',' && digits < 3) || (marks[0] == '.' && digits == 0))
+                if (thousands) whole + fraction else "$whole.$fraction"
+            }
+        }
+        val pattern = if (digits == 0) Regex("""\d{1,9}""") else Regex("""\d{1,9}(\.\d{1,$digits})?""")
+        if (!pattern.matches(number)) return null
+        return java.math.BigDecimal(number).movePointRight(digits).longValueExact().takeIf { it > 0L }
     }
 
-    fun format(pence: Long): String = "%.2f".format(java.util.Locale.UK, pence / 100.0)
+    fun format(pence: Long, currencyCode: String = "GBP"): String =
+        com.example.chatgpt_mealplanner.core.util.MoneyFormat.toDecimal(pence, currencyCode).toPlainString()
 }
 
 object ReceiptMoneyParser {

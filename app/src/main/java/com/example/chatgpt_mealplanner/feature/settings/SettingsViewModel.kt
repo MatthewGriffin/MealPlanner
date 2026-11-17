@@ -185,7 +185,8 @@ class SettingsViewModel @Inject constructor(
                     _uiState.update { it.copy(syncStatusMessage = "Choose an active shop.") }
                     return@launch
                 }
-                val priceMinorUnits = (pricePounds * 100.0).roundToLong()
+                val currency = com.example.chatgpt_mealplanner.core.util.MoneyFormat.defaultCurrencyCode()
+                val priceMinorUnits = com.example.chatgpt_mealplanner.core.util.MoneyFormat.toMinorUnits(pricePounds, currency)
                 dao.insertPriceObservation(
                     PurchasePriceObservationEntity(
                         id = UUID.randomUUID().toString(),
@@ -197,12 +198,13 @@ class SettingsViewModel @Inject constructor(
                         packUnit = normalizePurchaseUnit(packUnit),
                         packCount = packCount,
                         priceMinorUnits = priceMinorUnits,
+                        currencyCode = currency,
                         purchasedAt = System.currentTimeMillis(),
                         createdAt = System.currentTimeMillis(),
                         source = "MANUAL"
                     )
                 )
-                _uiState.update { it.copy(syncStatusMessage = "Saved £${"%.2f".format(priceMinorUnits / 100.0)} for $cleanName at ${store.name}.") }
+                _uiState.update { it.copy(syncStatusMessage = "Saved ${com.example.chatgpt_mealplanner.core.util.MoneyFormat.format(priceMinorUnits, currency)} for $cleanName at ${store.name}.") }
             } catch (e: Exception) {
                 rethrowIfCancelled()
                 _uiState.update { it.copy(syncStatusMessage = "Could not save price: ${e.message ?: "unknown error"}") }

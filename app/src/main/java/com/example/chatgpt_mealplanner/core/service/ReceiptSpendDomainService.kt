@@ -96,7 +96,8 @@ class ReceiptSpendDomainServiceImpl @Inject constructor(
                 discountMinorPence = draft.discountMinorPence,
                 itemCount = draft.itemCount,
                 fingerprint = draft.fingerprint,
-                createdAt = System.currentTimeMillis()
+                createdAt = System.currentTimeMillis(),
+                currencyCode = draft.currencyCode
             )
 
             val itemEntities = draft.items.map { item ->
@@ -180,6 +181,7 @@ class ReceiptSpendDomainServiceImpl @Inject constructor(
                     packUnit = if (hasInventorySize) inventoryItem?.packSizeUnit?.name else (parsedSize?.packSizeUnit ?: parsedSize?.netQuantityUnit)?.name,
                     packCount = if (hasInventorySize) inventoryItem?.packCount else parsedSize?.packCount,
                     priceMinorUnits = priceMinorUnits,
+                    currencyCode = draft.currencyCode,
                     purchasedAt = purchasedAt,
                     createdAt = now,
                     source = "RECEIPT_LINK",

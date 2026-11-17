@@ -164,7 +164,8 @@ class ScannerViewModel @Inject constructor(
         try {
             val store = dao.getStore(storeId) ?: return
             if (store.isArchived) return
-            val priceMinorUnits = (pricePounds * 100.0).roundToLong()
+            val currency = com.example.chatgpt_mealplanner.core.util.MoneyFormat.defaultCurrencyCode()
+            val priceMinorUnits = com.example.chatgpt_mealplanner.core.util.MoneyFormat.toMinorUnits(pricePounds, currency)
             dao.insertPriceObservation(
                 PurchasePriceObservationEntity(
                     id = UUID.randomUUID().toString(),
@@ -176,6 +177,7 @@ class ScannerViewModel @Inject constructor(
                     packUnit = (if ((input.packCount ?: 1) > 1) input.packSizeUnit ?: input.netQuantityUnit else input.netQuantityUnit ?: input.packSizeUnit)?.name,
                     packCount = input.packCount,
                     priceMinorUnits = priceMinorUnits,
+                    currencyCode = currency,
                     purchasedAt = System.currentTimeMillis(),
                     createdAt = System.currentTimeMillis(),
                     source = "SCANNER",

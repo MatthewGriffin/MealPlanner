@@ -996,6 +996,13 @@ val MIGRATION_26_27 = object : Migration(26, 27) {
     }
 }
 
+/** Each receipt now remembers its currency; receipts saved before this were all pounds. */
+val MIGRATION_27_28 = object : Migration(27, 28) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `receipt_spend` ADD COLUMN `currencyCode` TEXT NOT NULL DEFAULT 'GBP'")
+    }
+}
+
 const val MAIN_DATABASE_NAME = "pantry_planner.db"
 
 val ALL_MIGRATIONS = arrayOf(
@@ -1024,7 +1031,8 @@ val ALL_MIGRATIONS = arrayOf(
     MIGRATION_23_24,
     MIGRATION_24_25,
     MIGRATION_25_26,
-    MIGRATION_26_27
+    MIGRATION_26_27,
+    MIGRATION_27_28
 )
 
 @Database(
@@ -1065,7 +1073,7 @@ val ALL_MIGRATIONS = arrayOf(
         com.example.chatgpt_mealplanner.core.database.entity.KitInstructionEntity::class,
         com.example.chatgpt_mealplanner.core.database.entity.SavedRecipeEntity::class
     ],
-    version = 27,
+    version = 28,
     exportSchema = true
 )
 @TypeConverters(Converters::class)

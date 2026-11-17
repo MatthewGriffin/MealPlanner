@@ -156,7 +156,7 @@ fun ReceiptScannerScreen(
                                 ) {
                                     Text(line.displayName, fontWeight = FontWeight.Bold)
                                     line.lineTotalMinorPence?.let { pence ->
-                                        Text("£${"%.2f".format(pence / 100.0)}")
+                                        Text(com.example.chatgpt_mealplanner.core.util.MoneyFormat.format(pence, com.example.chatgpt_mealplanner.core.util.MoneyFormat.defaultCurrencyCode()))
                                     }
                                 }
                                 Spacer(modifier = Modifier.height(4.dp))

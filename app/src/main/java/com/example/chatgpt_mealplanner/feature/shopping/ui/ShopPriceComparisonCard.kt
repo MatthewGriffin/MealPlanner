@@ -105,7 +105,7 @@ private fun ShopPriceOptionRow(option: ShopPriceOption) {
             )
         }
         Text(
-            formatPounds(option.totalCostMinorUnits ?: observation.priceMinorUnits),
+            com.example.chatgpt_mealplanner.core.util.MoneyFormat.format(option.totalCostMinorUnits ?: observation.priceMinorUnits, observation.currencyCode),
             fontWeight = FontWeight.SemiBold
         )
     }
@@ -122,7 +122,7 @@ private fun purchaseDescription(option: ShopPriceOption): String {
     }
     val packs = option.packsToBuy
     return when {
-        packs != null && packLabel != null -> "$packs x $packLabel · ${formatPounds(observation.priceMinorUnits)} each"
+        packs != null && packLabel != null -> "$packs x $packLabel · ${com.example.chatgpt_mealplanner.core.util.MoneyFormat.format(observation.priceMinorUnits, observation.currencyCode)} each"
         packLabel != null -> "$packLabel · can't compare with the amount needed"
         else -> "Pack size unknown · can't compare"
     }
@@ -134,4 +134,3 @@ private fun formatAmount(quantity: Double, unit: QuantityUnit?): String =
 private fun formatNumber(value: Double): String =
     if (value % 1.0 == 0.0) value.toLong().toString() else "%.2f".format(Locale.UK, value).trimEnd('0').trimEnd('.')
 
-private fun formatPounds(minorUnits: Long): String = "£%.2f".format(Locale.UK, minorUnits / 100.0)

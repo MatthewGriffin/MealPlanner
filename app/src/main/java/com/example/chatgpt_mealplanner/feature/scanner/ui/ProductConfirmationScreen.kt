@@ -306,7 +306,7 @@ fun ProductConfirmationScreen(
             OutlinedTextField(
                 value = purchasePriceText,
                 onValueChange = { purchasePriceText = it },
-                label = { Text("Price paid (£)") },
+                label = { Text("Price paid (${com.example.chatgpt_mealplanner.core.util.MoneyFormat.symbol(com.example.chatgpt_mealplanner.core.util.MoneyFormat.defaultCurrencyCode())})") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true

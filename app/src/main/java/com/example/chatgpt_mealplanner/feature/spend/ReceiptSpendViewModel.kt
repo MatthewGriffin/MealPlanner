@@ -45,6 +45,9 @@ data class SpendDashboardState(
     val thisMonthGrossItemsPence: Long = 0L,
     val thisMonthSavingsPence: Long = 0L,
     val thisMonthUnrecognisedGrossPence: Long = 0L,
+    /** The currency every figure here is in. Receipts in other currencies are counted in [otherCurrencyReceipts], not added in. */
+    val currencyCode: String = "GBP",
+    val otherCurrencyReceipts: Int = 0,
     val retailerBreakdown: List<RetailerSpendSummary> = emptyList(),
     val categoryBreakdown: List<CategorySpendSummary> = emptyList()
 )
@@ -122,8 +125,15 @@ class ReceiptSpendViewModel @Inject constructor(
                 now.add(Calendar.MONTH, -1)
                 val lastMonthStr = SimpleDateFormat("yyyy-MM", Locale.getDefault()).format(now.time)
 
-                val thisMonthSpends = spends.filter { it.purchasedAt.startsWith(currentMonthStr) }
-                val lastMonthSpends = spends.filter { it.purchasedAt.startsWith(lastMonthStr) }
+                // Money in different currencies is never added together: show the currency used most this month (the phone's own on a tie).
+                val monthSpends = spends.filter { it.purchasedAt.startsWith(currentMonthStr) || it.purchasedAt.startsWith(lastMonthStr) }
+                val phoneCurrency = com.example.chatgpt_mealplanner.core.util.MoneyFormat.defaultCurrencyCode()
+                val currencyCode = monthSpends.groupingBy { it.currencyCode }.eachCount()
+                    .entries.sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenByDescending { it.key == phoneCurrency })
+                    .firstOrNull()?.key ?: phoneCurrency
+                val otherCurrencyReceipts = monthSpends.count { it.currencyCode != currencyCode }
+                val thisMonthSpends = spends.filter { it.currencyCode == currencyCode && it.purchasedAt.startsWith(currentMonthStr) }
+                val lastMonthSpends = spends.filter { it.currencyCode == currencyCode && it.purchasedAt.startsWith(lastMonthStr) }
 
                 val thisMonthNetPaid = thisMonthSpends.sumOf { it.totalMinorPence }
                 val lastMonthNetPaid = lastMonthSpends.sumOf { it.totalMinorPence }
@@ -174,6 +184,8 @@ class ReceiptSpendViewModel @Inject constructor(
                             thisMonthGrossItemsPence = thisMonthGrossItems,
                             thisMonthSavingsPence = thisMonthSavings,
                             thisMonthUnrecognisedGrossPence = thisMonthUnrecognisedGross,
+                            currencyCode = currencyCode,
+                            otherCurrencyReceipts = otherCurrencyReceipts,
                             retailerBreakdown = retailerGroups,
                             categoryBreakdown = catGroups
                         )
