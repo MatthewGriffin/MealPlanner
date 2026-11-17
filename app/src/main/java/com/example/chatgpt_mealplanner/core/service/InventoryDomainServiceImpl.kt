@@ -114,7 +114,35 @@ class InventoryDomainServiceImpl @Inject constructor(
         }
     }
 
+    /** A follower adds an item: it is shown locally and queued so the main phone gets it on the next sync. */
+    private suspend fun addNewItemAsFollower(item: InventoryItem): DomainResult<Unit> {
+        val engine = followerLocalSyncEngine
+            ?: return DomainResult.Failure(DomainError.TransactionFailed("Follower sync engine unavailable"))
+        val deviceId = followerIdentityStore?.getOrCreateDeviceId()
+            ?: return DomainResult.Failure(DomainError.TransactionFailed("Follower identity store unavailable"))
+        return try {
+            engine.recordLocalAddItem(
+                deviceId = deviceId,
+                itemId = item.id,
+                canonicalName = item.canonicalName,
+                displayName = item.displayName,
+                category = item.category.name,
+                storageLocation = item.storageLocation.name,
+                quantity = item.quantity,
+                quantityUnit = item.quantityUnit?.name,
+                barcode = item.barcode,
+                notes = item.notes
+            )
+            DomainResult.Success(Unit)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            DomainResult.Failure(DomainError.TransactionFailed(e.message ?: "Failed to record local add"))
+        }
+    }
+
     override suspend fun addItem(item: InventoryItem): DomainResult<Unit> {
+        if (appRoleResolver.isFollowerAsync()) return addNewItemAsFollower(item.copy(barcode = normalizeBarcode(item.barcode)))
         val isMain = appRoleResolver.isMainAsync()
         return transactionRunner.runInTransaction {
             val normBarcode = normalizeBarcode(item.barcode)
@@ -220,6 +248,19 @@ class InventoryDomainServiceImpl @Inject constructor(
         if (appRole == AppRole.FOLLOWER) {
             val dao = followerDatabase?.followerDao()
                 ?: return DomainResult.Failure(DomainError.TransactionFailed("Follower database unavailable"))
+            // A barcode already on an item adds to that item, as on the main phone.
+            if (normBarcode != null) {
+                val byBarcode = dao.getItemByBarcode(normBarcode)?.takeIf { it.status != ItemStatus.DISCARDED.name }?.toDomainModel()
+                if (byBarcode != null) {
+                    if (addedQuantity <= 0.0 || addedQuantity.isNaN() || addedQuantity.isInfinite()) return DomainResult.Success(byBarcode)
+                    return when (val restockRes = restockItem(byBarcode.id, addedQuantity = addedQuantity)) {
+                        is DomainResult.Success -> DomainResult.Success(
+                            byBarcode.copy(quantity = (byBarcode.quantity ?: 0.0) + addedQuantity, status = ItemStatus.AVAILABLE)
+                        )
+                        is DomainResult.Failure -> restockRes
+                    }
+                }
+            }
             val followerItems = dao.getAllItems().filter { it.status != ItemStatus.DISCARDED.name }.map { it.toDomainModel() }
             val exactNameMatches = followerItems.filter {
                 normalizeProductName(it.displayName) == normProductName || normalizeProductName(it.canonicalName) == normProductName
@@ -248,6 +289,38 @@ class InventoryDomainServiceImpl @Inject constructor(
                 return DomainResult.Failure(
                     DomainError.DuplicateOperation("Multiple inventory items match '${input.displayName}'. Please select which item to update or merge.")
                 )
+            }
+
+            val now = System.currentTimeMillis()
+            val newItem = InventoryItem(
+                id = UUID.randomUUID().toString(),
+                barcode = normBarcode,
+                canonicalIngredientId = input.canonicalIngredientId.takeIf { !it.isNullOrBlank() },
+                canonicalName = input.canonicalName ?: input.displayName,
+                displayName = input.displayName,
+                brand = input.brand,
+                category = input.category,
+                storageLocation = input.storageLocation,
+                quantity = derivedTotalQuantity,
+                quantityUnit = input.netQuantityUnit ?: input.packSizeUnit,
+                packCount = input.packCount,
+                packSize = input.packSize,
+                packSizeUnit = input.packSizeUnit,
+                quantityConfidence = input.quantityConfidence,
+                status = ItemStatus.AVAILABLE,
+                opened = input.opened,
+                purchaseDate = input.purchaseDate,
+                openedDate = input.openedDate,
+                useByDate = input.useByDate,
+                bestBeforeDate = input.bestBeforeDate,
+                notes = input.notes,
+                staple = input.staple,
+                createdAt = now,
+                updatedAt = now
+            )
+            return when (val added = addNewItemAsFollower(newItem)) {
+                is DomainResult.Success -> DomainResult.Success(newItem)
+                is DomainResult.Failure -> added
             }
         } else if (appRole == AppRole.MAIN) {
             val isBarcodeAssociated = normBarcode != null && inventoryBarcodeDao.getBarcodeEntity(normBarcode) != null
