@@ -62,11 +62,20 @@ object ReceiptSummaryParser {
             }
         }
 
+        // Retailers such as Morrisons print markdowns as plain negative amounts with no "savings" label.
+        if (explicitSavingsPence == 0L) {
+            explicitSavingsPence = lines.sumOf { line ->
+                val norm = ReceiptDescriptionNormalizer.normalize(line.text)
+                if (totalLabel.containsMatchIn(norm)) 0L
+                else ReceiptMoneyParser.parseAmountPence(line.text)?.takeIf { it < 0L }?.let { -it } ?: 0L
+            }
+        }
+
         // 2. Card Payment & Total Line Parsing
         lines.forEachIndexed { index, line ->
             val norm = ReceiptDescriptionNormalizer.normalize(line.text)
 
-            if (norm.contains("CARD £") || norm.startsWith("CARD") || norm.contains("VISA") || norm.contains("CONTACTLESS")) {
+            if (norm.contains("CARD £") || norm.startsWith("CARD") || norm.contains("VISA") || norm.contains("MASTERCARD") || norm.contains("TENDERED") || norm.contains("CONTACTLESS")) {
                 val priceInLine = ReceiptMoneyParser.parseAmountPence(line.text)
                 if (priceInLine != null && priceInLine > 0) {
                     cardPaymentPence = priceInLine

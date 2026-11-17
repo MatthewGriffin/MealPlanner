@@ -392,7 +392,8 @@ object ReceiptSpendParser {
                 return@forEachIndexed
             }
 
-            val isDiscountLine = pricePence < 0 || normLine.contains("SAVING") || normLine.contains("DISCOUNT") || normLine.contains("MULTIBUY") || normLine.contains("PROMO")
+            val isDiscountLine = pricePence < 0 || normLine.contains("SAVING") || normLine.contains("DISCOUNT") || normLine.contains("MULTIBUY") || normLine.contains("PROMO") ||
+                normLine.contains("MARKDOWN") || normLine.contains("MARK DOWN") || normLine.contains("PRICE OVERRIDE")
             val amountPence = if (isDiscountLine && pricePence > 0) -pricePence else pricePence
 
             if (isDiscountLine) {
@@ -416,6 +417,8 @@ object ReceiptSpendParser {
             }
 
             cleanDesc = cleanDesc.replace(Regex("""-?\s*[£$€]?\s*(?<![A-Za-z])[CLegqPS]?[0-9]+[.,][0-9]{2}(?:\s+[A-Z*])?\s*$""", RegexOption.IGNORE_CASE), "").trim()
+            // A till code printed before the name ("81008025 Four Loko Pink") is not part of it.
+            cleanDesc = cleanDesc.replace(Regex("""^\d{6,}\s+"""), "").trim()
             val normDesc = ReceiptDescriptionNormalizer.normalize(cleanDesc)
 
             if (normDesc.isBlank() || !normDesc.contains(Regex("[A-Za-z]")) || normDesc.length < 2 || ReceiptDescriptionNormalizer.isNonProductLine(normDesc)) {
@@ -665,6 +668,8 @@ object ReceiptSpendParser {
                 lower == "card" || lower.startsWith("card ") ||
                 lower.contains("visa") ||
                 lower.contains("mastercard") ||
+                lower.contains("tendered") ||
+                lower.contains("total to pay") ||
                 lower.contains("contactless") ||
                 lower.contains("payment approved") ||
                 lower.contains("pan seq") ||
