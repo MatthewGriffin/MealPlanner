@@ -1,5 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
-import { NEW_STATE, QuotaState, Snapshot, Tier, canUse, expire, record, setPaid, setTier, snapshot } from "./quota";
+import { NEW_STATE, QuotaState, Snapshot, Tier, canUse, carryUsage, expire, record, setPaid, setTier, snapshot } from "./quota";
 import { entitlementFrom, fetchSubscription } from "./play";
 
 export interface Env {
@@ -50,9 +50,14 @@ export class UserQuota extends DurableObject<Env> {
     await this.ctx.storage.put("state", next);
   }
 
-  /** A verified purchase for this account. */
-  async setPaid(today: string, tier: Tier, paidUntil: number, token: string): Promise<Snapshot> {
-    const next = setPaid(await this.raw(), tier, paidUntil, token, Date.now());
+  /** This account's stored state, so a subscription that moves to another account can take the usage so far with it. */
+  async exportState(): Promise<QuotaState> {
+    return this.raw();
+  }
+
+  /** A verified purchase for this account. [previous] is the account the subscription came from, if it moved. */
+  async setPaid(today: string, tier: Tier, paidUntil: number, token: string, previous: QuotaState | null = null): Promise<Snapshot> {
+    const next = carryUsage(setPaid(await this.raw(), tier, paidUntil, token, Date.now()), previous, today);
     await this.ctx.storage.put("state", next);
     return snapshot(expire(next, Date.now()), today);
   }

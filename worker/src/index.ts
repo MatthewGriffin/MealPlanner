@@ -263,8 +263,14 @@ async function purchase(request: Request, env: Env): Promise<Response> {
 
   const owner = env.PURCHASE_OWNER.get(env.PURCHASE_OWNER.idFromName(await hashOf(env.TOKEN_SECRET, "purchase:" + token)));
   const previous = await owner.claim(userId);
-  if (previous) await env.USER_QUOTA.get(env.USER_QUOTA.idFromName(previous)).setPlan(today(), "free");
-  const snap = await user.setPaid(today(), ent.tier, ent.paidUntil, token);
+  let carried = null;
+  if (previous) {
+    // The subscription moved from another phone's account: take its usage so far along, then switch that account to free.
+    const old = env.USER_QUOTA.get(env.USER_QUOTA.idFromName(previous));
+    carried = await old.exportState();
+    await old.setPlan(today(), "free");
+  }
+  const snap = await user.setPaid(today(), ent.tier, ent.paidUntil, token, carried);
   return json(200, { entitled: true, ...snap }, usageHeaders(snap));
 }
 
