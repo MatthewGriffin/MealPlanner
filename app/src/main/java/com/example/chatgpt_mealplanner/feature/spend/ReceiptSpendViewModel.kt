@@ -19,6 +19,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -71,7 +72,9 @@ class ReceiptSpendViewModel @Inject constructor(
     private val spendDomainService: ReceiptSpendDomainService,
     private val receiptSpendDao: ReceiptSpendDao,
     private val inventoryDao: InventoryDao,
-    private val shoppingDao: ShoppingDao
+    private val shoppingDao: ShoppingDao,
+    /** Role-aware: on a follower the pantry lives in the follower's own database, not the main one. */
+    private val inventoryRepository: com.example.chatgpt_mealplanner.core.repository.InventoryRepository? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ReceiptSpendUiState())
@@ -85,9 +88,12 @@ class ReceiptSpendViewModel @Inject constructor(
     private fun loadReceiptLinkCandidates() {
         viewModelScope.launch {
             runCatching {
-                val inventoryCandidates = inventoryDao.getAllItemsSync().map { item ->
-                    ReceiptLinkCandidate(item.id, item.displayName, ReceiptLinkType.INVENTORY)
-                }
+                val inventoryCandidates = (
+                    inventoryRepository?.getAllItems()?.first()?.map { Triple(it.id, it.displayName, it.status) }
+                        ?: inventoryDao.getAllItemsSync().map { Triple(it.id, it.displayName, it.status) }
+                    )
+                    .filter { (_, _, status) -> status != com.example.chatgpt_mealplanner.core.model.ItemStatus.DISCARDED }
+                    .map { (id, name, _) -> ReceiptLinkCandidate(id, name, ReceiptLinkType.INVENTORY) }
                 val shoppingList = shoppingDao.getActiveShoppingList()
                 val shoppingCandidates = shoppingList?.let { list ->
                     shoppingDao.getShoppingListWithItems(list.id)?.items.orEmpty()

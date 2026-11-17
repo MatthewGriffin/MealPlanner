@@ -377,7 +377,15 @@ fun ReceiptSpendScreen(
                                                 linkMenuExpanded = false
                                             }
                                         )
-                                        uiState.linkCandidates.forEach { candidate ->
+                                        // Likely matches first, then the shopping list, then the rest of the pantry.
+                                        val ordered = uiState.linkCandidates.sortedWith(
+                                            compareBy<ReceiptLinkCandidate>(
+                                                { !com.example.chatgpt_mealplanner.core.util.IngredientNameMatcher.matches(item.normalizedDescription, it.displayName) },
+                                                { it.type != ReceiptLinkType.SHOPPING_LIST },
+                                                { it.displayName.lowercase() }
+                                            )
+                                        )
+                                        ordered.forEach { candidate ->
                                             DropdownMenuItem(
                                                 text = {
                                                     Text("${if (candidate.type == ReceiptLinkType.INVENTORY) "Inventory" else "Shopping list"}: ${candidate.displayName}")
