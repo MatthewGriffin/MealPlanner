@@ -17,6 +17,8 @@ class MorrisonsDailyReceiptTest {
         assertTrue(draft.items.none { it.normalizedDescription.first().isDigit() })
 
         // The manager markdown of 0.99 is a saving; £7.65 of products less that is the £6.66 paid.
+        assertEquals(listOf("FOOD", "DRINKS", "DRINKS"), draft.items.map { it.category })
+
         assertEquals(99L, draft.discountMinorPence)
         assertEquals(666L, draft.totalMinorPence)
         assertEquals(765L, draft.calculatedItemsSumMinorPence)
