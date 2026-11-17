@@ -30,11 +30,17 @@ enum class ReceiptSpendCategory(val displayName: String) {
             "carrot", "lettuce", "salad", "veg", "cucumber", "mushroom", "beans", "soup", "sauce", "ketchup", "mayo", "flour",
             "sugar", "cereal", "oat", "porridge", "jam", "honey", "nut", "cake", "pies", "pastry", "noodle", "curry", "burger",
             "fries", "chips", "popcorn", "sweets", "mars", "snickers", "kitkat", "cadbury", "haribo", "walkers", "pringles",
-            "doritos", "hovis", "warburton", "kingsmill", "heinz", "batchelors", "muller", "arla", "philadelphia", "quorn"
+            "doritos", "hovis", "warburton", "kingsmill", "heinz", "batchelors", "muller", "arla", "philadelphia", "quorn",
+            // The commonest food words on German, French, Spanish, Italian and Dutch receipts.
+            "brot", "brötchen", "milch", "käse", "kase", "wurst", "schinken", "fleisch", "hähnchen", "joghurt", "nudeln", "reis", "kuchen",
+            "pain", "baguette", "lait", "fromage", "jambon", "poulet", "beurre", "oeuf", "yaourt", "pâtes", "gâteau",
+            "pan ", "leche", "queso", "pollo", "huevo", "arroz", "galleta", "jamón", "jamon",
+            "pane", "latte", "formaggio", "prosciutto", "pollo", "uova", "biscott", "brood", "melk", "kaas", "kip", "boter"
         )
         private val drinkWords = wordStarts(
             "juice", "water", "cola", "soda", "drink", "coffee", "tea", "energy",
             "lucozade", "coke", "pepsi", "fanta", "sprite", "irn bru", "red bull", "monster", "relentless", "rockstar", "lemonade",
+            "wasser", "saft", "bier", "wein", "eau", "jus", "bière", "vin", "agua", "zumo", "cerveza", "vino", "acqua", "succo", "birra", "sap",
             "squash", "cordial", "tonic", "dr pepper", "7up", "oasis", "ribena", "robinsons", "tango", "vimto", "capri", "innocent",
             "smoothie", "latte", "cappuccino", "nescafe", "kombucha",
             "wine", "beer", "lager", "cider", "vodka", "whisky", "whiskey", "prosecco", "brandy", "loko", "smirnoff"

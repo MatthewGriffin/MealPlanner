@@ -20,9 +20,9 @@ object ReceiptSummaryParser {
     // Whole words, so products such as TOTALLY NUTS and BALANCED MUESLI aren't read as totals.
     private val totalLabel = Regex("""^(TOTAL|BALANCE)\b""")
 
-    fun parseSummary(ocrResult: ReceiptOcrResult): ReceiptSummaryResult {
+    fun parseSummary(ocrResult: ReceiptOcrResult, locale: java.util.Locale = java.util.Locale.getDefault()): ReceiptSummaryResult {
         val retailerId = detectRetailer(ocrResult.fullText)
-        val (purchasedAt, dateNeedsConfirmation) = parseDate(ocrResult.fullText)
+        val (purchasedAt, dateNeedsConfirmation) = parseDate(ocrResult.fullText, locale)
         val transactionRef = parseTransactionRef(ocrResult.fullText)
 
         var explicitGrossPence: Long? = null
@@ -38,7 +38,7 @@ object ReceiptSummaryParser {
         // 1. Savings / Discount Detection via Bidirectional Spatial Proximity (deltaY <= 30px)
         val savingsLabelLine = lines.firstOrNull {
             val norm = ReceiptDescriptionNormalizer.normalize(it.text)
-            norm.contains("SAVIINGS") || norm.contains("SAVINGS") || norm.contains("SAVING") || norm.contains("DISCOUNT")
+            norm.contains("SAVIINGS") || norm.contains("SAVINGS") || norm.contains("SAVING") || norm.contains("DISCOUNT") || ReceiptVocabulary.isDiscountLine(norm)
         }
 
         if (savingsLabelLine != null) {
@@ -75,7 +75,7 @@ object ReceiptSummaryParser {
         lines.forEachIndexed { index, line ->
             val norm = ReceiptDescriptionNormalizer.normalize(line.text)
 
-            if (norm.contains("CARD £") || norm.startsWith("CARD") || norm.contains("VISA") || norm.contains("MASTERCARD") || norm.contains("TENDERED") || norm.contains("CONTACTLESS")) {
+            if (ReceiptVocabulary.isCardLine(norm) && !ReceiptVocabulary.isTotalLine(norm) || norm.contains("CARD £") || norm.startsWith("CARD") || norm.contains("VISA") || norm.contains("MASTERCARD") || norm.contains("TENDERED") || norm.contains("CONTACTLESS")) {
                 val priceInLine = ReceiptMoneyParser.parseAmountPence(line.text)
                 if (priceInLine != null && priceInLine > 0) {
                     cardPaymentPence = priceInLine
@@ -92,7 +92,7 @@ object ReceiptSummaryParser {
                 }
             }
 
-            if (totalLabel.containsMatchIn(norm) || norm.contains("AMOUNT PAID") || norm.contains("BALANCE DUE")) {
+            if (totalLabel.containsMatchIn(norm) || ReceiptVocabulary.startsWithTotal(norm) || norm.contains("AMOUNT PAID") || norm.contains("BALANCE DUE")) {
                 val parsedTotal = ReceiptMoneyParser.parseAmountPence(line.text)
                     ?: alignedAmount(index)
                     ?: lines.firstOrNull { l -> Math.abs(l.centerY - line.centerY) <= 24 && ReceiptMoneyParser.parseAmountPence(l.text) != null }?.let { ReceiptMoneyParser.parseAmountPence(it.text) }
@@ -152,15 +152,9 @@ object ReceiptSummaryParser {
         }
     }
 
-    private fun parseDate(fullText: String): Pair<String?, Boolean> {
-        val validDate = Regex("""\b(\d{1,2})[/.-](\d{1,2})[/.-](20\d{2}|\d{2})\b""").findAll(fullText).firstNotNullOfOrNull { match ->
-            val (day, month, year) = match.destructured
-            runCatching {
-                java.time.LocalDate.of(if (year.length == 2) 2000 + year.toInt() else year.toInt(), month.toInt(), day.toInt())
-            }.getOrNull()
-        }
-        if (validDate != null) return Pair(validDate.toString(), false)
-        return Pair(null, true) // Date needs user confirmation!
+    private fun parseDate(fullText: String, locale: java.util.Locale): Pair<String?, Boolean> {
+        val date = ReceiptDateParser.parse(fullText, locale)
+        return if (date != null) Pair(date.toString(), false) else Pair(null, true) // Date needs user confirmation!
     }
 
     private fun parseTransactionRef(fullText: String): String? {

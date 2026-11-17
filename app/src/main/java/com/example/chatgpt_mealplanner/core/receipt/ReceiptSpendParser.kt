@@ -49,6 +49,24 @@ data class ReceiptSpendDraft(
     /** ISO 4217 code; every amount in this draft is in the minor units of this currency. */
     val currencyCode: String = "GBP"
 ) {
+    /**
+     * A receipt in a currency with no minor unit was read with two phantom decimals (130 as 130.00); this divides every amount
+     * by 100 so they are real whole units again, and rebuilds the review text in them.
+     */
+    fun scaledToWholeUnits(): ReceiptSpendDraft = copy(
+        totalMinorPence = totalMinorPence?.div(100),
+        explicitGrossTotalMinorPence = explicitGrossTotalMinorPence?.div(100),
+        explicitSavingsMinorPence = explicitSavingsMinorPence / 100,
+        explicitFinalPaidMinorPence = explicitFinalPaidMinorPence?.div(100),
+        recognisedGrossItemSpendMinorPence = recognisedGrossItemSpendMinorPence / 100,
+        unrecognisedGrossSpendMinorPence = unrecognisedGrossSpendMinorPence / 100,
+        recognisedGrossOverageMinorPence = recognisedGrossOverageMinorPence / 100,
+        calculatedItemsSumMinorPence = calculatedItemsSumMinorPence / 100,
+        discountMinorPence = discountMinorPence / 100,
+        discrepancyMinorPence = discrepancyMinorPence / 100,
+        items = items.map { it.copy(lineAmountMinorPence = it.lineAmountMinorPence / 100, unitPriceMinorPence = it.unitPriceMinorPence?.div(100)) }
+    ).withUserEdits()
+
     fun recomputeWithPaidTotal(newPaidTotalPence: Long): ReceiptSpendDraft =
         withUserEdits(paidTotalPence = newPaidTotalPence).copy(userConfirmedSummary = true)
 
@@ -213,8 +231,10 @@ object ReceiptMoneyInput {
 
 object ReceiptMoneyParser {
     // Matches £3.74, 3.74, 3,74, -£3.60, -3.60, C12.00, L2.40, e38.88, g4.00
-    private val rightPriceRegex = Regex("""(-?)\s*(?:[£CLe gqPS$€]\s*|\b)([0-9]{1,3})[.,]([0-9]{2})(?:\s+[A-Z*])?$""", RegexOption.IGNORE_CASE)
-    private val generalMoneyRegex = Regex("""(-?)\s*(?:[£CLe gqPS$€]\s*|\b)([0-9]{1,3})[.,]([0-9]{2})(?!\d)""", RegexOption.IGNORE_CASE)
+    // The whole part may carry thousands marks: 1,234.56 and 1.234,56 as well as 3.74.
+    private const val WHOLE = """(\d{1,3}(?:[.,\u00a0\u202f]\d{3})+|\d{1,6})"""
+    private val rightPriceRegex = Regex("""(-?)\s*(?:[£CLe gqPS$€]\s*|\b)$WHOLE[.,]([0-9]{2})(?:\s+[A-Z*])?$""", RegexOption.IGNORE_CASE)
+    private val generalMoneyRegex = Regex("""(-?)\s*(?:[£CLe gqPS$€]\s*|\b)$WHOLE[.,]([0-9]{2})(?!\d)""", RegexOption.IGNORE_CASE)
 
     fun parseAmountPence(text: String): Long? {
         if (text.contains("%")) {
@@ -222,7 +242,7 @@ object ReceiptMoneyParser {
         }
         val match = generalMoneyRegex.find(text) ?: return null
         val isNegative = match.groupValues[1] == "-"
-        val pounds = match.groupValues[2].toLongOrNull() ?: return null
+        val pounds = match.groupValues[2].filter { it.isDigit() }.toLongOrNull() ?: return null
         val pence = match.groupValues[3].toLongOrNull() ?: return null
         val totalPence = (pounds * 100L) + pence
         return if (isNegative) -totalPence else totalPence
@@ -234,7 +254,7 @@ object ReceiptMoneyParser {
         }
         val match = rightPriceRegex.find(text.trim()) ?: return null
         val isNegative = match.groupValues[1] == "-"
-        val pounds = match.groupValues[2].toLongOrNull() ?: return null
+        val pounds = match.groupValues[2].filter { it.isDigit() }.toLongOrNull() ?: return null
         val pence = match.groupValues[3].toLongOrNull() ?: return null
         val totalPence = (pounds * 100L) + pence
         return if (isNegative) -totalPence else totalPence
@@ -245,12 +265,25 @@ object ReceiptSpendParser {
 
     const val RECEIPT_PARSER_VERSION = "spatial-v10-deskew"
 
-    fun parseOcrResult(rawOcrResult: ReceiptOcrResult, sourceImagePath: String?): ReceiptSpendDraft {
+    /**
+     * Reads a receipt from the phone's text recognition. The currency comes from what is printed (the phone's region settles
+     * shared signs such as $); currencies with no cents are read as whole amounts. Dates follow the phone's region only when
+     * the day and month cannot be told apart.
+     */
+    fun parseOcrResult(rawOcrResult: ReceiptOcrResult, sourceImagePath: String?, locale: java.util.Locale = java.util.Locale.getDefault()): ReceiptSpendDraft {
+        val currencyCode = ReceiptCurrencyDetector.detect(rawOcrResult.fullText, locale)
+        val wholeUnits = com.example.chatgpt_mealplanner.core.util.MoneyFormat.fractionDigits(currencyCode) == 0
+        val input = if (wholeUnits) ReceiptZeroDecimal.normalise(rawOcrResult) else rawOcrResult
+        val draft = parseNormalisedOcr(input, sourceImagePath, locale).copy(currencyCode = currencyCode)
+        return if (wholeUnits) draft.scaledToWholeUnits() else draft
+    }
+
+    private fun parseNormalisedOcr(rawOcrResult: ReceiptOcrResult, sourceImagePath: String?, locale: java.util.Locale): ReceiptSpendDraft {
         val ocrResult = ReceiptDeskew.straighten(rawOcrResult)
         safeLog("[PARSER_ENTRY] Version=$RECEIPT_PARSER_VERSION, Total lines=${ocrResult.lines.size}")
 
         // 1. ISOLATED RECEIPT SUMMARY PARSER (Independent from product item OCR)
-        val summary = ReceiptSummaryParser.parseSummary(ocrResult)
+        val summary = ReceiptSummaryParser.parseSummary(ocrResult, locale)
         safeLog("[SUMMARY_RESULT] Retailer=${summary.retailerId}, Paid=${summary.finalPaidTotalMinorPence}, Gross=${summary.grossTotalMinorPence}, Savings=${summary.savingsMinorPence}")
 
         val items = mutableListOf<ReceiptSpendItemDraft>()
@@ -347,7 +380,7 @@ object ReceiptSpendParser {
                 return@forEachIndexed
             }
 
-            if (ReceiptDescriptionNormalizer.isNonProductLine(normLine) && !normLine.contains("SAVING") && !normLine.contains("DISCOUNT")) {
+            if (ReceiptDescriptionNormalizer.isNonProductLine(normLine) && !normLine.contains("SAVING") && !normLine.contains("DISCOUNT") && !ReceiptVocabulary.isDiscountLine(normLine)) {
                 safeLog("[ITEM_REJECTED] Line $lineIdx \"${ocrLine.text}\" REJECTED: NON_PRODUCT_KEYWORD")
                 return@forEachIndexed
             }
@@ -421,7 +454,8 @@ object ReceiptSpendParser {
             }
 
             val isDiscountLine = pricePence < 0 || normLine.contains("SAVING") || normLine.contains("DISCOUNT") || normLine.contains("MULTIBUY") || normLine.contains("PROMO") ||
-                normLine.contains("MARKDOWN") || normLine.contains("MARK DOWN") || normLine.contains("PRICE OVERRIDE")
+                normLine.contains("MARKDOWN") || normLine.contains("MARK DOWN") || normLine.contains("PRICE OVERRIDE") ||
+                ReceiptVocabulary.isDiscountLine(normLine)
             val amountPence = if (isDiscountLine && pricePence > 0) -pricePence else pricePence
 
             if (isDiscountLine) {
@@ -687,7 +721,8 @@ object ReceiptSpendParser {
                 lower.contains("asda rewards") ||
                 lower.contains("tax summary") ||
                 lower.startsWith("card") ||
-                lower.contains("balance due")
+                lower.contains("balance due") ||
+                ReceiptVocabulary.startsWithTotal(lower)
     }
 
     private fun isHardExclusionLine(normText: String): Boolean {
@@ -698,6 +733,7 @@ object ReceiptSpendParser {
                 lower.contains("mastercard") ||
                 lower.contains("tendered") ||
                 lower.contains("total to pay") ||
+                ReceiptVocabulary.isPaymentLine(lower) ||
                 lower.contains("contactless") ||
                 lower.contains("payment approved") ||
                 lower.contains("pan seq") ||
