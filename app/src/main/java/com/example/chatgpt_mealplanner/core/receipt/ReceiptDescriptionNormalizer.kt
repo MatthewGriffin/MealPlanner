@@ -5,7 +5,7 @@ object ReceiptDescriptionNormalizer {
     private val nonProductPhrases = listOf(
         "subtotal", "sub total", "savings", "discount", "multibuy", "promo",
         "cashier", "operator", "receipt", "order no", "transaction", "thank you", "visit us",
-        "mastercard", "apple pay", "contactless", "approved", "coupon", "refund",
+        "mastercard", "tendered", "apple pay", "contactless", "approved", "coupon", "refund",
         "bag charge", "carrier bag", "store #", "st#"
     )
 
