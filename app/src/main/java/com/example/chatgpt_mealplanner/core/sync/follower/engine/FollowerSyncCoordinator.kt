@@ -26,7 +26,8 @@ open class FollowerSyncCoordinator @Inject constructor(
     private val pantrySyncTestClient: PantrySyncTestClient?,
     private val followerPairingStore: FollowerPairingStore?,
     private val statusRepository: FollowerSyncStatusRepository?,
-    private val mealPlanSyncEngine: FollowerMealPlanSyncEngine? = null
+    private val mealPlanSyncEngine: FollowerMealPlanSyncEngine? = null,
+    private val proxyAccount: com.example.chatgpt_mealplanner.core.ai.provider.ProxyAccount? = null
 ) {
     private val stateLock = Any()
 
@@ -212,10 +213,15 @@ open class FollowerSyncCoordinator @Inject constructor(
         )
         if (feedSummary?.success != true) {
             when (feedSummary?.resultCode) {
-                "REVOKED" -> { followerPairingStore?.markRevoked(); statusRepository?.reportExplicitRevocation(); return false }
+                "REVOKED" -> { proxyAccount?.clearSharedToken(); followerPairingStore?.markRevoked(); statusRepository?.reportExplicitRevocation(); return false }
                 "AUTH_FAILURE" -> { statusRepository?.reportAuthenticationError("Feed pull auth failed"); return false }
                 else -> { statusRepository?.reportTransientSyncError("Feed pull error"); return false }
             }
+        }
+
+        // Use the household's AI allowance and plan: ask the main phone for this phone's key until it has one.
+        if (proxyAccount != null && !proxyAccount.usingSharedToken()) {
+            pantrySyncTestClient?.getAiAccessToken(hostIp, port, pinnedCertFingerprint, tokenToUse)?.let { proxyAccount.setSharedToken(it) }
         }
 
         if (mealPlanSyncEngine != null) {

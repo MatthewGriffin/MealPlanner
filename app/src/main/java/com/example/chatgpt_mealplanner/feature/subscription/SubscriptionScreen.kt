@@ -55,6 +55,19 @@ fun SubscriptionScreen(modifier: Modifier = Modifier, viewModel: SubscriptionVie
             }
         }
 
+        if (viewModel.isFollower) {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("The main device controls the plan", fontWeight = FontWeight.Bold)
+                    Text(
+                        "This device uses the household's AI allowance and plan. To change the plan, use the main device.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
+            return@Column
+        }
+
         PlanCard("Free", price = null, points = listOf("Limited trial usage of the AI features, refreshed every week"), highlighted = usage.tier == UsageTier.FREE)
         PlanCard("Pro", price = prices[UsageTier.PRO], points = listOf("${QuotaLimits.PRO_MULTIPLE}x the AI usage of Free, refreshed every day"), highlighted = usage.tier == UsageTier.PRO)
         PlanCard("Max", price = prices[UsageTier.MAX], points = listOf("${QuotaLimits.MAX_MULTIPLE_OF_PRO}x the AI usage of Pro, refreshed every day"), highlighted = usage.tier == UsageTier.MAX)

@@ -84,4 +84,13 @@ class SubscriptionManagerTest {
         assertEquals("£4.99", m.prices.value[UsageTier.PRO])
         assertTrue(m.storeAvailable.value)
     }
+
+    @Test
+    fun aFollowerNeverReportsOrAcknowledgesAPurchase() = runTest {
+        val m = SubscriptionManager(UsageQuota(null, null), proxy(PurchaseResult(true)), store, isFollower = { true })
+        m.handle(listOf(purchase()))
+        m.refresh()
+        assertTrue(events.isEmpty())
+        assertEquals("The main device controls the plan.", m.startPurchase(Activity(), UsageTier.PRO))
+    }
 }

@@ -15,8 +15,12 @@ import kotlinx.coroutines.flow.StateFlow
 @HiltViewModel
 class SubscriptionViewModel @Inject constructor(
     private val usageQuota: UsageQuota,
-    private val subscriptions: SubscriptionManager
+    private val subscriptions: SubscriptionManager,
+    private val appRoleResolver: com.example.chatgpt_mealplanner.core.sync.AppRoleResolver
 ) : ViewModel() {
+    /** A follower phone uses the household's plan and cannot buy or change one. */
+    val isFollower: Boolean = runCatching { appRoleResolver.isFollower() }.getOrDefault(false)
+
     val usage: StateFlow<UsageSnapshot> = usageQuota.snapshot
 
     init {
