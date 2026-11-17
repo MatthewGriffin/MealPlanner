@@ -183,9 +183,12 @@ async function purchase(request: Request, env: Env): Promise<Response> {
   try {
     payload = await fetchSubscription(env.GOOGLE_SA_JSON, env.PACKAGE_NAME ?? "app.pantrypal.mealplanner", token);
   } catch (e) {
+    console.log("purchase check failed:", e instanceof Error ? e.message : String(e));
     return json(502, { error: "Could not check the purchase with Google. Please try again." });
   }
   const ent = entitlementFrom(payload, Date.now());
+  const p = payload as { subscriptionState?: string; testPurchase?: unknown; lineItems?: { productId?: string; expiryTime?: string }[] };
+  console.log("purchase check:", p?.subscriptionState, "entitled=" + !!ent, JSON.stringify((p?.lineItems ?? []).map((i) => ({ id: i.productId, exp: i.expiryTime }))), "test=" + !!p?.testPurchase);
   if (!ent) return json(200, { entitled: false, ...(await user.view(today())) });
 
   const owner = env.PURCHASE_OWNER.get(env.PURCHASE_OWNER.idFromName(await hashOf(env.TOKEN_SECRET, "purchase:" + token)));
