@@ -44,6 +44,19 @@ export function setPaid(state: QuotaState, tier: Tier, paidUntil: number, token:
   return { ...state, tier, paidUntil, purchaseToken: token, lastVerified: nowMs };
 }
 
+/**
+ * The subscription moved here from another account (a new phone): the allowance already used this period moves with it,
+ * so switching phones does not hand out a fresh one. If both accounts are in the same active period, the larger spend wins.
+ */
+export function carryUsage(next: QuotaState, previous: QuotaState | null, today: string): QuotaState {
+  if (!previous) return next;
+  const had = activePeriodStart({ ...previous, tier: next.tier }, today);
+  if (!had) return next;
+  const here = activePeriodStart(next, today);
+  if (here && next.spent >= previous.spent) return next;
+  return { ...next, periodStart: previous.periodStart, periodTier: previous.periodTier, spent: previous.spent, last: previous.last };
+}
+
 export function addDays(date: string, days: number): string {
   const [y, m, d] = date.split("-").map(Number);
   return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);

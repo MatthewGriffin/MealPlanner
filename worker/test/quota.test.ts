@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { NEW_STATE, activePeriodStart, canUse, record, setTier, snapshot } from "../src/quota";
+import { NEW_STATE, activePeriodStart, carryUsage, canUse, record, setTier, snapshot } from "../src/quota";
 import { microDollars } from "../src/pricing";
 import { hashOf, makeToken, verifyToken } from "../src/token";
 
@@ -80,5 +80,34 @@ describe("hashOf", () => {
     expect(a).not.toBe(await hashOf("other", "203.0.113.7"));
     expect(a).not.toBe(await hashOf("secret", "203.0.113.8"));
     expect(a).not.toContain("203");
+  });
+});
+
+describe("moving a subscription to a new phone", () => {
+  const today = "2026-11-17";
+  const pro = (over = {}) => ({ ...NEW_STATE, tier: "pro" as const, paidUntil: Date.parse("2026-12-17"), ...over });
+
+  it("takes the usage already spent today along, so a new phone is not a fresh allowance", () => {
+    const old = pro({ periodStart: today, periodTier: "pro", spent: 80_000, last: 5_000 });
+    const fresh = pro();
+    const moved = carryUsage(fresh, old, today);
+    expect(moved.spent).toBe(80_000);
+    expect(canUse(moved, today)).toBe(true);
+    expect(canUse(carryUsage(pro(), pro({ periodStart: today, periodTier: "pro", spent: 95_000 }), today), today)).toBe(false);
+  });
+
+  it("does not carry a period that has already ended, or one from a different plan", () => {
+    const ended = pro({ periodStart: "2026-11-10", periodTier: "pro", spent: 90_000 });
+    expect(carryUsage(pro(), ended, today).spent).toBe(0);
+    const wasFree = { ...NEW_STATE, periodStart: today, periodTier: "free" as const, spent: 60_000 };
+    expect(carryUsage(pro(), wasFree, today).spent).toBe(0);
+  });
+
+  it("keeps the larger spend when both accounts are in the same period, and does nothing without a previous account", () => {
+    const here = pro({ periodStart: today, periodTier: "pro", spent: 50_000 });
+    const there = pro({ periodStart: today, periodTier: "pro", spent: 30_000 });
+    expect(carryUsage(here, there, today).spent).toBe(50_000);
+    expect(carryUsage(there, here, today).spent).toBe(50_000);
+    expect(carryUsage(here, null, today)).toEqual(here);
   });
 });
