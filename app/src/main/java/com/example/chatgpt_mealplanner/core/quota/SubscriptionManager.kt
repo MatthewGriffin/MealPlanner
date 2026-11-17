@@ -29,13 +29,16 @@ open class SubscriptionManager(
     private val usageQuota: UsageQuota,
     private val proxyAccount: ProxyAccount?,
     private val store: StoreClient?,
-    private val openUrl: (String) -> Unit = {}
+    private val openUrl: (String) -> Unit = {},
+    /** A follower phone uses the household's plan: it never reports purchases or talks to Google Play billing. */
+    private val isFollower: () -> Boolean = { false }
 ) {
     @Inject constructor(
         @ApplicationContext context: Context,
         usageQuota: UsageQuota,
-        proxyAccount: ProxyAccount
-    ) : this(usageQuota, proxyAccount, PlayStoreClient(context), { url -> openInBrowser(context, url) })
+        proxyAccount: ProxyAccount,
+        appRoleResolver: com.example.chatgpt_mealplanner.core.sync.AppRoleResolver
+    ) : this(usageQuota, proxyAccount, PlayStoreClient(context), { url -> openInBrowser(context, url) }, { try { appRoleResolver.isFollower() } catch (_: Exception) { false } })
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val lock = Mutex()
@@ -57,6 +60,7 @@ open class SubscriptionManager(
 
     /** Connects, loads prices, and passes on any purchases (this is also how a renewal, a restore or a retry is picked up). */
     open suspend fun refresh() {
+        if (isFollower()) return
         val s = store ?: return
         if (!s.connect()) { _available.value = false; return }
         _available.value = true
@@ -66,6 +70,7 @@ open class SubscriptionManager(
 
     /** Tells the Worker about each good purchase and acknowledges it only once the Worker says it is entitled. */
     suspend fun handle(purchases: List<StorePurchase>) = lock.withLock {
+        if (isFollower()) return@withLock
         val s = store ?: return@withLock
         val account = proxyAccount ?: return@withLock
         for (p in purchases) {
@@ -83,6 +88,7 @@ open class SubscriptionManager(
 
     /** Opens the purchase dialog. Returns a message to show if it could not be opened. */
     open fun startPurchase(activity: Activity, tier: UsageTier): String? {
+        if (isFollower()) return "The main device controls the plan."
         val s = store ?: return "Subscriptions are not available on this device."
         if (!_available.value) return "Subscriptions are not available right now. Check your connection and that Google Play is up to date."
         return s.launch(activity, tier)

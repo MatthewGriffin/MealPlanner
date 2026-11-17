@@ -78,7 +78,8 @@ open class PantrySyncServer @Inject constructor(
     private val mealDao: com.example.chatgpt_mealplanner.core.database.dao.MealDao? = null,
     private val shoppingDao: ShoppingDao? = null,
     private val stapleRuleDao: StapleRuleDao? = null,
-    private val purchasePriceDao: com.example.chatgpt_mealplanner.core.database.dao.PurchasePriceDao? = null
+    private val purchasePriceDao: com.example.chatgpt_mealplanner.core.database.dao.PurchasePriceDao? = null,
+    private val followerAiKeys: com.example.chatgpt_mealplanner.core.ai.provider.FollowerAiKeys? = null
 ) {
     private var engine: io.ktor.server.engine.ApplicationEngine? = null
     private var serverState = PantryServerState.STOPPED
@@ -537,6 +538,24 @@ open class PantrySyncServer @Inject constructor(
                         println("[SYNC_MAIN] feed response status=200 entries=${feedItems.size} latestSequence=$latestSeq hasMore=$hasMore duration_ms=$durMs")
 
                         call.respond(responseDto)
+                    }
+
+                    // The follower asks for its own AI key, so its AI use counts against this household's allowance and plan.
+                    get("/sync/v1/ai-access") {
+                        val token = call.request.headers["X-Pantry-Session-Token"]
+                        val authenticatedDeviceId = sessionManager.validateSessionToken(token)
+                        if (authenticatedDeviceId == null) {
+                            call.respond(HttpStatusCode.Unauthorized, buildJsonObject { put("error", "UNAUTHORIZED") })
+                            return@get
+                        }
+                        val key = followerAiKeys?.let {
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { it.tokenFor(authenticatedDeviceId) }
+                        }
+                        if (key == null) {
+                            call.respond(HttpStatusCode.ServiceUnavailable, buildJsonObject { put("error", "AI_ACCESS_UNAVAILABLE") })
+                        } else {
+                            call.respond(buildJsonObject { put("token", key) })
+                        }
                     }
 
                     get("/sync/v1/bootstrap") {

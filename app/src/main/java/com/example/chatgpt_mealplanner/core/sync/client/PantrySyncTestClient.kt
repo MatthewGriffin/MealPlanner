@@ -13,6 +13,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
@@ -269,6 +270,27 @@ open class PantrySyncTestClient @Inject constructor(
         } catch (e: Exception) {
             TestClientFeedResult(status = NetworkResultStatus.SERVER_ERROR, error = e.message ?: "Execution error")
         }
+    }
+
+    /** Follower: asks the main phone for the household's AI key. Null if it is not available right now. */
+    open suspend fun getAiAccessToken(
+        hostIp: String,
+        port: Int = 8443,
+        pinnedCertFingerprint: String?,
+        sessionToken: String
+    ): String? = withContext(Dispatchers.IO) {
+        runCatching {
+            val client = createPinnedOkHttpClient(pinnedCertFingerprint)
+            val request = Request.Builder()
+                .url("https://$hostIp:$port/sync/v1/ai-access")
+                .header("X-Pantry-Session-Token", sessionToken)
+                .get()
+                .build()
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@use null
+                Json.parseToJsonElement(response.body?.string().orEmpty()).jsonObject["token"]?.jsonPrimitive?.contentOrNull
+            }
+        }.getOrNull()
     }
 
     open suspend fun getBootstrapSnapshot(

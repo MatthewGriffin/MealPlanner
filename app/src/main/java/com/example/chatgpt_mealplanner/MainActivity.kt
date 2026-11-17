@@ -123,6 +123,9 @@ class MainActivity : ComponentActivity() {
     lateinit var pairedDeviceRepository: com.example.chatgpt_mealplanner.core.sync.repository.PairedDeviceRepository
 
     @Inject
+    lateinit var followerAiKeys: com.example.chatgpt_mealplanner.core.ai.provider.FollowerAiKeys
+
+    @Inject
     lateinit var appRoleResolver: com.example.chatgpt_mealplanner.core.sync.AppRoleResolver
 
     @OptIn(ExperimentalMaterial3Api::class)
@@ -135,6 +138,8 @@ class MainActivity : ComponentActivity() {
                 pairedDeviceRepository.getAllDevices().any { it.status == com.example.chatgpt_mealplanner.core.database.entity.PairedDeviceStatus.ACTIVE }
             }
         }
+        // A removed follower's AI key that could not be switched off earlier (offline) is switched off now.
+        lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) { runCatching { followerAiKeys.retryPending() } }
         enableEdgeToEdge()
         com.example.chatgpt_mealplanner.ui.theme.AppThemeState.load(applicationContext)
         setContent {

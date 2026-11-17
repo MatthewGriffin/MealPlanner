@@ -15,7 +15,8 @@ sealed interface RevocationResult {
 
 @Singleton
 open class PairedDeviceRepository @Inject constructor(
-    private val pairedDeviceDao: PairedDeviceDao
+    private val pairedDeviceDao: PairedDeviceDao,
+    private val followerAiKeys: com.example.chatgpt_mealplanner.core.ai.provider.FollowerAiKeys? = null
 ) {
     open suspend fun getAllDevices(): List<PairedDeviceEntity> {
         val devices = pairedDeviceDao.getAllDevices()
@@ -28,6 +29,16 @@ open class PairedDeviceRepository @Inject constructor(
     }
 
     open suspend fun revokeDevice(deviceId: String): RevocationResult {
+        val result = revokeInStore(deviceId)
+        // The follower's AI key is switched off too (or queued, if the Worker cannot be reached right now).
+        val keys = followerAiKeys
+        if (keys != null && (result is RevocationResult.Success || result is RevocationResult.AlreadyRevoked)) {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { keys.revoke(deviceId) } }
+        }
+        return result
+    }
+
+    private suspend fun revokeInStore(deviceId: String): RevocationResult {
         val affected = pairedDeviceDao.revokeDeviceIfActive(deviceId)
         if (affected == 1) {
             val updated = pairedDeviceDao.getDeviceById(deviceId)

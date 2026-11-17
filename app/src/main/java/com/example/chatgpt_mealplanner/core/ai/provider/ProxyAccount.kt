@@ -23,6 +23,9 @@ import okhttp3.RequestBody.Companion.toRequestBody
 /** The Cloudflare Worker that holds the Claude key and each install's allowance (see the worker/ folder). */
 const val PROXY_BASE_URL = "https://pantry-planner-proxy.demengies.workers.dev"
 
+/** A key the Worker issued for one follower phone; [token] is what that phone sends in place of its own account token. */
+data class FollowerKey(val keyId: String, val token: String)
+
 /** What the Worker decided about a Google Play purchase. */
 data class PurchaseResult(val entitled: Boolean)
 
@@ -40,11 +43,13 @@ open class ProxyAccount @Inject constructor(
     open val baseUrl: String = PROXY_BASE_URL
 
     private val prefs by lazy {
-        context?.let { runCatching { AndroidKeystoreSecurePreferences(it, "proxy_account", mapOf(KEY to 'S')) }.getOrNull() }
+        context?.let { runCatching { AndroidKeystoreSecurePreferences(it, "proxy_account", mapOf(KEY to 'S', KEY_SHARED to 'S', KEY_BOUND to 'S')) }.getOrNull() }
     }
     private val http by lazy { OkHttpClient.Builder().callTimeout(20, TimeUnit.SECONDS).build() }
 
     @Volatile private var cached: String? = null
+    @Volatile private var shared: String? = null
+    @Volatile private var bindTried = false
 
     /** True when the Worker refused to make an account because Google Play could not vouch for this install. */
     @Volatile open var refusedByIntegrity: Boolean = false
@@ -52,23 +57,115 @@ open class ProxyAccount @Inject constructor(
 
     open fun isToken(key: String): Boolean = key == cached
 
-    /** The account token, registering a new account the first time. Null if that is not possible right now. */
+    /**
+     * The token to use. A paired follower uses the household's shared key; every other phone uses its own account,
+     * registering one the first time. Null if that is not possible right now.
+     */
     @Synchronized
     open fun token(): String? {
+        sharedToken()?.let { cached = it; return it }
         cached?.let { return it }
         val stored = runCatching { prefs?.getString(KEY) }.getOrNull()?.takeIf { it.isNotBlank() }
-        if (stored != null) { cached = stored; return stored }
+        if (stored != null) {
+            val current = bindDeviceOnce(stored)
+            cached = current
+            return current
+        }
         val fresh = register() ?: return null
         runCatching { prefs?.putString(KEY, fresh) }
         cached = fresh
         return fresh
     }
 
-    /** Forget a token the Worker no longer accepts, so the next request registers a new account. */
+    /** Forget a token the Worker no longer accepts, so the next request registers a new account (or, for a follower whose key was switched off, uses its own account again). */
     @Synchronized
     open fun forget() {
         cached = null
+        if (sharedToken() != null) { clearSharedToken(); return }
         runCatching { prefs?.remove(KEY) }
+    }
+
+    private fun sharedToken(): String? {
+        shared?.let { return it }
+        val stored = runCatching { prefs?.getString(KEY_SHARED) }.getOrNull()?.takeIf { it.isNotBlank() }
+        shared = stored
+        return stored
+    }
+
+    /** True when this phone is a follower using the household's allowance and plan. */
+    open fun usingSharedToken(): Boolean = sharedToken() != null
+
+    /** A follower stores the key its household's main phone gave it; from now on its AI use counts against the household. */
+    @Synchronized
+    open fun setSharedToken(token: String) {
+        shared = token
+        cached = token
+        runCatching { prefs?.putString(KEY_SHARED, token) }
+    }
+
+    @Synchronized
+    open fun clearSharedToken() {
+        shared = null
+        cached = null
+        runCatching { prefs?.remove(KEY_SHARED) }
+    }
+
+    /** The phone's Android ID. It survives uninstalling and reinstalling the app, which is how the Worker recognises the phone. */
+    protected open fun deviceId(): String? {
+        val id = context?.let { runCatching { android.provider.Settings.Secure.getString(it.contentResolver, android.provider.Settings.Secure.ANDROID_ID) }.getOrNull() }
+        return id?.takeIf { it.length >= 8 && it != BROKEN_ANDROID_ID }
+    }
+
+    /**
+     * Tells the Worker which phone this account is on (once; accounts made before this existed get bound here). If the
+     * Worker already knows the phone under another account, that account's token is used instead, so a reinstall
+     * keeps its allowance and plan.
+     */
+    private fun bindDeviceOnce(token: String): String {
+        if (bindTried) return token
+        if (runCatching { prefs?.getString(KEY_BOUND) }.getOrNull() == "1") return token
+        bindTried = true
+        val id = deviceId() ?: return token
+        val nonce = challenge()
+        val integrity = nonce?.let { integrityToken(it) }
+        val body = buildJsonObject {
+            put("deviceId", id)
+            if (nonce != null && integrity != null) { put("nonce", nonce); put("integrityToken", integrity) }
+        }.toString().toRequestBody("application/json".toMediaType())
+        val request = Request.Builder().url("$baseUrl/v1/device").header("x-api-key", token).post(body).build()
+        return runCatching {
+            http.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@use token
+                val json = Json.parseToJsonElement(response.body?.string().orEmpty()).jsonObject
+                if (json["bound"]?.jsonPrimitive?.booleanOrNull == true) runCatching { prefs?.putString(KEY_BOUND, "1") }
+                val switched = json["token"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+                if (switched != null) { runCatching { prefs?.putString(KEY, switched) }; switched } else token
+            }
+        }.getOrDefault(token)
+    }
+
+    /** Main phone: asks the Worker for a key for one follower. Null if it could not be made right now. */
+    open fun createFollowerKey(): FollowerKey? {
+        if (usingSharedToken()) return null
+        val token = token() ?: return null
+        val request = Request.Builder().url("$baseUrl/v1/followers").header("x-api-key", token).post("".toRequestBody()).build()
+        return runCatching {
+            http.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return null
+                val json = Json.parseToJsonElement(response.body?.string().orEmpty()).jsonObject
+                val keyId = json["keyId"]?.jsonPrimitive?.contentOrNull
+                val follower = json["token"]?.jsonPrimitive?.contentOrNull
+                if (keyId != null && follower != null) FollowerKey(keyId, follower) else null
+            }
+        }.getOrNull()
+    }
+
+    /** Main phone: switches one follower's key off. True once the Worker has done it. */
+    open fun revokeFollowerKey(keyId: String): Boolean {
+        val token = token() ?: return false
+        val body = buildJsonObject { put("keyId", keyId) }.toString().toRequestBody("application/json".toMediaType())
+        val request = Request.Builder().url("$baseUrl/v1/followers/revoke").header("x-api-key", token).post(body).build()
+        return runCatching { http.newCall(request).execute().use { it.isSuccessful } }.getOrDefault(false)
     }
 
     open fun fetchUsage(): UsageReading? {
@@ -132,8 +229,12 @@ open class ProxyAccount @Inject constructor(
         refusedByIntegrity = false
         val nonce = challenge()
         val integrity = nonce?.let { integrityToken(it) }
-        val body = if (nonce != null && integrity != null) {
-            buildJsonObject { put("nonce", nonce); put("integrityToken", integrity) }.toString()
+        val id = deviceId()
+        val body = if (nonce != null && integrity != null || id != null) {
+            buildJsonObject {
+                if (nonce != null && integrity != null) { put("nonce", nonce); put("integrityToken", integrity) }
+                if (id != null) put("deviceId", id)
+            }.toString()
         } else ""
         val request = Request.Builder().url("$baseUrl/v1/register")
             .post(body.toRequestBody("application/json".toMediaType())).build()
@@ -158,5 +259,9 @@ open class ProxyAccount @Inject constructor(
 
     private companion object {
         const val KEY = "KEY_PROXY_TOKEN"
+        const val KEY_SHARED = "KEY_PROXY_SHARED_TOKEN"
+        const val KEY_BOUND = "KEY_PROXY_DEVICE_BOUND"
+        /** The long-known Android ID that many old or emulated devices share; it identifies nobody. */
+        const val BROKEN_ANDROID_ID = "9774d56d682e549c"
     }
 }
