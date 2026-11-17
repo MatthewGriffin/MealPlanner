@@ -26,6 +26,8 @@ play {
     (keystoreProperties.getProperty("playServiceAccount"))?.let { serviceAccountCredentials.set(file(it)) }
     track.set((findProperty("track") as String?) ?: "internal")
     defaultToAppBundles.set(true)
+    // The release's name in Play Console, so it is clear which build is which.
+    releaseName.set(provider { "Pantry Pal ${android.defaultConfig.versionName} (build ${android.defaultConfig.versionCode})" })
     // The first upload to a track must be a draft until the app has a published release; "completed" rolls out to testers.
     releaseStatus.set(com.github.triplet.gradle.androidpublisher.ReleaseStatus.COMPLETED)
 }

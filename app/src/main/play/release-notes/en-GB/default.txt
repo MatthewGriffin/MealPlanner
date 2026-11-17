@@ -1,0 +1,4 @@
+- Reinstalling Pantry Pal on the same phone now keeps your plan and AI usage.
+- Paired household phones share the main phone's AI usage and plan.
+- Moving your subscription to a new phone carries your usage so far with it.
+- Custom app colours and a refreshed Material 3 look.
