@@ -65,6 +65,8 @@ data class ReceiptSpendUiState(
     val linkCandidates: List<ReceiptLinkCandidate> = emptyList(),
     val draft: ReceiptSpendDraft? = null,
     val errorMessage: String? = null,
+    /** Shown with a scanned draft, e.g. when Claude was unavailable and the phone read it. */
+    val scanNote: String? = null,
     val isSaveSuccess: Boolean = false,
     val dashboardState: SpendDashboardState = SpendDashboardState()
 )
@@ -77,7 +79,10 @@ class ReceiptSpendViewModel @Inject constructor(
     private val inventoryDao: InventoryDao,
     private val shoppingDao: ShoppingDao,
     /** Role-aware: on a follower the pantry lives in the follower's own database, not the main one. */
-    private val inventoryRepository: com.example.chatgpt_mealplanner.core.repository.InventoryRepository? = null
+    private val inventoryRepository: com.example.chatgpt_mealplanner.core.repository.InventoryRepository? = null,
+    /** When both are present Claude reads the receipt photo; the phone's own text recognition is the fallback. */
+    private val aiProvider: com.example.chatgpt_mealplanner.core.ai.provider.MealPlannerAiProvider? = null,
+    private val photoSource: com.example.chatgpt_mealplanner.core.ai.packet.ReceiptPhotoSource? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ReceiptSpendUiState())
@@ -196,9 +201,14 @@ class ReceiptSpendViewModel @Inject constructor(
     }
 
     fun processReceiptImage(uri: Uri, onFinished: () -> Unit = {}) {
-        _uiState.update { it.copy(isScanning = true, errorMessage = null) }
+        _uiState.update { it.copy(isScanning = true, errorMessage = null, scanNote = null) }
         viewModelScope.launch {
             try {
+                val claudeNote = readWithClaude(uri)
+                if (claudeNote is ClaudeRead.Done) {
+                    _uiState.update { it.copy(isScanning = false, draft = claudeNote.draft) }
+                    return@launch
+                }
                 val ocrResult = ocrService.recognizeTextFromUri(uri)
                 when (val result = spendDomainService.processReceiptOcr(ocrResult, uri.toString())) {
                     is DomainResult.Success -> {
@@ -208,7 +218,10 @@ class ReceiptSpendViewModel @Inject constructor(
                             android.util.Log.i("AI_MEALPLANNER", "[RECEIPT_SCAN_INVALID] retailer=\"${result.value.retailerId}\" noText=true")
                             _uiState.update { it.copy(isScanning = false, errorMessage = "No text was found in this photo. Flatten the receipt, use good light, and try again.") }
                         } else {
-                            _uiState.update { it.copy(isScanning = false, draft = result.value) }
+                            val note = (claudeNote as? ClaudeRead.Unavailable)?.note
+                            _uiState.update {
+                                it.copy(isScanning = false, draft = result.value, scanNote = note)
+                            }
                         }
                     }
                     is DomainResult.Failure -> {
@@ -228,10 +241,34 @@ class ReceiptSpendViewModel @Inject constructor(
         }
     }
 
+    private sealed interface ClaudeRead {
+        data class Done(val draft: ReceiptSpendDraft) : ClaudeRead
+        /** [note] says why the phone's own reader was used; null when Claude simply isn't set up here. */
+        data class Unavailable(val note: String?) : ClaudeRead
+    }
+
+    private suspend fun readWithClaude(uri: Uri): ClaudeRead {
+        val provider = aiProvider ?: return ClaudeRead.Unavailable(null)
+        val source = photoSource ?: return ClaudeRead.Unavailable(null)
+        val images = source.prepare(uri)
+        if (images.isEmpty()) return ClaudeRead.Unavailable(null)
+        return when (val read = provider.readReceipt(images)) {
+            is com.example.chatgpt_mealplanner.core.ai.provider.ReceiptReadResult.Failed ->
+                ClaudeRead.Unavailable("Claude couldn't read this receipt (${read.message.take(160)}), so your phone read it instead. Please check the items.")
+            is com.example.chatgpt_mealplanner.core.ai.provider.ReceiptReadResult.Read -> {
+                val draft = com.example.chatgpt_mealplanner.core.receipt.ReceiptReadingDraft.toDraft(read.receipt, uri.toString())
+                when (val finished = spendDomainService.finishDraft(draft)) {
+                    is DomainResult.Success -> ClaudeRead.Done(finished.value)
+                    is DomainResult.Failure -> ClaudeRead.Unavailable(null)
+                }
+            }
+        }
+    }
+
     fun cancelScan() {
         android.util.Log.i("AI_MEALPLANNER", "[RECEIPT_SCAN_DISCARDED]")
         android.util.Log.i("AI_MEALPLANNER", "[RECEIPT_SCAN_RESET]")
-        _uiState.update { it.copy(draft = null, errorMessage = null, isScanning = false, isSaveSuccess = false) }
+        _uiState.update { it.copy(draft = null, errorMessage = null, scanNote = null, isScanning = false, isSaveSuccess = false) }
     }
 
     fun updateItemDraft(updatedItem: ReceiptSpendItemDraft) {

@@ -284,6 +284,11 @@ fun ReceiptSpendScreen(
                     }
                 }
 
+                uiState.scanNote?.let { note ->
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+
                 if (uiState.errorMessage != null) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(

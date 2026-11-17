@@ -137,4 +137,43 @@ class ReceiptSpendViewModelScanTest {
         assertNotNull(vm.uiState.value.draft)
         assertTrue(vm.uiState.value.errorMessage!!.contains("already been saved"))
     }
+
+    private fun claudeViewModel(result: com.example.chatgpt_mealplanner.core.ai.provider.ReceiptReadResult, ocr: suspend () -> ReceiptOcrResult) = ReceiptSpendViewModel(
+        ocrService = object : ReceiptOcrService { override suspend fun recognizeTextFromUri(imageUri: Uri) = ocr() },
+        spendDomainService = ReceiptSpendDomainServiceImpl(spendDao, FakeTransactionRunner()),
+        receiptSpendDao = spendDao,
+        inventoryDao = FakeInventoryDao(),
+        shoppingDao = FakeShoppingDao(),
+        aiProvider = object : com.example.chatgpt_mealplanner.core.ai.provider.MealPlannerAiProvider {
+            override suspend fun send(request: com.example.chatgpt_mealplanner.contract.AiProviderRequest) = throw UnsupportedOperationException()
+            override suspend fun continueWithToolResults(request: com.example.chatgpt_mealplanner.contract.AiContinueWithToolsRequest) = throw UnsupportedOperationException()
+            override suspend fun readReceipt(imagesJpegBase64: List<String>) = result
+        },
+        photoSource = object : com.example.chatgpt_mealplanner.core.ai.packet.ReceiptPhotoSource {
+            override suspend fun prepare(uri: Uri) = listOf("AAAA")
+        }
+    )
+
+    @Test
+    fun claudeReading_isUsedWhenItWorks_andOcrIsNotCalled() {
+        val read = com.example.chatgpt_mealplanner.core.ai.provider.ReadReceipt(
+            "Lidl", "EUR", "2026-11-17",
+            listOf(com.example.chatgpt_mealplanner.core.ai.provider.ReadReceiptLine("BROT", "Brot", "FOOD", 1, "1.29")), emptyList(), null, "1.29"
+        )
+        val vm = claudeViewModel(com.example.chatgpt_mealplanner.core.ai.provider.ReceiptReadResult.Read(read)) { throw AssertionError("OCR must not run") }
+        vm.processReceiptImage(imageUri)
+        assertEquals("EUR", vm.uiState.value.draft!!.currencyCode)
+        assertEquals("Brot", vm.uiState.value.draft!!.items.single().normalizedDescription)
+        assertNull(vm.uiState.value.scanNote)
+    }
+
+    @Test
+    fun whenClaudeFails_thePhoneReadsItAndTheUserIsTold() {
+        val vm = claudeViewModel(com.example.chatgpt_mealplanner.core.ai.provider.ReceiptReadResult.Failed("You have used your AI allowance.")) {
+            receipt("TESCO", "17/11/2026", "BREAD £1.10", "TOTAL £1.10")
+        }
+        vm.processReceiptImage(imageUri)
+        assertEquals("GBP", vm.uiState.value.draft!!.currencyCode)
+        assertTrue(vm.uiState.value.scanNote!!.contains("phone read it"))
+    }
 }

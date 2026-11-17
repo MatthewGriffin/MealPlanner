@@ -144,7 +144,8 @@ class ClaudeMealPlannerAiProvider @Inject constructor(
         toolName: String,
         toolDescription: String,
         schema: JsonObject,
-        required: List<String>
+        required: List<String>,
+        imagesJpegBase64: List<String> = emptyList()
     ): Pair<String?, String?> {
         val tool = Tool.builder()
             .name(toolName)
@@ -164,7 +165,18 @@ class ClaudeMealPlannerAiProvider @Inject constructor(
             .model(model)
             .maxTokens(MAX_TOKENS)
             .systemOfTextBlockParams(listOf(TextBlockParam.builder().text(system).build()))
-            .addUserMessage(user)
+            .messages(listOf(
+                if (imagesJpegBase64.isEmpty()) MessageParam.ofUser(user)
+                else MessageParam.ofUserOfContentBlockParams(
+                    imagesJpegBase64.map { image ->
+                        ContentBlockParam.ofImage(
+                            ImageBlockParam.builder()
+                                .source(Base64ImageSource.builder().data(image).mediaType(Base64ImageSource.MediaType.IMAGE_JPEG).build())
+                                .build()
+                        )
+                    } + ContentBlockParam.ofText(TextBlockParam.builder().text(user).build())
+                )
+            ))
             .outputConfig(OutputConfig.builder().effort(OutputConfig.Effort.LOW).build())
             .tools(listOf(ToolUnion.ofTool(tool)))
             .toolChoice(ToolChoiceAuto.builder().build())
@@ -196,6 +208,20 @@ class ClaudeMealPlannerAiProvider @Inject constructor(
         val items = json.orEmpty().split('\u0000').filter { it.isNotBlank() }.flatMap { PantryListParsing.parse(it) }
         if (items.isEmpty()) PantryListResult.Failed("Claude didn't find any food in that list. Try listing items like \"2 kg rice, 3 tins chopped tomatoes\".")
         else PantryListResult.Items(items)
+    }
+
+    override suspend fun readReceipt(imagesJpegBase64: List<String>): ReceiptReadResult = withContext(ioDispatcher) {
+        val key = apiKey() ?: return@withContext ReceiptReadResult.Failed(noKey().message)
+        if (imagesJpegBase64.isEmpty()) return@withContext ReceiptReadResult.Failed("The photo couldn't be opened.")
+        val (json, error) = callSingleTool(
+            key, ReceiptReadingParsing.SYSTEM_PROMPT, "Read this receipt.", ReceiptReadingParsing.TOOL_NAME,
+            "Records the receipt read from the photos.", ReceiptReadingParsing.schema(), ReceiptReadingParsing.REQUIRED,
+            imagesJpegBase64
+        )
+        if (json == null) return@withContext ReceiptReadResult.Failed(error?.ifEmpty { "Claude didn't read the receipt." } ?: "Claude didn't read the receipt.")
+        val receipt = ReceiptReadingParsing.parse(json.substringBefore('\u0000'))
+        if (receipt == null || receipt.items.isEmpty() && receipt.totalPaid == null) ReceiptReadResult.Failed("Claude couldn't find a receipt in that photo.")
+        else ReceiptReadResult.Read(receipt)
     }
 
     override suspend fun chooseProducts(lines: List<ProductMatchLine>): ProductMatchResult = withContext(ioDispatcher) {

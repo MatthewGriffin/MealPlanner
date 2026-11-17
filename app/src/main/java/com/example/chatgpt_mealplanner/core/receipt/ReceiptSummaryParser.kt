@@ -142,6 +142,8 @@ object ReceiptSummaryParser {
         )
     }
 
+    fun detectRetailerId(text: String): String = detectRetailer(text)
+
     private fun detectRetailer(fullText: String): String {
         val upper = fullText.uppercase()
         return when {
