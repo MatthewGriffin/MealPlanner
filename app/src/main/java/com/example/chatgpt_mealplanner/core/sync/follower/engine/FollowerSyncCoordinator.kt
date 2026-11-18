@@ -5,6 +5,7 @@ import com.example.chatgpt_mealplanner.core.sync.client.PantrySyncTestClient
 import com.example.chatgpt_mealplanner.core.sync.follower.client.FollowerSyncUploader
 import com.example.chatgpt_mealplanner.core.sync.follower.config.FollowerPairingStore
 import com.example.chatgpt_mealplanner.core.sync.follower.database.FollowerDatabase
+import com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncErrorCategory
 import com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncStatusRepository
 import kotlinx.coroutines.CancellationException
 import javax.inject.Inject
@@ -27,7 +28,8 @@ open class FollowerSyncCoordinator @Inject constructor(
     private val followerPairingStore: FollowerPairingStore?,
     private val statusRepository: FollowerSyncStatusRepository?,
     private val mealPlanSyncEngine: FollowerMealPlanSyncEngine? = null,
-    private val proxyAccount: com.example.chatgpt_mealplanner.core.ai.provider.ProxyAccount? = null
+    private val proxyAccount: com.example.chatgpt_mealplanner.core.ai.provider.ProxyAccount? = null,
+    private val hostLocator: FollowerHostLocator? = null
 ) {
     private val stateLock = Any()
 
@@ -87,6 +89,8 @@ open class FollowerSyncCoordinator @Inject constructor(
                 val currentTargetGen = synchronized(stateLock) { requestedGeneration }
 
                 passSuccess = performSingleSyncPass(triggerSource)
+                if (!passSuccess) passSuccess = retryAtNewHostAddress(triggerSource)
+                statusRepository?.reportAttempt(passSuccess)
 
                 synchronized(stateLock) {
                     if (passSuccess) {
@@ -131,6 +135,25 @@ open class FollowerSyncCoordinator @Inject constructor(
             }
             statusRepository?.reportWorkerFinished(myOwnerToken)
         }
+    }
+
+    /**
+     * If the pass failed because the main phone can't be reached, look for it on the home network: the router may have given
+     * it a new address since the phones were paired. A phone found there must present the pinned certificate.
+     */
+    private suspend fun retryAtNewHostAddress(triggerSource: String): Boolean {
+        val locator = hostLocator ?: return false
+        val store = followerPairingStore ?: return false
+        if (store.isRevoked()) return false
+        val category = statusRepository?.lastSyncErrorCategory?.value
+        if (category != FollowerSyncErrorCategory.TRANSIENT_NETWORK_ERROR && category != FollowerSyncErrorCategory.GENERIC_SYNC_ERROR) return false
+        val config = store.getPairingConfig() ?: return false
+        val found = locator.findHost(config.port, config.pinnedCertFingerprint, config.hostIp) ?: return false
+        if (found == config.hostIp) return false
+        println("[SYNC_COORD] Main phone found at a new address; retrying there.")
+        store.updateHostIp(found)
+        statusRepository.clearSyncError()
+        return performSingleSyncPass(triggerSource)
     }
 
     open suspend fun performSingleSyncPass(triggerSource: String): Boolean {
