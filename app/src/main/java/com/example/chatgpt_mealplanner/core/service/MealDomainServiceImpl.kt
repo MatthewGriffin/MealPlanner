@@ -481,6 +481,14 @@ class MealDomainServiceImpl @Inject constructor(
 
         val planSteps = mutableListOf<PlanDeductionStep>()
 
+        suspend fun usableLotsByName(name: String): List<InventoryItemEntity> =
+            inventoryDao.getAllItemsSync().filter { lot ->
+                lot.status in listOf(ItemStatus.AVAILABLE, ItemStatus.LOW, ItemStatus.USE_SOON) &&
+                    (com.example.chatgpt_mealplanner.core.util.IngredientNameMatcher.matches(lot.displayName, name) ||
+                        (lot.category == com.example.chatgpt_mealplanner.core.model.FoodCategory.KITS_MIXES &&
+                            com.example.chatgpt_mealplanner.core.util.IngredientNameMatcher.matchesKit(lot.displayName, name)))
+            }
+
         for (req in requirements) {
             if (req.effectiveQty <= 0.0) continue
 
@@ -491,14 +499,13 @@ class MealDomainServiceImpl @Inject constructor(
                         listOf(lot)
                     } else emptyList()
                 }
-                req.selectedCanonicalId != null -> {
+                // Ingredients Claude names usually have no canonical ID, and pantry items added by hand or from a receipt may have
+                // none either, so fall back to the same name matching the shopping list uses ("diced chicken breast" is stock for
+                // "boneless skinless chicken breast, diced").
+                req.selectedCanonicalId != null ->
                     inventoryDao.getUsableItemsByCanonicalIngredientId(req.selectedCanonicalId)
-                }
-                else -> {
-                    return DomainResult.Failure(
-                        DomainError.TransactionFailed("Ingredient ${req.ingredient.displayName} has no canonical ID or explicit lot target")
-                    )
-                }
+                        .ifEmpty { usableLotsByName(req.ingredient.displayName) }
+                else -> usableLotsByName(req.ingredient.displayName)
             }
 
             // Order lots FIFO: opened first, then useByDate ASC, bestBeforeDate ASC, purchaseDate ASC, createdAt ASC
