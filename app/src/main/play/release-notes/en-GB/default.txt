@@ -1,5 +1,4 @@
-- Receipts: the shop is added automatically, items link to your list or pantry on their own, and new products are added to the pantry under their plain name (e.g. "White bread"). You can still change any link.
-- Paired phones find the main phone again if its network address changes.
-- Sync Details shows the last sync attempt.
-- Cooked meals no longer show Cook Now.
-- Timers, back swipe and cooking fixes from the last build.
+- Receipts now ask how much of each new item you have (e.g. 800 g) and remember it, so the same product is filled in next time.
+- Non-food items from receipts are added to the pantry too.
+- The main phone's Household screen shows when each paired phone last synced, with a warning if it's been over a day.
+- Paired phones show the main phone's address under Sync Details.
