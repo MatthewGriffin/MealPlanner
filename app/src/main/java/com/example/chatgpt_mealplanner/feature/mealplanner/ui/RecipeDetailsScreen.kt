@@ -319,11 +319,20 @@ fun RecipeDetailsScreen(
                 }
 
                 item {
-                    Button(
-                        onClick = { onCookNowClicked(meal.id) },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Cook Now")
+                    if (meal.status == com.example.chatgpt_mealplanner.core.model.MealStatus.COOKED) {
+                        Text(
+                            "Cooked \u2713",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.tertiary,
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+                        )
+                    } else {
+                        Button(
+                            onClick = { onCookNowClicked(meal.id) },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Cook Now")
+                        }
                     }
                 }
 
