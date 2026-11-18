@@ -68,17 +68,33 @@ class ReceiptSpendDomainServiceImpl @Inject constructor(
             }
         }
 
+        val filledItems = enhancedItems.map { fillAmount(initialDraft.retailerId, it) }
+
         val finalDraft = if (isDuplicate) {
             initialDraft.copy(
-                items = enhancedItems,
+                items = filledItems,
                 isProbableDuplicate = true,
                 reviewWarning = DUPLICATE_RECEIPT_WARNING
             )
         } else {
-            initialDraft.copy(items = enhancedItems)
+            initialDraft.copy(items = filledItems)
         }
 
         return DomainResult.Success(finalDraft)
+    }
+
+    /** What the household said it holds of this product last time (at this shop first), else a weight or volume printed on the line. */
+    private suspend fun fillAmount(retailerId: String, item: ReceiptSpendItemDraft): ReceiptSpendItemDraft {
+        if (item.isDiscount || item.pantryQuantity != null) return item
+        val key = com.example.chatgpt_mealplanner.core.receipt.ReceiptAutoLinker.memoryKey(item)
+        val remembered = if (key.isEmpty()) null else receiptSpendDao.getQuantityMemory(retailerId, key) ?: receiptSpendDao.getAnyQuantityMemory(key)
+        if (remembered != null) {
+            return item.copy(pantryQuantity = remembered.quantity, pantryUnit = remembered.unit, quantityRemembered = true)
+        }
+        val printed = parseReceiptPackSize(item)
+        return if (printed?.netQuantity != null && printed.netQuantityUnit != null) {
+            item.copy(pantryQuantity = printed.netQuantity, pantryUnit = printed.netQuantityUnit.name)
+        } else item
     }
 
     override suspend fun saveReceiptSpend(draft: ReceiptSpendDraft): DomainResult<Unit> {
@@ -123,6 +139,21 @@ class ReceiptSpendDomainServiceImpl @Inject constructor(
             }
 
             receiptSpendDao.saveReceiptSpendWithItems(spendEntity, itemEntities)
+
+            // Remember the amounts the household stated, so the next receipt with these products is filled in.
+            draft.items.forEach { item ->
+                val qty = item.pantryQuantity
+                val unit = item.pantryUnit
+                val key = com.example.chatgpt_mealplanner.core.receipt.ReceiptAutoLinker.memoryKey(item)
+                if (!item.isDiscount && qty != null && qty > 0.0 && !unit.isNullOrBlank() && key.isNotEmpty()) {
+                    receiptSpendDao.insertOrUpdateQuantityMemory(
+                        com.example.chatgpt_mealplanner.core.database.entity.ReceiptQuantityMemoryEntity(
+                            id = UUID.randomUUID().toString(), retailerId = draft.retailerId, productKey = key,
+                            quantity = qty, unit = unit, updatedAt = System.currentTimeMillis()
+                        )
+                    )
+                }
+            }
 
             // Save remembered category mappings
             draft.items.forEach { item ->

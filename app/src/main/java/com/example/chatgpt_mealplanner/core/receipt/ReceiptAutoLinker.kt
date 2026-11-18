@@ -4,6 +4,7 @@ import com.example.chatgpt_mealplanner.core.model.FoodCategory
 import com.example.chatgpt_mealplanner.core.model.InventoryItem
 import com.example.chatgpt_mealplanner.core.model.QuantityConfidence
 import com.example.chatgpt_mealplanner.core.model.QuantityUnit
+import com.example.chatgpt_mealplanner.core.model.quantityUnitOrNull
 import com.example.chatgpt_mealplanner.core.model.StorageLocation
 import com.example.chatgpt_mealplanner.core.util.IngredientNameMatcher
 
@@ -64,6 +65,17 @@ object ReceiptAutoLinker {
                 else -> StorageLocation.CUPBOARD
             }
 
+    /** The total amount the household stated for these lines (amount per item x items), when every line has one in the same unit. */
+    private fun statedAmount(lines: List<ReceiptSpendItemDraft>): Pair<Double, QuantityUnit>? {
+        val units = lines.map { quantityUnitOrNull(it.pantryUnit) }
+        val unit = units.firstOrNull() ?: return null
+        if (units.any { it != unit } || lines.any { (it.pantryQuantity ?: 0.0) <= 0.0 }) return null
+        return lines.sumOf { it.pantryQuantity!! * it.quantity.coerceAtLeast(1) } to unit
+    }
+
+    /** The key a product's remembered amount is stored under: the same product by any name. */
+    fun memoryKey(item: ReceiptSpendItemDraft): String = IngredientNameMatcher.core(genericNameOf(item))
+
     /**
      * One new pantry item per distinct generic product on the receipt (two lines of "Wedges" are one item with both quantities).
      * The result pairs each new item with the receipt lines it covers.
@@ -76,15 +88,16 @@ object ReceiptAutoLinker {
                 val first = lines.first()
                 val category = foodCategoryFor(first)
                 val generic = genericNameOf(first)
+                val stated = statedAmount(lines)
                 InventoryItem(
                     canonicalName = generic.lowercase(),
                     displayName = titleCase(generic),
                     brand = lines.firstNotNullOfOrNull { it.brand?.trim()?.takeIf { b -> b.isNotEmpty() } },
                     category = category,
                     storageLocation = storageFor(first, category),
-                    quantity = lines.sumOf { it.quantity.coerceAtLeast(1) }.toDouble(),
-                    quantityUnit = QuantityUnit.UNIT,
-                    quantityConfidence = QuantityConfidence.APPROXIMATE,
+                    quantity = stated?.first ?: lines.sumOf { it.quantity.coerceAtLeast(1) }.toDouble(),
+                    quantityUnit = stated?.second ?: QuantityUnit.UNIT,
+                    quantityConfidence = if (stated != null) QuantityConfidence.EXACT else QuantityConfidence.APPROXIMATE,
                     purchaseDate = purchasedAt
                 ) to lines.map { it.id }
             }

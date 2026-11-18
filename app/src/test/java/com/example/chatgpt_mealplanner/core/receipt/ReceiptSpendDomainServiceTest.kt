@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -59,6 +60,20 @@ class FakeReceiptSpendDao : com.example.chatgpt_mealplanner.core.database.dao.Re
 
     override suspend fun getCategoryMapping(retailerId: String, normalizedDescription: String): ReceiptCategoryMappingEntity? {
         return mappings.firstOrNull { it.retailerId == retailerId && it.normalizedDescription == normalizedDescription }
+    }
+
+    private val quantityMemory = mutableListOf<com.example.chatgpt_mealplanner.core.database.entity.ReceiptQuantityMemoryEntity>()
+    fun savedQuantityMemory() = quantityMemory.toList()
+
+    override suspend fun getQuantityMemory(retailerId: String, productKey: String) =
+        quantityMemory.firstOrNull { it.retailerId == retailerId && it.productKey == productKey }
+
+    override suspend fun getAnyQuantityMemory(productKey: String) =
+        quantityMemory.filter { it.productKey == productKey }.maxByOrNull { it.updatedAt }
+
+    override suspend fun insertOrUpdateQuantityMemory(memory: com.example.chatgpt_mealplanner.core.database.entity.ReceiptQuantityMemoryEntity) {
+        quantityMemory.removeAll { it.retailerId == memory.retailerId && it.productKey == memory.productKey }
+        quantityMemory.add(memory)
     }
 
     override suspend fun insertOrUpdateCategoryMapping(mapping: ReceiptCategoryMappingEntity) {
@@ -160,6 +175,29 @@ class ReceiptSpendDomainServiceTest {
             .saveReceiptSpend(asdaDraft(linkedLine("CHEDDAR")).copy(retailerId = "GENERIC", fingerprint = "other"))
         verify(noShop, never()).insertPriceObservations(any())
         verify(noShop, never()).insertStore(any())
+    }
+
+    @Test
+    fun statedAmounts_areRemembered_andFillTheNextReceipt() = runTest {
+        val first = asdaDraft(linkedLine("BREAD").copy(genericName = "White bread", pantryQuantity = 800.0, pantryUnit = "GRAM"))
+        service.saveReceiptSpend(first)
+        assertEquals(800.0, dao.savedQuantityMemory().single().quantity, 0.0)
+
+        // Another receipt, another name for the same product, nothing typed: it is filled in and marked remembered.
+        val next = (service.finishDraft(asdaDraft(linkedLine("HOVIS SORT WHIT").copy(genericName = "white bread", linkedShoppingListItemId = null))) as DomainResult.Success).value
+        val line = next.items.single()
+        assertEquals(800.0, line.pantryQuantity!!, 0.0)
+        assertEquals("GRAM", line.pantryUnit)
+        assertTrue(line.quantityRemembered)
+    }
+
+    @Test
+    fun aSizePrintedOnTheLine_prefillsTheAmount_whenNothingIsRemembered() = runTest {
+        val draft = asdaDraft(linkedLine("COKE 330ML").copy(genericName = "Cola", linkedShoppingListItemId = null))
+        val line = (service.finishDraft(draft) as DomainResult.Success).value.items.single()
+        assertEquals(330.0, line.pantryQuantity!!, 0.0)
+        assertEquals("MILLILITRE", line.pantryUnit)
+        assertFalse(line.quantityRemembered)
     }
 
     @Test

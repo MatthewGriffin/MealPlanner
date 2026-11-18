@@ -81,6 +81,30 @@ class ReceiptAutoLinkerTest {
     }
 
     @Test
+    fun statedAmountsBecomeTheQuantity_perItemTimesItemsBought() {
+        val twoLoaves = line("1", "Warburtons Bread", "White bread", qty = 2).copy(pantryQuantity = 800.0, pantryUnit = "GRAM")
+        val created = ReceiptAutoLinker.newPantryItems(listOf(twoLoaves), emptyList(), null).single().first
+        assertEquals(1600.0, created.quantity!!, 0.001)
+        assertEquals(com.example.chatgpt_mealplanner.core.model.QuantityUnit.GRAM, created.quantityUnit)
+        assertEquals(com.example.chatgpt_mealplanner.core.model.QuantityConfidence.EXACT, created.quantityConfidence)
+    }
+
+    @Test
+    fun noStatedAmount_fallsBackToCountingItems() {
+        val created = ReceiptAutoLinker.newPantryItems(listOf(line("1", "Eggs", "Eggs", qty = 2)), emptyList(), null).single().first
+        assertEquals(2.0, created.quantity!!, 0.001)
+        assertEquals(com.example.chatgpt_mealplanner.core.model.QuantityUnit.UNIT, created.quantityUnit)
+    }
+
+    @Test
+    fun theSameProductAnyNameHasTheSameMemoryKey() {
+        assertEquals(
+            ReceiptAutoLinker.memoryKey(line("1", "Warburtons Soft White Bread", "White bread")),
+            ReceiptAutoLinker.memoryKey(line("2", "Hovis Sort Whit", "white bread"))
+        )
+    }
+
+    @Test
     fun claudeReplyCarriesTheGenericNameAndBrand() {
         val read = ReceiptReadingParsing.parse("""{"retailer":"Tesco","currency":"GBP","items":[{"printedText":"WARB WHT BRD","name":"Warburtons Soft White Bread","genericName":"White bread","brand":"Warburtons","foodCategory":"BAKERY","storageLocation":"CUPBOARD","category":"FOOD","quantity":1,"amount":"1.50"}],"totalPaid":"1.50"}""")!!
         val line = read.items.single()

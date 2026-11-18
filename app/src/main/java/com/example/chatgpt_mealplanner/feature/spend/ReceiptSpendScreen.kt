@@ -412,6 +412,12 @@ fun ReceiptSpendScreen(
                                         }
                                     }
                                 }
+                                val pantryTargets = uiState.linkCandidates
+                                    .filter { it.type == ReceiptLinkType.INVENTORY }
+                                    .map { com.example.chatgpt_mealplanner.core.receipt.LinkTarget(it.id, it.displayName) }
+                                if (com.example.chatgpt_mealplanner.core.receipt.ReceiptAutoLinker.needsPantryItem(item, pantryTargets)) {
+                                    ReceiptPantryAmountRow(item) { viewModel.updateItemDraft(it) }
+                                }
                                 ReceiptItemCategoryDropdown(
                                     category = item.category,
                                     onCategorySelected = { viewModel.updateItemDraft(item.copy(category = it)) }
@@ -733,4 +739,45 @@ internal fun ReceiptItemCategoryDropdown(category: String, onCategorySelected: (
         modifier = Modifier.fillMaxWidth(),
         optionLabel = { it.displayName }
     )
+}
+
+/** For a line that will be added to the pantry: how much is in each one. Filled in from last time, or from the size printed on the line. */
+@Composable
+private fun ReceiptPantryAmountRow(item: ReceiptSpendItemDraft, onChange: (ReceiptSpendItemDraft) -> Unit) {
+    var text by remember(item.id) {
+        mutableStateOf(item.pantryQuantity?.let { if (it % 1.0 == 0.0) it.toLong().toString() else it.toString() }.orEmpty())
+    }
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+        Text(
+            when {
+                item.quantityRemembered -> "Amount in each (remembered from last time)"
+                item.pantryQuantity != null -> "Amount in each (from the receipt \u2013 check it)"
+                else -> "How much is in each one? Your pantry will hold this, e.g. 800 g"
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.secondary
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            OutlinedTextField(
+                value = text,
+                onValueChange = { input ->
+                    text = input
+                    val value = input.replace(',', '.').toDoubleOrNull()?.takeIf { it > 0.0 }
+                    onChange(item.copy(pantryQuantity = value, pantryUnit = item.pantryUnit ?: com.example.chatgpt_mealplanner.core.model.QuantityUnit.UNIT.name, quantityRemembered = false))
+                },
+                label = { Text("Amount") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                modifier = Modifier.weight(1f)
+            )
+            EnumDropdownSelector(
+                label = "Unit",
+                options = com.example.chatgpt_mealplanner.core.model.QuantityUnit.entries.toTypedArray(),
+                selectedOption = com.example.chatgpt_mealplanner.core.model.quantityUnitOrNull(item.pantryUnit) ?: com.example.chatgpt_mealplanner.core.model.QuantityUnit.UNIT,
+                onOptionSelected = { onChange(item.copy(pantryUnit = it.name, quantityRemembered = false)) },
+                modifier = Modifier.weight(1f),
+                optionLabel = { it.name.lowercase() }
+            )
+        }
+    }
 }

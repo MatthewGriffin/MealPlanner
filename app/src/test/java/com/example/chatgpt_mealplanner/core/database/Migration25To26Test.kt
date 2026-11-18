@@ -61,7 +61,7 @@ class Migration25To26Test {
 
     @Test
     fun migrationAddsTheKitInstructionsTable_andItWorks() = runBlocking {
-        val db = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28).allowMainThreadQueries().build()
+        val db = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29).allowMainThreadQueries().build()
         database = db
 
         assertNull(db.kitInstructionDao().getByName("fajita kit"))

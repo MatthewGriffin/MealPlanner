@@ -1003,6 +1003,14 @@ val MIGRATION_27_28 = object : Migration(27, 28) {
     }
 }
 
+/** Remembers the amount of each product a household says it holds, so the next receipt with it can be filled in. */
+val MIGRATION_28_29 = object : Migration(28, 29) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS `receipt_quantity_memory` (`id` TEXT NOT NULL, `retailerId` TEXT NOT NULL, `productKey` TEXT NOT NULL, `quantity` REAL NOT NULL, `unit` TEXT NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`))")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_receipt_quantity_memory_retailerId_productKey` ON `receipt_quantity_memory` (`retailerId`, `productKey`)")
+    }
+}
+
 const val MAIN_DATABASE_NAME = "pantry_planner.db"
 
 val ALL_MIGRATIONS = arrayOf(
@@ -1032,7 +1040,8 @@ val ALL_MIGRATIONS = arrayOf(
     MIGRATION_24_25,
     MIGRATION_25_26,
     MIGRATION_26_27,
-    MIGRATION_27_28
+    MIGRATION_27_28,
+    MIGRATION_28_29
 )
 
 @Database(
@@ -1060,6 +1069,7 @@ val ALL_MIGRATIONS = arrayOf(
         ReceiptSpendEntity::class,
         ReceiptSpendItemEntity::class,
         ReceiptCategoryMappingEntity::class,
+        com.example.chatgpt_mealplanner.core.database.entity.ReceiptQuantityMemoryEntity::class,
         com.example.chatgpt_mealplanner.core.database.entity.HouseholdIdentityEntity::class,
         com.example.chatgpt_mealplanner.core.database.entity.PairedDeviceEntity::class,
         com.example.chatgpt_mealplanner.core.database.entity.CanonicalSyncSequenceEntity::class,
@@ -1073,7 +1083,7 @@ val ALL_MIGRATIONS = arrayOf(
         com.example.chatgpt_mealplanner.core.database.entity.KitInstructionEntity::class,
         com.example.chatgpt_mealplanner.core.database.entity.SavedRecipeEntity::class
     ],
-    version = 28,
+    version = 29,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
