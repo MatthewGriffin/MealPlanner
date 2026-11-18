@@ -9,7 +9,10 @@ object IngredientNameMatcher {
     private val DESCRIPTORS = setOf(
         "dried", "dry", "fresh", "freshly", "chopped", "diced", "sliced", "minced", "grated", "crushed", "ground",
         "whole", "large", "small", "medium", "ripe", "raw", "finely", "roughly", "organic",
-        "a", "of", "the", "extra", "good", "quality", "optional", "powdered", "shredded", "peeled"
+        "a", "of", "the", "extra", "good", "quality", "optional", "powdered", "shredded", "peeled",
+        // How a cut is trimmed or prepared, which recipes add and pack names often leave out
+        // ("boneless skinless chicken breast, diced" is the "diced chicken breast" that was bought).
+        "boneless", "skinless", "skinned", "deboned", "trimmed", "cubed", "halved", "quartered", "thinly", "thickly", "coarsely", "lean"
     )
 
     /** Same ingredient, different names (mostly UK vs US). Phrases are replaced before words are compared. */
