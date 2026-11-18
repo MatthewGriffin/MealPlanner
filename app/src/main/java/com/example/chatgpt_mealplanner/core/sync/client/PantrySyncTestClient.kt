@@ -109,6 +109,8 @@ open class PantrySyncTestClient @Inject constructor(
         return OkHttpClient.Builder()
             .sslSocketFactory(sslContext.socketFactory, trustManager)
             .hostnameVerifier { _, _ -> true } // IP address host binding verification allowed when pinned
+            // A call that never answers must end, or a sync pass could hang and block every later one.
+            .callTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
             .build()
     }
 

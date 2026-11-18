@@ -35,7 +35,10 @@ data class FollowerSyncStatusModel(
     val rejectedCount: Int = 0,
     val lastSyncTime: Long? = null,
     val canonicalCursor: Long? = null,
-    val lastError: String? = null
+    val lastError: String? = null,
+    /** When the last sync pass in this session finished, and whether it worked. */
+    val lastAttemptAt: Long? = null,
+    val lastAttemptOk: Boolean? = null
 )
 
 object FollowerErrorClassifier {
@@ -63,6 +66,12 @@ open class FollowerSyncStatusRepository @Inject constructor(
 ) {
     private val _lastSyncErrorCategory = MutableStateFlow<FollowerSyncErrorCategory?>(null)
     val lastSyncErrorCategory = _lastSyncErrorCategory.asStateFlow()
+
+    private val _lastAttempt = MutableStateFlow<Pair<Long, Boolean>?>(null)
+
+    open fun reportAttempt(success: Boolean) {
+        _lastAttempt.value = System.currentTimeMillis() to success
+    }
 
     private val _lastSyncErrorMessage = MutableStateFlow<String?>(null)
     val lastSyncErrorMessage = _lastSyncErrorMessage.asStateFlow()
@@ -205,7 +214,9 @@ open class FollowerSyncStatusRepository @Inject constructor(
             rejectedCount = rejectedCount,
             lastSyncTime = meta.lastSuccessfulPullAt,
             canonicalCursor = meta.lastReconciledCanonicalSequence,
-            lastError = lastErr
+            lastError = lastErr,
+            lastAttemptAt = _lastAttempt.value?.first,
+            lastAttemptOk = _lastAttempt.value?.second
         )
     }
 }

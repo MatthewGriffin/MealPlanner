@@ -86,6 +86,11 @@ open class FollowerPairingStore @Inject constructor(
             saved.pinnedCertFingerprint == config.pinnedCertFingerprint && saved.deviceId == config.deviceId
     }
 
+    /** The main phone moved to a new address on the network; everything else about the pairing is unchanged. */
+    open fun updateHostIp(hostIp: String) {
+        getPrefs()?.putString("KEY_HOST_IP", hostIp)
+    }
+
     open fun updateSessionToken(sessionToken: String?) {
         getPrefs()?.putString("KEY_SESSION_TOKEN", sessionToken)
     }

@@ -806,6 +806,12 @@ fun FollowerSyncStatusCard(
                     Text("Rejected operations: ${status.rejectedCount}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 }
 
+                status.lastAttemptAt?.let { at ->
+                    Text(
+                        "Last sync attempt: ${SimpleDateFormat("HH:mm:ss", Locale.US).format(Date(at))} \u2013 ${if (status.lastAttemptOk == true) "worked" else "didn't complete"}",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                } ?: Text("No sync attempt yet since the app started", style = MaterialTheme.typography.bodySmall)
                 status.lastError?.let { error ->
                     Spacer(modifier = Modifier.height(4.dp))
                     Text("Last problem: $error", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
