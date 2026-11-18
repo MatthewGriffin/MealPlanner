@@ -1,6 +1,5 @@
-- Receipts now work for shops in any country: Claude reads the photo in any language and currency, with clear item names and categories.
-- If Claude isn't available, your phone still reads the receipt.
-- Each receipt keeps its own currency; totals never mix them.
-- Fixed Morrisons-style receipts (price overrides, markdowns).
-- Linking receipt items offers your pantry too.
-- Shopping list: "boneless skinless chicken breast, diced" is now covered by diced chicken breast you bought.
+- Swiping back now goes back a screen (or Home) instead of closing the app.
+- Paired phones: the sync card now shows why an upload to the main phone failed.
+- Receipts work for shops in any country: Claude reads the photo in any language and currency, with the phone as fallback.
+- Each receipt keeps its own currency.
+- Shopping list: "boneless skinless chicken breast, diced" is covered by diced chicken breast you bought.
