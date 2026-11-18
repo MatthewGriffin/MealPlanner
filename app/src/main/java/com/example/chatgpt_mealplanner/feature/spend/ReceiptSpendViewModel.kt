@@ -143,7 +143,7 @@ class ReceiptSpendViewModel @Inject constructor(
     }
 
     /**
-     * Food and drink lines whose generic product is not in the pantry are added to it (so "Warburtons Soft White Bread" becomes
+     * Product lines (food, drink and household goods) whose generic product is not in the pantry are added to it (so "Warburtons Soft White Bread" becomes
      * "White bread" in the pantry), and a line with no link is linked to the new item. Lines already linked by the user keep their link.
      */
     private suspend fun withNewPantryItems(draft: ReceiptSpendDraft): ReceiptSpendDraft {

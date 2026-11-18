@@ -48,11 +48,11 @@ class ReceiptAutoLinkerTest {
     }
 
     @Test
-    fun onlyFoodAndDrinkNotInThePantryNeedsAnItem() {
+    fun everyClassifiedProductNotInThePantryNeedsAnItem() {
         val pantry = listOf(LinkTarget("p", "White bread"))
         assertFalse(ReceiptAutoLinker.needsPantryItem(line("a", "Warburtons Soft White Bread", "White bread"), pantry))
         assertTrue(ReceiptAutoLinker.needsPantryItem(line("b", "Heinz Baked Beans", "Baked beans"), pantry))
-        assertFalse(ReceiptAutoLinker.needsPantryItem(line("c", "Oral-B Paste", "Toothpaste", category = "PERSONAL_CARE"), pantry))
+        assertTrue(ReceiptAutoLinker.needsPantryItem(line("c", "Oral-B Paste", "Toothpaste", category = "PERSONAL_CARE"), pantry))
         assertFalse(ReceiptAutoLinker.needsPantryItem(line("d", "Mystery", "Mystery", category = "UNCATEGORISED"), pantry))
         assertTrue(ReceiptAutoLinker.needsPantryItem(line("e", "Four Loko", "Alcoholic drink", category = "DRINKS"), pantry))
     }
@@ -67,7 +67,9 @@ class ReceiptAutoLinkerTest {
             line("5", "Oral-B Paste", "Toothpaste", category = "PERSONAL_CARE")
         )
         val created = ReceiptAutoLinker.newPantryItems(items, emptyList(), "2026-11-18")
-        assertEquals(listOf("White bread", "Wedges", "Chicken breast"), created.map { it.first.displayName })
+        assertEquals(listOf("White bread", "Wedges", "Chicken breast", "Toothpaste"), created.map { it.first.displayName })
+        assertEquals(FoodCategory.HOUSEHOLD, created[3].first.category)
+        assertEquals(StorageLocation.CUPBOARD, created[3].first.storageLocation)
         val bread = created[0].first
         assertEquals("white bread", bread.canonicalName)
         assertEquals("Warburtons", bread.brand)

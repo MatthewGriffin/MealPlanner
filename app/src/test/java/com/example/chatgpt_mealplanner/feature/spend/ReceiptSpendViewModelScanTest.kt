@@ -178,7 +178,7 @@ class ReceiptSpendViewModelScanTest {
     }
 
     @Test
-    fun saving_addsGenericFoodToThePantry_andLinksIt_butNotNonFood() {
+    fun saving_addsGenericProductsToThePantry_foodAndNonFood() {
         val added = mutableListOf<com.example.chatgpt_mealplanner.core.model.InventoryItem>()
         val inventoryService = org.mockito.kotlin.mock<com.example.chatgpt_mealplanner.core.service.InventoryDomainService>()
         kotlinx.coroutines.runBlocking {
@@ -214,9 +214,10 @@ class ReceiptSpendViewModelScanTest {
 
         vm.saveReceiptSpend()
 
-        assertEquals(listOf("White bread"), added.map { it.displayName })
-        assertEquals("Warburtons", added.single().brand)
-        assertEquals(com.example.chatgpt_mealplanner.core.model.FoodCategory.BAKERY, added.single().category)
+        assertEquals(listOf("White bread", "Toothpaste"), added.map { it.displayName })
+        assertEquals("Warburtons", added[0].brand)
+        assertEquals(com.example.chatgpt_mealplanner.core.model.FoodCategory.BAKERY, added[0].category)
+        assertEquals(com.example.chatgpt_mealplanner.core.model.FoodCategory.HOUSEHOLD, added[1].category)
         assertTrue(vm.uiState.value.isSaveSuccess)
     }
 }
