@@ -1,4 +1,5 @@
-- Reinstalling Pantry Pal on the same phone now keeps your plan and AI usage.
-- Paired household phones share the main phone's AI usage and plan.
-- Moving your subscription to a new phone carries your usage so far with it.
-- Custom app colours and a refreshed Material 3 look.
+- Receipts now work for shops in any country: Claude reads the photo in any language and currency, with clear item names and categories.
+- If Claude isn't available, your phone still reads the receipt (other currencies and dates too).
+- Each receipt keeps its own currency; totals never mix currencies.
+- Fixed Morrisons-style receipts (price overrides, markdowns, card lines).
+- Linking receipt items now offers your pantry too, best matches first.
