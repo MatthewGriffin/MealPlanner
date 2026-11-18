@@ -32,4 +32,16 @@ class IngredientKitMatchTest {
         assertFalse(IngredientNameMatcher.matchesKit("Risotto", "Chicken risotto seasoning kit"))
         assertFalse(IngredientNameMatcher.matchesKit("Chicken risotto", "Mushroom risotto kit"))
     }
+
+    @Test fun trimmedCutsMatchThePackName() {
+        assertTrue(IngredientNameMatcher.matches("boneless skinless chicken breast, diced", "diced chicken breast"))
+        assertTrue(IngredientNameMatcher.matches("Boneless, skinless chicken breasts", "Chicken breast"))
+        assertTrue(IngredientNameMatcher.matches("lean beef mince", "beef mince"))
+        assertTrue(IngredientNameMatcher.matches("thinly sliced onions", "onion"))
+    }
+
+    @Test fun differentCutsOrFormsStayApart() {
+        assertFalse(IngredientNameMatcher.matches("chicken breast", "chicken thigh"))
+        assertFalse(IngredientNameMatcher.matches("boneless chicken breast", "chicken stock"))
+    }
 }
