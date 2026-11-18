@@ -17,6 +17,9 @@ interface PairedDeviceDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrUpdateDevice(device: PairedDeviceEntity)
 
+    @Query("UPDATE paired_devices SET lastSyncTimestamp = :timestamp WHERE deviceId = :deviceId")
+    suspend fun touchLastSync(deviceId: String, timestamp: Long)
+
     @Query("UPDATE paired_devices SET status = :status WHERE deviceId = :deviceId")
     suspend fun updateDeviceStatus(deviceId: String, status: String)
 

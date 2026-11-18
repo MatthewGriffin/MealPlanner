@@ -349,6 +349,21 @@ fun PairedDeviceCard(
             )
 
             if (device.status == "ACTIVE") {
+                val lastContact = device.lastSyncTimestamp
+                val quiet = lastContact == 0L || System.currentTimeMillis() - lastContact > 24L * 60 * 60 * 1000
+                Text(
+                    text = if (lastContact == 0L) "Hasn't connected yet"
+                    else "Last contact: ${android.text.format.DateUtils.getRelativeTimeSpanString(lastContact, System.currentTimeMillis(), android.text.format.DateUtils.MINUTE_IN_MILLIS)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (quiet) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (quiet && lastContact != 0L) {
+                    Text(
+                        text = "Hasn't synced for over a day. Open Pantry Pal on that phone, on the same Wi-Fi as this one.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedButton(
                     onClick = onRevokeClicked,
