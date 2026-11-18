@@ -176,4 +176,47 @@ class ReceiptSpendViewModelScanTest {
         assertEquals("GBP", vm.uiState.value.draft!!.currencyCode)
         assertTrue(vm.uiState.value.scanNote!!.contains("phone read it"))
     }
+
+    @Test
+    fun saving_addsGenericFoodToThePantry_andLinksIt_butNotNonFood() {
+        val added = mutableListOf<com.example.chatgpt_mealplanner.core.model.InventoryItem>()
+        val inventoryService = org.mockito.kotlin.mock<com.example.chatgpt_mealplanner.core.service.InventoryDomainService>()
+        kotlinx.coroutines.runBlocking {
+            org.mockito.kotlin.whenever(inventoryService.addItem(org.mockito.kotlin.any())).thenAnswer {
+                added += it.getArgument<com.example.chatgpt_mealplanner.core.model.InventoryItem>(0)
+                com.example.chatgpt_mealplanner.core.model.DomainResult.Success(Unit)
+            }
+        }
+        val read = com.example.chatgpt_mealplanner.core.ai.provider.ReadReceipt(
+            "Tesco", "GBP", "2026-11-18",
+            listOf(
+                com.example.chatgpt_mealplanner.core.ai.provider.ReadReceiptLine("WARB WHT", "Warburtons Soft White Bread", "FOOD", 1, "1.50", genericName = "White bread", brand = "Warburtons", foodCategory = "BAKERY", storageLocation = "CUPBOARD"),
+                com.example.chatgpt_mealplanner.core.ai.provider.ReadReceiptLine("ORALB", "Oral-B Toothpaste", "PERSONAL_CARE", 1, "2.00", genericName = "Toothpaste")
+            ),
+            emptyList(), null, "3.50"
+        )
+        val vm = ReceiptSpendViewModel(
+            ocrService = object : ReceiptOcrService { override suspend fun recognizeTextFromUri(imageUri: Uri) = throw AssertionError("no OCR") },
+            spendDomainService = ReceiptSpendDomainServiceImpl(spendDao, FakeTransactionRunner()),
+            receiptSpendDao = spendDao,
+            inventoryDao = FakeInventoryDao(),
+            shoppingDao = FakeShoppingDao(),
+            aiProvider = object : com.example.chatgpt_mealplanner.core.ai.provider.MealPlannerAiProvider {
+                override suspend fun send(request: com.example.chatgpt_mealplanner.contract.AiProviderRequest) = throw UnsupportedOperationException()
+                override suspend fun continueWithToolResults(request: com.example.chatgpt_mealplanner.contract.AiContinueWithToolsRequest) = throw UnsupportedOperationException()
+                override suspend fun readReceipt(imagesJpegBase64: List<String>) = com.example.chatgpt_mealplanner.core.ai.provider.ReceiptReadResult.Read(read)
+            },
+            photoSource = object : com.example.chatgpt_mealplanner.core.ai.packet.ReceiptPhotoSource { override suspend fun prepare(uri: Uri) = listOf("AAAA") },
+            inventoryDomainService = inventoryService
+        )
+        vm.processReceiptImage(imageUri)
+        assertTrue(added.isEmpty())                       // nothing is added until the receipt is saved
+
+        vm.saveReceiptSpend()
+
+        assertEquals(listOf("White bread"), added.map { it.displayName })
+        assertEquals("Warburtons", added.single().brand)
+        assertEquals(com.example.chatgpt_mealplanner.core.model.FoodCategory.BAKERY, added.single().category)
+        assertTrue(vm.uiState.value.isSaveSuccess)
+    }
 }

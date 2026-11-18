@@ -365,8 +365,8 @@ fun ReceiptSpendScreen(
                                 ) {
                                     Text(
                                         linkedCandidate?.let {
-                                            "Linked: ${it.displayName} (${if (it.type == ReceiptLinkType.INVENTORY) "inventory" else "shopping list"})"
-                                        } ?: "Not linked",
+                                            "${if (item.autoLinked) "Linked automatically" else "Linked"}: ${it.displayName} (${if (it.type == ReceiptLinkType.INVENTORY) "inventory" else "shopping list"})"
+                                        } ?: if (item.linkLocked || item.category !in setOf("FOOD", "DRINKS")) "Not linked" else "Not linked yet \u2013 food not in your pantry is added when you save",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.secondary,
                                         modifier = Modifier.weight(1f)
@@ -381,7 +381,7 @@ fun ReceiptSpendScreen(
                                         DropdownMenuItem(
                                             text = { Text("Leave unmatched") },
                                             onClick = {
-                                                viewModel.updateItemDraft(item.copy(linkedInventoryItemId = null, linkedShoppingListItemId = null))
+                                                viewModel.updateItemDraft(item.copy(linkedInventoryItemId = null, linkedShoppingListItemId = null, autoLinked = false, linkLocked = true))
                                                 linkMenuExpanded = false
                                             }
                                         )
@@ -401,9 +401,9 @@ fun ReceiptSpendScreen(
                                                 onClick = {
                                                     viewModel.updateItemDraft(
                                                         if (candidate.type == ReceiptLinkType.INVENTORY) {
-                                                            item.copy(linkedInventoryItemId = candidate.id, linkedShoppingListItemId = null)
+                                                            item.copy(linkedInventoryItemId = candidate.id, linkedShoppingListItemId = null, autoLinked = false, linkLocked = true)
                                                         } else {
-                                                            item.copy(linkedInventoryItemId = null, linkedShoppingListItemId = candidate.id)
+                                                            item.copy(linkedInventoryItemId = null, linkedShoppingListItemId = candidate.id, autoLinked = false, linkLocked = true)
                                                         }
                                                     )
                                                     linkMenuExpanded = false

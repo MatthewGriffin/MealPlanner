@@ -142,16 +142,24 @@ class ReceiptSpendDomainServiceTest {
     }
 
     @Test
-    fun unlinkedLines_andUnknownRetailers_recordNoPrice() = runTest {
+    fun unlinkedLines_stillRecordTheirPriceUnderTheShop_butUnknownRetailersRecordNone() = runTest {
         val priceDao = mock<PurchasePriceDao>()
+        whenever(priceDao.getAllStores()).thenReturn(emptyList())
         val linking = ReceiptSpendDomainServiceImpl(dao, FakeTransactionRunner(), priceDao)
-        val unlinked = linkedLine("CHEDDAR").copy(linkedShoppingListItemId = null)
+        val unlinked = linkedLine("CHEDDAR").copy(linkedShoppingListItemId = null, genericName = "Cheddar", brand = "Cathedral City")
 
         linking.saveReceiptSpend(asdaDraft(unlinked))
-        linking.saveReceiptSpend(asdaDraft(linkedLine("CHEDDAR")).copy(retailerId = "GENERIC", fingerprint = "other"))
+        val saved = savedObservations(priceDao).single()
+        assertEquals("RECEIPT", saved.source)
+        assertEquals("Cheddar", saved.productName)
+        assertEquals("cheddar", saved.canonicalName)
+        assertEquals("Cathedral City", saved.brand)
 
-        verify(priceDao, never()).insertPriceObservations(any())
-        verify(priceDao, never()).insertStore(any())
+        val noShop = mock<PurchasePriceDao>()
+        ReceiptSpendDomainServiceImpl(dao, FakeTransactionRunner(), noShop)
+            .saveReceiptSpend(asdaDraft(linkedLine("CHEDDAR")).copy(retailerId = "GENERIC", fingerprint = "other"))
+        verify(noShop, never()).insertPriceObservations(any())
+        verify(noShop, never()).insertStore(any())
     }
 
     @Test

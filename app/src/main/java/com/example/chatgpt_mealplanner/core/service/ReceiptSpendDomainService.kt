@@ -149,14 +149,13 @@ class ReceiptSpendDomainServiceImpl @Inject constructor(
     }
 
     /**
-     * Linking a receipt line says what was bought, so its price joins the price history. The
-     * receipt is already saved at this point and must not fail because of this optional step.
+     * Every product line's price joins the price history under the receipt's shop (added automatically if new), linked or not;
+     * a manual link only improves the product details. The receipt is already saved at this point and must not fail because of
+     * this optional step.
      */
     private suspend fun recordLinkedItemPrices(draft: ReceiptSpendDraft) {
         val dao = purchasePriceDao ?: return
-        val linkedItems = draft.items.filter {
-            !it.isDiscount && (it.linkedInventoryItemId != null || it.linkedShoppingListItemId != null)
-        }
+        val linkedItems = draft.items.filter { !it.isDiscount }
         if (linkedItems.isEmpty()) return
 
         try {
@@ -180,8 +179,9 @@ class ReceiptSpendDomainServiceImpl @Inject constructor(
                     id = UUID.randomUUID().toString(),
                     storeId = storeId,
                     barcode = inventoryItem?.barcode,
-                    productName = inventoryItem?.displayName ?: shoppingItem?.displayName ?: item.normalizedDescription,
-                    brand = inventoryItem?.brand,
+                    productName = inventoryItem?.displayName ?: shoppingItem?.displayName
+                        ?: item.genericName?.takeIf { it.isNotBlank() } ?: item.normalizedDescription,
+                    brand = inventoryItem?.brand ?: item.brand?.takeIf { it.isNotBlank() },
                     packQuantity = if (hasInventorySize) inventoryItem?.packSize else parsedSize?.packSize ?: parsedSize?.netQuantity,
                     packUnit = if (hasInventorySize) inventoryItem?.packSizeUnit?.name else (parsedSize?.packSizeUnit ?: parsedSize?.netQuantityUnit)?.name,
                     packCount = if (hasInventorySize) inventoryItem?.packCount else parsedSize?.packCount,
@@ -189,9 +189,10 @@ class ReceiptSpendDomainServiceImpl @Inject constructor(
                     currencyCode = draft.currencyCode,
                     purchasedAt = purchasedAt,
                     createdAt = now,
-                    source = "RECEIPT_LINK",
+                    source = if (inventoryItem != null || shoppingItem != null) "RECEIPT_LINK" else "RECEIPT",
                     canonicalName = inventoryItem?.let { it.canonicalIngredientId ?: it.canonicalName }
                         ?: shoppingItem?.let { it.canonicalIngredientId ?: it.displayName }
+                        ?: com.example.chatgpt_mealplanner.core.receipt.ReceiptAutoLinker.genericNameOf(item).lowercase()
                 )
             }
             if (observations.isNotEmpty()) {
