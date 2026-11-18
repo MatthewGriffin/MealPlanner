@@ -131,7 +131,7 @@ open class FollowerSyncScheduler @Inject constructor(
         return try {
             WorkManager.getInstance(appContext).enqueueUniquePeriodicWork(
                 PERIODIC_WORK_NAME,
-                ExistingPeriodicWorkPolicy.KEEP,
+                ExistingPeriodicWorkPolicy.UPDATE,
                 workRequest
             )
             NonBlockingSchedulingResult.SUBMITTED_NOT_CONFIRMED
@@ -239,7 +239,7 @@ open class FollowerSyncScheduler @Inject constructor(
         const val AUTO_WORK_NAME = "pantry_follower_outbox_sync"
         const val MANUAL_WORK_NAME = "pantry_follower_manual_sync"
         const val PERIODIC_WORK_NAME = "pantry_follower_periodic_sync"
-        const val PERIODIC_SYNC_INTERVAL_MINUTES = 15L
+        const val PERIODIC_SYNC_INTERVAL_MINUTES = 60L
         const val KEY_WORK_LANE = "KEY_WORK_LANE"
         const val LANE_AUTO = "LANE_AUTO"
         const val LANE_MANUAL = "LANE_MANUAL"
