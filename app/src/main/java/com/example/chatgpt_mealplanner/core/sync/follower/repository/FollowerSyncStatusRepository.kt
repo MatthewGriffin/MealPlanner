@@ -38,7 +38,9 @@ data class FollowerSyncStatusModel(
     val lastError: String? = null,
     /** When the last sync pass in this session finished, and whether it worked. */
     val lastAttemptAt: Long? = null,
-    val lastAttemptOk: Boolean? = null
+    val lastAttemptOk: Boolean? = null,
+    /** The address (and port) this phone currently uses to reach the main phone. */
+    val mainAddress: String? = null
 )
 
 object FollowerErrorClassifier {
@@ -216,7 +218,8 @@ open class FollowerSyncStatusRepository @Inject constructor(
             canonicalCursor = meta.lastReconciledCanonicalSequence,
             lastError = lastErr,
             lastAttemptAt = _lastAttempt.value?.first,
-            lastAttemptOk = _lastAttempt.value?.second
+            lastAttemptOk = _lastAttempt.value?.second,
+            mainAddress = followerPairingStore.getPairingConfig()?.let { "${it.hostIp}:${it.port}" }
         )
     }
 }
