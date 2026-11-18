@@ -262,8 +262,20 @@ fun RecipeDetailsScreen(
                                     }
                                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                         Text(step.text, style = MaterialTheme.typography.bodyLarge)
-                                        step.minutes?.let {
-                                            Text("\u23F1 $it min", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        val timers = remember(step.text, step.minutes) { com.example.chatgpt_mealplanner.core.util.StepTimers.forStep(step.text, step.minutes) }
+                                        val timerContext = androidx.compose.ui.platform.LocalContext.current
+                                        if (timers.isNotEmpty()) {
+                                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                timers.forEach { timer ->
+                                                    androidx.compose.material3.AssistChip(
+                                                        onClick = {
+                                                            com.example.chatgpt_mealplanner.core.util.StepTimerLauncher.start(timerContext, timer, "${meal.title}: step ${step.number}")
+                                                        },
+                                                        label = { Text(timer.label) },
+                                                        leadingIcon = { Text("\u25B6") }
+                                                    )
+                                                }
+                                            }
                                         }
                                     }
                                 }
