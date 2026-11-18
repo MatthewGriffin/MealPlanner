@@ -806,6 +806,11 @@ fun FollowerSyncStatusCard(
                     Text("Rejected operations: ${status.rejectedCount}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 }
 
+                status.lastError?.let { error ->
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text("Last problem: $error", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                }
+
                 if (status.canonicalCursor != null) {
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
