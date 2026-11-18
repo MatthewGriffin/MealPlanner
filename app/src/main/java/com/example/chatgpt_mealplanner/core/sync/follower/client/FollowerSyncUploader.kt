@@ -19,7 +19,9 @@ data class FollowerSyncUploadPassSummary(
     val conflictCount: Int,
     val pendingApprovalCount: Int,
     val rejectedCount: Int,
-    val transportErrorCount: Int
+    val transportErrorCount: Int,
+    /** Why the pass stopped (e.g. "HTTP 500: ..." or the network error), for the sync card. */
+    val lastTransportError: String? = null
 )
 
 @Singleton
@@ -54,6 +56,7 @@ open class FollowerSyncUploader @Inject constructor(
             var totalApproval = 0
             var totalRejected = 0
             var totalTransportErr = 0
+            var lastTransportError: String? = null
 
             do {
                 hasPendingWorkSignal.set(false)
@@ -120,6 +123,7 @@ open class FollowerSyncUploader @Inject constructor(
                             lastErrorCode = uploadResult.error ?: "TRANSPORT_FAILURE"
                         )
                         totalTransportErr++
+                        lastTransportError = uploadResult.error ?: "TRANSPORT_FAILURE"
                         break // Stop upload pass on network error (preserve order)
                     }
 
@@ -196,7 +200,8 @@ open class FollowerSyncUploader @Inject constructor(
                 conflictCount = totalConflict,
                 pendingApprovalCount = totalApproval,
                 rejectedCount = totalRejected,
-                transportErrorCount = totalTransportErr
+                transportErrorCount = totalTransportErr,
+                lastTransportError = lastTransportError
             )
         } finally {
             uploadMutex.unlock()

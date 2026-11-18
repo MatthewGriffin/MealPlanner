@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
@@ -199,6 +200,12 @@ class MainActivity : ComponentActivity() {
                         { currentScreen = Screen.INVENTORY }
                     }
                     else -> null
+                }
+
+                // The back swipe/button does what the top bar's arrow does; from any other tab it goes Home (Inventory) first,
+                // and only from Home does it leave the app.
+                BackHandler(enabled = onBackClick != null || currentScreen != Screen.INVENTORY) {
+                    if (onBackClick != null) onBackClick() else currentScreen = Screen.INVENTORY
                 }
 
                 val planViewModel: com.example.chatgpt_mealplanner.feature.subscription.SubscriptionViewModel = hiltViewModel()

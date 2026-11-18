@@ -203,7 +203,7 @@ open class FollowerSyncCoordinator @Inject constructor(
             sessionToken = tokenToUse, deviceId = deviceId, sessionTokenProvider = sessionRefreshLambda
         )
         if (uploadSummary != null && uploadSummary.transportErrorCount > 0) {
-            statusRepository?.reportTransientSyncError("Transport error during upload")
+            statusRepository?.reportTransientSyncError("Couldn't upload to Main: ${uploadSummary.lastTransportError ?: "no reply"}".take(300))
             return false
         }
 
