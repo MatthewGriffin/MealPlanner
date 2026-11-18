@@ -15,7 +15,8 @@ data class LinkTarget(val id: String, val name: String)
  * in the pantry yet. The links are only suggestions the user can change on the review screen.
  */
 object ReceiptAutoLinker {
-    private val pantryCategories = setOf(ReceiptSpendCategory.FOOD.name, ReceiptSpendCategory.DRINKS.name)
+    /** Everything a household keeps at home. Lines the reader could not classify are left out, since they may not be products at all. */
+    private val pantryCategories = ReceiptSpendCategory.entries.filter { it != ReceiptSpendCategory.UNCATEGORISED }.map { it.name }.toSet()
 
     /** What the line is as the pantry would call it: "White bread", never the brand. */
     fun genericNameOf(item: ReceiptSpendItemDraft): String =
@@ -40,7 +41,7 @@ object ReceiptAutoLinker {
             }
         }
 
-    /** True for food and drink lines whose generic product is not in the pantry yet. */
+    /** True for product lines (food, drink and household goods) whose generic product is not in the pantry yet. */
     fun needsPantryItem(item: ReceiptSpendItemDraft, pantry: List<LinkTarget>): Boolean =
         !item.isDiscount && item.category in pantryCategories && genericNameOf(item).isNotBlank() &&
             pantry.none { matches(item, it.name) }
@@ -49,7 +50,11 @@ object ReceiptAutoLinker {
 
     private fun foodCategoryFor(item: ReceiptSpendItemDraft): FoodCategory =
         FoodCategory.entries.firstOrNull { it.name == item.foodCategory }
-            ?: if (item.category == ReceiptSpendCategory.DRINKS.name) FoodCategory.DRINKS else FoodCategory.OTHER
+            ?: when (item.category) {
+                ReceiptSpendCategory.DRINKS.name -> FoodCategory.DRINKS
+                ReceiptSpendCategory.FOOD.name -> FoodCategory.OTHER
+                else -> FoodCategory.HOUSEHOLD   // cleaning, toiletries, pet, baby and other goods
+            }
 
     private fun storageFor(item: ReceiptSpendItemDraft, category: FoodCategory): StorageLocation =
         StorageLocation.entries.firstOrNull { it.name == item.storageLocation }

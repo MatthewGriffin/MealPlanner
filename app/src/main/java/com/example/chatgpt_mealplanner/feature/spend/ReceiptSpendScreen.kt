@@ -366,7 +366,7 @@ fun ReceiptSpendScreen(
                                     Text(
                                         linkedCandidate?.let {
                                             "${if (item.autoLinked) "Linked automatically" else "Linked"}: ${it.displayName} (${if (it.type == ReceiptLinkType.INVENTORY) "inventory" else "shopping list"})"
-                                        } ?: if (item.linkLocked || item.category !in setOf("FOOD", "DRINKS")) "Not linked" else "Not linked yet \u2013 food not in your pantry is added when you save",
+                                        } ?: if (item.linkLocked || item.category == "UNCATEGORISED") "Not linked" else "Not linked yet \u2013 items not in your pantry are added when you save",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.secondary,
                                         modifier = Modifier.weight(1f)
