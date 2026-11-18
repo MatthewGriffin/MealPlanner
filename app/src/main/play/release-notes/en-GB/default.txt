@@ -1,5 +1,6 @@
-- Swiping back now goes back a screen (or Home) instead of closing the app.
-- Paired phones: the sync card now shows why an upload to the main phone failed.
-- Receipts work for shops in any country: Claude reads the photo in any language and currency, with the phone as fallback.
-- Each receipt keeps its own currency.
-- Shopping list: "boneless skinless chicken breast, diced" is covered by diced chicken breast you bought.
+- Recipe steps with a time now have a play button that starts your phone's timer.
+- Marking a meal cooked now finds ingredients in your pantry by name (e.g. "boneless skinless chicken breast, diced" uses your diced chicken breast).
+- Better battery use on paired phones: background sync runs hourly.
+- Swiping back goes back a screen instead of closing the app.
+- Paired phones show why a sync failed.
+- Receipts work for shops in any country.
