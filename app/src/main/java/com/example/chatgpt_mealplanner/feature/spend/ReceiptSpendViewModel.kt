@@ -82,7 +82,9 @@ class ReceiptSpendViewModel @Inject constructor(
     private val inventoryRepository: com.example.chatgpt_mealplanner.core.repository.InventoryRepository? = null,
     /** When both are present Claude reads the receipt photo; the phone's own text recognition is the fallback. */
     private val aiProvider: com.example.chatgpt_mealplanner.core.ai.provider.MealPlannerAiProvider? = null,
-    private val photoSource: com.example.chatgpt_mealplanner.core.ai.packet.ReceiptPhotoSource? = null
+    private val photoSource: com.example.chatgpt_mealplanner.core.ai.packet.ReceiptPhotoSource? = null,
+    /** Role-aware (a follower's additions go to the main phone): used to add food from a receipt that is not in the pantry yet. */
+    private val inventoryDomainService: com.example.chatgpt_mealplanner.core.service.InventoryDomainService? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ReceiptSpendUiState())
@@ -95,7 +97,15 @@ class ReceiptSpendViewModel @Inject constructor(
 
     private fun loadReceiptLinkCandidates() {
         viewModelScope.launch {
-            runCatching {
+            runCatching { fetchLinkCandidates() }.onSuccess { candidates ->
+                _uiState.update { it.copy(linkCandidates = candidates) }
+            }
+        }
+    }
+
+    private suspend fun fetchLinkCandidates(): List<ReceiptLinkCandidate> {
+        return run {
+            run {
                 val inventoryCandidates = (
                     inventoryRepository?.getAllItems()?.first()?.map { Triple(it.id, it.displayName, it.status) }
                         ?: inventoryDao.getAllItemsSync().map { Triple(it.id, it.displayName, it.status) }
@@ -115,10 +125,42 @@ class ReceiptSpendViewModel @Inject constructor(
                         }
                 }.orEmpty()
                 (inventoryCandidates + shoppingCandidates).distinctBy { "${it.type}:${it.id}" }
-            }.onSuccess { candidates ->
-                _uiState.update { it.copy(linkCandidates = candidates) }
             }
         }
+    }
+
+    /** Links each new line to the same product on the shopping list or in the pantry; the user can change any of them. */
+    private suspend fun withAutoLinks(draft: ReceiptSpendDraft): ReceiptSpendDraft {
+        val candidates = runCatching { fetchLinkCandidates() }.getOrNull() ?: return draft
+        _uiState.update { it.copy(linkCandidates = candidates) }
+        return draft.copy(
+            items = com.example.chatgpt_mealplanner.core.receipt.ReceiptAutoLinker.suggestLinks(
+                draft.items,
+                pantry = candidates.filter { it.type == ReceiptLinkType.INVENTORY }.map { com.example.chatgpt_mealplanner.core.receipt.LinkTarget(it.id, it.displayName) },
+                shopping = candidates.filter { it.type == ReceiptLinkType.SHOPPING_LIST }.map { com.example.chatgpt_mealplanner.core.receipt.LinkTarget(it.id, it.displayName) }
+            )
+        )
+    }
+
+    /**
+     * Food and drink lines whose generic product is not in the pantry are added to it (so "Warburtons Soft White Bread" becomes
+     * "White bread" in the pantry), and a line with no link is linked to the new item. Lines already linked by the user keep their link.
+     */
+    private suspend fun withNewPantryItems(draft: ReceiptSpendDraft): ReceiptSpendDraft {
+        val service = inventoryDomainService ?: return draft
+        val pantry = runCatching { fetchLinkCandidates() }.getOrNull()
+            ?.filter { it.type == ReceiptLinkType.INVENTORY }
+            ?.map { com.example.chatgpt_mealplanner.core.receipt.LinkTarget(it.id, it.displayName) } ?: return draft
+        var items = draft.items
+        for ((item, lineIds) in com.example.chatgpt_mealplanner.core.receipt.ReceiptAutoLinker.newPantryItems(draft.items, pantry, draft.purchasedAt)) {
+            val added = try { service.addItem(item) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { null }
+            if (added is DomainResult.Success) {
+                items = items.map { line ->
+                    if (line.id in lineIds && line.linkedInventoryItemId == null && !line.linkLocked) line.copy(linkedInventoryItemId = item.id, autoLinked = true) else line
+                }
+            }
+        }
+        return draft.copy(items = items)
     }
 
     private fun loadSpendDashboard() {
@@ -206,7 +248,8 @@ class ReceiptSpendViewModel @Inject constructor(
             try {
                 val claudeNote = readWithClaude(uri)
                 if (claudeNote is ClaudeRead.Done) {
-                    _uiState.update { it.copy(isScanning = false, draft = claudeNote.draft) }
+                    val linked = withAutoLinks(claudeNote.draft)
+                    _uiState.update { it.copy(isScanning = false, draft = linked) }
                     return@launch
                 }
                 val ocrResult = ocrService.recognizeTextFromUri(uri)
@@ -219,8 +262,9 @@ class ReceiptSpendViewModel @Inject constructor(
                             _uiState.update { it.copy(isScanning = false, errorMessage = "No text was found in this photo. Flatten the receipt, use good light, and try again.") }
                         } else {
                             val note = (claudeNote as? ClaudeRead.Unavailable)?.note
+                            val linked = withAutoLinks(result.value)
                             _uiState.update {
-                                it.copy(isScanning = false, draft = result.value, scanNote = note)
+                                it.copy(isScanning = false, draft = linked, scanNote = note)
                             }
                         }
                     }
@@ -327,8 +371,9 @@ class ReceiptSpendViewModel @Inject constructor(
     }
 
     fun saveReceiptSpend() {
-        val draft = _uiState.value.draft ?: return
+        val reviewed = _uiState.value.draft ?: return
         viewModelScope.launch {
+            val draft = if (reviewed.isProbableDuplicate) reviewed else withNewPantryItems(reviewed)
             when (val result = spendDomainService.saveReceiptSpend(draft)) {
                 is DomainResult.Success -> {
                     // A receipt confirms the list item was bought, but this spend-only flow

@@ -60,7 +60,11 @@ object ReceiptReadingDraft {
                 quantity = line.quantity,
                 unitPriceMinorPence = if (line.quantity > 1) amount / line.quantity else null,
                 category = ReceiptSpendCategory.fromName(line.category).name,
-                confidence = 0.95f
+                confidence = 0.95f,
+                genericName = line.genericName,
+                brand = line.brand,
+                foodCategory = line.foodCategory,
+                storageLocation = line.storageLocation
             )
         }
         val savings = read.discounts.mapNotNull { minorUnits(it, currency) }.sumOf { kotlin.math.abs(it) }

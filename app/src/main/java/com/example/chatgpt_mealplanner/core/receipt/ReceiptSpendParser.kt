@@ -15,7 +15,17 @@ data class ReceiptSpendItemDraft(
     val isDiscount: Boolean = false,
     val confidence: Float = 0.9f,
     val linkedInventoryItemId: String? = null,
-    val linkedShoppingListItemId: String? = null
+    val linkedShoppingListItemId: String? = null,
+    /** The product without its brand or pack words ("Warburtons Soft White Bread" is "White bread"); what the pantry holds. */
+    val genericName: String? = null,
+    val brand: String? = null,
+    /** A pantry [com.example.chatgpt_mealplanner.core.model.FoodCategory] and StorageLocation name, when Claude gave them. */
+    val foodCategory: String? = null,
+    val storageLocation: String? = null,
+    /** True when the link to the shopping list or pantry was chosen by the app, not the user. */
+    val autoLinked: Boolean = false,
+    /** True once the user has chosen (or cleared) the link by hand; the app never changes it after that. */
+    val linkLocked: Boolean = false
 )
 
 data class ReceiptSpendDraft(
