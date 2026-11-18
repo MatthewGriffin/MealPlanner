@@ -6,6 +6,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import com.example.chatgpt_mealplanner.core.database.entity.ReceiptCategoryMappingEntity
+import com.example.chatgpt_mealplanner.core.database.entity.ReceiptQuantityMemoryEntity
 import com.example.chatgpt_mealplanner.core.database.entity.ReceiptSpendEntity
 import com.example.chatgpt_mealplanner.core.database.entity.ReceiptSpendItemEntity
 import kotlinx.coroutines.flow.Flow
@@ -38,6 +39,15 @@ interface ReceiptSpendDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrUpdateCategoryMapping(mapping: ReceiptCategoryMappingEntity)
+
+    @Query("SELECT * FROM receipt_quantity_memory WHERE retailerId = :retailerId AND productKey = :productKey LIMIT 1")
+    suspend fun getQuantityMemory(retailerId: String, productKey: String): ReceiptQuantityMemoryEntity?
+
+    @Query("SELECT * FROM receipt_quantity_memory WHERE productKey = :productKey ORDER BY updatedAt DESC LIMIT 1")
+    suspend fun getAnyQuantityMemory(productKey: String): ReceiptQuantityMemoryEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertOrUpdateQuantityMemory(memory: ReceiptQuantityMemoryEntity)
 
     @Transaction
     suspend fun saveReceiptSpendWithItems(spend: ReceiptSpendEntity, items: List<ReceiptSpendItemEntity>) {

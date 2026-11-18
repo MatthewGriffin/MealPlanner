@@ -67,6 +67,21 @@ data class ReceiptSpendItemEntity(
     val linkedShoppingListItemId: String? = null
 )
 
+/** The amount of a product (per item bought) the household said it holds, so the next receipt with it is filled in. */
+@Entity(
+    tableName = "receipt_quantity_memory",
+    indices = [Index(value = ["retailerId", "productKey"], unique = true)]
+)
+data class ReceiptQuantityMemoryEntity(
+    @PrimaryKey val id: String,
+    val retailerId: String,
+    /** [com.example.chatgpt_mealplanner.core.util.IngredientNameMatcher.core] of the generic product name. */
+    val productKey: String,
+    val quantity: Double,
+    val unit: String,
+    val updatedAt: Long
+)
+
 @Entity(
     tableName = "receipt_category_mappings",
     indices = [Index(value = ["retailerId", "normalizedDescription"], unique = true)]

@@ -25,7 +25,12 @@ data class ReceiptSpendItemDraft(
     /** True when the link to the shopping list or pantry was chosen by the app, not the user. */
     val autoLinked: Boolean = false,
     /** True once the user has chosen (or cleared) the link by hand; the app never changes it after that. */
-    val linkLocked: Boolean = false
+    val linkLocked: Boolean = false,
+    /** How much the household holds per item bought (e.g. 800 for a loaf), in [pantryUnit]; null until stated, remembered or read from the line. */
+    val pantryQuantity: Double? = null,
+    val pantryUnit: String? = null,
+    /** True when [pantryQuantity] was filled in from what the household said last time. */
+    val quantityRemembered: Boolean = false
 )
 
 data class ReceiptSpendDraft(
