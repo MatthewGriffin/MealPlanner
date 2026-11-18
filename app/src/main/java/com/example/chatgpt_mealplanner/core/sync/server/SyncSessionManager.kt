@@ -130,6 +130,12 @@ open class SyncSessionManager @Inject constructor(
             return null
         }
 
+        // Note when this follower last got through, for the "last contact" line on the Household screen (at most once a minute).
+        val now = System.currentTimeMillis()
+        if (now - device.lastSyncTimestamp > LAST_CONTACT_WRITE_GAP_MS) {
+            try { pairedDeviceDao.touchLastSync(device.deviceId, now) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) {}
+        }
+
         return session.deviceId
     }
 
@@ -144,6 +150,7 @@ open class SyncSessionManager @Inject constructor(
     }
 
     internal companion object {
+        private const val LAST_CONTACT_WRITE_GAP_MS = 60_000L
         const val MAX_PENDING_CHALLENGES = 256
     }
 }

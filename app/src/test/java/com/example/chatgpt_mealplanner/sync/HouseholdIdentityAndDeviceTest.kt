@@ -39,6 +39,10 @@ class FakePairedDeviceDao : PairedDeviceDao {
         devicesMap[device.deviceId] = device
     }
 
+    override suspend fun touchLastSync(deviceId: String, timestamp: Long) {
+        devicesMap[deviceId]?.let { devicesMap[deviceId] = it.copy(lastSyncTimestamp = timestamp) }
+    }
+
     override suspend fun updateDeviceStatus(deviceId: String, status: String) {
         devicesMap[deviceId]?.let {
             devicesMap[deviceId] = it.copy(status = status)
