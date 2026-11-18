@@ -40,6 +40,12 @@ class IngredientKitMatchTest {
         assertTrue(IngredientNameMatcher.matches("thinly sliced onions", "onion"))
     }
 
+    @Test fun skinlessDicedChickenMatchesDicedChicken() {
+        assertTrue(IngredientNameMatcher.matches("skinless diced chicken", "diced chicken"))
+        assertTrue(IngredientNameMatcher.matches("diced chicken", "skinless diced chicken"))
+        assertTrue(IngredientNameMatcher.matches("Skinless, boneless chicken", "chicken"))
+    }
+
     @Test fun differentCutsOrFormsStayApart() {
         assertFalse(IngredientNameMatcher.matches("chicken breast", "chicken thigh"))
         assertFalse(IngredientNameMatcher.matches("boneless chicken breast", "chicken stock"))
