@@ -202,6 +202,42 @@ class MealDomainServiceTest {
         assertEquals(MealStatus.COOKED, cookedMeal!!.meal.status)
     }
 
+    private fun stockLot(id: String, name: String, canonical: String?, qty: Double) = InventoryItemEntity(
+        id = id, barcode = null, canonicalIngredientId = canonical, canonicalName = name, displayName = name, brand = null,
+        category = FoodCategory.MEAT_SEAFOOD, storageLocation = StorageLocation.FRIDGE, quantity = qty, quantityUnit = QuantityUnit.GRAM,
+        packCount = null, packSize = null, packSizeUnit = null, quantityConfidence = QuantityConfidence.EXACT, status = ItemStatus.AVAILABLE,
+        opened = false, frozen = false, staple = false, purchaseDate = null, openedDate = null, useByDate = null, bestBeforeDate = null,
+        notes = null, createdAt = 1L, updatedAt = 1L
+    )
+
+    @Test
+    fun markMealCooked_ingredientWithNoCanonicalId_isTakenFromStockByName() = runTest {
+        // A Claude recipe ingredient has no canonical id; the pantry item was bought as "Diced Chicken Breast".
+        inventoryDao.insertItem(stockLot("lot_chicken", "Diced Chicken Breast", canonical = null, qty = 600.0))
+        service.createPlannedMeal(
+            Meal(id = "m_name", date = "2026-11-18", title = "Chicken stir fry"),
+            listOf(MealIngredient(id = "i_name", mealId = "m_name", canonicalIngredientId = null,
+                displayName = "boneless skinless chicken breast, diced", plannedQuantity = 400.0, plannedUnit = QuantityUnit.GRAM))
+        )
+
+        val result = service.markMealCooked("m_name")
+
+        assertTrue(result.toString(), result is DomainResult.Success)
+        assertEquals(200.0, inventoryDao.getItemById("lot_chicken")!!.quantity!!, 0.001)
+        assertEquals(MealStatus.COOKED, mealDao.getMealWithIngredients("m_name")!!.meal.status)
+    }
+
+    @Test
+    fun markMealCooked_ingredientWithNoCanonicalId_andNothingInStock_saysNotEnoughRatherThanNoCanonicalId() = runTest {
+        service.createPlannedMeal(
+            Meal(id = "m_none", date = "2026-11-18", title = "Chicken"),
+            listOf(MealIngredient(id = "i_none", mealId = "m_none", canonicalIngredientId = null,
+                displayName = "chicken breast", plannedQuantity = 400.0, plannedUnit = QuantityUnit.GRAM))
+        )
+        val result = service.markMealCooked("m_none")
+        assertTrue(result is DomainResult.Failure && result.error is DomainError.InsufficientQuantity)
+    }
+
     @Test
     fun markMealCooked_twice_returnsDuplicateOperationError() = runTest {
         val pastaLot = InventoryItemEntity(
