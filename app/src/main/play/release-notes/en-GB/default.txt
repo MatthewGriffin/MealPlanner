@@ -1,4 +1,2 @@
-- Receipts now ask how much of each new item you have (e.g. 800 g) and remember it, so the same product is filled in next time.
-- Non-food items from receipts are added to the pantry too.
-- The main phone's Household screen shows when each paired phone last synced, with a warning if it's been over a day.
-- Paired phones show the main phone's address under Sync Details.
+- Ask the assistant to change a meal that is already planned (for example, scale it to 2 people) and it now updates that meal instead of adding a copy. Its leftover days are re-planned to match the new portions.
+- You can also ask the assistant to correct how many portions are left of a meal you have cooked. The Leftovers list and the pantry stay in step.
