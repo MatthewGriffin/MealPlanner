@@ -687,10 +687,17 @@ class ChatViewModel @Inject constructor(
                 // Replacing an uncooked meal frees the leftover days planned for the old one: they are reused first.
                 val oldLeftoverDays = existingMeal?.let { mealDomainService.leftoverDaysFor(it.id) }.orEmpty()
                 val mealDate = existingMeal?.date ?: resolvedSlot.date
-                val placement = leftoverPlacement(
-                    proposal, java.time.LocalDate.parse(mealDate),
-                    oldLeftoverDays.mapNotNull { runCatching { com.example.chatgpt_mealplanner.core.util.PlanSlot(java.time.LocalDate.parse(it.date), it.mealType) }.getOrNull() }
-                )
+                val freedSlots = oldLeftoverDays.mapNotNull { runCatching { com.example.chatgpt_mealplanner.core.util.PlanSlot(java.time.LocalDate.parse(it.date), it.mealType) }.getOrNull() }
+                // An edit that makes more extra portions than the old leftover days held may use the empty dinners after the meal.
+                val openDinners = if (existingMeal != null && extraPortions > freedSlots.size * proposal.servings) {
+                    val from = java.time.LocalDate.parse(mealDate)
+                    val taken = mealRepository.getUpcomingPlannedMeals(from.toString(), from.plusDays(14).toString())
+                        .filter { it.meal.mealType == com.example.chatgpt_mealplanner.core.model.MealType.DINNER && it.meal.id != existingMeal.id && it.meal.id !in oldLeftoverDays.map { d -> d.id } }
+                        .map { it.meal.date }.toSet()
+                    (1..14).map { from.plusDays(it.toLong()) }.filter { it.toString() !in taken }
+                        .map { com.example.chatgpt_mealplanner.core.util.PlanSlot(it, com.example.chatgpt_mealplanner.core.model.MealType.DINNER) }
+                } else emptyList()
+                val placement = leftoverPlacement(proposal, java.time.LocalDate.parse(mealDate), freedSlots, openDinners)
                 val batchPortions = proposal.servings + extraPortions
                 val immediatePortions = proposal.servings * (1 + placement.slots.size)
                 val leftoverTags = if (extraPortions > 0) parsedTags + MealTag.BATCH_COOK else parsedTags
@@ -782,7 +789,8 @@ class ChatViewModel @Inject constructor(
     private fun leftoverPlacement(
         proposal: MealProposal,
         mealDate: java.time.LocalDate,
-        freedSlots: List<com.example.chatgpt_mealplanner.core.util.PlanSlot> = emptyList()
+        freedSlots: List<com.example.chatgpt_mealplanner.core.util.PlanSlot> = emptyList(),
+        openSlots: List<com.example.chatgpt_mealplanner.core.util.PlanSlot> = emptyList()
     ): com.example.chatgpt_mealplanner.core.util.LeftoverPlacement {
         val extras = (proposal.batchPortions - proposal.servings).coerceAtLeast(0)
         if (proposal.extrasPlan.equals("FREEZE", ignoreCase = true)) {
@@ -791,7 +799,7 @@ class ChatViewModel @Inject constructor(
         val named = proposal.extraDates.mapNotNull { runCatching { java.time.LocalDate.parse(it.trim()) }.getOrNull() }
             .map { com.example.chatgpt_mealplanner.core.util.PlanSlot(it, com.example.chatgpt_mealplanner.core.model.MealType.DINNER) }
         val candidates = named.ifEmpty {
-            freedSlots + planQueue.filter { it.mealType == com.example.chatgpt_mealplanner.core.model.MealType.DINNER }
+            (freedSlots + openSlots).distinctBy { it.date to it.mealType } + planQueue.filter { it.mealType == com.example.chatgpt_mealplanner.core.model.MealType.DINNER }
         }
         return com.example.chatgpt_mealplanner.core.util.LeftoverPlacer.place(extras, proposal.servings, mealDate, null, candidates)
     }
