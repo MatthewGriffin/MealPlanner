@@ -666,11 +666,21 @@ class ChatViewModel @Inject constructor(
                     errorMessageFlow.value = "This meal change request is no longer available. Reopen it from the planner and try again."
                     return@launch
                 }
-                val existingMeal = linkedRequest?.let { mealRepository.getMealWithIngredients(it.mealId)?.meal }
-                if (linkedRequest != null && existingMeal == null) {
+                val requestMeal = linkedRequest?.let { mealRepository.getMealWithIngredients(it.mealId)?.meal }
+                if (linkedRequest != null && requestMeal == null) {
                     errorMessageFlow.value = "The planned meal could not be found, so the request was left open."
                     return@launch
                 }
+                // An edit the user asked Claude for names the planned meal it changes; that meal is updated in place.
+                val editedMeal = if (requestMeal == null) {
+                    proposal.replacesMealId?.let { mealRepository.getMealWithIngredients(it)?.meal }
+                        ?.takeIf { it.status == com.example.chatgpt_mealplanner.core.model.MealStatus.PLANNED }
+                } else null
+                if (requestMeal == null && proposal.replacesMealId != null && editedMeal == null) {
+                    errorMessageFlow.value = "The meal this recipe was meant to change is no longer planned, so nothing was saved. Ask Claude again."
+                    return@launch
+                }
+                val existingMeal = requestMeal ?: editedMeal
                 val stepText = proposal.savedInstructions().ifBlank { existingMeal?.instructions }
                 // Portions beyond what the household eats now fill later days of the requested plan, or are frozen.
                 val extraPortions = (proposal.batchPortions - proposal.servings).coerceAtLeast(0)
@@ -752,7 +762,7 @@ class ChatViewModel @Inject constructor(
                                 errorMessageFlow.value = "The meal was updated, but the request could not be marked complete. It remains open for retry."
                             }
                         } else {
-                            errorMessageFlow.value = "Saved '${meal.title}' to meal plan for ${meal.date}!" + leftoverNote
+                            errorMessageFlow.value = (if (editedMeal != null) "Updated '${meal.title}' on ${meal.date}." else "Saved '${meal.title}' to meal plan for ${meal.date}!") + leftoverNote
                         }
                     }
                     is DomainResult.Failure -> {
