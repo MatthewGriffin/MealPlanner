@@ -33,6 +33,7 @@ internal object ToolSchemas {
                 if (tool == AiToolId.OFFER_ADD_PLANNED_MEAL) {
                     number("batchPortions", "Only when an ingredient cannot sensibly be scaled down to servings (a kit or packet made for 4, a whole tin) and the recipe therefore makes more than the household eats now: the total portions it makes. The app uses the extra portions on later days or freezes them. Leave out when the recipe makes exactly servings")
                     choice("extrasPlan", "What to do with extra portions (batchPortions above servings). PLAN_DAYS (the default) puts them on the next free dinners of the user's plan; FREEZE freezes them. Use FREEZE only when the user asks for it", listOf("PLAN_DAYS", "FREEZE"))
+                    string("replacesMealId", "Only when editing a meal that is already planned (scaling it to different servings, changing ingredients or method): its id from upcomingPlannedMeals. Saving the card then updates that meal in place, keeping its day and slot, and re-plans its leftover days. Never use for a cooked meal. Leave out for a new meal")
                     putJsonObject("extraDates") {
                         put("type", "array")
                         put("description", "Only when the user asks for the extra portions to go on particular days: those dinner dates as YYYY-MM-DD")

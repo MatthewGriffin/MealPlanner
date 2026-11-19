@@ -597,7 +597,25 @@ class AiToolDispatcher @Inject constructor(
         // Portions the recipe makes beyond what the household eats now (a kit for 4 cooked for 2).
         val batchPortions = (extractDoubleArg(argsJson, "batchPortions")?.toInt() ?: servings).coerceIn(servings, 24)
 
+        val replacesMealId = extractStringArg(argsJson, "replacesMealId")?.trim()?.ifBlank { null }
+        if (replacesMealId != null) {
+            val target = mealDao.getMealWithIngredients(replacesMealId)?.meal
+            val problem = when {
+                target == null -> "No planned meal has the id $replacesMealId. Use an id from upcomingPlannedMeals, or leave replacesMealId out to add a new meal."
+                target.status != com.example.chatgpt_mealplanner.core.model.MealStatus.PLANNED ->
+                    "That meal is ${target.status.name.lowercase()}, so it cannot be edited. Leave replacesMealId out to add a new meal."
+                com.example.chatgpt_mealplanner.core.util.LeftoverMeals.sourceMealId(target.notes) != null ->
+                    "That is a leftovers day, not a recipe. Edit the meal it comes from (the title after \"Leftovers:\") and its leftover days follow."
+                else -> null
+            }
+            if (problem != null) {
+                logDiagnostic("OFFER_CAPTURE", "conversationId=\"$conversationId\" stored=false reason=\"OFFER_REPLACE_TARGET_INVALID\"")
+                return DomainResult.Failure(DomainError.TransactionFailed("OFFER_NEEDS_CHANGES: $problem"))
+            }
+        }
+
         val proposal = com.example.chatgpt_mealplanner.contract.MealProposal(
+            replacesMealId = replacesMealId,
             title = extractedTitle,
             mealType = mealType.name,
             suggestedDate = date,

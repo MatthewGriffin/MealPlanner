@@ -67,7 +67,9 @@ data class MealProposal(
     /** What happens to portions beyond [servings]: null or PLAN_DAYS puts them on later dinners of the plan, FREEZE freezes them. */
     val extrasPlan: String? = null,
     /** Dinners (YYYY-MM-DD) the user asked the extra portions to go on, instead of the next free days of the plan. */
-    val extraDates: List<String> = emptyList()
+    val extraDates: List<String> = emptyList(),
+    /** Id of an existing planned meal this recipe edits (scaled, changed): saving updates that meal in place. */
+    val replacesMealId: String? = null
 ) {
     /** Null when the recipe gave no time, so a card never shows an invented one. */
     fun totalMinutes(): Int? =
