@@ -121,6 +121,11 @@ internal object ToolSchemas {
                 number("quantity", "Optional required quantity")
                 choice("unit", "Optional unit", QuantityUnit.entries.map { it.name })
             }
+            AiToolId.ADJUST_LEFTOVER_PORTIONS -> {
+                string("leftoverId", "Leftover id from get_available_leftovers")
+                string("name", "Leftover name, when the id is not known")
+                number("portions", "New total portions remaining (0 or more)")
+            }
             AiToolId.SET_STAPLE_STATUS -> {
                 string("itemId", "Optional specific inventory item ID")
                 string("searchQuery", "Optional item search query or display name")

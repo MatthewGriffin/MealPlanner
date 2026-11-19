@@ -85,4 +85,27 @@ class LeftoverPantryTest {
         assertTrue(service.changeMealSlot("a", com.example.chatgpt_mealplanner.core.model.MealType.LUNCH) is DomainResult.Success)
         assertEquals(com.example.chatgpt_mealplanner.core.model.MealType.LUNCH, mealDao.getMealWithIngredients("a")!!.meal.mealType)
     }
+
+    @Test
+    fun setLeftoverPortionsMovesThePortionsUpOrDown() = runTest {
+        leftoverDao.insertLeftover(
+            com.example.chatgpt_mealplanner.core.database.entity.LeftoverEntity(
+                id = "lf", sourceMealId = "m9", name = "Chilli", initialPortions = 3, portions = 3,
+                storageLocation = com.example.chatgpt_mealplanner.core.model.StorageLocation.FREEZER,
+                status = com.example.chatgpt_mealplanner.core.model.LeftoverStatus.AVAILABLE,
+                createdDate = "2026-11-16", consumeByDate = null, createdAt = 0L, updatedAt = 0L
+            )
+        )
+
+        assertTrue(service.setLeftoverPortions("lf", 5) is DomainResult.Success)
+        assertEquals(5, leftoverDao.getLeftoverById("lf")!!.portions)
+        assertEquals(5, leftoverDao.getLeftoverById("lf")!!.initialPortions)
+
+        assertTrue(service.setLeftoverPortions("lf", 2) is DomainResult.Success)
+        assertEquals(2, leftoverDao.getLeftoverById("lf")!!.portions)
+
+        assertTrue(service.setLeftoverPortions("lf", 0) is DomainResult.Success)
+        assertEquals(com.example.chatgpt_mealplanner.core.model.LeftoverStatus.CONSUMED, leftoverDao.getLeftoverById("lf")!!.status)
+        assertTrue(service.setLeftoverPortions("missing", 1) is DomainResult.Failure)
+    }
 }

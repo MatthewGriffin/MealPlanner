@@ -867,6 +867,37 @@ class MealDomainServiceImpl @Inject constructor(
         return DomainResult.Success(Unit)
     }
 
+    override suspend fun setLeftoverPortions(leftoverId: String, portions: Int): DomainResult<Unit> {
+        val entity = leftoverDao.getLeftoverById(leftoverId)
+            ?: return DomainResult.Failure(DomainError.ItemNotFound(leftoverId))
+        if (entity.status != LeftoverStatus.AVAILABLE) {
+            return DomainResult.Failure(DomainError.TransactionFailed("Leftover is not available"))
+        }
+        if (portions < 0) return DomainResult.Failure(DomainError.InvalidQuantity(portions.toDouble()))
+        val delta = portions - entity.portions
+        when {
+            delta < 0 -> return consumeLeftoverPortions(leftoverId, -delta)
+            delta == 0 -> return DomainResult.Success(Unit)
+        }
+        leftoverDao.insertLeftover(
+            entity.copy(
+                portions = portions,
+                initialPortions = maxOf(entity.initialPortions, portions),
+                updatedAt = System.currentTimeMillis()
+            )
+        )
+        entity.sourceMealId?.let { sourceId ->
+            val inventory = inventoryDomainService ?: return@let
+            val item = inventoryDao.getAllItemsSync().firstOrNull {
+                LeftoverMeals.sourceMealId(it.notes) == sourceId && it.status != ItemStatus.OUT && it.status != ItemStatus.DISCARDED
+            }
+            if (item != null) {
+                inventory.recordUserCorrection(item.id, (item.quantity ?: 0.0) + delta, QuantityUnit.PORTION, QuantityConfidence.EXACT)
+            }
+        }
+        return DomainResult.Success(Unit)
+    }
+
     override suspend fun discardLeftover(leftoverId: String): DomainResult<Unit> {
         val entity = leftoverDao.getLeftoverById(leftoverId)
             ?: return DomainResult.Failure(DomainError.ItemNotFound(leftoverId))

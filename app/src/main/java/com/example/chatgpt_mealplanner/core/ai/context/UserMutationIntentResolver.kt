@@ -68,6 +68,10 @@ class UserMutationIntentResolver @Inject constructor() {
             )
         }
 
+        if (lowerText.contains("leftover") || lowerText.contains("portion")) {
+            scopes.add(AuthorizedMutationScope.AdjustLeftoverScope(sourceUserMessageId = messageId))
+        }
+
         if (lowerText.contains("regenerate") && lowerText.contains("shopping")) {
             scopes.add(AuthorizedMutationScope.RegenerateShoppingScope(sourceUserMessageId = messageId))
         }
