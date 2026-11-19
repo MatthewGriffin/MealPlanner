@@ -12,7 +12,9 @@ object IngredientNameMatcher {
         "a", "of", "the", "extra", "good", "quality", "optional", "powdered", "shredded", "peeled",
         // How a cut is trimmed or prepared, which recipes add and pack names often leave out
         // ("boneless skinless chicken breast, diced" is the "diced chicken breast" that was bought).
-        "boneless", "skinless", "skinned", "deboned", "trimmed", "cubed", "halved", "quartered", "thinly", "thickly", "coarsely", "lean"
+        "boneless", "skinless", "skinned", "deboned", "trimmed", "cubed", "halved", "quartered", "thinly", "thickly", "coarsely", "lean",
+        // Chicken pieces are sold "skin on, bone in", which a recipe may or may not repeat.
+        "skin", "bone", "on", "in"
     )
 
     /** Same ingredient, different names (mostly UK vs US). Phrases are replaced before words are compared. */
@@ -46,7 +48,7 @@ object IngredientNameMatcher {
     )
 
     private fun normalized(name: String): String {
-        var t = " " + name.lowercase().replace(Regex("\\(.*?\\)"), " ").replace(Regex("[^a-z0-9]+"), " ").trim() + " "
+        var t = " " + name.lowercase().replace("&", " and ").replace(Regex("\\(.*?\\)"), " ").replace(Regex("[^a-z0-9]+"), " ").trim() + " "
         for ((from, to) in SYNONYMS) {
             t = t.replace(" $from ", " $to ").replace(" ${from}s ", " $to ")
         }
@@ -82,8 +84,32 @@ object IngredientNameMatcher {
         return kit.isNotEmpty() && kit == kitCore(ingredientName)
     }
 
+    /**
+     * A pack sold as "chicken drumsticks and thighs" is both "chicken drumsticks" and "chicken thighs".
+     * Only the shared-noun pattern is split (two or more words, "and", one word), so "salt and pepper"
+     * or "fish and chips" never stand for one of their parts.
+     */
+    private fun alternatives(name: String): Set<String> {
+        val whole = core(name)
+        val text = normalized(name).trim()
+        val parts = text.split(" and ")
+        if (parts.size != 2) return setOf(whole)
+        val first = parts[0].trim().split(' ').filter { it.isNotEmpty() && it !in DESCRIPTORS }
+        val last = parts[1].trim().split(' ').filter { it.isNotEmpty() && it !in DESCRIPTORS }
+        if (first.size < 2 || last.size != 1) return setOf(whole)
+        val noun = first.dropLast(1)
+        return setOf(
+            whole,
+            core(first.joinToString(" ")),
+            core((noun + last).joinToString(" "))
+        )
+    }
+
     fun matches(a: String, b: String): Boolean {
         val ca = core(a)
-        return ca.isNotEmpty() && ca == core(b)
+        if (ca.isEmpty()) return false
+        if (ca == core(b)) return true
+        val altsB = alternatives(b)
+        return alternatives(a).any { it.isNotEmpty() && it in altsB }
     }
 }

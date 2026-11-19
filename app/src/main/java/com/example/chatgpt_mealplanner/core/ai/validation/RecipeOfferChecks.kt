@@ -104,9 +104,13 @@ object RecipeOfferChecks {
     /** One finding, worded once as an instruction for Claude and once as a note for the household. */
     private class Finding(val forModel: String, val forHousehold: String)
 
+    /** What the recipe makes: a batch (a kit for 4, a pot for 6) feeds more than the household eats at once. */
+    private fun portionsMade(proposal: MealProposal): Int = maxOf(proposal.servings, proposal.batchPortions).coerceAtLeast(1)
+
     private fun findings(proposal: MealProposal, method: String): List<Finding> {
         val methodText = method.lowercase()
-        val servings = servingsText(proposal.servings)
+        val portions = portionsMade(proposal)
+        val servings = servingsText(portions)
         val unused = proposal.ingredients
             .filter { !it.optional && !isUsedIn(it.displayName, methodText) }
             .map {
@@ -116,10 +120,10 @@ object RecipeOfferChecks {
                 )
             }
         val oversized = proposal.ingredients
-            .filter { gramsOrMl(it)?.let { amount -> amount / proposal.servings.coerceAtLeast(1) > MOST_GRAMS_OR_ML_PER_SERVING } == true }
+            .filter { gramsOrMl(it)?.let { amount -> amount / portions > MOST_GRAMS_OR_ML_PER_SERVING } == true }
             .map {
                 Finding(
-                    "'${it.displayName}' looks like too much for ${proposal.servings} servings (${it.quantity} ${it.unit}).",
+                    "'${it.displayName}' looks like too much for $portions servings (${it.quantity} ${it.unit}).",
                     "${amountOf(it)} of '${it.displayName}' looks like too much for $servings. Check it before you shop."
                 )
             }
@@ -145,8 +149,8 @@ object RecipeOfferChecks {
     /** Mistakes seen in real model recipes that make a recipe harder to follow. */
     private fun cookabilityFindings(proposal: MealProposal, methodText: String): List<Finding> {
         val listed = proposal.ingredients.joinToString(" ") { it.displayName.lowercase() }
-        val servings = proposal.servings.coerceAtLeast(1)
-        val servingsText = servingsText(proposal.servings)
+        val servings = portionsMade(proposal)
+        val servingsText = servingsText(servings)
         return listOfNotNull(
             Finding(
                 "Give hob heat as low, medium or high, not a temperature.",
@@ -184,7 +188,7 @@ object RecipeOfferChecks {
                 .filter { DietaryRules.isMeatOrFish(it.displayName) && (gramsOrMl(it) ?: 0.0) / servings > MOST_MEAT_OR_FISH_GRAMS_PER_SERVING }
                 .map {
                     Finding(
-                        "'${it.displayName}' is a lot for ${proposal.servings} servings (${it.quantity} ${it.unit}). Use a normal portion even if there is more in stock.",
+                        "'${it.displayName}' is a lot for $servings servings (${it.quantity} ${it.unit}). Use a normal portion even if there is more in stock.",
                         "${amountOf(it)} of '${it.displayName}' is a lot for $servingsText."
                     )
                 } +
@@ -193,7 +197,7 @@ object RecipeOfferChecks {
                 .filter { (gramsOrMl(it) ?: Double.MAX_VALUE) / servings < LEAST_MEAT_OR_FISH_GRAMS_PER_SERVING }
                 .map {
                     Finding(
-                        "'${it.displayName}' is very little for ${proposal.servings} servings (${it.quantity} ${it.unit}). If it's the main ingredient, use a normal portion even if there is less in stock.",
+                        "'${it.displayName}' is very little for $servings servings (${it.quantity} ${it.unit}). If it's the main ingredient, use a normal portion even if there is less in stock.",
                         "${amountOf(it)} of '${it.displayName}' is very little for $servingsText if it's the main ingredient."
                     )
                 }
