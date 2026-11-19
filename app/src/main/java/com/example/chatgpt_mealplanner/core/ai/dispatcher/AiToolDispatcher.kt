@@ -168,6 +168,7 @@ class AiToolDispatcher @Inject constructor(
                 AiToolId.REGENERATE_SHOPPING_LIST -> handleRegenerateShoppingList()
                 AiToolId.ADD_MANUAL_SHOPPING_ITEM -> handleAddManualShoppingItem(conversationId, call)
                 AiToolId.SET_STAPLE_STATUS -> handleSetStapleStatus(call.argsJson)
+                AiToolId.ADJUST_LEFTOVER_PORTIONS -> handleAdjustLeftoverPortions(call.argsJson)
                 AiToolId.DELETE_INVENTORY_ITEM -> handleDeleteInventoryItem(call.argsJson)
                 AiToolId.DELETE_ALL_INVENTORY -> handleDeleteAllInventory()
             }
@@ -262,6 +263,9 @@ class AiToolDispatcher @Inject constructor(
                 }
                 is AuthorizedMutationScope.AddManualShoppingScope -> {
                     toolId == AiToolId.ADD_MANUAL_SHOPPING_ITEM
+                }
+                is AuthorizedMutationScope.AdjustLeftoverScope -> {
+                    toolId == AiToolId.ADJUST_LEFTOVER_PORTIONS
                 }
                 is AuthorizedMutationScope.SetStapleScope -> {
                     toolId == AiToolId.SET_STAPLE_STATUS
@@ -497,6 +501,26 @@ class AiToolDispatcher @Inject constructor(
         }
 
         return DomainResult.Success(AiToolPayload.LeftoverListPayload(dtos))
+    }
+
+    private suspend fun handleAdjustLeftoverPortions(argsJson: String): DomainResult<AiToolPayload> {
+        val portions = extractDoubleArg(argsJson, "portions")?.toInt()
+            ?: return DomainResult.Failure(DomainError.TransactionFailed("portions is required"))
+        if (portions < 0) return DomainResult.Failure(DomainError.InvalidQuantity(portions.toDouble()))
+        val id = extractStringArg(argsJson, "leftoverId")?.trim()?.ifBlank { null }
+        val name = extractStringArg(argsJson, "name")?.trim()?.ifBlank { null }
+        val available = leftoverDao.observeAvailableLeftovers().first()
+        val target = if (id != null) available.firstOrNull { it.id == id } else {
+            val matches = available.filter { name != null && it.name.contains(name, ignoreCase = true) }
+            matches.singleOrNull()
+                ?: return DomainResult.Failure(DomainError.TransactionFailed(
+                    if (matches.isEmpty()) "No available leftovers match '$name'. Call get_available_leftovers."
+                    else "Several leftovers match '$name': ${matches.joinToString { it.name }}. Use leftoverId."))
+        } ?: return DomainResult.Failure(DomainError.ItemNotFound(id ?: ""))
+        return when (val result = mealDomainService.setLeftoverPortions(target.id, portions)) {
+            is DomainResult.Success -> DomainResult.Success(AiToolPayload.TextPayload("{\"updated\":true,\"name\":${json.encodeToString(target.name)},\"portions\":$portions}"))
+            is DomainResult.Failure -> result
+        }
     }
 
     private suspend fun handleGetActiveShoppingList(): DomainResult<AiToolPayload> {

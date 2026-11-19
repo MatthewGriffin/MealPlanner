@@ -12,7 +12,7 @@ class AiContractTest {
     @Test
     fun verifyAiContractVersion_andUniqueTools() {
         assertEquals("ai-contract-v2", AI_CONTRACT_VERSION)
-        assertEquals(34, AiToolId.entries.size)
+        assertEquals(35, AiToolId.entries.size)
 
         val names = AiToolId.entries.map { it.toolName }
         assertEquals(names.size, names.toSet().size, "All tool names must be unique.")

@@ -43,7 +43,7 @@ enum class AiToolId(
     GET_SAVED_RECIPE("get_saved_recipe", AiToolClass.READ, "Returns the full text of a saved recipe, by its title as listed in savedRecipes. Call it before using a saved recipe in a plan or meal. Args: title."),
     OFFER_ADD_PLANNED_MEAL("offer_add_planned_meal", AiToolClass.READ, "Prepares a structured offer to add a meal to the planner without modifying the database, placing the offer in AWAITING_CONFIRMATION state. Args: title, date (optional YYYY-MM-DD), mealType (optional BREAKFAST, LUNCH, DINNER, SNACK), servings (number), ingredients (JSON array of {displayName, quantity, unit, canonicalIngredientId?}), instructions (string - complete step-by-step cooking method). An offer is invalid without both complete ingredients and complete instructions."),
 
-    // WRITE Tools (14)
+    // WRITE Tools (15)
     ADD_PLANNED_MEAL("add_planned_meal", AiToolClass.WRITE_EXPLICIT, "Creates a new planned meal with ingredients on the meal planner for a specified date and meal type. Args: title, date (YYYY-MM-DD), mealType (BREAKFAST, LUNCH, DINNER, SNACK), servings (number), ingredients (JSON array of {displayName, quantity, unit, canonicalIngredientId?}), instructions (string - complete step-by-step cooking method)."),
     MOVE_PLANNED_MEAL("move_planned_meal", AiToolClass.WRITE_EXPLICIT, "Moves a planned meal to a new date."),
     CANCEL_PLANNED_MEAL("cancel_planned_meal", AiToolClass.WRITE_EXPLICIT, "Marks a planned meal as CANCELLED."),
@@ -55,6 +55,7 @@ enum class AiToolId(
     RESOLVE_INVENTORY_LOT_UNCERTAINTY("resolve_inventory_lot_uncertainty", AiToolClass.WRITE_EXPLICIT, "Resolves uncertain lot quantity and updates confidence to EXACT."),
     REGENERATE_SHOPPING_LIST("regenerate_shopping_list", AiToolClass.WRITE_EXPLICIT, "Triggers atomic shopping list regeneration."),
     ADD_MANUAL_SHOPPING_ITEM("add_manual_shopping_item", AiToolClass.WRITE_EXPLICIT, "Adds a manual shopping item to list."),
+    ADJUST_LEFTOVER_PORTIONS("adjust_leftover_portions", AiToolClass.WRITE_EXPLICIT, "Sets how many portions remain of a cooked batch in the Leftovers list, and keeps its pantry 'Leftover ...' item in step. Use when the user corrects the portions left (ate more, made more, froze fewer). Args: leftoverId (from get_available_leftovers) or name, portions (the new total remaining, 0 or more)."),
     SET_STAPLE_STATUS("set_staple_status", AiToolClass.WRITE_EXPLICIT, "Sets an inventory item as a household staple or unsets it. Args: itemId or searchQuery/displayName, isStaple (boolean)."),
     DELETE_INVENTORY_ITEM("delete_inventory_item", AiToolClass.WRITE_CONFIRMATION_REQUIRED, "Soft-deletes a specific inventory item. Args: itemId or searchQuery."),
     DELETE_ALL_INVENTORY("delete_all_inventory", AiToolClass.WRITE_CONFIRMATION_REQUIRED, "Soft-deletes all active inventory items. REQUIRES EXPLICIT CONFIRMATION. Args: confirmBulkDelete.");
@@ -112,6 +113,10 @@ sealed interface AuthorizedMutationScope {
     ) : AuthorizedMutationScope
 
     data class AddManualShoppingScope(
+        val sourceUserMessageId: String
+    ) : AuthorizedMutationScope
+
+    data class AdjustLeftoverScope(
         val sourceUserMessageId: String
     ) : AuthorizedMutationScope
 

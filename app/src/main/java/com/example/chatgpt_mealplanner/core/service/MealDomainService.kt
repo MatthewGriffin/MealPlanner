@@ -51,6 +51,9 @@ interface MealDomainService {
         portionsToConsume: Int
     ): DomainResult<Unit>
 
+    /** Sets the portions remaining of a leftover and moves its pantry "Leftover X" item by the same amount. */
+    suspend fun setLeftoverPortions(leftoverId: String, portions: Int): DomainResult<Unit>
+
     suspend fun discardLeftover(
         leftoverId: String
     ): DomainResult<Unit>
