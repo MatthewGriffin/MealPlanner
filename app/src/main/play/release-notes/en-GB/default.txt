@@ -1,2 +1,2 @@
-- Ask the assistant to change a meal that is already planned (for example, scale it to 2 people) and it now updates that meal instead of adding a copy. Its leftover days are re-planned to match the new portions.
-- You can also ask the assistant to correct how many portions are left of a meal you have cooked. The Leftovers list and the pantry stay in step.
+- Recipe checks now see a pack that holds several cuts (such as "chicken drumsticks and thighs") as stock for each of them.
+- The "too much for one portion" warning now looks at how many portions the recipe actually makes, not just how many people are eating now.
