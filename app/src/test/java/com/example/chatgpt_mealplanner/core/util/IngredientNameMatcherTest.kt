@@ -50,4 +50,17 @@ class IngredientKitMatchTest {
         assertFalse(IngredientNameMatcher.matches("chicken breast", "chicken thigh"))
         assertFalse(IngredientNameMatcher.matches("boneless chicken breast", "chicken stock"))
     }
+
+    @Test fun aCombinedPackIsEachOfItsPieces() {
+        assertTrue(IngredientNameMatcher.matches("Chicken drumsticks and thighs", "chicken thighs"))
+        assertTrue(IngredientNameMatcher.matches("Chicken drumsticks and thighs", "chicken drumsticks"))
+        assertTrue(IngredientNameMatcher.matches("chicken thighs, skin on", "Chicken drumsticks and thighs"))
+        assertTrue(IngredientNameMatcher.matches("Chicken drumsticks & thighs", "bone-in chicken drumsticks and thighs"))
+    }
+
+    @Test fun andInOtherNamesDoesNotSplitThem() {
+        assertFalse(IngredientNameMatcher.matches("salt and pepper", "pepper"))
+        assertFalse(IngredientNameMatcher.matches("fish and chips", "chips"))
+        assertFalse(IngredientNameMatcher.matches("Chicken drumsticks and thighs", "chicken breast"))
+    }
 }

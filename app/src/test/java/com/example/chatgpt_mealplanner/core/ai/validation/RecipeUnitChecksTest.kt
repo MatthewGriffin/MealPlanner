@@ -76,4 +76,19 @@ class RecipeUnitChecksTest {
         assertEquals(QuantityUnit.GRAM, parseQuantityUnit(" grams "))
         QuantityUnit.entries.forEach { assertEquals(it, parseQuantityUnit(it.name)) }
     }
+
+    @Test
+    fun amountsAreJudgedAgainstThePortionsTheRecipeMakes() {
+        fun warnings(servings: Int, batch: Int) = RecipeOfferChecks.warnings(
+            MealProposal(
+                title = "Traybake", servings = servings, batchPortions = batch,
+                ingredients = listOf(ProposedIngredient(displayName = "Chicken drumsticks and thighs", quantity = 1200.0, unit = "GRAM")),
+                reasoningSummary = "Test"
+            ),
+            "Roast the chicken drumsticks and thighs."
+        )
+        assertTrue(warnings(1, 1).any { "a lot" in it })
+        assertTrue(warnings(1, 6).toString(), warnings(1, 6).none { "a lot" in it || "too much" in it })
+        assertTrue(warnings(6, 6).none { "a lot" in it })
+    }
 }
