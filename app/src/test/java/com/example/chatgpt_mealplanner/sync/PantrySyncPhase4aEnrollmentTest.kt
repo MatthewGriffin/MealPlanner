@@ -395,6 +395,22 @@ class PantrySyncPhase4aEnrollmentTest {
         assertFalse("A re-paired phone MUST resync from scratch", store.isBootstrapVerifiedV1())
     }
 
+    @Test
+    fun joiningAgainAfterBeingRevoked_clearsTheRevocation() = runTest {
+        val store = FakePairingStore().apply { revokedMarker = true }
+        val client = object : PantrySyncTestClient(keyStoreManager) {
+            override suspend fun registerEnrollment(hostIp: String, port: Int, pinnedCertFingerprint: String, requestDto: EnrollmentRequestDto) =
+                EnrollmentResponseDto(true, householdId)
+        }
+        val orchestrator = FollowerEnrollmentOrchestrator(null, identityStore, keyStoreManager, store, client, FollowerSyncScheduler())
+
+        val inv = invitationManager.createInvitation(householdId, mainDeviceId, "192.168.1.100", 8443, validFingerprint)
+        val res = orchestrator.processQrEnrollment(json.encodeToString(inv))
+
+        assertTrue(res.success)
+        assertFalse("A fresh pairing MUST NOT stay revoked", store.isRevoked())
+    }
+
     // BLOCKER 2 Tests: Identity Fail Closed
     @Test
     fun test2A_secureIdentityStoreUnavailable_failsClosed() = runTest {

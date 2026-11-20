@@ -97,7 +97,7 @@ open class FollowerSyncScheduler @Inject constructor(
         return try {
             WorkManager.getInstance(context).enqueueUniqueWork(
                 workName,
-                ExistingWorkPolicy.KEEP,
+                resolveWorkPolicy(triggerReason),
                 workRequest
             )
             WorkSchedulingResult.SUBMITTED_AND_CONFIRMED
@@ -194,7 +194,7 @@ open class FollowerSyncScheduler @Inject constructor(
         return try {
             val operation = WorkManager.getInstance(context).enqueueUniqueWork(
                 workName,
-                ExistingWorkPolicy.KEEP,
+                resolveWorkPolicy(triggerReason),
                 workRequest
             )
             awaitOperationResult(operation)
@@ -231,7 +231,12 @@ open class FollowerSyncScheduler @Inject constructor(
     }
 
     open fun resolveWorkPolicy(triggerReason: String): ExistingWorkPolicy {
-        return ExistingWorkPolicy.KEEP
+        // A new pairing must run now: an earlier pass that failed is waiting out a retry delay (up to hours) and would be kept instead.
+        return if (triggerReason == "ENROLLMENT_COMPLETE" || triggerReason == "REAUTHORIZATION_COMPLETE") {
+            ExistingWorkPolicy.REPLACE
+        } else {
+            ExistingWorkPolicy.KEEP
+        }
     }
 
     companion object {

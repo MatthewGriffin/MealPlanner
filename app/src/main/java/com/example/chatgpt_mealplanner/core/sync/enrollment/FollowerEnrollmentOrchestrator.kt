@@ -168,6 +168,8 @@ open class FollowerEnrollmentOrchestrator @Inject constructor(
 
         // A phone that was paired before must not keep data from its earlier pairing.
         followerPairingStore.clearBootstrapVerifiedV1()
+        // Joining again after being revoked makes the new pairing valid; the old revocation must not outlive it.
+        followerPairingStore.clearRevoked()
 
         // 4. Schedule existing sync worker for ongoing background sync
         followerSyncScheduler.scheduleSyncWorkNonBlocking(context, "ENROLLMENT_COMPLETE")
