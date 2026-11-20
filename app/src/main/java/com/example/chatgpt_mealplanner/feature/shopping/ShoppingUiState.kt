@@ -28,8 +28,12 @@ data class ShoppingUiState(
     val manualItemNotes: String = "",
     /** Set while a shopping trip is open: the list is sorted by this shop's learned order. */
     val activeShop: ActiveShop? = null,
-    val shops: List<ShopChoice> = emptyList()
+    val shops: List<ShopChoice> = emptyList(),
+    val motion: MotionOptions = MotionOptions()
 )
+
+/** Whether this phone can learn a shop's layout from its motion sensors, and whether the household has switched that on. */
+data class MotionOptions(val available: Boolean = false, val enabled: Boolean = false, val hasPermission: Boolean = false)
 
 data class ActiveShop(val storeId: String, val storeName: String, val orderByKey: Map<String, Double>)
 
@@ -49,7 +53,7 @@ sealed interface ShoppingUiEvent {
     data class ResolveUncertainty(val inventoryItemId: String, val confirmedQuantity: Double, val unit: QuantityUnit, val confidence: QuantityConfidence = QuantityConfidence.EXACT) : ShoppingUiEvent
     data class SaveStapleRule(val rule: StapleRule) : ShoppingUiEvent
     data class DeleteStapleRule(val ruleId: String) : ShoppingUiEvent
-    data class StartShopping(val storeId: String) : ShoppingUiEvent
+    data class StartShopping(val storeId: String, val learnLayout: Boolean? = null) : ShoppingUiEvent
     object FinishShopping : ShoppingUiEvent
     object ClearUserMessage : ShoppingUiEvent
 }

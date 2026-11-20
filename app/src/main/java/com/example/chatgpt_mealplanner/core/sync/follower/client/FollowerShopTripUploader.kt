@@ -31,7 +31,7 @@ open class FollowerShopTripUploader @Inject constructor(
                 storeId = trip.session.storeId,
                 startedAt = trip.session.startedAt,
                 endedAt = trip.session.endedAt ?: continue,
-                ticks = trip.ticks.map { ShopTickSyncDto(it.displayName, it.tickedAt) }
+                ticks = trip.ticks.map { ShopTickSyncDto(it.displayName, it.tickedAt, it.x, it.y) }
             )
             var status = client.postShopTrip(hostIp, port, pinnedCertFingerprint, token, dto)
             if (status == 401) {

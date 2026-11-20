@@ -1,6 +1,9 @@
 package com.example.chatgpt_mealplanner.feature.shopping.ui
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material3.Checkbox
+import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -29,10 +32,12 @@ import com.example.chatgpt_mealplanner.feature.shopping.ShopChoice
 @Composable
 fun StartShoppingDialog(
     shops: List<ShopChoice>,
+    motion: com.example.chatgpt_mealplanner.feature.shopping.MotionOptions,
     onDismiss: () -> Unit,
-    onStart: (storeId: String) -> Unit
+    onStart: (storeId: String, learnLayout: Boolean) -> Unit
 ) {
     var selected by remember { mutableStateOf(shops.firstOrNull()) }
+    var learnLayout by remember { mutableStateOf(motion.enabled) }
     var expanded by remember { mutableStateOf(false) }
 
     AlertDialog(
@@ -63,11 +68,25 @@ fun StartShoppingDialog(
                             }
                         }
                     }
+                    if (motion.available) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = learnLayout, onCheckedChange = { learnLayout = it })
+                            Column {
+                                Text("Also learn the shop's layout", style = MaterialTheme.typography.bodyMedium)
+                                Text(
+                                    "Uses this phone's step counter and compass while you shop, so the list can follow your route. It needs the Physical activity permission and works best with the app open. What it senses stays in your household.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
                 }
             }
         },
         confirmButton = {
-            TextButton(onClick = { selected?.let { onStart(it.id) } }, enabled = selected != null) { Text("Start") }
+            TextButton(onClick = { selected?.let { onStart(it.id, learnLayout && motion.available) } }, enabled = selected != null) { Text("Start") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )

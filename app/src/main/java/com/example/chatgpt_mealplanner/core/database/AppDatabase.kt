@@ -1014,11 +1014,11 @@ val MIGRATION_28_29 = object : Migration(28, 29) {
 /** Learned shop order: which items a household finds first in each shop, from the order they tick things off. */
 val MIGRATION_29_30 = object : Migration(29, 30) {
     override fun migrate(db: SupportSQLiteDatabase) {
-        db.execSQL("CREATE TABLE IF NOT EXISTS `store_item_order` (`id` TEXT NOT NULL, `storeId` TEXT NOT NULL, `itemKey` TEXT NOT NULL, `displayName` TEXT NOT NULL, `avgRank` REAL NOT NULL, `samples` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`))")
+        db.execSQL("CREATE TABLE IF NOT EXISTS `store_item_order` (`id` TEXT NOT NULL, `storeId` TEXT NOT NULL, `itemKey` TEXT NOT NULL, `displayName` TEXT NOT NULL, `avgRank` REAL NOT NULL, `samples` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `avgX` REAL, `avgY` REAL, `posSamples` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`id`))")
         db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_store_item_order_storeId_itemKey` ON `store_item_order` (`storeId`, `itemKey`)")
         db.execSQL("CREATE TABLE IF NOT EXISTS `shopping_sessions` (`id` TEXT NOT NULL, `storeId` TEXT NOT NULL, `startedAt` INTEGER NOT NULL, `endedAt` INTEGER, `uploadedAt` INTEGER, PRIMARY KEY(`id`))")
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_shopping_sessions_endedAt` ON `shopping_sessions` (`endedAt`)")
-        db.execSQL("CREATE TABLE IF NOT EXISTS `shopping_tick_events` (`id` TEXT NOT NULL, `sessionId` TEXT NOT NULL, `itemKey` TEXT NOT NULL, `displayName` TEXT NOT NULL, `tickedAt` INTEGER NOT NULL, PRIMARY KEY(`id`))")
+        db.execSQL("CREATE TABLE IF NOT EXISTS `shopping_tick_events` (`id` TEXT NOT NULL, `sessionId` TEXT NOT NULL, `itemKey` TEXT NOT NULL, `displayName` TEXT NOT NULL, `tickedAt` INTEGER NOT NULL, `x` REAL, `y` REAL, PRIMARY KEY(`id`))")
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_shopping_tick_events_sessionId` ON `shopping_tick_events` (`sessionId`)")
     }
 }
