@@ -112,8 +112,33 @@ data class BootstrapResponseDto(
     val userStores: List<UserStoreSyncDto>? = null,
     val priceObservations: List<PriceObservationSyncDto>? = null,
     val basketComparisonFingerprint: String? = null,
-    val basketComparisonJson: String? = null
+    val basketComparisonJson: String? = null,
+    /** What the household has learned of each shop's order, read-only for followers. Null from older hosts. */
+    val storeOrders: List<StoreOrderSyncDto>? = null
 )
+
+/** Where an item usually comes in a shop's walk (0 first, 1 last), averaged over [samples] trips. */
+@Serializable
+data class StoreOrderSyncDto(
+    val storeId: String,
+    val itemKey: String,
+    val displayName: String,
+    val avgRank: Double,
+    val samples: Int
+)
+
+/** A shopping trip a follower made, sent to Main so the household learns from it. [tripId] makes a resend harmless. */
+@Serializable
+data class ShopTripUploadDto(
+    val tripId: String,
+    val storeId: String,
+    val startedAt: Long,
+    val endedAt: Long,
+    val ticks: List<ShopTickSyncDto>
+)
+
+@Serializable
+data class ShopTickSyncDto(val displayName: String, val tickedAt: Long)
 
 @Serializable
 data class ShoppingListSyncDto(

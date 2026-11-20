@@ -162,7 +162,7 @@ fun ShoppingScreen(
                         }
                     }
 
-                    if (!uiState.isFollower) {
+                    run {
                         val shop = uiState.activeShop
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),

@@ -243,8 +243,8 @@ class ShoppingViewModel @Inject constructor(
             )
             is ShoppingUiEvent.SaveStapleRule -> saveStapleRule(event.rule)
             is ShoppingUiEvent.DeleteStapleRule -> deleteStapleRule(event.ruleId)
-            is ShoppingUiEvent.StartShopping -> if (!appRoleResolver.isFollower()) startShopping(event.storeId)
-            ShoppingUiEvent.FinishShopping -> if (!appRoleResolver.isFollower()) finishShopping()
+            is ShoppingUiEvent.StartShopping -> startShopping(event.storeId)
+            ShoppingUiEvent.FinishShopping -> finishShopping()
             ShoppingUiEvent.ClearUserMessage -> userMessageFlow.value = null
         }
     }
