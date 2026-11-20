@@ -144,6 +144,7 @@ dependencies {
     implementation("com.google.zxing:core:3.5.3")
     implementation(libs.kotlinx.coroutines.play.services)
     implementation(libs.play.integrity)
+    implementation(libs.play.app.update)
     implementation(libs.play.billing)
 
     // Networking & Serialization
