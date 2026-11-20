@@ -274,6 +274,26 @@ open class PantrySyncTestClient @Inject constructor(
         }
     }
 
+    /** Follower: sends a finished shopping trip to Main. Returns the HTTP status, or null when Main could not be reached. */
+    open suspend fun postShopTrip(
+        hostIp: String,
+        port: Int = 8443,
+        pinnedCertFingerprint: String?,
+        sessionToken: String,
+        trip: com.example.chatgpt_mealplanner.sync.contract.ShopTripUploadDto
+    ): Int? = withContext(Dispatchers.IO) {
+        runCatching {
+            val client = createPinnedOkHttpClient(pinnedCertFingerprint)
+            val body = Json { encodeDefaults = true }.encodeToString(com.example.chatgpt_mealplanner.sync.contract.ShopTripUploadDto.serializer(), trip)
+            val request = Request.Builder()
+                .url("https://$hostIp:$port/sync/v1/shop-trips")
+                .header("X-Pantry-Session-Token", sessionToken)
+                .post(body.toRequestBody("application/json".toMediaType()))
+                .build()
+            client.newCall(request).execute().use { it.code }
+        }.getOrNull()
+    }
+
     /** Follower: asks the main phone for the household's AI key. Null if it is not available right now. */
     open suspend fun getAiAccessToken(
         hostIp: String,

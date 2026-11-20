@@ -70,4 +70,40 @@ class Migration29To30Test {
         assertEquals("asda", database!!.storeOrderDao().getOpenSession()!!.storeId)
         assertNotNull(manager.observeOrder("tesco").first().firstOrNull { it.itemKey == "milk" })
     }
+
+    @Test
+    fun aFollowerKeepsItsTripUntilMainHasIt_andMainLearnsFromItOnce() = runBlocking {
+        val followerRole = org.mockito.kotlin.mock<com.example.chatgpt_mealplanner.core.sync.AppRoleResolver>()
+        org.mockito.kotlin.whenever(followerRole.isFollower()).thenReturn(true)
+        val follower = ShoppingSessionManager(open().storeOrderDao(), followerRole)
+
+        follower.start("tesco", now = 1_000L)
+        listOf("Milk", "Bread").forEachIndexed { i, n -> follower.recordTick(n, now = 2_000L + i) }
+        follower.finishOpenTrip(now = 3_000L)
+
+        // Nothing learned on the follower itself; the trip waits to be sent.
+        assertTrue(follower.observeOrder("tesco").first().isEmpty())
+        val pending = follower.tripsToUpload()
+        assertEquals(1, pending.size)
+        assertEquals(listOf("Milk", "Bread"), pending.single().ticks.map { it.displayName })
+
+        // Main receives it (twice: the first reply was lost) and learns once.
+        context.deleteDatabase("main-side")
+        val mainDb = Room.databaseBuilder(context, AppDatabase::class.java, "main-side").addMigrations(*ALL_MIGRATIONS).allowMainThreadQueries().build()
+        try {
+            val main = ShoppingSessionManager(mainDb.storeOrderDao())
+            val trip = pending.single()
+            repeat(2) { main.learnFromFollowerTrip(trip.session.id, "tesco", trip.session.startedAt, 3_000L, trip.ticks.map { it.displayName }) }
+            val learned = main.observeOrder("tesco").first().associate { it.itemKey to it.samples }
+            assertEquals(mapOf("milk" to 1, "bread" to 1), learned)
+
+            // The follower installs Main's order and marks the trip as sent.
+            follower.installOrders(main.allOrders())
+            follower.markUploaded(trip.session.id)
+            assertEquals(2, follower.observeOrder("tesco").first().size)
+            assertTrue(follower.tripsToUpload().isEmpty())
+        } finally {
+            mainDb.close(); context.deleteDatabase("main-side")
+        }
+    }
 }

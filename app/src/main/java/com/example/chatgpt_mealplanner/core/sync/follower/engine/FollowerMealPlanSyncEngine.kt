@@ -24,7 +24,8 @@ class FollowerMealPlanSyncEngine @Inject constructor(
     private val database: FollowerDatabase,
     private val client: PantrySyncTestClient,
     private val appDatabase: AppDatabase,
-    private val notificationManager: AppNotificationManager? = null
+    private val notificationManager: AppNotificationManager? = null,
+    private val shoppingSessions: com.example.chatgpt_mealplanner.core.shopping.ShoppingSessionManager? = null
 ) {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
@@ -170,6 +171,15 @@ class FollowerMealPlanSyncEngine @Inject constructor(
                 // Shops first: each price points at its shop. Main's records win; anything else here is left alone.
                 if (storeRows.isNotEmpty()) appDatabase.purchasePriceDao().upsertStores(storeRows)
                 if (priceRows.isNotEmpty()) appDatabase.purchasePriceDao().upsertPriceObservations(priceRows)
+            }
+            // Main's learned shop order replaces what this phone holds; null (an older Main) leaves it alone.
+            snapshot.storeOrders?.let { orders ->
+                shoppingSessions?.installOrders(orders.map { o ->
+                    com.example.chatgpt_mealplanner.core.database.entity.StoreItemOrderEntity(
+                        id = "${o.storeId}|${o.itemKey}", storeId = o.storeId, itemKey = o.itemKey, displayName = o.displayName,
+                        avgRank = o.avgRank, samples = o.samples, updatedAt = System.currentTimeMillis()
+                    )
+                })
             }
             if (shoppingLists != null) {
                 require(shoppingLists.count { it.status == ShoppingListStatus.ACTIVE } <= 1) { "Multiple active shopping lists" }

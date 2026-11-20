@@ -17,6 +17,22 @@ interface StoreOrderDao {
     @Query("SELECT * FROM shopping_sessions WHERE endedAt IS NULL ORDER BY startedAt DESC LIMIT 1")
     suspend fun getOpenSession(): ShoppingSessionEntity?
 
+    @Query("SELECT * FROM shopping_sessions WHERE id = :id LIMIT 1")
+    suspend fun getSession(id: String): ShoppingSessionEntity?
+
+    /** Finished trips this (follower) phone has not yet sent to Main. */
+    @Query("SELECT * FROM shopping_sessions WHERE endedAt IS NOT NULL AND uploadedAt IS NULL ORDER BY endedAt ASC")
+    suspend fun getTripsToUpload(): List<ShoppingSessionEntity>
+
+    @Query("SELECT * FROM store_item_order")
+    suspend fun getAllOrders(): List<StoreItemOrderEntity>
+
+    @Query("DELETE FROM store_item_order")
+    suspend fun deleteAllOrders()
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertOrders(orders: List<StoreItemOrderEntity>)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertSession(session: ShoppingSessionEntity)
 

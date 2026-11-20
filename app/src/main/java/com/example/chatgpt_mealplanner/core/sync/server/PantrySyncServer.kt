@@ -79,7 +79,8 @@ open class PantrySyncServer @Inject constructor(
     private val shoppingDao: ShoppingDao? = null,
     private val stapleRuleDao: StapleRuleDao? = null,
     private val purchasePriceDao: com.example.chatgpt_mealplanner.core.database.dao.PurchasePriceDao? = null,
-    private val followerAiKeys: com.example.chatgpt_mealplanner.core.ai.provider.FollowerAiKeys? = null
+    private val followerAiKeys: com.example.chatgpt_mealplanner.core.ai.provider.FollowerAiKeys? = null,
+    private val shoppingSessions: com.example.chatgpt_mealplanner.core.shopping.ShoppingSessionManager? = null
 ) {
     private var engine: io.ktor.server.engine.ApplicationEngine? = null
     private var serverState = PantryServerState.STOPPED
@@ -107,6 +108,7 @@ open class PantrySyncServer @Inject constructor(
     companion object {
         const val MAX_BOOTSTRAP_ITEMS = 5000
         const val MAX_SYNCED_PRICES = 5000
+        const val MAX_TRIP_TICKS = 1000
     }
 
     open suspend fun createBootstrapSnapshot(): BootstrapResponseDto {
@@ -176,6 +178,9 @@ open class PantrySyncServer @Inject constructor(
                 createdAt = o.createdAt, source = o.source, canonicalName = o.canonicalName
             )
         }
+        val storeOrders = shoppingSessions?.allOrders()?.map { o ->
+            com.example.chatgpt_mealplanner.sync.contract.StoreOrderSyncDto(o.storeId, o.itemKey, o.displayName, o.avgRank, o.samples)
+        }
         val stapleRules = stapleRuleDao?.getAllRulesSync()?.map { rule ->
             StapleRuleSyncDto(
                 id = rule.id, canonicalIngredientId = rule.canonicalIngredientId, displayName = rule.displayName,
@@ -223,7 +228,8 @@ open class PantrySyncServer @Inject constructor(
             stapleRules = stapleRules,
             shoppingSources = shoppingSources,
             userStores = userStores,
-            priceObservations = priceObservations
+            priceObservations = priceObservations,
+            storeOrders = storeOrders
         )
         onAfterSnapshotReadHook?.invoke()
         return dto
@@ -555,6 +561,29 @@ open class PantrySyncServer @Inject constructor(
                             call.respond(HttpStatusCode.ServiceUnavailable, buildJsonObject { put("error", "AI_ACCESS_UNAVAILABLE") })
                         } else {
                             call.respond(buildJsonObject { put("token", key) })
+                        }
+                    }
+
+                    // A follower's finished shopping trip: the household learns the order its items were found in.
+                    post("/sync/v1/shop-trips") {
+                        val token = call.request.headers["X-Pantry-Session-Token"]
+                        if (sessionManager.validateSessionToken(token) == null) {
+                            call.respond(HttpStatusCode.Unauthorized, buildJsonObject { put("error", "UNAUTHORIZED") })
+                            return@post
+                        }
+                        val bodyText = call.receiveBoundedText() ?: return@post
+                        val trip = runCatching { json.decodeFromString<com.example.chatgpt_mealplanner.sync.contract.ShopTripUploadDto>(bodyText) }.getOrNull()
+                        val sessions = shoppingSessions
+                        if (trip == null || trip.tripId.isBlank() || trip.storeId.isBlank() || trip.ticks.size > MAX_TRIP_TICKS) {
+                            call.respond(HttpStatusCode.BadRequest, buildJsonObject { put("error", "INVALID_TRIP") })
+                        } else if (sessions == null) {
+                            call.respond(HttpStatusCode.ServiceUnavailable, buildJsonObject { put("error", "TRIPS_UNAVAILABLE") })
+                        } else {
+                            sessions.learnFromFollowerTrip(
+                                tripId = trip.tripId, storeId = trip.storeId, startedAt = trip.startedAt, endedAt = trip.endedAt,
+                                tickedNamesInOrder = trip.ticks.sortedBy { it.tickedAt }.map { it.displayName }
+                            )
+                            call.respond(buildJsonObject { put("accepted", true) })
                         }
                     }
 

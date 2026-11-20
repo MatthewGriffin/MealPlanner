@@ -30,7 +30,9 @@ data class ShoppingSessionEntity(
     @PrimaryKey val id: String,
     val storeId: String,
     val startedAt: Long,
-    val endedAt: Long?
+    val endedAt: Long?,
+    /** A follower's finished trip is sent to Main; this is when that was done (null until then). Main's own trips are never sent. */
+    val uploadedAt: Long? = null
 )
 
 /** An item ticked off during a trip, kept as it happens because the list itself is rebuilt and loses its ticks. */
