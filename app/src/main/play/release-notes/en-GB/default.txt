@@ -1,2 +1,3 @@
-- If cooking would leave only a scrap of an ingredient (10% or less of a weighed or measured item, such as 50 g of 850 g chicken), the app now uses it all up instead of leaving a tiny amount in your pantry.
-- The Cook Now screen shows how much of each ingredient you have, warns when you are short and by how much, and has a "Use all" button.
+- New: Start shopping on the Shopping list. Pick your shop and the list follows the order you found things in last time, grouped by department, and it learns as you tick items off.
+- Followers can shop too: their trips are sent to the main phone, which shares what it learns. Both phones need this version.
+- Optional: let the phone's step counter and compass learn a shop's layout (asks for the Physical activity permission; it stays in your household).
