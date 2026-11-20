@@ -1,6 +1,2 @@
-- Recipe cards now show estimated nutrition per portion (calories, carbs, sugars, protein, fat, fibre), and the recipe page shows it too.
-- Leftovers from a batch now go on the same meal on the next free day (a lunch gives a lunch), and the assistant can plan "one now, one tomorrow".
-- Ingredient names with accents, such as jalapeños, now match your pantry.
-- Cook Now says which ingredient you are short of, and by how much.
-- Recipe step timers are named after their step.
-- The barcode scanner no longer flickers between results, reads barcodes at higher quality, and retries before saying a product is not found.
+- A phone that Main has removed from the household now says so clearly, and has a "Use this phone on its own" button that returns it to normal mode with its data.
+- Reconnecting a follower with a re-authorise or join code now starts syncing straight away instead of waiting behind an earlier failed attempt, and no longer keeps showing an old "revoked" status.
