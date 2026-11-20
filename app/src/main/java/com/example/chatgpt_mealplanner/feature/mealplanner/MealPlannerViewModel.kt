@@ -270,6 +270,10 @@ class MealPlannerViewModel @Inject constructor(
         }
     }
 
+    /** What is in stock for each ingredient of a meal (by ingredient id), for the cooking screen; ingredients with no known stock are left out. */
+    suspend fun stockFor(ingredients: List<com.example.chatgpt_mealplanner.core.model.MealIngredient>): Map<String, Double> =
+        ingredients.mapNotNull { ing -> mealDomainService.availableStock(ing)?.let { ing.id to it } }.toMap()
+
     private fun deleteMeal(mealId: String) {
         viewModelScope.launch {
             isLoadingFlow.value = true

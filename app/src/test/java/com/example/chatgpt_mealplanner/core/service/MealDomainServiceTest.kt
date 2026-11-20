@@ -227,6 +227,34 @@ class MealDomainServiceTest {
         assertEquals(MealStatus.COOKED, mealDao.getMealWithIngredients("m_name")!!.meal.status)
     }
 
+    private suspend fun cookWith(stockQty: Double, use: Double, staple: Boolean = false): com.example.chatgpt_mealplanner.core.database.entity.InventoryItemEntity {
+        val lot = stockLot("lot_x", "Chicken thighs", canonical = null, qty = stockQty).copy(staple = staple)
+        inventoryDao.insertItem(lot)
+        service.createPlannedMeal(
+            Meal(id = "m_x", date = "2026-11-18", title = "Traybake"),
+            listOf(MealIngredient(id = "i_x", mealId = "m_x", canonicalIngredientId = null, displayName = "Chicken thighs", plannedQuantity = use, plannedUnit = QuantityUnit.GRAM))
+        )
+        assertTrue(service.markMealCooked("m_x") is DomainResult.Success)
+        return inventoryDao.getItemById("lot_x")!!
+    }
+
+    @Test
+    fun markMealCooked_aScrapLeftOver_isUsedUp() = runTest {
+        val left = cookWith(stockQty = 850.0, use = 800.0)
+        assertEquals(0.0, left.quantity!!, 0.001)
+        assertEquals(ItemStatus.OUT, left.status)
+    }
+
+    @Test
+    fun markMealCooked_aSensibleRemainder_isKept() = runTest {
+        assertEquals(350.0, cookWith(stockQty = 850.0, use = 500.0).quantity!!, 0.001)
+    }
+
+    @Test
+    fun markMealCooked_aStapleKeepsItsRemainder() = runTest {
+        assertEquals(50.0, cookWith(stockQty = 850.0, use = 800.0, staple = true).quantity!!, 0.001)
+    }
+
     @Test
     fun markMealCooked_ingredientWithNoCanonicalId_andNothingInStock_saysNotEnoughRatherThanNoCanonicalId() = runTest {
         service.createPlannedMeal(

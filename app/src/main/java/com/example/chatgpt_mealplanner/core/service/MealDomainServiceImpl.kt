@@ -156,6 +156,28 @@ class MealDomainServiceImpl @Inject constructor(
         DomainResult.Success(updatedMeal)
     }
 
+    override suspend fun availableStock(ingredient: MealIngredient): Double? {
+        val usable = listOf(ItemStatus.AVAILABLE, ItemStatus.LOW, ItemStatus.USE_SOON)
+        val byId = ingredient.canonicalIngredientId?.let { inventoryDao.getUsableItemsByCanonicalIngredientId(it) }.orEmpty()
+        val lots = byId.ifEmpty {
+            inventoryDao.getAllItemsSync().filter { lot ->
+                lot.status in usable && (
+                    com.example.chatgpt_mealplanner.core.util.IngredientNameMatcher.matches(lot.displayName, ingredient.displayName) ||
+                        (lot.category == com.example.chatgpt_mealplanner.core.model.FoodCategory.KITS_MIXES &&
+                            com.example.chatgpt_mealplanner.core.util.IngredientNameMatcher.matchesKit(lot.displayName, ingredient.displayName))
+                    )
+            }
+        }
+        if (lots.isEmpty()) return null
+        var total = 0.0
+        for (lot in lots) {
+            if (lot.quantityConfidence == QuantityConfidence.UNKNOWN || lot.quantity == null) return null
+            val converted = UnitConverter.convert(lot.quantity, lot.quantityUnit ?: ingredient.plannedUnit, ingredient.plannedUnit, lot.packSize, lot.packSizeUnit)
+            total += (converted as? DomainResult.Success)?.value ?: return null
+        }
+        return total
+    }
+
     override suspend fun leftoverDaysFor(sourceMealId: String): List<Meal> =
         mealDao.getAllMealsWithIngredientsSync().map { it.meal.toDomainModel() }.filter {
             it.status == MealStatus.PLANNED && LeftoverMeals.sourceMealId(it.notes) == sourceMealId
@@ -644,7 +666,10 @@ class MealDomainServiceImpl @Inject constructor(
 
                     if (lot.opened == true || lot.packCount == null) {
                         val lotQty = lot.quantity ?: 0.0
-                        val actualDeductInLotUnit = minOf(lotQty, reqInLotUnit)
+                        val needed = minOf(lotQty, reqInLotUnit)
+                        // A scrap left over (a few grams of pesto, 50 g of chicken) is used up with the meal, unless it is a staple.
+                        val takeAll = !lot.staple && com.example.chatgpt_mealplanner.core.util.StockRemainder.isSmallRemainder(lotQty, needed, lot.quantityUnit)
+                        val actualDeductInLotUnit = if (takeAll) lotQty else needed
                         val newQty = lotQty - actualDeductInLotUnit
                         val newStatus = if (newQty <= 0.0) ItemStatus.OUT else lot.status
 
@@ -774,7 +799,9 @@ class MealDomainServiceImpl @Inject constructor(
 
                                 // Create opened residual lot
                                 val openedResidualQty = packSize - remainderInLotUnit
-                                if (openedResidualQty > 0.0) {
+                                val residualIsScrap = !lot.staple &&
+                                    com.example.chatgpt_mealplanner.core.util.StockRemainder.isSmallRemainder(packSize, remainderInLotUnit, lot.packSizeUnit ?: lot.quantityUnit)
+                                if (openedResidualQty > 0.0 && !residualIsScrap) {
                                     val residualLot = InventoryItemEntity(
                                         id = UUID.randomUUID().toString(),
                                         barcode = lot.barcode,
