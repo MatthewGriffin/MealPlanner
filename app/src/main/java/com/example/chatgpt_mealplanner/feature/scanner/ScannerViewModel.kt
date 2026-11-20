@@ -78,6 +78,13 @@ class ScannerViewModel @Inject constructor(
     }
 
     private fun onBarcodeScanned(barcode: String) {
+        // The camera keeps reporting the same barcode while a result is on screen. Only a ready scanner takes a
+        // scan, or the lookup restarts over the result and the screen flickers between the two.
+        when (_state.value) {
+            is ScannerState.LookingUp, is ScannerState.NotFound, is ScannerState.Error,
+            is ScannerState.Confirming, is ScannerState.Saving, is ScannerState.Saved -> return
+            else -> Unit
+        }
         val now = System.currentTimeMillis()
         if (barcode == lastScannedBarcode && (now - lastScannedTimestamp) < DEBOUNCE_INTERVAL_MS) {
             return // Ignore duplicate scan within debounce window

@@ -208,4 +208,24 @@ class ScannerViewModelTest {
 
         assertEquals("ScanAnother MUST reset state to Ready for subsequent scans", ScannerState.Ready, viewModel.state.value)
     }
+
+    @Test
+    fun scansWhileAResultIsShowing_areIgnoredUntilTheScannerIsReadyAgain() = runTest {
+        val barcode = "8908001017046"
+        whenever(mockRepository.lookupBarcode(barcode)).thenReturn(ProductLookupResult.NotFound(barcode))
+
+        viewModel.onEvent(ScannerUiEvent.BarcodeScanned(barcode))
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertTrue(viewModel.state.value is ScannerState.NotFound)
+
+        // The camera keeps seeing the same pack: the result must stay put.
+        viewModel.onEvent(ScannerUiEvent.BarcodeScanned(barcode))
+        viewModel.onEvent(ScannerUiEvent.BarcodeScanned("5000159461122"))
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertTrue(viewModel.state.value is ScannerState.NotFound)
+        verify(mockRepository, times(1)).lookupBarcode(barcode)
+
+        viewModel.onEvent(ScannerUiEvent.ScanAnother)
+        assertEquals(ScannerState.Ready, viewModel.state.value)
+    }
 }
