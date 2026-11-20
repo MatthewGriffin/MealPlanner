@@ -23,6 +23,10 @@ class OpenFoodFactsProductDataProvider @Inject constructor(
 
     override val providerSource: ProductDataSource = ProductDataSource.OPEN_FOOD_FACTS
 
+    private companion object {
+        const val MISS_RETRY_DELAY_MS = 800L
+    }
+
     private data class CatalogueEndpoint(
         val name: String,
         val source: ProductDataSource,
@@ -49,8 +53,17 @@ class OpenFoodFactsProductDataProvider @Inject constructor(
                 ProductProviderResult.NotFound -> Unit
             }
         }
-        return failure ?: ProductProviderResult.NotFound
+        if (failure != null) return failure
+        // The catalogue sometimes answers "not found" for a product it has when it is busy, so a miss is asked once more.
+        if (retryOnMiss) {
+            kotlinx.coroutines.delay(MISS_RETRY_DELAY_MS)
+            val again = lookupExact(barcode, candidates.first())
+            if (again is ProductProviderResult.Success) return again
+        }
+        return ProductProviderResult.NotFound
     }
+
+    internal var retryOnMiss = true
 
     private suspend fun lookupExact(barcode: String, externalBarcode: String): ProductProviderResult {
 
