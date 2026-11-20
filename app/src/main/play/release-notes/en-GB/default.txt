@@ -1,2 +1,1 @@
-- A phone that Main has removed from the household now says so clearly, and has a "Use this phone on its own" button that returns it to normal mode with its data.
-- Reconnecting a follower with a re-authorise or join code now starts syncing straight away instead of waiting behind an earlier failed attempt, and no longer keeps showing an old "revoked" status.
+- The app can now update itself: when a newer version is available, tap Update in the prompt, keep using the app while it downloads, then restart when asked. No need to open the Play Store.
