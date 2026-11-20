@@ -1,1 +1,2 @@
-- The app can now update itself: when a newer version is available, tap Update in the prompt, keep using the app while it downloads, then restart when asked. No need to open the Play Store.
+- If cooking would leave only a scrap of an ingredient (10% or less of a weighed or measured item, such as 50 g of 850 g chicken), the app now uses it all up instead of leaving a tiny amount in your pantry.
+- The Cook Now screen shows how much of each ingredient you have, warns when you are short and by how much, and has a "Use all" button.
