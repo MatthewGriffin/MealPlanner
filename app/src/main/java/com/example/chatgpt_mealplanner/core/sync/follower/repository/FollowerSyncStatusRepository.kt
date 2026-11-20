@@ -147,6 +147,8 @@ open class FollowerSyncStatusRepository @Inject constructor(
             )
         }
 
+        // The flag in memory only mirrors the stored one: after a new pairing clears it, it must not linger.
+        if (!followerPairingStore.isRevoked() && _isRevoked.value) _isRevoked.value = false
         if (followerPairingStore.isRevoked() || _isRevoked.value) {
             return FollowerSyncStatusModel(
                 state = FollowerSyncState.ACCESS_REVOKED,

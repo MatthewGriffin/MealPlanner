@@ -77,7 +77,9 @@ open class FollowerPairingStore @Inject constructor(
                 "KEY_KEY_ALIAS" to config.keyAlias,
                 "KEY_HOUSEHOLD_ID" to config.householdId,
                 "KEY_MAIN_DEVICE_ID" to config.mainDeviceId,
-                "KEY_VERIFIED_BOOTSTRAP_V1" to null
+                "KEY_VERIFIED_BOOTSTRAP_V1" to null,
+                // A fresh pairing ends an earlier revocation; left in place, every sync pass stops at "revoked".
+                "KEY_ACCESS_STATUS" to null
             )
         )
         if (!success) return false
