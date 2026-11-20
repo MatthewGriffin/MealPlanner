@@ -4,7 +4,9 @@ sealed interface DomainError {
     data class InsufficientQuantity(
         val available: Double,
         val requested: Double,
-        val unit: QuantityUnit?
+        val unit: QuantityUnit?,
+        /** The ingredient or item that is short, when known. */
+        val displayName: String? = null
     ) : DomainError
 
     data class NeedsConfirmation(

@@ -269,7 +269,7 @@ fun RecipeDetailsScreen(
                                                 timers.forEach { timer ->
                                                     androidx.compose.material3.AssistChip(
                                                         onClick = {
-                                                            com.example.chatgpt_mealplanner.core.util.StepTimerLauncher.start(timerContext, timer, "${meal.title}: step ${step.number}")
+                                                            com.example.chatgpt_mealplanner.core.util.StepTimerLauncher.start(timerContext, timer, "Step ${step.number}: ${step.text.trim().take(40)}")
                                                         },
                                                         label = { Text(timer.label) },
                                                         leadingIcon = { Text("\u25B6") }
@@ -283,6 +283,14 @@ fun RecipeDetailsScreen(
                             parsed.other.forEach {
                                 Text(it, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 8.dp))
                             }
+                        }
+                    }
+                }
+
+                parsed.nutrition?.let { facts ->
+                    item {
+                        SectionCard("Nutrition per portion (estimate)") {
+                            Text(facts, style = MaterialTheme.typography.bodyMedium)
                         }
                     }
                 }

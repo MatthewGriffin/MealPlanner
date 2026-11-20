@@ -688,16 +688,18 @@ class ChatViewModel @Inject constructor(
                 val oldLeftoverDays = existingMeal?.let { mealDomainService.leftoverDaysFor(it.id) }.orEmpty()
                 val mealDate = existingMeal?.date ?: resolvedSlot.date
                 val freedSlots = oldLeftoverDays.mapNotNull { runCatching { com.example.chatgpt_mealplanner.core.util.PlanSlot(java.time.LocalDate.parse(it.date), it.mealType) }.getOrNull() }
-                // An edit that makes more extra portions than the old leftover days held may use the empty dinners after the meal.
-                val openDinners = if (existingMeal != null && extraPortions > freedSlots.size * proposal.servings) {
+                // Extra portions go on the same meal on later days (a lunch's leftovers are tomorrow's lunch), using the days
+                // an edit frees first and then days that have no meal of that type yet.
+                val slotType = existingMeal?.mealType ?: resolvedSlot.mealType
+                val openSlots = if (extraPortions > freedSlots.size * proposal.servings) {
                     val from = java.time.LocalDate.parse(mealDate)
                     val taken = mealRepository.getUpcomingPlannedMeals(from.toString(), from.plusDays(14).toString())
-                        .filter { it.meal.mealType == com.example.chatgpt_mealplanner.core.model.MealType.DINNER && it.meal.id != existingMeal.id && it.meal.id !in oldLeftoverDays.map { d -> d.id } }
+                        .filter { it.meal.mealType == slotType && it.meal.id != existingMeal?.id && it.meal.id !in oldLeftoverDays.map { d -> d.id } }
                         .map { it.meal.date }.toSet()
                     (1..14).map { from.plusDays(it.toLong()) }.filter { it.toString() !in taken }
-                        .map { com.example.chatgpt_mealplanner.core.util.PlanSlot(it, com.example.chatgpt_mealplanner.core.model.MealType.DINNER) }
+                        .map { com.example.chatgpt_mealplanner.core.util.PlanSlot(it, slotType) }
                 } else emptyList()
-                val placement = leftoverPlacement(proposal, java.time.LocalDate.parse(mealDate), freedSlots, openDinners)
+                val placement = leftoverPlacement(proposal, java.time.LocalDate.parse(mealDate), slotType, freedSlots, openSlots)
                 val batchPortions = proposal.servings + extraPortions
                 val immediatePortions = proposal.servings * (1 + placement.slots.size)
                 val leftoverTags = if (extraPortions > 0) parsedTags + MealTag.BATCH_COOK else parsedTags
@@ -789,6 +791,7 @@ class ChatViewModel @Inject constructor(
     private fun leftoverPlacement(
         proposal: MealProposal,
         mealDate: java.time.LocalDate,
+        slotType: com.example.chatgpt_mealplanner.core.model.MealType,
         freedSlots: List<com.example.chatgpt_mealplanner.core.util.PlanSlot> = emptyList(),
         openSlots: List<com.example.chatgpt_mealplanner.core.util.PlanSlot> = emptyList()
     ): com.example.chatgpt_mealplanner.core.util.LeftoverPlacement {
@@ -797,11 +800,11 @@ class ChatViewModel @Inject constructor(
             return com.example.chatgpt_mealplanner.core.util.LeftoverPlacement(emptyList(), extras)
         }
         val named = proposal.extraDates.mapNotNull { runCatching { java.time.LocalDate.parse(it.trim()) }.getOrNull() }
-            .map { com.example.chatgpt_mealplanner.core.util.PlanSlot(it, com.example.chatgpt_mealplanner.core.model.MealType.DINNER) }
+            .map { com.example.chatgpt_mealplanner.core.util.PlanSlot(it, slotType) }
         val candidates = named.ifEmpty {
-            (freedSlots + openSlots).distinctBy { it.date to it.mealType } + planQueue.filter { it.mealType == com.example.chatgpt_mealplanner.core.model.MealType.DINNER }
+            (freedSlots + openSlots + planQueue.filter { it.mealType == slotType }).distinctBy { it.date to it.mealType }
         }
-        return com.example.chatgpt_mealplanner.core.util.LeftoverPlacer.place(extras, proposal.servings, mealDate, null, candidates)
+        return com.example.chatgpt_mealplanner.core.util.LeftoverPlacer.place(extras, proposal.servings, mealDate, slotType, candidates)
     }
 
     /** What the recipe card tells the user about the extra portions, before they save. */
@@ -811,10 +814,13 @@ class ChatViewModel @Inject constructor(
         val date = runCatching {
             java.time.LocalDate.parse(com.example.chatgpt_mealplanner.core.ai.resolver.MealSlotResolver.resolveSlot(proposal.suggestedDate, proposal.mealType).date)
         }.getOrNull() ?: return null
-        val placement = leftoverPlacement(proposal, date)
+        val slot = com.example.chatgpt_mealplanner.core.ai.resolver.MealSlotResolver.resolveSlot(proposal.suggestedDate, proposal.mealType)
+        // The saved result checks which days are free; the card assumes the days straight after the meal are.
+        val nextDays = (1..14).map { com.example.chatgpt_mealplanner.core.util.PlanSlot(date.plusDays(it.toLong()), slot.mealType) }
+        val placement = leftoverPlacement(proposal, date, slot.mealType, openSlots = nextDays)
         val fmt = java.time.format.DateTimeFormatter.ofPattern("EEE d MMM", java.util.Locale.getDefault())
         val where = buildList {
-            if (placement.slots.isNotEmpty()) add("saved against " + placement.slots.joinToString(", ") { "${it.date.format(fmt)} dinner" })
+            if (placement.slots.isNotEmpty()) add("saved against " + placement.slots.joinToString(", ") { "${it.date.format(fmt)} ${slot.mealType.name.lowercase()}" })
             if (placement.frozenPortions > 0) add("${placement.frozenPortions} portion${if (placement.frozenPortions == 1) "" else "s"} frozen")
         }.joinToString(" and ")
         return "$extras extra portion${if (extras == 1) "" else "s"} will be $where. " +
@@ -935,7 +941,7 @@ class ChatViewModel @Inject constructor(
 
     private fun formatDomainError(error: DomainError): String {
         return when (error) {
-            is DomainError.InsufficientQuantity -> "Insufficient stock: ${error.requested}"
+            is DomainError.InsufficientQuantity -> "Not enough ${error.displayName ?: "of an ingredient"}: needs ${com.example.chatgpt_mealplanner.core.util.formatQuantityNumber(error.requested)} ${error.unit?.name?.lowercase() ?: ""}, you have ${com.example.chatgpt_mealplanner.core.util.formatQuantityNumber(error.available)}."
             is DomainError.InvalidUnitConversion -> "Unit conversion error"
             is DomainError.NeedsConfirmation -> "Confirmation required: ${error.displayName}"
             is DomainError.TransactionFailed -> "Transaction error: ${error.cause}"

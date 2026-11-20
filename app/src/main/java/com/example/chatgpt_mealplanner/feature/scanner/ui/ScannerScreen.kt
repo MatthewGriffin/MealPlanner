@@ -201,7 +201,17 @@ fun CameraXScannerView(
                     it.setSurfaceProvider(previewView.surfaceProvider)
                 }
 
+                // The default analysis size is 640x480, too coarse for the fine bars on a crinkled crisp packet.
+                val highResolution = androidx.camera.core.resolutionselector.ResolutionSelector.Builder()
+                    .setResolutionStrategy(
+                        androidx.camera.core.resolutionselector.ResolutionStrategy(
+                            android.util.Size(1920, 1080),
+                            androidx.camera.core.resolutionselector.ResolutionStrategy.FALLBACK_RULE_CLOSEST_LOWER_THEN_HIGHER
+                        )
+                    )
+                    .build()
                 val imageAnalysis = ImageAnalysis.Builder()
+                    .setResolutionSelector(highResolution)
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .build()
 

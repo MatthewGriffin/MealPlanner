@@ -40,6 +40,28 @@ data class RecipeStep(
     val equipment: String? = null
 )
 
+/** An estimate per portion eaten, in kcal and grams. Any value may be missing. */
+@Serializable
+data class NutritionPerPortion(
+    val calories: Int? = null,
+    val carbsG: Int? = null,
+    val sugarsG: Int? = null,
+    val proteinG: Int? = null,
+    val fatG: Int? = null,
+    val fibreG: Int? = null
+) {
+    fun isEmpty() = listOfNotNull(calories, carbsG, sugarsG, proteinG, fatG, fibreG).isEmpty()
+
+    /** One line: "520 kcal • Carbs 45 g (sugars 6 g) • Protein 30 g • Fat 18 g • Fibre 5 g". */
+    fun summary(): String = listOfNotNull(
+        calories?.let { "$it kcal" },
+        carbsG?.let { "Carbs $it g" + (sugarsG?.let { s -> " (sugars $s g)" } ?: "") },
+        proteinG?.let { "Protein $it g" },
+        fatG?.let { "Fat $it g" },
+        fibreG?.let { "Fibre $it g" }
+    ).joinToString(" \u2022 ")
+}
+
 @Serializable
 data class MealProposal(
     val title: String,
@@ -69,7 +91,9 @@ data class MealProposal(
     /** Dinners (YYYY-MM-DD) the user asked the extra portions to go on, instead of the next free days of the plan. */
     val extraDates: List<String> = emptyList(),
     /** Id of an existing planned meal this recipe edits (scaled, changed): saving updates that meal in place. */
-    val replacesMealId: String? = null
+    val replacesMealId: String? = null,
+    /** Estimated nutrition for one portion, shown on the card and kept with the saved method. */
+    val nutrition: NutritionPerPortion? = null
 ) {
     /** Null when the recipe gave no time, so a card never shows an invented one. */
     fun totalMinutes(): Int? =
@@ -91,7 +115,8 @@ data class MealProposal(
         }
         val extras = worthAdding.filter { it.isNotBlank() }.map { "Worth adding: $it" }
         val basedOn = source?.takeIf { it.isNotBlank() }?.let { "Based on: $it" }
-        return (listOfNotNull(summary.ifBlank { null }) + methodLines() + swaps + extras + listOfNotNull(basedOn)).joinToString("\n")
+        val facts = nutrition?.takeUnless { it.isEmpty() }?.let { "Nutrition per portion (estimate): ${it.summary()}" }
+        return (listOfNotNull(summary.ifBlank { null }) + methodLines() + listOfNotNull(facts) + swaps + extras + listOfNotNull(basedOn)).joinToString("\n")
     }
 }
 

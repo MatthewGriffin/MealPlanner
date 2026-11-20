@@ -361,7 +361,7 @@ class MealPlannerViewModel @Inject constructor(
 
     private fun formatDomainError(error: DomainError): String {
         return when (error) {
-            is DomainError.InsufficientQuantity -> "Insufficient stock: ${error.requested} ${error.unit?.name ?: ""} required, only ${error.available} available."
+            is DomainError.InsufficientQuantity -> "Not enough ${error.displayName ?: "of an ingredient"}: the recipe needs ${com.example.chatgpt_mealplanner.core.util.formatQuantityNumber(error.requested)} ${error.unit?.name?.lowercase() ?: ""}, you have ${com.example.chatgpt_mealplanner.core.util.formatQuantityNumber(error.available)}. Add some to your pantry, or change the amount when cooking."
             is DomainError.InvalidUnitConversion -> "Unit conversion error between ${error.from} and ${error.to}."
             is DomainError.NeedsConfirmation -> "Confirmation required for ${error.displayName}."
             is DomainError.DuplicateOperation -> "Already completed: ${error.message}"

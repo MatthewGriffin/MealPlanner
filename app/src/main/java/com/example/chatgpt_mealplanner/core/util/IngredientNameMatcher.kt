@@ -48,7 +48,9 @@ object IngredientNameMatcher {
     )
 
     private fun normalized(name: String): String {
-        var t = " " + name.lowercase().replace("&", " and ").replace(Regex("\\(.*?\\)"), " ").replace(Regex("[^a-z0-9]+"), " ").trim() + " "
+        // "jalapeño" must be "jalapeno": the accent would otherwise split the word.
+        val plain = java.text.Normalizer.normalize(name, java.text.Normalizer.Form.NFD).replace(Regex("\\p{M}+"), "")
+        var t = " " + plain.lowercase().replace("&", " and ").replace(Regex("\\(.*?\\)"), " ").replace(Regex("[^a-z0-9]+"), " ").trim() + " "
         for ((from, to) in SYNONYMS) {
             t = t.replace(" $from ", " $to ").replace(" ${from}s ", " $to ")
         }

@@ -555,7 +555,8 @@ class MealDomainServiceImpl @Inject constructor(
                         DomainError.InsufficientQuantity(
                             available = usableTotal,
                             requested = req.effectiveQty,
-                            unit = req.effectiveUnit
+                            unit = req.effectiveUnit,
+                            displayName = req.ingredient.displayName
                         )
                     )
                 }
