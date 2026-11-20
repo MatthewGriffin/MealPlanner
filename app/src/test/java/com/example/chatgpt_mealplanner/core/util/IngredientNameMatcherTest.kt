@@ -63,4 +63,9 @@ class IngredientKitMatchTest {
         assertFalse(IngredientNameMatcher.matches("fish and chips", "chips"))
         assertFalse(IngredientNameMatcher.matches("Chicken drumsticks and thighs", "chicken breast"))
     }
+
+    @Test fun accentsDoNotSplitWords() {
+        assertTrue(IngredientNameMatcher.matches("Sliced green jalapeños", "sliced green jalapenos"))
+        assertTrue(IngredientNameMatcher.matches("jalapeño", "Jalapeno"))
+    }
 }

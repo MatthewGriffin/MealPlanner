@@ -75,13 +75,22 @@ fun MealProposalCard(
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = "Makes ${proposal.batchPortions} portions: ${proposal.servings} now, $extra extra. " +
-                        (leftoverNote ?: "Extra portions go on later dinners of your plan if they fit, otherwise they are frozen."),
+                        (leftoverNote ?: "Extra portions go on the same meal on the next free days if they fit, otherwise they are frozen."),
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onPrimaryContainer
                 )
             }
             Spacer(modifier = Modifier.height(8.dp))
+
+            proposal.nutrition?.takeUnless { it.isEmpty() }?.let { facts ->
+                Text(
+                    text = "Per portion (estimate): ${facts.summary()}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+            }
 
             proposal.changeSummary?.takeIf { it.isNotBlank() }?.let { summary ->
                 Text(

@@ -640,6 +640,14 @@ class AiToolDispatcher @Inject constructor(
 
         val proposal = com.example.chatgpt_mealplanner.contract.MealProposal(
             replacesMealId = replacesMealId,
+            nutrition = com.example.chatgpt_mealplanner.contract.NutritionPerPortion(
+                calories = extractDoubleArg(argsJson, "calories")?.toInt()?.takeIf { it > 0 },
+                carbsG = extractDoubleArg(argsJson, "carbsG")?.toInt()?.takeIf { it >= 0 },
+                sugarsG = extractDoubleArg(argsJson, "sugarsG")?.toInt()?.takeIf { it >= 0 },
+                proteinG = extractDoubleArg(argsJson, "proteinG")?.toInt()?.takeIf { it >= 0 },
+                fatG = extractDoubleArg(argsJson, "fatG")?.toInt()?.takeIf { it >= 0 },
+                fibreG = extractDoubleArg(argsJson, "fibreG")?.toInt()?.takeIf { it >= 0 }
+            ).takeUnless { it.isEmpty() },
             title = extractedTitle,
             mealType = mealType.name,
             suggestedDate = date,
@@ -1402,7 +1410,7 @@ class AiToolDispatcher @Inject constructor(
     private fun getErrorMessage(error: DomainError): String {
         return when (error) {
             is DomainError.ItemNotFound -> "Item not found"
-            is DomainError.InsufficientQuantity -> "Insufficient quantity available"
+            is DomainError.InsufficientQuantity -> "Not enough ${error.displayName ?: "stock"}: needs ${error.requested} ${error.unit?.name ?: ""}, only ${error.available} available"
             is DomainError.DuplicateOperation -> error.message
             is DomainError.InvalidQuantity -> "Invalid quantity specified"
             is DomainError.ItemNotUsable -> "Item is not usable"

@@ -9,6 +9,8 @@ data class ParsedRecipeText(
     val swaps: List<String>,
     val worthAdding: List<String>,
     val basedOn: String?,
+    /** "520 kcal • Carbs 45 g ..." per portion, an estimate, when the recipe has it. */
+    val nutrition: String? = null,
     /** Anything that is none of the above, shown as plain text. */
     val other: List<String>
 )
@@ -27,6 +29,7 @@ object RecipeTextParser {
         val swaps = mutableListOf<String>()
         val extras = mutableListOf<String>()
         var basedOn: String? = null
+        var nutrition: String? = null
         val other = mutableListOf<String>()
 
         text.lines().map { it.trim() }.filter { it.isNotEmpty() }.forEach { line ->
@@ -43,6 +46,7 @@ object RecipeTextParser {
                 }
                 line.startsWith("Worth adding:") -> extras += line.removePrefix("Worth adding:").trim()
                 line.startsWith("Swap ") -> swaps += line
+                line.startsWith("Nutrition per portion") -> nutrition = line.substringAfter(":").trim()
                 line.startsWith("Based on:") -> basedOn = line.removePrefix("Based on:").trim()
                 line.startsWith("Prep ") || line.startsWith("Cook ") || line.startsWith("Equipment:") -> {
                     line.split("•").map { it.trim() }.forEach { part ->
@@ -58,6 +62,6 @@ object RecipeTextParser {
                 else -> other += line
             }
         }
-        return ParsedRecipeText(prep, cook, equipment, steps, swaps, extras, basedOn, other)
+        return ParsedRecipeText(prep, cook, equipment, steps, swaps, extras, basedOn, nutrition, other)
     }
 }

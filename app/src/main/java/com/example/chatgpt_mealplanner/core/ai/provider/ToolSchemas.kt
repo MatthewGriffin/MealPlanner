@@ -41,6 +41,12 @@ internal object ToolSchemas {
                     }
                     number("prepMinutes", "Honest preparation time in minutes")
                     number("cookMinutes", "Honest cooking time in minutes")
+                    number("calories", "Estimated kcal per portion eaten (one serving, not the whole batch)")
+                    number("carbsG", "Estimated carbohydrate in grams per portion")
+                    number("sugarsG", "Estimated sugars in grams per portion, part of the carbohydrate")
+                    number("proteinG", "Estimated protein in grams per portion")
+                    number("fatG", "Estimated fat in grams per portion")
+                    number("fibreG", "Estimated fibre in grams per portion")
                     string("whyThisSuits", "One short, specific reason this recipe suits this user today")
                     putJsonObject("worthAdding") {
                         put("type", "array")
