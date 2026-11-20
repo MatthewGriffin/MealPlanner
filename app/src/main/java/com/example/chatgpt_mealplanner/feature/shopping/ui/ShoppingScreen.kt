@@ -282,18 +282,19 @@ fun ShoppingScreen(
                                     )
                                 }.toSortedMap()
                                 val shopOrder = uiState.activeShop?.orderByKey
+                                // While shopping the list is laid out by department in this shop's walking order, ticked items last.
                                 val ordered = trips.flatMap { (date, rows) ->
-                                    // While shopping, items follow this shop's learned order and ticked ones drop to the bottom.
-                                    val inShopOrder = if (shopOrder == null) rows else {
+                                    if (shopOrder == null) rows.map { Triple(date, null as String?, it) } else {
                                         val (done, todo) = rows.partition {
                                             it.item.status == ShoppingItemStatus.CHECKED || it.item.status == ShoppingItemStatus.PURCHASED_CONFIRMED
                                         }
-                                        com.example.chatgpt_mealplanner.core.shopping.StoreOrder.sort(todo, { r -> r.item.displayName }, shopOrder) + done
+                                        val sections = com.example.chatgpt_mealplanner.core.shopping.StoreOrder.plan(todo, { r -> r.item.displayName }, shopOrder)
+                                        sections.flatMap { section -> section.items.mapIndexed { i, r -> Triple(date, if (i == 0) section.department.displayName else null, r) } } +
+                                            done.map { Triple(date, null as String?, it) }
                                     }
-                                    inShopOrder.map { date to it }
                                 }
-                                items(ordered, key = { it.second.item.id }) { (tripDate, itemWithSources) ->
-                                    if (trips.size > 1 && ordered.first { it.first == tripDate }.second === itemWithSources) {
+                                items(ordered, key = { it.third.item.id }) { (tripDate, departmentHeader, itemWithSources) ->
+                                    if (trips.size > 1 && ordered.first { it.first == tripDate }.third === itemWithSources) {
                                         Text(
                                             text = if (tripDate == today) "Shop today" else
                                                 "Shop on " + tripDate.format(java.time.format.DateTimeFormatter.ofPattern("EEE d MMM")) +
@@ -301,6 +302,15 @@ fun ShoppingScreen(
                                             style = MaterialTheme.typography.titleSmall,
                                             fontWeight = FontWeight.Bold,
                                             modifier = Modifier.padding(top = 8.dp)
+                                        )
+                                    }
+                                    if (departmentHeader != null) {
+                                        Text(
+                                            text = departmentHeader,
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.padding(top = 6.dp)
                                         )
                                     }
                                     ShoppingItemCard(
