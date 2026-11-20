@@ -28,4 +28,30 @@ object StoreOrder {
         val (known, unknown) = items.partition { orderByKey.containsKey(keyOf(nameOf(it))) }
         return known.sortedBy { orderByKey.getValue(keyOf(nameOf(it))) } + unknown
     }
+
+    /** A department's part of the list, in the order it is walked. */
+    data class Section<T>(val department: Department, val items: List<T>)
+
+    /**
+     * Lays the list out as departments in walking order, each with its items. A department sits where its ticked items
+     * average out in this shop; one not yet seen there takes its place from a typical supermarket's walk. Inside a
+     * department, items the shop has taught the app come first by their own position, then the rest as listed.
+     */
+    fun <T> plan(items: List<T>, nameOf: (T) -> String, orderByKey: Map<String, Double>): List<Section<T>> {
+        if (items.isEmpty()) return emptyList()
+        val byDepartment = items.groupBy { Department.classify(nameOf(it)) }
+        val learnedAverage = byDepartment.mapNotNull { (department, rows) ->
+            val ranks = rows.mapNotNull { orderByKey[keyOf(nameOf(it))] }
+            if (ranks.isEmpty()) null else department to ranks.average()
+        }.toMap()
+        val defaults = Department.entries.filter { it != Department.OTHER }
+        fun walkPosition(department: Department): Double = learnedAverage[department]
+            ?: if (department == Department.OTHER) 2.0 else defaults.indexOf(department).toDouble() / (defaults.size - 1)
+        return byDepartment.entries
+            .sortedBy { walkPosition(it.key) }
+            .map { (department, rows) ->
+                val (known, unknown) = rows.partition { orderByKey.containsKey(keyOf(nameOf(it))) }
+                Section(department, known.sortedBy { orderByKey.getValue(keyOf(nameOf(it))) } + unknown)
+            }
+    }
 }

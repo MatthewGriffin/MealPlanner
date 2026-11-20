@@ -29,4 +29,22 @@ class StoreOrderTest {
     @Test fun differentWordingsOfOneItemShareAKey() {
         assertEquals(StoreOrder.keyOf("Diced chicken breast"), StoreOrder.keyOf("chicken breast, diced"))
     }
+
+    @Test fun withNothingLearnedDepartmentsFollowATypicalWalk() {
+        val plan = StoreOrder.plan(listOf("Milk", "Bananas", "Chicken breast", "Bread"), { it }, emptyMap())
+        assertEquals(
+            listOf(Department.PRODUCE, Department.BAKERY, Department.MEAT_FISH, Department.DAIRY_EGGS),
+            plan.map { it.department }
+        )
+    }
+
+    @Test fun aDepartmentSitsWhereItsLearnedItemsAverage_andNewItemsJoinIt() {
+        // This shop puts dairy first: milk was ticked at the very start.
+        val order = mapOf(StoreOrder.keyOf("Milk") to 0.0, StoreOrder.keyOf("Bananas") to 0.8)
+        val plan = StoreOrder.plan(listOf("Bananas", "Cheddar cheese", "Milk", "Apples"), { it }, order)
+        assertEquals(listOf(Department.DAIRY_EGGS, Department.PRODUCE), plan.map { it.department })
+        // Cheddar was never ticked here, but it is placed with the dairy; within produce, learned bananas come before apples.
+        assertEquals(listOf("Milk", "Cheddar cheese"), plan[0].items)
+        assertEquals(listOf("Bananas", "Apples"), plan[1].items)
+    }
 }
