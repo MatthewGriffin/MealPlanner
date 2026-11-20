@@ -88,6 +88,7 @@ hilt-compiler = { group = "com.google.dagger", name = "hilt-compiler", version.r
 hilt-navigation-compose = { group = "androidx.hilt", name = "hilt-navigation-compose", version.ref = "hiltNavigationCompose" }
 
 play-billing = { group = "com.android.billingclient", name = "billing-ktx", version = "9.1.0" }
+play-app-update = { group = "com.google.android.play", name = "app-update-ktx", version = "2.1.0" }
 play-integrity = { group = "com.google.android.play", name = "integrity", version = "1.4.0" }
 
 # Coroutines & Testing

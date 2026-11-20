@@ -129,9 +129,23 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var appRoleResolver: com.example.chatgpt_mealplanner.core.sync.AppRoleResolver
 
+    private val inAppUpdater by lazy(LazyThreadSafetyMode.NONE) { com.example.chatgpt_mealplanner.core.update.InAppUpdater(this) }
+
+    override fun onResume() {
+        super.onResume()
+        inAppUpdater.check()
+    }
+
+    override fun onDestroy() {
+        inAppUpdater.release()
+        super.onDestroy()
+    }
+
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Must be created before the activity starts: it registers for the update prompt's result.
+        inAppUpdater
         notificationRouteState.value = NotificationRoute.from(intent)
         // Household sync hosting (a foreground service with a notification) only runs once a device has been paired.
         lifecycleScope.launch {
@@ -145,6 +159,19 @@ class MainActivity : ComponentActivity() {
         com.example.chatgpt_mealplanner.ui.theme.AppThemeState.load(applicationContext)
         setContent {
             ChatGPT_MealPlannerTheme {
+                if (inAppUpdater.readyToInstall.value) {
+                    androidx.compose.material3.AlertDialog(
+                        onDismissRequest = { inAppUpdater.dismissPrompt() },
+                        title = { androidx.compose.material3.Text("Update ready") },
+                        text = { androidx.compose.material3.Text("A new version of Pantry Pal has been downloaded. Restart the app to use it.") },
+                        confirmButton = {
+                            androidx.compose.material3.TextButton(onClick = { inAppUpdater.install() }) { androidx.compose.material3.Text("Restart now") }
+                        },
+                        dismissButton = {
+                            androidx.compose.material3.TextButton(onClick = { inAppUpdater.dismissPrompt() }) { androidx.compose.material3.Text("Later") }
+                        }
+                    )
+                }
                 val notificationPermissionLauncher = rememberLauncherForActivityResult(
                     contract = ActivityResultContracts.RequestPermission(),
                     onResult = { }
