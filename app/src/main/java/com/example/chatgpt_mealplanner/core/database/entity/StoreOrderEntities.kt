@@ -21,7 +21,11 @@ data class StoreItemOrderEntity(
     /** Average position over [samples] shops, as a share of the way round the shop. */
     val avgRank: Double,
     val samples: Int,
-    val updatedAt: Long
+    val updatedAt: Long,
+    /** Where the item was, in metres east and north of the shop entrance, averaged over [posSamples] trips that sensed it. Null if never. */
+    val avgX: Double? = null,
+    val avgY: Double? = null,
+    val posSamples: Int = 0
 )
 
 /** One trip to a shop. It is open (endedAt null) from "Start shopping" until "Finish shopping". */
@@ -42,5 +46,8 @@ data class ShoppingTickEventEntity(
     val sessionId: String,
     val itemKey: String,
     val displayName: String,
-    val tickedAt: Long
+    val tickedAt: Long,
+    /** Where the phone was when ticked, in metres from where the trip began; null when the motion sensors were off. */
+    val x: Double? = null,
+    val y: Double? = null
 )

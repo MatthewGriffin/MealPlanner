@@ -64,6 +64,14 @@ fun ShoppingScreen(
     // Store sections start collapsed so large multi-store lists stay compact.
     var isListExpanded by remember { mutableStateOf(true) }
     var showStartShopping by remember { mutableStateOf(false) }
+    // The shop that was picked while the Physical activity permission is being asked for.
+    var pendingStoreId by remember { mutableStateOf<String?>(null) }
+    val activityPermission = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        pendingStoreId?.let { onEvent(ShoppingUiEvent.StartShopping(it, learnLayout = granted)) }
+        pendingStoreId = null
+    }
 
     LaunchedEffect(uiState.userMessage) {
         uiState.userMessage?.let { msg ->
@@ -83,8 +91,17 @@ fun ShoppingScreen(
     if (showStartShopping) {
         StartShoppingDialog(
             shops = uiState.shops,
+            motion = uiState.motion,
             onDismiss = { showStartShopping = false },
-            onStart = { storeId -> showStartShopping = false; onEvent(ShoppingUiEvent.StartShopping(storeId)) }
+            onStart = { storeId, learnLayout ->
+                showStartShopping = false
+                if (learnLayout && !uiState.motion.hasPermission) {
+                    pendingStoreId = storeId
+                    activityPermission.launch(android.Manifest.permission.ACTIVITY_RECOGNITION)
+                } else {
+                    onEvent(ShoppingUiEvent.StartShopping(storeId, learnLayout))
+                }
+            }
         )
     }
 

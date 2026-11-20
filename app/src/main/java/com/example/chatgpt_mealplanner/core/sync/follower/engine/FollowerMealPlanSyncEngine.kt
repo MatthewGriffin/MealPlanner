@@ -177,7 +177,8 @@ class FollowerMealPlanSyncEngine @Inject constructor(
                 shoppingSessions?.installOrders(orders.map { o ->
                     com.example.chatgpt_mealplanner.core.database.entity.StoreItemOrderEntity(
                         id = "${o.storeId}|${o.itemKey}", storeId = o.storeId, itemKey = o.itemKey, displayName = o.displayName,
-                        avgRank = o.avgRank, samples = o.samples, updatedAt = System.currentTimeMillis()
+                        avgRank = o.avgRank, samples = o.samples, updatedAt = System.currentTimeMillis(),
+                        avgX = o.avgX, avgY = o.avgY, posSamples = o.posSamples
                     )
                 })
             }

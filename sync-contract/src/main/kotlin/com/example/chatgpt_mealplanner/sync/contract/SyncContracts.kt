@@ -124,7 +124,10 @@ data class StoreOrderSyncDto(
     val itemKey: String,
     val displayName: String,
     val avgRank: Double,
-    val samples: Int
+    val samples: Int,
+    val avgX: Double? = null,
+    val avgY: Double? = null,
+    val posSamples: Int = 0
 )
 
 /** A shopping trip a follower made, sent to Main so the household learns from it. [tripId] makes a resend harmless. */
@@ -138,7 +141,7 @@ data class ShopTripUploadDto(
 )
 
 @Serializable
-data class ShopTickSyncDto(val displayName: String, val tickedAt: Long)
+data class ShopTickSyncDto(val displayName: String, val tickedAt: Long, val x: Double? = null, val y: Double? = null)
 
 @Serializable
 data class ShoppingListSyncDto(

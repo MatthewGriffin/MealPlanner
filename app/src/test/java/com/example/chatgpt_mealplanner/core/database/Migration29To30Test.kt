@@ -93,7 +93,7 @@ class Migration29To30Test {
         try {
             val main = ShoppingSessionManager(mainDb.storeOrderDao())
             val trip = pending.single()
-            repeat(2) { main.learnFromFollowerTrip(trip.session.id, "tesco", trip.session.startedAt, 3_000L, trip.ticks.map { it.displayName }) }
+            repeat(2) { main.learnFromFollowerTrip(trip.session.id, "tesco", trip.session.startedAt, 3_000L, trip.ticks.map { com.example.chatgpt_mealplanner.core.shopping.TickedItem(it.displayName, it.x, it.y) }) }
             val learned = main.observeOrder("tesco").first().associate { it.itemKey to it.samples }
             assertEquals(mapOf("milk" to 1, "bread" to 1), learned)
 
@@ -105,5 +105,26 @@ class Migration29To30Test {
         } finally {
             mainDb.close(); context.deleteDatabase("main-side")
         }
+    }
+
+    @Test
+    fun sensedPositionsAreAveragedOverTrips_andTicksWithoutOneLeaveThemAlone() = runBlocking {
+        val manager = ShoppingSessionManager(open().storeOrderDao())
+        val p = { x: Double, y: Double -> com.example.chatgpt_mealplanner.core.shopping.ShopPoint(x, y) }
+
+        manager.start("tesco", now = 1L)
+        manager.recordTick("Milk", p(10.0, 20.0), now = 2L)
+        manager.recordTick("Bread", null, now = 3L)               // sensors were off for this one
+        manager.finishOpenTrip(now = 4L)
+        manager.start("tesco", now = 5L)
+        manager.recordTick("Milk", p(14.0, 30.0), now = 6L)
+        manager.finishOpenTrip(now = 7L)
+
+        val order = manager.observeOrder("tesco").first().associateBy { it.itemKey }
+        assertEquals(12.0, order.getValue("milk").avgX!!, 1e-9)
+        assertEquals(25.0, order.getValue("milk").avgY!!, 1e-9)
+        assertEquals(2, order.getValue("milk").posSamples)
+        assertNull(order.getValue("bread").avgX)
+        assertEquals(0, order.getValue("bread").posSamples)
     }
 }

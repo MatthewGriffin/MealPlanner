@@ -10,6 +10,9 @@ import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/** An item ticked off, with where the phone was if the motion sensors were on. */
+data class TickedItem(val displayName: String, val x: Double? = null, val y: Double? = null)
+
 /**
  * A shopping trip: "Start shopping" picks the shop, every item ticked is noted as it happens, and finishing learns
  * the order those items were found in. On the main phone the order is learned straight away; a follower keeps the
@@ -33,11 +36,11 @@ class ShoppingSessionManager @Inject constructor(
     }
 
     /** Notes an item being ticked off, if a trip is open. Un-ticking is not recorded. */
-    suspend fun recordTick(displayName: String, now: Long = System.currentTimeMillis()) {
+    suspend fun recordTick(displayName: String, position: ShopPoint? = null, now: Long = System.currentTimeMillis()) {
         val session = dao.getOpenSession() ?: return
         val key = StoreOrder.keyOf(displayName)
         if (key.isBlank()) return
-        dao.insertTick(ShoppingTickEventEntity(UUID.randomUUID().toString(), session.id, key, displayName, now))
+        dao.insertTick(ShoppingTickEventEntity(UUID.randomUUID().toString(), session.id, key, displayName, now, position?.x, position?.y))
     }
 
     suspend fun finishOpenTrip(now: Long = System.currentTimeMillis()) {
@@ -49,7 +52,7 @@ class ShoppingSessionManager @Inject constructor(
             // Main does the learning; this trip waits (uploadedAt null) until it has been sent.
             dao.upsertSession(session.copy(endedAt = now))
         } else {
-            learn(session.storeId, dao.getTicks(session.id).map { it.displayName }, now)
+            learn(session.storeId, dao.getTicks(session.id).map { TickedItem(it.displayName, it.x, it.y) }, now)
             dao.upsertSession(session.copy(endedAt = now, uploadedAt = now))
         }
         val cutoff = now - KEEP_TRIPS_MS
@@ -58,10 +61,10 @@ class ShoppingSessionManager @Inject constructor(
     }
 
     /** Main: learns from a trip a follower made. Sending it twice (a lost reply) counts once. */
-    suspend fun learnFromFollowerTrip(tripId: String, storeId: String, startedAt: Long, endedAt: Long, tickedNamesInOrder: List<String>, now: Long = System.currentTimeMillis()) {
+    suspend fun learnFromFollowerTrip(tripId: String, storeId: String, startedAt: Long, endedAt: Long, ticksInOrder: List<TickedItem>, now: Long = System.currentTimeMillis()) {
         if (dao.getSession(tripId) != null) return
         dao.upsertSession(ShoppingSessionEntity(tripId, storeId, startedAt, endedAt, uploadedAt = now))
-        learn(storeId, tickedNamesInOrder, now)
+        learn(storeId, ticksInOrder, now)
     }
 
     /** A follower's finished trips, ready to send. */
@@ -81,22 +84,32 @@ class ShoppingSessionManager @Inject constructor(
 
     suspend fun allOrders(): List<StoreItemOrderEntity> = dao.getAllOrders()
 
-    private suspend fun learn(storeId: String, tickedNamesInOrder: List<String>, now: Long) {
-        val keys = tickedNamesInOrder.map { StoreOrder.keyOf(it) }
+    private suspend fun learn(storeId: String, ticksInOrder: List<TickedItem>, now: Long) {
+        val keys = ticksInOrder.map { StoreOrder.keyOf(it.displayName) }
         // An item ticked twice (ticked, un-ticked, ticked again) counts where it was first ticked.
         val ranks = StoreOrder.ranksOf(keys)
-        val names = tickedNamesInOrder.associateBy { StoreOrder.keyOf(it) }
+        val firstTick = ticksInOrder.groupBy { StoreOrder.keyOf(it.displayName) }.mapValues { it.value.first() }
         ranks.forEach { (key, rank) ->
             val old = dao.getOrder(storeId, key)
+            val tick = firstTick[key]
+            val sensed = if (tick?.x != null && tick.y != null) ShopPoint(tick.x, tick.y) else null
+            val oldPoint = if (old?.avgX != null && old.avgY != null) ShopPoint(old.avgX, old.avgY) else null
+            val merged = when {
+                sensed == null -> oldPoint
+                else -> StoreRoute.mergePoint(oldPoint, old?.posSamples ?: 0, sensed)
+            }
             dao.upsertOrder(
                 StoreItemOrderEntity(
                     id = old?.id ?: UUID.randomUUID().toString(),
                     storeId = storeId,
                     itemKey = key,
-                    displayName = names[key] ?: key,
+                    displayName = tick?.displayName ?: key,
                     avgRank = if (old == null) rank else StoreOrder.mergeRank(old.avgRank, old.samples, rank),
                     samples = (old?.samples ?: 0) + 1,
-                    updatedAt = now
+                    updatedAt = now,
+                    avgX = merged?.x,
+                    avgY = merged?.y,
+                    posSamples = (old?.posSamples ?: 0) + if (sensed != null) 1 else 0
                 )
             )
         }

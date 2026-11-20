@@ -179,7 +179,7 @@ open class PantrySyncServer @Inject constructor(
             )
         }
         val storeOrders = shoppingSessions?.allOrders()?.map { o ->
-            com.example.chatgpt_mealplanner.sync.contract.StoreOrderSyncDto(o.storeId, o.itemKey, o.displayName, o.avgRank, o.samples)
+            com.example.chatgpt_mealplanner.sync.contract.StoreOrderSyncDto(o.storeId, o.itemKey, o.displayName, o.avgRank, o.samples, o.avgX, o.avgY, o.posSamples)
         }
         val stapleRules = stapleRuleDao?.getAllRulesSync()?.map { rule ->
             StapleRuleSyncDto(
@@ -581,7 +581,7 @@ open class PantrySyncServer @Inject constructor(
                         } else {
                             sessions.learnFromFollowerTrip(
                                 tripId = trip.tripId, storeId = trip.storeId, startedAt = trip.startedAt, endedAt = trip.endedAt,
-                                tickedNamesInOrder = trip.ticks.sortedBy { it.tickedAt }.map { it.displayName }
+                                ticksInOrder = trip.ticks.sortedBy { it.tickedAt }.map { com.example.chatgpt_mealplanner.core.shopping.TickedItem(it.displayName, it.x, it.y) }
                             )
                             call.respond(buildJsonObject { put("accepted", true) })
                         }

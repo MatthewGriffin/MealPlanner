@@ -41,7 +41,8 @@ class ShoppingViewModel @Inject constructor(
     private val appRoleResolver: AppRoleResolver,
     private val purchasePriceDao: PurchasePriceDao? = null,
     private val followerDatabase: com.example.chatgpt_mealplanner.core.sync.follower.database.FollowerDatabase? = null,
-    private val shoppingSessions: com.example.chatgpt_mealplanner.core.shopping.ShoppingSessionManager? = null
+    private val shoppingSessions: com.example.chatgpt_mealplanner.core.shopping.ShoppingSessionManager? = null,
+    private val motionTracker: com.example.chatgpt_mealplanner.core.shopping.ShopMotionTracker? = null
 ) : ViewModel() {
 
     private val activeTabFlow = MutableStateFlow(ShoppingTab.SHOPPING_LIST)
@@ -112,7 +113,7 @@ class ShoppingViewModel @Inject constructor(
                 ActiveShop(
                     storeId = session.storeId,
                     storeName = stores.firstOrNull { it.id == session.storeId }?.name ?: "your shop",
-                    orderByKey = rows.associate { it.itemKey to it.avgRank }
+                    orderByKey = orderFrom(rows)
                 )
             }
         }
@@ -158,6 +159,7 @@ class ShoppingViewModel @Inject constructor(
             manualItemName = manualItemName,
             manualItemNotes = manualItemNotes,
             activeShop = activeShop,
+            motion = motionTracker?.let { com.example.chatgpt_mealplanner.feature.shopping.MotionOptions(available = it.available(), enabled = it.enabled, hasPermission = it.hasPermission()) } ?: MotionOptions(),
             shops = stores.map { ShopChoice(it.id, it.name) }
         )
     }.stateIn(
@@ -243,7 +245,7 @@ class ShoppingViewModel @Inject constructor(
             )
             is ShoppingUiEvent.SaveStapleRule -> saveStapleRule(event.rule)
             is ShoppingUiEvent.DeleteStapleRule -> deleteStapleRule(event.ruleId)
-            is ShoppingUiEvent.StartShopping -> startShopping(event.storeId)
+            is ShoppingUiEvent.StartShopping -> startShopping(event.storeId, event.learnLayout)
             ShoppingUiEvent.FinishShopping -> finishShopping()
             ShoppingUiEvent.ClearUserMessage -> userMessageFlow.value = null
         }
@@ -262,13 +264,32 @@ class ShoppingViewModel @Inject constructor(
         }
     }
 
-    private fun startShopping(storeId: String) {
+    /**
+     * Items whose spot in the shop has been sensed are ordered by walking to the nearest next, which follows the real
+     * layout; the others keep the position learned from the order they were ticked in.
+     */
+    private fun orderFrom(rows: List<com.example.chatgpt_mealplanner.core.database.entity.StoreItemOrderEntity>): Map<String, Double> {
+        val sensed = rows.filter { it.avgX != null && it.avgY != null && it.posSamples > 0 }
+            .associate { it.itemKey to com.example.chatgpt_mealplanner.core.shopping.ShopPoint(it.avgX!!, it.avgY!!) }
+        val byRoute = if (sensed.size >= MIN_SENSED_ITEMS) com.example.chatgpt_mealplanner.core.shopping.StoreRoute.rankByRoute(sensed) else emptyMap()
+        return rows.associate { it.itemKey to (byRoute[it.itemKey] ?: it.avgRank) }
+    }
+
+    private fun startShopping(storeId: String, learnLayout: Boolean?) {
         val sessions = shoppingSessions ?: return
-        viewModelScope.launch { runCatching { sessions.start(storeId) } }
+        motionTracker?.let { tracker ->
+            if (learnLayout != null) tracker.enabled = learnLayout
+        }
+        viewModelScope.launch {
+            runCatching { sessions.start(storeId) }
+            motionTracker?.stop()
+            motionTracker?.start()
+        }
     }
 
     private fun finishShopping() {
         val sessions = shoppingSessions ?: return
+        motionTracker?.stop()
         viewModelScope.launch {
             runCatching { sessions.finishOpenTrip() }
             userMessageFlow.value = "Shopping finished. The order you ticked things in is remembered for next time."
@@ -279,7 +300,7 @@ class ShoppingViewModel @Inject constructor(
         // Ticks are noted as they happen: regenerating the list rebuilds it and loses them.
         if (currentStatus != ShoppingItemStatus.CHECKED) {
             val name = uiState.value.activeListWithItems?.items?.firstOrNull { it.item.id == itemId }?.item?.displayName
-            if (name != null && shoppingSessions != null) viewModelScope.launch { runCatching { shoppingSessions.recordTick(name) } }
+            if (name != null && shoppingSessions != null) viewModelScope.launch { runCatching { shoppingSessions.recordTick(name, motionTracker?.position()) } }
         }
         viewModelScope.launch {
             val nextStatus = if (currentStatus == ShoppingItemStatus.CHECKED) ShoppingItemStatus.NEEDED else ShoppingItemStatus.CHECKED
@@ -404,5 +425,10 @@ class ShoppingViewModel @Inject constructor(
             is DomainError.InvalidQuantity -> "Invalid quantity: ${error.quantity}"
             is DomainError.ItemNotUsable -> "Item not available: ${error.itemId}"
         }
+    }
+
+    private companion object {
+        /** Fewer sensed items than this give no route worth following; the tick order is used instead. */
+        const val MIN_SENSED_ITEMS = 4
     }
 }
