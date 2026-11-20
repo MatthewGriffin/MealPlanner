@@ -31,6 +31,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -188,6 +189,13 @@ fun CameraXScannerView(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+
+    // Leaving the screen must stop the camera and its analyser, or frames keep arriving behind the result.
+    DisposableEffect(Unit) {
+        onDispose {
+            runCatching { ProcessCameraProvider.getInstance(context).get().unbindAll() }
+        }
+    }
 
     AndroidView(
         factory = { ctx ->

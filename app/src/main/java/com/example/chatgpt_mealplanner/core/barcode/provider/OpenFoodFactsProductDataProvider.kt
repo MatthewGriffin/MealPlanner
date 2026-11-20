@@ -29,8 +29,30 @@ class OpenFoodFactsProductDataProvider @Inject constructor(
         val url: String
     )
 
+    /**
+     * The scanner strips leading zeros, so a UPC-A or an EAN that starts with 0 reaches here too short and the
+     * catalogue would say "not found". The code as given is tried first, then the usual full lengths.
+     */
     override suspend fun lookupBarcode(barcode: String): ProductProviderResult {
-        val externalBarcode = com.example.chatgpt_mealplanner.core.barcode.util.BarcodeNormalizer.formatForExternalLookup(barcode) ?: barcode
+        val given = com.example.chatgpt_mealplanner.core.barcode.util.BarcodeNormalizer.formatForExternalLookup(barcode) ?: barcode
+        val candidates = buildList {
+            add(given)
+            if (given.all { it.isDigit() }) {
+                listOf(12, 13).filter { it > given.length }.forEach { add(given.padStart(it, '0')) }
+            }
+        }.distinct()
+        var failure: ProductProviderResult.Failure? = null
+        for (code in candidates) {
+            when (val result = lookupExact(barcode, code)) {
+                is ProductProviderResult.Success -> return result
+                is ProductProviderResult.Failure -> failure = result
+                ProductProviderResult.NotFound -> Unit
+            }
+        }
+        return failure ?: ProductProviderResult.NotFound
+    }
+
+    private suspend fun lookupExact(barcode: String, externalBarcode: String): ProductProviderResult {
 
         val endpoints = listOf(
             CatalogueEndpoint("OPEN_FOOD_FACTS", ProductDataSource.OPEN_FOOD_FACTS, "https://world.openfoodfacts.org/api/v2/product/$externalBarcode.json"),

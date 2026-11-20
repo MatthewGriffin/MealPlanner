@@ -256,4 +256,19 @@ class OpenFoodFactsDataProviderTest {
         assertEquals("5012345678900", products[0].barcode)
         assertEquals("Monster", products[0].brand)
     }
+
+    @Test
+    fun aCodeWhoseLeadingZeroWasStripped_isFoundUnderItsFullLength() = runTest {
+        val stripped = "12345678905"
+        val full = "012345678905"
+        fun url(host: String, code: String) = "https://world.$host.org/api/v2/product/$code.json"
+        whenever(mockApi.getProductByUrl(any())).thenReturn(OpenFoodFactsResponse(status = 0))
+        whenever(mockApi.getProductByUrl(url("openfoodfacts", full))).thenReturn(
+            OpenFoodFactsResponse(code = full, status = 1, product = OpenFoodFactsProductDto(productName = "Nacho crisps"))
+        )
+
+        val result = provider.lookupBarcode(stripped)
+
+        assertTrue(result.toString(), result is ProductProviderResult.Success)
+    }
 }
