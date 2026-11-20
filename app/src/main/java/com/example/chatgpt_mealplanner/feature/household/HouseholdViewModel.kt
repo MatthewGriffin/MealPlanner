@@ -110,7 +110,8 @@ class HouseholdViewModel @Inject constructor(
     private val followerSyncStatusRepository: com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncStatusRepository? = null,
     private val followerSyncScheduler: com.example.chatgpt_mealplanner.core.sync.follower.worker.FollowerSyncScheduler? = null,
     private val followerDatabase: com.example.chatgpt_mealplanner.core.sync.follower.database.FollowerDatabase? = null,
-    @param:ApplicationContext private val appContext: Context? = null
+    @param:ApplicationContext private val appContext: Context? = null,
+    private val proxyAccount: com.example.chatgpt_mealplanner.core.ai.provider.ProxyAccount? = null
 ) : ViewModel() {
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -179,6 +180,29 @@ class HouseholdViewModel @Inject constructor(
                 }
             }
             refreshFollowerStatus()
+        }
+    }
+
+    /**
+     * A revoked follower can stop following and run on its own again: its pairing is forgotten, so it is a Main device
+     * with the data already on it. The household's AI key is dropped. Changes it never uploaded stay only on this phone.
+     */
+    fun leaveHousehold() {
+        viewModelScope.launch {
+            followerSyncScheduler?.let { _ ->
+                appContext?.let { ctx ->
+                    runCatching {
+                        val work = androidx.work.WorkManager.getInstance(ctx)
+                        work.cancelUniqueWork(com.example.chatgpt_mealplanner.core.sync.follower.worker.FollowerSyncScheduler.AUTO_WORK_NAME)
+                        work.cancelUniqueWork(com.example.chatgpt_mealplanner.core.sync.follower.worker.FollowerSyncScheduler.MANUAL_WORK_NAME)
+                        work.cancelUniqueWork(com.example.chatgpt_mealplanner.core.sync.follower.worker.FollowerSyncScheduler.PERIODIC_WORK_NAME)
+                    }
+                }
+            }
+            runCatching { proxyAccount?.clearSharedToken() }
+            followerPairingStore.clear()
+            _uiState.update { it.copy(statusMessage = "This phone now works on its own. You can join a household again from this screen.", errorMessage = null) }
+            loadHouseholdInfo()
         }
     }
 

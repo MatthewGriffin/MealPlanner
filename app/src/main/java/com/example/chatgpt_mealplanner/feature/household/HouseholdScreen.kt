@@ -55,8 +55,23 @@ fun HouseholdScreen(
     onResolveConflictApplyFollower: (String) -> Unit = {},
     onApprovePendingDiscard: (String) -> Unit = {},
     onRejectPendingDiscard: (String) -> Unit = {},
+    onLeaveHousehold: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val confirmLeave = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    if (confirmLeave.value) {
+        AlertDialog(
+            onDismissRequest = { confirmLeave.value = false },
+            title = { Text("Use this phone on its own?") },
+            text = {
+                Text("It stops following the main phone and keeps the pantry, plans and recipes it has now. Changes it never managed to upload stay only on this phone. You can join a household again at any time.")
+            },
+            confirmButton = {
+                TextButton(onClick = { confirmLeave.value = false; onLeaveHousehold() }) { Text("Use on its own") }
+            },
+            dismissButton = { TextButton(onClick = { confirmLeave.value = false }) { Text("Cancel") } }
+        )
+    }
     if (uiState.deviceToRevoke != null) {
         val dev = uiState.deviceToRevoke
         AlertDialog(
@@ -189,12 +204,24 @@ fun HouseholdScreen(
                                 style = MaterialTheme.typography.bodySmall
                             )
                         }
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Button(
-                            onClick = onSyncNowClicked,
-                            enabled = !uiState.isSyncing
-                        ) {
-                            Text(if (uiState.isSyncing) "Syncing…" else "Sync now")
+                        if (uiState.followerSyncStatus?.state == com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncState.ACCESS_REVOKED) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "The main phone has removed this phone from the household, so it no longer syncs. " +
+                                    "To reconnect, ask the main phone for a re-authorise code and scan it under Join Household. " +
+                                    "Or use this phone on its own.",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Button(onClick = { confirmLeave.value = true }) { Text("Use this phone on its own") }
+                        } else {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Button(
+                                onClick = onSyncNowClicked,
+                                enabled = !uiState.isSyncing
+                            ) {
+                                Text(if (uiState.isSyncing) "Syncing…" else "Sync now")
+                            }
                         }
                     }
                 }
