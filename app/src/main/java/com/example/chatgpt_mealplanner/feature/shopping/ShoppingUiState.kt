@@ -25,8 +25,15 @@ data class ShoppingUiState(
     val showAddManualDialog: Boolean = false,
     val shopPriceOptions: Map<String, List<ShopPriceOption>> = emptyMap(),
     val manualItemName: String = "",
-    val manualItemNotes: String = ""
+    val manualItemNotes: String = "",
+    /** Set while a shopping trip is open: the list is sorted by this shop's learned order. */
+    val activeShop: ActiveShop? = null,
+    val shops: List<ShopChoice> = emptyList()
 )
+
+data class ActiveShop(val storeId: String, val storeName: String, val orderByKey: Map<String, Double>)
+
+data class ShopChoice(val id: String, val name: String)
 
 sealed interface ShoppingUiEvent {
     data class SelectTab(val tab: ShoppingTab) : ShoppingUiEvent
@@ -42,5 +49,7 @@ sealed interface ShoppingUiEvent {
     data class ResolveUncertainty(val inventoryItemId: String, val confirmedQuantity: Double, val unit: QuantityUnit, val confidence: QuantityConfidence = QuantityConfidence.EXACT) : ShoppingUiEvent
     data class SaveStapleRule(val rule: StapleRule) : ShoppingUiEvent
     data class DeleteStapleRule(val ruleId: String) : ShoppingUiEvent
+    data class StartShopping(val storeId: String) : ShoppingUiEvent
+    object FinishShopping : ShoppingUiEvent
     object ClearUserMessage : ShoppingUiEvent
 }

@@ -63,6 +63,7 @@ fun ShoppingScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     // Store sections start collapsed so large multi-store lists stay compact.
     var isListExpanded by remember { mutableStateOf(true) }
+    var showStartShopping by remember { mutableStateOf(false) }
 
     LaunchedEffect(uiState.userMessage) {
         uiState.userMessage?.let { msg ->
@@ -76,6 +77,14 @@ fun ShoppingScreen(
             itemWithSources = uiState.selectedItemForDetail,
             onOpenMeal = { mealId, mealDate -> onOpenMeal(mealId, mealDate) },
             onDismiss = { onEvent(ShoppingUiEvent.SelectItemDetail(null)) }
+        )
+    }
+
+    if (showStartShopping) {
+        StartShoppingDialog(
+            shops = uiState.shops,
+            onDismiss = { showStartShopping = false },
+            onStart = { storeId -> showStartShopping = false; onEvent(ShoppingUiEvent.StartShopping(storeId)) }
         )
     }
 
@@ -149,6 +158,27 @@ fun ShoppingScreen(
                                 IconButton(onClick = { onEvent(ShoppingUiEvent.RegenerateShoppingList) }) {
                                     Icon(Icons.Default.Refresh, contentDescription = "Regenerate List")
                                 }
+                            }
+                        }
+                    }
+
+                    if (!uiState.isFollower) {
+                        val shop = uiState.activeShop
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (shop == null) {
+                                TextButton(onClick = { showStartShopping = true }) { Text("Start shopping") }
+                            } else {
+                                Text(
+                                    text = "Shopping at ${shop.storeName}" + if (shop.orderByKey.isEmpty()) " \u2022 learning the order" else " \u2022 in shop order",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                TextButton(onClick = { onEvent(ShoppingUiEvent.FinishShopping) }) { Text("Finish") }
                             }
                         }
                     }
@@ -251,7 +281,17 @@ fun ShoppingScreen(
                                         it.item.displayName, it.sources.map { s -> s.mealDate }, today
                                     )
                                 }.toSortedMap()
-                                val ordered = trips.flatMap { (date, rows) -> rows.map { date to it } }
+                                val shopOrder = uiState.activeShop?.orderByKey
+                                val ordered = trips.flatMap { (date, rows) ->
+                                    // While shopping, items follow this shop's learned order and ticked ones drop to the bottom.
+                                    val inShopOrder = if (shopOrder == null) rows else {
+                                        val (done, todo) = rows.partition {
+                                            it.item.status == ShoppingItemStatus.CHECKED || it.item.status == ShoppingItemStatus.PURCHASED_CONFIRMED
+                                        }
+                                        com.example.chatgpt_mealplanner.core.shopping.StoreOrder.sort(todo, { r -> r.item.displayName }, shopOrder) + done
+                                    }
+                                    inShopOrder.map { date to it }
+                                }
                                 items(ordered, key = { it.second.item.id }) { (tripDate, itemWithSources) ->
                                     if (trips.size > 1 && ordered.first { it.first == tripDate }.second === itemWithSources) {
                                         Text(

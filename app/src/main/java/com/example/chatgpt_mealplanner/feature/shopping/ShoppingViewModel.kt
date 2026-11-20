@@ -19,6 +19,8 @@ import com.example.chatgpt_mealplanner.core.repository.StapleRuleRepository
 import com.example.chatgpt_mealplanner.core.service.ShoppingDomainService
 import com.example.chatgpt_mealplanner.core.sync.AppRoleResolver
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -38,7 +40,8 @@ class ShoppingViewModel @Inject constructor(
     private val stapleRuleRepository: StapleRuleRepository,
     private val appRoleResolver: AppRoleResolver,
     private val purchasePriceDao: PurchasePriceDao? = null,
-    private val followerDatabase: com.example.chatgpt_mealplanner.core.sync.follower.database.FollowerDatabase? = null
+    private val followerDatabase: com.example.chatgpt_mealplanner.core.sync.follower.database.FollowerDatabase? = null,
+    private val shoppingSessions: com.example.chatgpt_mealplanner.core.shopping.ShoppingSessionManager? = null
 ) : ViewModel() {
 
     private val activeTabFlow = MutableStateFlow(ShoppingTab.SHOPPING_LIST)
@@ -97,6 +100,23 @@ class ShoppingViewModel @Inject constructor(
         }
     private val stapleRulesFlow = stapleRuleRepository.observeAllStapleRules()
 
+    private val storesFlow = purchasePriceDao?.observeActiveStores() ?: kotlinx.coroutines.flow.flowOf(emptyList())
+    private val openSessionFlow = shoppingSessions?.observeOpenSession() ?: kotlinx.coroutines.flow.flowOf(null)
+
+    /** The shop being shopped in and what is known of its order, or null when no trip is open. */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    private val activeShopFlow = combine(openSessionFlow, storesFlow) { session, stores -> session to stores }
+        .flatMapLatest { (session, stores) ->
+            if (session == null || shoppingSessions == null) kotlinx.coroutines.flow.flowOf(null)
+            else shoppingSessions.observeOrder(session.storeId).map { rows ->
+                ActiveShop(
+                    storeId = session.storeId,
+                    storeName = stores.firstOrNull { it.id == session.storeId }?.name ?: "your shop",
+                    orderByKey = rows.associate { it.itemKey to it.avgRank }
+                )
+            }
+        }
+
     @Suppress("UNCHECKED_CAST")
     val uiState: StateFlow<ShoppingUiState> = combine(
         activeShoppingListFlow,
@@ -108,7 +128,9 @@ class ShoppingViewModel @Inject constructor(
         showAddManualDialogFlow,
         manualItemNameFlow,
         manualItemNotesFlow,
-        shopPriceOptionsFlow
+        shopPriceOptionsFlow,
+        activeShopFlow,
+        storesFlow
     ) { flows ->
         val listWithItems = flows[0] as ShoppingListWithItems?
         val stapleRules = flows[1] as List<StapleRule>
@@ -120,6 +142,8 @@ class ShoppingViewModel @Inject constructor(
         val manualItemName = flows[7] as String
         val manualItemNotes = flows[8] as String
         val shopPriceOptions = flows[9] as Map<String, List<ShopPriceOption>>
+        val activeShop = flows[10] as ActiveShop?
+        val stores = flows[11] as List<com.example.chatgpt_mealplanner.core.database.entity.UserStoreEntity>
 
         ShoppingUiState(
             activeListWithItems = listWithItems,
@@ -132,7 +156,9 @@ class ShoppingViewModel @Inject constructor(
             showAddManualDialog = showAddDialog,
             shopPriceOptions = shopPriceOptions,
             manualItemName = manualItemName,
-            manualItemNotes = manualItemNotes
+            manualItemNotes = manualItemNotes,
+            activeShop = activeShop,
+            shops = stores.map { ShopChoice(it.id, it.name) }
         )
     }.stateIn(
         scope = viewModelScope,
@@ -217,6 +243,8 @@ class ShoppingViewModel @Inject constructor(
             )
             is ShoppingUiEvent.SaveStapleRule -> saveStapleRule(event.rule)
             is ShoppingUiEvent.DeleteStapleRule -> deleteStapleRule(event.ruleId)
+            is ShoppingUiEvent.StartShopping -> if (!appRoleResolver.isFollower()) startShopping(event.storeId)
+            ShoppingUiEvent.FinishShopping -> if (!appRoleResolver.isFollower()) finishShopping()
             ShoppingUiEvent.ClearUserMessage -> userMessageFlow.value = null
         }
     }
@@ -234,7 +262,25 @@ class ShoppingViewModel @Inject constructor(
         }
     }
 
+    private fun startShopping(storeId: String) {
+        val sessions = shoppingSessions ?: return
+        viewModelScope.launch { runCatching { sessions.start(storeId) } }
+    }
+
+    private fun finishShopping() {
+        val sessions = shoppingSessions ?: return
+        viewModelScope.launch {
+            runCatching { sessions.finishOpenTrip() }
+            userMessageFlow.value = "Shopping finished. The order you ticked things in is remembered for next time."
+        }
+    }
+
     private fun toggleItemChecked(itemId: String, currentStatus: ShoppingItemStatus) {
+        // Ticks are noted as they happen: regenerating the list rebuilds it and loses them.
+        if (currentStatus != ShoppingItemStatus.CHECKED) {
+            val name = uiState.value.activeListWithItems?.items?.firstOrNull { it.item.id == itemId }?.item?.displayName
+            if (name != null && shoppingSessions != null) viewModelScope.launch { runCatching { shoppingSessions.recordTick(name) } }
+        }
         viewModelScope.launch {
             val nextStatus = if (currentStatus == ShoppingItemStatus.CHECKED) ShoppingItemStatus.NEEDED else ShoppingItemStatus.CHECKED
             val result = shoppingDomainService.updateItemStatus(itemId, nextStatus)

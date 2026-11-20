@@ -61,7 +61,7 @@ class Migration26To27Test {
 
     @Test
     fun migrationAddsTheSavedRecipesTable_andItWorks() = runBlocking {
-        val db = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29).allowMainThreadQueries().build()
+        val db = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30).allowMainThreadQueries().build()
         database = db
 
         assertNull(db.savedRecipeDao().getByTitle("shakshuka"))
