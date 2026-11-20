@@ -461,6 +461,7 @@ class MainActivity : ComponentActivity() {
                                 onConfirmRevocation = householdViewModel::confirmRevocation,
                                 onCancelRevocation = householdViewModel::cancelRevocation,
                                 onSyncNowClicked = householdViewModel::triggerSyncNow,
+                                onLeaveHousehold = householdViewModel::leaveHousehold,
                                 onReauthorizeDevice = householdViewModel::createReauthorizationInvitation,
                                 onDismissReauthorizationDialog = householdViewModel::dismissReauthorizationDialog,
                                 onResolveConflictKeepMain = householdViewModel::resolveConflictKeepMain,

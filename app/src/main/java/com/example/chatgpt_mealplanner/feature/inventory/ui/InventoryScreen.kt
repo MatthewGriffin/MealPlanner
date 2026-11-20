@@ -771,7 +771,7 @@ fun FollowerSyncStatusCard(
             if (status.state == com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncState.ACCESS_REVOKED) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "Access was revoked by the Main device. Your local inventory remains on this device, but this device can no longer sync with the household.",
+                    text = "Access was revoked by the Main device. Your local inventory remains on this device, but it can no longer sync. Open Household to reconnect with a re-authorise code, or to use this phone on its own.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onErrorContainer
                 )
