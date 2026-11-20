@@ -23,6 +23,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -54,6 +55,13 @@ fun CookNowScreen(
                 this[ing.id] = ing.plannedQuantity.toString()
             }
         }
+    }
+
+    // What the household has of each ingredient, so a short stock is seen before cooking and a scrap can be used up.
+    val stock = remember(plannedMealId) { mutableStateMapOf<String, Double>() }
+    LaunchedEffect(mealWithIngredients?.meal?.id) {
+        stock.clear()
+        stock.putAll(viewModel.stockFor(mealWithIngredients?.ingredients.orEmpty()))
     }
 
     Column(
@@ -145,6 +153,34 @@ fun CookNowScreen(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                            val inStock = stock[ing.id]
+                            val entered = currentActual.toDoubleOrNull() ?: ing.plannedQuantity
+                            if (inStock != null) {
+                                Text(
+                                    text = "In stock: ${formatQuantityAndUnit(inStock, ing.plannedUnit)}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (entered > inStock + 1e-9) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                if (entered > inStock + 1e-9) {
+                                    Text(
+                                        text = "That is more than you have: ${formatQuantityAndUnit(entered - inStock, ing.plannedUnit)} short.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.error
+                                    )
+                                } else if (com.example.chatgpt_mealplanner.core.util.StockRemainder.isSmallRemainder(inStock, entered, ing.plannedUnit)) {
+                                    Text(
+                                        text = "Only ${formatQuantityAndUnit(inStock - entered, ing.plannedUnit)} would be left, so it will be used up.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            } else {
+                                Text(
+                                    text = "In stock: not recorded",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                             Spacer(modifier = Modifier.height(8.dp))
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -163,6 +199,11 @@ fun CookNowScreen(
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Bold
                                 )
+                            }
+                            if (inStock != null && inStock > 0.0) {
+                                androidx.compose.material3.TextButton(
+                                    onClick = { actualQuantities[ing.id] = com.example.chatgpt_mealplanner.core.util.formatQuantityNumber(inStock) }
+                                ) { Text("Use all (${formatQuantityAndUnit(inStock, ing.plannedUnit)})") }
                             }
                         }
                     }

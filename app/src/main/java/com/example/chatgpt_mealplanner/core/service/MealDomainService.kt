@@ -27,6 +27,12 @@ interface MealDomainService {
 
     suspend fun deletePlannedMeal(mealId: String): DomainResult<Unit>
 
+    /**
+     * How much of an ingredient the household has, in the ingredient's own unit, for the cooking screen. Null when it
+     * is not in stock, or the amount is unknown or in a unit that cannot be compared (packs against grams).
+     */
+    suspend fun availableStock(ingredient: MealIngredient): Double?
+
     /** The uncooked "Leftovers: X" days planned for the batch that [sourceMealId] makes. */
     suspend fun leftoverDaysFor(sourceMealId: String): List<Meal>
 
