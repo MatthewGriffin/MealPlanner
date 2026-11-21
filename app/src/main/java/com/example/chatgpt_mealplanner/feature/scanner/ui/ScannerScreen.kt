@@ -57,15 +57,32 @@ fun ScannerScreen(
     userStores: List<UserStoreEntity> = emptyList(),
     onEvent: (ScannerUiEvent) -> Unit,
     onNavigateBack: () -> Unit,
+    onOpenAssistant: (kitName: String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
+    // A kit just added by scan needs its packet instructions before Claude can cook with it.
+    val savedKit = (state as? ScannerState.Saved)?.item?.takeIf { it.category == com.example.chatgpt_mealplanner.core.model.FoodCategory.KITS_MIXES }
 
     LaunchedEffect(state) {
-        if (state is ScannerState.Saved) {
+        if (state is ScannerState.Saved && savedKit == null) {
             onEvent(ScannerUiEvent.ScanAnother)
             onNavigateBack()
         }
+    }
+
+    if (savedKit != null) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { onEvent(ScannerUiEvent.ScanAnother); onNavigateBack() },
+            title = { Text("Scan the packet now?") },
+            text = { Text("\"${savedKit.displayName}\" is a kit. Claude needs its packet instructions to cook with it. Scan the packet now so they are saved.") },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = { onEvent(ScannerUiEvent.ScanAnother); onOpenAssistant(savedKit.displayName) }) { Text("Scan packet") }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { onEvent(ScannerUiEvent.ScanAnother); onNavigateBack() }) { Text("Later") }
+            }
+        )
     }
 
     Scaffold(

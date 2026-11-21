@@ -30,7 +30,9 @@ data class PairDeviceUiState(
     val qrBitmap: Bitmap? = null,
     val remainingSeconds: Int = 300,
     val isExpired: Boolean = false,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    /** Set once a phone has used this code to join, so the screen can say so instead of counting down. */
+    val pairedDeviceName: String? = null
 )
 
 @HiltViewModel
@@ -48,6 +50,7 @@ class PairDeviceViewModel @Inject constructor(
     val uiState: StateFlow<PairDeviceUiState> = _uiState.asStateFlow()
 
     private var countdownJob: Job? = null
+    private var watchJob: Job? = null
 
     override fun onCleared() {
         super.onCleared()
@@ -85,6 +88,7 @@ class PairDeviceViewModel @Inject constructor(
 
     fun generateInvitation() {
         countdownJob?.cancel()
+        watchJob?.cancel()
         _uiState.value = PairDeviceUiState()
         viewModelScope.launch {
             if (hostController != null && !hostController.isEligibleToHost()) {
@@ -98,6 +102,7 @@ class PairDeviceViewModel @Inject constructor(
                 return@launch
             }
 
+            val startedAt = System.currentTimeMillis()
             val household = identityManager.getOrCreateHouseholdIdentity()
             val p12Store = tlsKeyManager.getOrCreateMainTlsKeyStore(household.householdId)
             val certFingerprint = tlsKeyManager.getCertificateFingerprint(p12Store)
@@ -146,6 +151,25 @@ class PairDeviceViewModel @Inject constructor(
             }
 
             startCountdown()
+            watchForNewDevice(startedAt)
+        }
+    }
+
+    /** Notices the phone that joins with this code, which Main otherwise only shows after leaving and reopening the screen. */
+    private fun watchForNewDevice(since: Long) {
+        val repo = pairedDeviceRepository ?: return
+        watchJob?.cancel()
+        watchJob = viewModelScope.launch {
+            while (true) {
+                val joined = runCatching { repo.getAllDevices() }.getOrNull()
+                    ?.firstOrNull { it.status == com.example.chatgpt_mealplanner.core.database.entity.PairedDeviceStatus.ACTIVE && it.pairedAt >= since }
+                if (joined != null) {
+                    countdownJob?.cancel()
+                    _uiState.update { it.copy(pairedDeviceName = joined.deviceName) }
+                    return@launch
+                }
+                delay(2000L)
+            }
         }
     }
 

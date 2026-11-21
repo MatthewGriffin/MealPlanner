@@ -443,6 +443,7 @@ class MainActivity : ComponentActivity() {
                                 userStores = scannerUserStores,
                                 onEvent = scannerViewModel::onEvent,
                                 onNavigateBack = { currentScreen = Screen.INVENTORY },
+                                onOpenAssistant = { kit -> scanPacketForKit = kit; currentScreen = Screen.CHAT },
                                 modifier = Modifier.padding(innerPadding)
                             )
                         }
@@ -480,6 +481,13 @@ class MainActivity : ComponentActivity() {
                         Screen.HOUSEHOLD -> {
                             val householdViewModel: HouseholdViewModel = hiltViewModel()
                             val state by householdViewModel.uiState.collectAsState()
+                            // A phone pairing or syncing changes what this shows, and the view model outlives the screen: keep it current.
+                            LaunchedEffect(Unit) {
+                                while (true) {
+                                    householdViewModel.loadHouseholdInfo(showSpinner = false)
+                                    kotlinx.coroutines.delay(3000L)
+                                }
+                            }
                             HouseholdScreen(
                                 uiState = state,
                                 onPairNewDeviceClicked = { currentScreen = Screen.PAIR_DEVICE },
@@ -511,6 +519,7 @@ class MainActivity : ComponentActivity() {
                                 uiState = state,
                                 onGenerateNewCodeClicked = { pairViewModel.generateInvitation() },
                                 onCancelClicked = { currentScreen = Screen.HOUSEHOLD },
+                                onDoneClicked = { currentScreen = Screen.HOUSEHOLD },
                                 modifier = Modifier.padding(innerPadding)
                             )
                         }
@@ -518,6 +527,7 @@ class MainActivity : ComponentActivity() {
                         Screen.JOIN_HOUSEHOLD -> {
                             val joinViewModel: JoinHouseholdViewModel = hiltViewModel()
                             val state by joinViewModel.uiState.collectAsState()
+                            LaunchedEffect(Unit) { joinViewModel.onScreenEntered() }
                             JoinHouseholdScreen(
                                 uiState = state,
                                 onQrScanned = { joinViewModel.onQrCodeScanned(it) },
