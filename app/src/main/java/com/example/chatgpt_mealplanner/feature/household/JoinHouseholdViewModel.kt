@@ -58,6 +58,12 @@ class JoinHouseholdViewModel @Inject constructor(
         }
     }
 
+    /** The view model outlives the screen, so each visit starts from a fresh scan instead of an earlier result. */
+    fun onScreenEntered() {
+        isProcessingScan = false
+        _uiState.update { JoinHouseholdUiState() }
+    }
+
     fun retryScan() {
         isProcessingScan = false
         _uiState.update { it.copy(state = JoinHouseholdState.Idle) }

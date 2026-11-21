@@ -223,8 +223,8 @@ class HouseholdViewModel @Inject constructor(
         }
     }
 
-    fun loadHouseholdInfo() {
-        _uiState.update { it.copy(isLoading = true) }
+    fun loadHouseholdInfo(showSpinner: Boolean = true) {
+        if (showSpinner) _uiState.update { it.copy(isLoading = true) }
         viewModelScope.launch {
             val isPaired = followerPairingStore.isPaired()
             val role = appRoleResolver?.getAppRoleAsync() ?: if (isPaired) com.example.chatgpt_mealplanner.core.sync.AppRole.FOLLOWER else com.example.chatgpt_mealplanner.core.sync.AppRole.MAIN

@@ -25,6 +25,7 @@ fun PairDeviceScreen(
     uiState: PairDeviceUiState,
     onGenerateNewCodeClicked: () -> Unit,
     onCancelClicked: () -> Unit,
+    onDoneClicked: () -> Unit = onCancelClicked,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -40,6 +41,20 @@ fun PairDeviceScreen(
         )
 
         Spacer(modifier = Modifier.height(16.dp))
+
+        if (uiState.pairedDeviceName != null) {
+            Text(
+                text = "${uiState.pairedDeviceName} has joined your household.",
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text("It will sync with this phone the next time it is online. You can check its status on the Household screen.")
+            Spacer(modifier = Modifier.height(24.dp))
+            Button(onClick = onDoneClicked, modifier = Modifier.fillMaxWidth()) { Text("Done") }
+            return@Column
+        }
 
         if (uiState.qrBitmap != null && !uiState.isExpired) {
             Image(

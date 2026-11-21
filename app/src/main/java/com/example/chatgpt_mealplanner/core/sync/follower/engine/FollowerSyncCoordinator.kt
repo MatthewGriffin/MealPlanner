@@ -89,8 +89,17 @@ open class FollowerSyncCoordinator @Inject constructor(
             while (keepDraining) {
                 val currentTargetGen = synchronized(stateLock) { requestedGeneration }
 
-                passSuccess = performSingleSyncPass(triggerSource)
-                if (!passSuccess) passSuccess = retryAtNewHostAddress(triggerSource)
+                passSuccess = try {
+                    performSingleSyncPass(triggerSource).let { ok -> if (ok) ok else retryAtNewHostAddress(triggerSource) }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // An unexpected error used to end the pass silently, so the card said "no sync attempted" and Main saw nothing.
+                    println("[SYNC_COORD] Pass crashed ($triggerSource): ${e.javaClass.simpleName}: ${e.message}")
+                    runCatching { android.util.Log.e("PantrySync", "Sync pass crashed", e) }
+                    statusRepository?.reportGenericSyncError("Sync stopped unexpectedly: ${e.javaClass.simpleName}${e.message?.let { ": $it" } ?: ""}".take(300))
+                    false
+                }
                 statusRepository?.reportAttempt(passSuccess)
 
                 synchronized(stateLock) {

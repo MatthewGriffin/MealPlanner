@@ -1160,15 +1160,8 @@ class AiMealPlannerOrchestrator @Inject constructor(
         return asksForRetailLookup && !asksForMealPlanning
     }
 
-    private fun sanitizeUncommittedPlannerClaims(text: String): String {
-        // Model prose is not evidence of a database write. Cover contractions,
-        // plural meals and passive completion claims as well as "I have added".
-        val normalized = text.replace("’", "'").replace(Regex("(?i)\\bI've\\b"), "I have")
-        val completion = Regex("(?i)(?:I (?:have )?(?:now )?(?:added|scheduled|put|placed|saved)[^.!\n]*(?:meal|plan|dinner|week|calendar|lunch|breakfast|menu)|(?:meals?|dinners?|plan)[^.!\n]*(?:have been|has been|were|was|are now|is now) (?:added|saved|scheduled)|(?:added|saved|scheduled)[^.!\n]*(?:meal plan|planner|calendar)|(?:meal plan|planner) (?:is|has been) (?:updated|saved))")
-        return if (completion.containsMatchIn(normalized)) {
-            "No meal-plan changes were saved in this turn. Please retry or use Save meal on a recipe card when ready."
-        } else text
-    }
+    private fun sanitizeUncommittedPlannerClaims(text: String): String =
+        com.example.chatgpt_mealplanner.core.ai.validation.PlannerClaimGuard.sanitize(text)
 
     private fun safeLog(msg: String) {
         val event = msg.substringBefore(']').takeIf { it.startsWith("[") }?.plus("]") ?: "[AI_EVENT]"
