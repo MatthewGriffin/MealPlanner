@@ -177,6 +177,11 @@ fun HouseholdScreen(
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
+                    Text(
+                        "This phone: build ${com.example.chatgpt_mealplanner.BuildConfig.VERSION_CODE} (version ${com.example.chatgpt_mealplanner.BuildConfig.VERSION_NAME})",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                     Spacer(modifier = Modifier.height(8.dp))
                     if (uiState.appRole == com.example.chatgpt_mealplanner.core.sync.AppRole.FOLLOWER) {
                         Text("Role: Follower Device", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
