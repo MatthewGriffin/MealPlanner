@@ -297,6 +297,29 @@ fun SettingsScreen(
         HorizontalDivider()
         Spacer(modifier = Modifier.height(8.dp))
 
+        SettingsSection("About Pantry Pal", initiallyExpanded = true) {
+            Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                Text(
+                    "Version ${com.example.chatgpt_mealplanner.BuildConfig.VERSION_NAME} (build ${com.example.chatgpt_mealplanner.BuildConfig.VERSION_CODE})",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    "Both phones in a household should show the same build number.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    "Sync protocol ${com.example.chatgpt_mealplanner.sync.contract.SYNC_PROTOCOL_VERSION} \u00b7 ${if (com.example.chatgpt_mealplanner.BuildConfig.DEBUG) "debug build" else "release build"}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        HorizontalDivider()
+        Spacer(modifier = Modifier.height(8.dp))
+
         // RETAIL SECTION
         // Only the main phone uses the AI, so followers have nothing to set here.
         if (uiState.isMainRole) {
