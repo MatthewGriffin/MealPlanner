@@ -26,6 +26,10 @@ interface MealPlannerAiProvider {
     suspend fun chooseProducts(lines: List<ProductMatchLine>): ProductMatchResult =
         ProductMatchResult.Failed("This AI provider can't match products.")
 
+    /** Identifies a product from photos of its pack, for a barcode no database knows. */
+    suspend fun identifyProduct(imagesJpegBase64: List<String>): ProductIdentifyResult =
+        ProductIdentifyResult.Failed("This AI provider can't read product photos.")
+
     /** Reads a till receipt from photos of it (consecutive parts of one receipt, as base64 JPEGs). */
     suspend fun readReceipt(imagesJpegBase64: List<String>): ReceiptReadResult =
         ReceiptReadResult.Failed("This AI provider can't read receipts.")

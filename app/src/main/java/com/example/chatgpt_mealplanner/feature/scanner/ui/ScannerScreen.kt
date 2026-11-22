@@ -161,14 +161,31 @@ fun ScannerScreen(
                 }
 
                 is ScannerState.NotFound -> {
+                    // Claude reads the pack from a photo; the user still checks and corrects what it found before saving.
+                    val photoPicker = com.example.chatgpt_mealplanner.feature.chat.ui.rememberPacketPhotoPicker(
+                        onPhoto = { uri -> onEvent(ScannerUiEvent.IdentifyFromPhoto(uri)) },
+                        onProblem = { message -> onEvent(ScannerUiEvent.PhotoProblem(message)) }
+                    )
                     ResultBanner(
                         title = "Product Not Found",
-                        message = "Barcode ${state.barcode} wasn't found online. Add product details manually below.",
-                        primaryButtonText = "Add Details Manually",
-                        onPrimaryClick = { onEvent(ScannerUiEvent.ManualAddRequested) },
-                        secondaryButtonText = "Scan Another",
-                        onSecondaryClick = { onEvent(ScannerUiEvent.ScanAnother) }
+                        message = "Barcode ${state.barcode} isn't in any product database. Photograph the front of the pack and Claude will read the details for you to check, or add them manually.",
+                        primaryButtonText = "Read it from a photo",
+                        onPrimaryClick = { photoPicker.takePhoto() },
+                        secondaryButtonText = "Add Details Manually",
+                        onSecondaryClick = { onEvent(ScannerUiEvent.ManualAddRequested) },
+                        tertiaryButtonText = "Scan Another",
+                        onTertiaryClick = { onEvent(ScannerUiEvent.ScanAnother) }
                     )
+                }
+
+                is ScannerState.Identifying -> {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            LoadingIndicator()
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text("Claude is reading the pack...")
+                        }
+                    }
                 }
 
                 is ScannerState.Error -> {
@@ -273,7 +290,9 @@ fun ResultBanner(
     primaryButtonText: String,
     onPrimaryClick: () -> Unit,
     secondaryButtonText: String? = null,
-    onSecondaryClick: (() -> Unit)? = null
+    onSecondaryClick: (() -> Unit)? = null,
+    tertiaryButtonText: String? = null,
+    onTertiaryClick: (() -> Unit)? = null
 ) {
     Box(
         modifier = Modifier
@@ -309,6 +328,12 @@ fun ResultBanner(
                     Spacer(modifier = Modifier.height(8.dp))
                     OutlinedButton(onClick = onSecondaryClick, modifier = Modifier.fillMaxWidth()) {
                         Text(secondaryButtonText)
+                    }
+                }
+                if (tertiaryButtonText != null && onTertiaryClick != null) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    androidx.compose.material3.TextButton(onClick = onTertiaryClick, modifier = Modifier.fillMaxWidth()) {
+                        Text(tertiaryButtonText)
                     }
                 }
             }

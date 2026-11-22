@@ -28,7 +28,9 @@ import kotlin.math.roundToLong
 class ScannerViewModel @Inject constructor(
     private val productLookupRepository: ProductLookupRepository,
     private val inventoryDomainService: InventoryDomainService,
-    private val purchasePriceDao: PurchasePriceDao? = null
+    private val purchasePriceDao: PurchasePriceDao? = null,
+    private val aiProvider: com.example.chatgpt_mealplanner.core.ai.provider.MealPlannerAiProvider? = null,
+    private val photoSource: com.example.chatgpt_mealplanner.core.ai.packet.PacketPhotoSource? = null
 ) : ViewModel() {
 
     private val _state = MutableStateFlow<ScannerState>(ScannerState.RequestingPermission)
@@ -71,6 +73,10 @@ class ScannerViewModel @Inject constructor(
             ScannerUiEvent.ManualAddRequested -> {
                 openManualAdd()
             }
+            is ScannerUiEvent.IdentifyFromPhoto -> identifyFromPhoto(event.photo)
+            is ScannerUiEvent.PhotoProblem -> {
+                _state.value = ScannerState.Error(lastScannedBarcode, event.message)
+            }
             ScannerUiEvent.ClearError -> {
                 _state.value = ScannerState.Ready
             }
@@ -112,6 +118,52 @@ class ScannerViewModel @Inject constructor(
                         message = "Lookup failed. You can add this item manually."
                     )
                 }
+            }
+        }
+    }
+
+    /** A barcode no database knows: Claude reads the product from a photo of its pack, and the user checks it before saving. */
+    private fun identifyFromPhoto(photo: android.net.Uri) {
+        val barcode = lastScannedBarcode
+        val provider = aiProvider
+        val source = photoSource
+        if (provider == null || source == null) {
+            _state.value = ScannerState.Error(barcode, "Reading a product from a photo isn't available here. You can add it manually.")
+            return
+        }
+        _state.value = ScannerState.Identifying(barcode.orEmpty())
+        viewModelScope.launch {
+            try {
+                val image = source.prepare(photo)
+                if (image == null) {
+                    _state.value = ScannerState.Error(barcode, "The photo couldn't be opened. You can add the item manually.")
+                    return@launch
+                }
+                when (val read = provider.identifyProduct(listOf(image))) {
+                    is com.example.chatgpt_mealplanner.core.ai.provider.ProductIdentifyResult.Read -> {
+                        val p = read.product
+                        _state.value = ScannerState.Confirming(
+                            barcode = barcode,
+                            editableMetadata = ProductMetadata(
+                                barcode = barcode.orEmpty(),
+                                displayName = p.name,
+                                brand = p.brand,
+                                category = p.category,
+                                suggestedStorageLocation = p.storage,
+                                netQuantity = p.netQuantity,
+                                netQuantityUnit = p.netQuantityUnit,
+                                packCount = p.packCount,
+                                source = ProductDataSource.MANUAL,
+                                confidence = com.example.chatgpt_mealplanner.core.barcode.model.ProductMatchConfidence.LOW
+                            )
+                        )
+                    }
+                    is com.example.chatgpt_mealplanner.core.ai.provider.ProductIdentifyResult.Failed ->
+                        _state.value = ScannerState.Error(barcode, "${read.message.take(200)} You can add the item manually.")
+                }
+            } catch (e: Exception) {
+                rethrowIfCancelled()
+                _state.value = ScannerState.Error(barcode, "Couldn't read the photo. You can add the item manually.")
             }
         }
     }

@@ -17,6 +17,7 @@ sealed interface ScannerState {
         val isCached: Boolean
     ) : ScannerState
     data class NotFound(val barcode: String) : ScannerState
+    data class Identifying(val barcode: String) : ScannerState
     data class Error(val barcode: String?, val message: String) : ScannerState
     data class Confirming(
         val barcode: String?,
@@ -33,5 +34,7 @@ sealed interface ScannerUiEvent {
     data class ConfirmProduct(val input: ConfirmedProductInput) : ScannerUiEvent
     object ScanAnother : ScannerUiEvent
     object ManualAddRequested : ScannerUiEvent
+    data class IdentifyFromPhoto(val photo: android.net.Uri) : ScannerUiEvent
+    data class PhotoProblem(val message: String) : ScannerUiEvent
     object ClearError : ScannerUiEvent
 }
