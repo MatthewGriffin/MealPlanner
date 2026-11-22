@@ -111,6 +111,8 @@ data class BootstrapResponseDto(
     /** The shops and prices recorded on Main (drives the best-shop card). Null from older hosts. */
     val userStores: List<UserStoreSyncDto>? = null,
     val priceObservations: List<PriceObservationSyncDto>? = null,
+    /** Departments the user fixed by hand on Main, by item key. Null from older hosts. */
+    val departmentOverrides: Map<String, String>? = null,
     val basketComparisonFingerprint: String? = null,
     val basketComparisonJson: String? = null,
     /** What the household has learned of each shop's order, read-only for followers. Null from older hosts. */

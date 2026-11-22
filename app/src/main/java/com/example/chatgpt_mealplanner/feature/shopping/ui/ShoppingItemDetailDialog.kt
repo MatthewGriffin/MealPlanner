@@ -26,6 +26,11 @@ import com.example.chatgpt_mealplanner.core.model.ShoppingListItemWithSources
 fun ShoppingItemDetailDialog(
     itemWithSources: ShoppingListItemWithSources,
     onOpenMeal: (mealId: String, mealDate: String) -> Unit = { _, _ -> },
+    /** The department the user fixed for this item, if any. */
+    department: com.example.chatgpt_mealplanner.core.shopping.Department? = null,
+    /** What the app works out on its own, shown as the "Automatic" choice. */
+    guessedDepartment: com.example.chatgpt_mealplanner.core.shopping.Department = com.example.chatgpt_mealplanner.core.shopping.Department.OTHER,
+    onDepartmentChange: (com.example.chatgpt_mealplanner.core.shopping.Department?) -> Unit = {},
     onDismiss: () -> Unit
 ) {
     val item = itemWithSources.item
@@ -38,6 +43,30 @@ fun ShoppingItemDetailDialog(
         },
         text = {
             Column {
+                val departmentMenu = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+                Text(
+                    text = "Department (used to order the list while you shop)",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold
+                )
+                androidx.compose.foundation.layout.Box {
+                    androidx.compose.material3.OutlinedButton(onClick = { departmentMenu.value = true }) {
+                        Text(department?.displayName ?: "Automatic (${guessedDepartment.displayName})")
+                    }
+                    androidx.compose.material3.DropdownMenu(expanded = departmentMenu.value, onDismissRequest = { departmentMenu.value = false }) {
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text("Automatic (${guessedDepartment.displayName})") },
+                            onClick = { departmentMenu.value = false; onDepartmentChange(null) }
+                        )
+                        com.example.chatgpt_mealplanner.core.shopping.Department.entries.forEach { choice ->
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text(choice.displayName) },
+                                onClick = { departmentMenu.value = false; onDepartmentChange(choice) }
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
                 Text(
                     text = "Source Breakdown & Reasoning",
                     style = MaterialTheme.typography.titleSmall,

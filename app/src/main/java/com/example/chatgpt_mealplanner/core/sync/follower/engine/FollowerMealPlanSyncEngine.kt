@@ -172,6 +172,7 @@ class FollowerMealPlanSyncEngine @Inject constructor(
                 if (storeRows.isNotEmpty()) appDatabase.purchasePriceDao().upsertStores(storeRows)
                 if (priceRows.isNotEmpty()) appDatabase.purchasePriceDao().upsertPriceObservations(priceRows)
             }
+            snapshot.departmentOverrides?.let { shoppingSessions?.departmentOverrides?.install(it) }
             // Main's learned shop order replaces what this phone holds; null (an older Main) leaves it alone.
             snapshot.storeOrders?.let { orders ->
                 shoppingSessions?.installOrders(orders.map { o ->

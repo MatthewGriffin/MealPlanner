@@ -118,6 +118,9 @@ class ShoppingViewModel @Inject constructor(
             }
         }
 
+    private val departmentOverridesFlow: kotlinx.coroutines.flow.Flow<Map<String, com.example.chatgpt_mealplanner.core.shopping.Department>> =
+        shoppingSessions?.departmentOverrides?.overrides ?: kotlinx.coroutines.flow.flowOf(emptyMap())
+
     @Suppress("UNCHECKED_CAST")
     val uiState: StateFlow<ShoppingUiState> = combine(
         activeShoppingListFlow,
@@ -131,7 +134,8 @@ class ShoppingViewModel @Inject constructor(
         manualItemNotesFlow,
         shopPriceOptionsFlow,
         activeShopFlow,
-        storesFlow
+        storesFlow,
+        departmentOverridesFlow
     ) { flows ->
         val listWithItems = flows[0] as ShoppingListWithItems?
         val stapleRules = flows[1] as List<StapleRule>
@@ -145,6 +149,7 @@ class ShoppingViewModel @Inject constructor(
         val shopPriceOptions = flows[9] as Map<String, List<ShopPriceOption>>
         val activeShop = flows[10] as ActiveShop?
         val stores = flows[11] as List<com.example.chatgpt_mealplanner.core.database.entity.UserStoreEntity>
+        val departmentOverrides = flows[12] as Map<String, com.example.chatgpt_mealplanner.core.shopping.Department>
 
         ShoppingUiState(
             activeListWithItems = listWithItems,
@@ -159,6 +164,7 @@ class ShoppingViewModel @Inject constructor(
             manualItemName = manualItemName,
             manualItemNotes = manualItemNotes,
             activeShop = activeShop,
+            departmentOverrides = departmentOverrides,
             motion = motionTracker?.let { com.example.chatgpt_mealplanner.feature.shopping.MotionOptions(available = it.available(), enabled = it.enabled, hasPermission = it.hasPermission()) } ?: MotionOptions(),
             shops = stores.map { ShopChoice(it.id, it.name) }
         )
@@ -222,6 +228,7 @@ class ShoppingViewModel @Inject constructor(
             ShoppingUiEvent.ClearCompletedItems -> if (!appRoleResolver.isFollower()) clearCompletedItems()
             is ShoppingUiEvent.ToggleItemChecked -> toggleItemChecked(event.itemId, event.currentStatus)
             is ShoppingUiEvent.RemoveItem -> removeItem(event.itemId)
+            is ShoppingUiEvent.SetItemDepartment -> shoppingSessions?.departmentOverrides?.set(event.itemName, event.department)
             is ShoppingUiEvent.SelectItemDetail -> {
                 selectedItemDetailFlow.value = event.itemWithSources
             }

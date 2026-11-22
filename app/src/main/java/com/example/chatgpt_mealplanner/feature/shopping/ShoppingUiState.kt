@@ -29,6 +29,8 @@ data class ShoppingUiState(
     /** Set while a shopping trip is open: the list is sorted by this shop's learned order. */
     val activeShop: ActiveShop? = null,
     val shops: List<ShopChoice> = emptyList(),
+    /** Departments fixed by hand, by item key. */
+    val departmentOverrides: Map<String, com.example.chatgpt_mealplanner.core.shopping.Department> = emptyMap(),
     val motion: MotionOptions = MotionOptions()
 )
 
@@ -45,6 +47,8 @@ sealed interface ShoppingUiEvent {
     object ClearCompletedItems : ShoppingUiEvent
     data class ToggleItemChecked(val itemId: String, val currentStatus: ShoppingItemStatus) : ShoppingUiEvent
     data class RemoveItem(val itemId: String) : ShoppingUiEvent
+    /** Fixes (or, with null, clears the fix for) the department an item is found in. */
+    data class SetItemDepartment(val itemName: String, val department: com.example.chatgpt_mealplanner.core.shopping.Department?) : ShoppingUiEvent
     data class SelectItemDetail(val itemWithSources: ShoppingListItemWithSources?) : ShoppingUiEvent
     object RequestAddManualItem : ShoppingUiEvent
     data class RequestLowStockShortcut(val item: InventoryItem) : ShoppingUiEvent

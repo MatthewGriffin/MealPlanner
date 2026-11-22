@@ -37,9 +37,15 @@ object StoreOrder {
      * average out in this shop; one not yet seen there takes its place from a typical supermarket's walk. Inside a
      * department, items the shop has taught the app come first by their own position, then the rest as listed.
      */
-    fun <T> plan(items: List<T>, nameOf: (T) -> String, orderByKey: Map<String, Double>): List<Section<T>> {
+    fun <T> plan(
+        items: List<T>,
+        nameOf: (T) -> String,
+        orderByKey: Map<String, Double>,
+        /** Departments the user fixed by hand; they win over the automatic guess. */
+        overrides: Map<String, Department> = emptyMap()
+    ): List<Section<T>> {
         if (items.isEmpty()) return emptyList()
-        val byDepartment = items.groupBy { Department.classify(nameOf(it)) }
+        val byDepartment = items.groupBy { overrides[keyOf(nameOf(it))] ?: Department.classify(nameOf(it)) }
         val learnedAverage = byDepartment.mapNotNull { (department, rows) ->
             val ranks = rows.mapNotNull { orderByKey[keyOf(nameOf(it))] }
             if (ranks.isEmpty()) null else department to ranks.average()

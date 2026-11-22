@@ -230,7 +230,8 @@ open class PantrySyncServer @Inject constructor(
             shoppingSources = shoppingSources,
             userStores = userStores,
             priceObservations = priceObservations,
-            storeOrders = storeOrders
+            storeOrders = storeOrders,
+            departmentOverrides = shoppingSessions?.departmentOverrides?.asStrings()
         )
         onAfterSnapshotReadHook?.invoke()
         return dto
