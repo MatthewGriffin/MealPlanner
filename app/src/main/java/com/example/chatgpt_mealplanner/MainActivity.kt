@@ -9,6 +9,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.lifecycle.lifecycleScope
@@ -99,6 +100,10 @@ enum class Screen(val label: String) {
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+    private companion object {
+        const val FOREGROUND_SYNC_INTERVAL_MS = 30_000L
+    }
+
     private data class NotificationRoute(val date: String?) {
         companion object {
             fun from(intent: android.content.Intent?): NotificationRoute? {
@@ -128,6 +133,9 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var appRoleResolver: com.example.chatgpt_mealplanner.core.sync.AppRoleResolver
+
+    @Inject
+    lateinit var followerSyncScheduler: com.example.chatgpt_mealplanner.core.sync.follower.worker.FollowerSyncScheduler
 
     private val inAppUpdater by lazy(LazyThreadSafetyMode.NONE) { com.example.chatgpt_mealplanner.core.update.InAppUpdater(this) }
 
@@ -161,6 +169,18 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             hostController.ensureHostStartedIfInUse(this@MainActivity) {
                 pairedDeviceRepository.getAllDevices().any { it.status == com.example.chatgpt_mealplanner.core.database.entity.PairedDeviceStatus.ACTIVE }
+            }
+        }
+        // A follower only hears about Main's changes when it asks, so while the app is on screen it asks every half minute
+        // (a small request when nothing changed). In the background the hourly sync still applies.
+        lifecycleScope.launch {
+            repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.RESUMED) {
+                while (true) {
+                    if (appRoleResolver.isFollower()) {
+                        runCatching { followerSyncScheduler.scheduleSyncWorkNonBlocking(applicationContext, "AUTO_SYNC") }
+                    }
+                    kotlinx.coroutines.delay(FOREGROUND_SYNC_INTERVAL_MS)
+                }
             }
         }
         // A removed follower's AI key that could not be switched off earlier (offline) is switched off now.
