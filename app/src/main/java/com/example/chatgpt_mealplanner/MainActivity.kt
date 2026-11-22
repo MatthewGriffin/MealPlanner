@@ -131,6 +131,16 @@ class MainActivity : ComponentActivity() {
 
     private val inAppUpdater by lazy(LazyThreadSafetyMode.NONE) { com.example.chatgpt_mealplanner.core.update.InAppUpdater(this) }
 
+    /**
+     * Joining or leaving a household changes where every screen reads its data from, but the view models were made when the
+     * phone was in the other role and kept reading the old one: a new follower's pantry stayed empty until the app was
+     * restarted. Clearing them and recreating the screen starts them again in the new role.
+     */
+    fun restartForRoleChange() {
+        viewModelStore.clear()
+        recreate()
+    }
+
     override fun onResume() {
         super.onResume()
         inAppUpdater.check()
@@ -188,6 +198,8 @@ class MainActivity : ComponentActivity() {
                     if (notificationRouteState.value != null) currentScreen = Screen.MEAL_PLANNER
                 }
                 var scanPacketForKit by remember { mutableStateOf<String?>(null) }
+                // Set once this phone has joined a household, so leaving the join screen by any route restarts its screens.
+                var joinedHousehold by remember { mutableStateOf(false) }
                 var chatLaunch by remember { mutableStateOf<ChatLaunch?>(null) }
                 /** Where Back goes from the screens opened from the top bar. */
                 var returnScreen by remember { mutableStateOf(Screen.INVENTORY) }
@@ -218,7 +230,7 @@ class MainActivity : ComponentActivity() {
                         { scannerViewModel.onEvent(com.example.chatgpt_mealplanner.feature.scanner.ScannerUiEvent.ScanAnother) }
                     }
                     currentScreen == Screen.PAIR_DEVICE || currentScreen == Screen.JOIN_HOUSEHOLD -> {
-                        { currentScreen = Screen.HOUSEHOLD }
+                        { if (joinedHousehold) restartForRoleChange() else currentScreen = Screen.HOUSEHOLD }
                     }
                     currentScreen == Screen.SETTINGS || currentScreen == Screen.HOUSEHOLD || currentScreen == Screen.RECIPES || currentScreen == Screen.SUBSCRIPTION -> {
                         { currentScreen = returnScreen }
@@ -481,6 +493,7 @@ class MainActivity : ComponentActivity() {
                         Screen.HOUSEHOLD -> {
                             val householdViewModel: HouseholdViewModel = hiltViewModel()
                             val state by householdViewModel.uiState.collectAsState()
+                            LaunchedEffect(state.leftHousehold) { if (state.leftHousehold) restartForRoleChange() }
                             // A phone pairing or syncing changes what this shows, and the view model outlives the screen: keep it current.
                             LaunchedEffect(Unit) {
                                 while (true) {
@@ -531,11 +544,16 @@ class MainActivity : ComponentActivity() {
                             val joinViewModel: JoinHouseholdViewModel = hiltViewModel()
                             val state by joinViewModel.uiState.collectAsState()
                             LaunchedEffect(Unit) { joinViewModel.onScreenEntered() }
+                            LaunchedEffect(state.state) {
+                                joinedHousehold = state.state is com.example.chatgpt_mealplanner.feature.household.JoinHouseholdState.Success
+                            }
                             JoinHouseholdScreen(
                                 uiState = state,
                                 onQrScanned = { joinViewModel.onQrCodeScanned(it) },
                                 onRetryClicked = { joinViewModel.retryScan() },
-                                onDoneClicked = { currentScreen = Screen.HOUSEHOLD },
+                                onDoneClicked = {
+                                    if (joinedHousehold) restartForRoleChange() else currentScreen = Screen.HOUSEHOLD
+                                },
                                 modifier = Modifier.padding(innerPadding)
                             )
                         }

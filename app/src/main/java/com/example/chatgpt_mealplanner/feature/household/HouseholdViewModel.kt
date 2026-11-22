@@ -37,6 +37,8 @@ data class HouseholdUiState(
     val openApprovals: List<SyncPendingApprovalEntity> = emptyList(),
     val deviceToRevoke: PairedDeviceEntity? = null,
     val deviceToRemove: PairedDeviceEntity? = null,
+    /** Set once this phone has left its household, so the app restarts its screens in the new role. */
+    val leftHousehold: Boolean = false,
     val activeInvitationPayloadJson: String? = null,
     val isFollowerPaired: Boolean = false,
     val hostIp: String? = null,
@@ -214,7 +216,7 @@ class HouseholdViewModel @Inject constructor(
             }
             runCatching { proxyAccount?.clearSharedToken() }
             followerPairingStore.clear()
-            _uiState.update { it.copy(statusMessage = "This phone now works on its own. You can join a household again from this screen.", errorMessage = null) }
+            _uiState.update { it.copy(statusMessage = "This phone now works on its own. You can join a household again from this screen.", errorMessage = null, leftHousehold = true) }
             loadHouseholdInfo()
         }
     }
