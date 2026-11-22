@@ -36,6 +36,7 @@ data class HouseholdUiState(
     val openConflicts: List<SyncConflictEntity> = emptyList(),
     val openApprovals: List<SyncPendingApprovalEntity> = emptyList(),
     val deviceToRevoke: PairedDeviceEntity? = null,
+    val deviceToRemove: PairedDeviceEntity? = null,
     val activeInvitationPayloadJson: String? = null,
     val isFollowerPaired: Boolean = false,
     val hostIp: String? = null,
@@ -111,7 +112,8 @@ class HouseholdViewModel @Inject constructor(
     private val followerSyncScheduler: com.example.chatgpt_mealplanner.core.sync.follower.worker.FollowerSyncScheduler? = null,
     private val followerDatabase: com.example.chatgpt_mealplanner.core.sync.follower.database.FollowerDatabase? = null,
     @param:ApplicationContext private val appContext: Context? = null,
-    private val proxyAccount: com.example.chatgpt_mealplanner.core.ai.provider.ProxyAccount? = null
+    private val proxyAccount: com.example.chatgpt_mealplanner.core.ai.provider.ProxyAccount? = null,
+    private val syncClient: com.example.chatgpt_mealplanner.core.sync.client.PantrySyncTestClient? = null
 ) : ViewModel() {
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -189,6 +191,17 @@ class HouseholdViewModel @Inject constructor(
      */
     fun leaveHousehold() {
         viewModelScope.launch {
+            // Tell Main this phone is leaving so it drops off Main's list. If Main can't be reached the phone still leaves,
+            // and Main keeps showing it until it is revoked there.
+            runCatching {
+                val config = followerPairingStore.getPairingConfig()
+                val token = config?.sessionToken
+                if (config != null && !token.isNullOrBlank() && !followerPairingStore.isRevoked()) {
+                    kotlinx.coroutines.withTimeoutOrNull(5000L) {
+                        syncClient?.postLeave(config.hostIp, config.port, config.pinnedCertFingerprint, token)
+                    }
+                }
+            }
             followerSyncScheduler?.let { _ ->
                 appContext?.let { ctx ->
                     runCatching {
@@ -259,6 +272,30 @@ class HouseholdViewModel @Inject constructor(
     fun requestRevocationConfirmation(device: PairedDeviceEntity) {
         if (device.status == "REVOKED") return
         _uiState.update { it.copy(deviceToRevoke = device) }
+    }
+
+    fun requestRemoval(device: PairedDeviceEntity) {
+        _uiState.update { it.copy(deviceToRemove = device) }
+    }
+
+    fun cancelRemoval() {
+        _uiState.update { it.copy(deviceToRemove = null) }
+    }
+
+    /** Forgets a revoked phone for good. It would need a fresh pairing code to join again. */
+    fun confirmRemoval() {
+        val device = _uiState.value.deviceToRemove ?: return
+        _uiState.update { it.copy(deviceToRemove = null) }
+        viewModelScope.launch {
+            val removed = pairedDeviceRepository.removeRevokedDevice(device.deviceId)
+            _uiState.update {
+                it.copy(
+                    statusMessage = if (removed) "Removed ${device.deviceName}" else null,
+                    errorMessage = if (removed) null else "Only a revoked phone can be removed."
+                )
+            }
+            loadHouseholdInfo(showSpinner = false)
+        }
     }
 
     fun cancelRevocation() {

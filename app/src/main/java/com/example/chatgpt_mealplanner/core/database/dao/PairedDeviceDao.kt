@@ -26,6 +26,10 @@ interface PairedDeviceDao {
     @Query("UPDATE paired_devices SET status = :newStatus WHERE deviceId = :deviceId AND status = :expectedCurrentStatus")
     suspend fun updateDeviceStatusConditional(deviceId: String, newStatus: String, expectedCurrentStatus: String): Int
 
+    /** Forgets a device Main has revoked. An active device is never deleted this way: it has to be revoked first. */
+    @Query("DELETE FROM paired_devices WHERE deviceId = :deviceId AND status = 'REVOKED'")
+    suspend fun deleteIfRevoked(deviceId: String): Int
+
     @Query("UPDATE paired_devices SET status = 'REVOKED' WHERE deviceId = :deviceId AND status = 'ACTIVE'")
     suspend fun revokeDeviceIfActive(deviceId: String): Int
 }

@@ -186,6 +186,13 @@ open class TestSyncPairedDeviceDao : PairedDeviceDao {
         }
     }
 
+    override suspend fun deleteIfRevoked(deviceId: String): Int {
+        val dev = devicesMap[deviceId] ?: return 0
+        if (dev.status != "REVOKED") return 0
+        devicesMap.remove(deviceId)
+        return 1
+    }
+
     override suspend fun revokeDeviceIfActive(deviceId: String): Int {
         synchronized(this) {
             val existing = devicesMap[deviceId] ?: return 0

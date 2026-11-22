@@ -80,7 +80,8 @@ open class PantrySyncServer @Inject constructor(
     private val stapleRuleDao: StapleRuleDao? = null,
     private val purchasePriceDao: com.example.chatgpt_mealplanner.core.database.dao.PurchasePriceDao? = null,
     private val followerAiKeys: com.example.chatgpt_mealplanner.core.ai.provider.FollowerAiKeys? = null,
-    private val shoppingSessions: com.example.chatgpt_mealplanner.core.shopping.ShoppingSessionManager? = null
+    private val shoppingSessions: com.example.chatgpt_mealplanner.core.shopping.ShoppingSessionManager? = null,
+    private val pairedDeviceRepository: com.example.chatgpt_mealplanner.core.sync.repository.PairedDeviceRepository? = null
 ) {
     private var engine: io.ktor.server.engine.ApplicationEngine? = null
     private var serverState = PantryServerState.STOPPED
@@ -562,6 +563,18 @@ open class PantrySyncServer @Inject constructor(
                         } else {
                             call.respond(buildJsonObject { put("token", key) })
                         }
+                    }
+
+                    // A follower leaving the household: its access is revoked here too, so it drops off Main's list.
+                    post("/sync/v1/leave") {
+                        val token = call.request.headers["X-Pantry-Session-Token"]
+                        val deviceId = sessionManager.validateSessionToken(token)
+                        if (deviceId == null) {
+                            call.respond(HttpStatusCode.Unauthorized, buildJsonObject { put("error", "UNAUTHORIZED") })
+                            return@post
+                        }
+                        pairedDeviceRepository?.revokeDevice(deviceId)
+                        call.respond(buildJsonObject { put("left", true) })
                     }
 
                     // A follower's finished shopping trip: the household learns the order its items were found in.

@@ -71,6 +71,13 @@ class FakeSyncPairedDeviceDao : PairedDeviceDao {
         return 0
     }
 
+    override suspend fun deleteIfRevoked(deviceId: String): Int {
+        val dev = devicesMap[deviceId] ?: return 0
+        if (dev.status != "REVOKED") return 0
+        devicesMap.remove(deviceId)
+        return 1
+    }
+
     override suspend fun revokeDeviceIfActive(deviceId: String): Int {
         val dev = devicesMap[deviceId] ?: return 0
         if (dev.status == "ACTIVE") {

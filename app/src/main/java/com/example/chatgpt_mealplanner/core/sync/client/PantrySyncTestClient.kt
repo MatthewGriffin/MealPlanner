@@ -274,6 +274,24 @@ open class PantrySyncTestClient @Inject constructor(
         }
     }
 
+    /** Follower: tells Main this phone is leaving the household. Returns the HTTP status, or null when Main could not be reached. */
+    open suspend fun postLeave(
+        hostIp: String,
+        port: Int = 8443,
+        pinnedCertFingerprint: String?,
+        sessionToken: String
+    ): Int? = withContext(Dispatchers.IO) {
+        runCatching {
+            val client = createPinnedOkHttpClient(pinnedCertFingerprint)
+            val request = Request.Builder()
+                .url("https://$hostIp:$port/sync/v1/leave")
+                .header("X-Pantry-Session-Token", sessionToken)
+                .post("{}".toRequestBody("application/json".toMediaType()))
+                .build()
+            client.newCall(request).execute().use { it.code }
+        }.getOrNull()
+    }
+
     /** Follower: sends a finished shopping trip to Main. Returns the HTTP status, or null when Main could not be reached. */
     open suspend fun postShopTrip(
         hostIp: String,

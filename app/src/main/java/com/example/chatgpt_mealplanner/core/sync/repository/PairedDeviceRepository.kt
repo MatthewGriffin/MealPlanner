@@ -38,6 +38,9 @@ open class PairedDeviceRepository @Inject constructor(
         return result
     }
 
+    /** Removes a revoked device from the list for good. Returns false if it was not revoked (or not found). */
+    open suspend fun removeRevokedDevice(deviceId: String): Boolean = pairedDeviceDao.deleteIfRevoked(deviceId) == 1
+
     private suspend fun revokeInStore(deviceId: String): RevocationResult {
         val affected = pairedDeviceDao.revokeDeviceIfActive(deviceId)
         if (affected == 1) {
