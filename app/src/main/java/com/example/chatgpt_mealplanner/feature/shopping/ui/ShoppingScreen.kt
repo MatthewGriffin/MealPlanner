@@ -3,6 +3,7 @@ package com.example.chatgpt_mealplanner.feature.shopping.ui
 import androidx.compose.foundation.clickable
 import com.example.chatgpt_mealplanner.core.model.QuantityUnit
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -58,7 +59,9 @@ fun ShoppingScreen(
     uiState: ShoppingUiState,
     onEvent: (ShoppingUiEvent) -> Unit,
     modifier: Modifier = Modifier,
-    onOpenMeal: (mealId: String, mealDate: String) -> Unit = { _, _ -> }
+    onOpenMeal: (mealId: String, mealDate: String) -> Unit = { _, _ -> },
+    /** Shown above the list on a follower: sync progress, time since the last sync and a Sync now button. */
+    syncBar: @Composable () -> Unit = {}
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     // Store sections start collapsed so large multi-store lists stay compact.
@@ -135,6 +138,7 @@ fun ShoppingScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
+            Box(modifier = Modifier.padding(horizontal = 16.dp).padding(top = 8.dp)) { syncBar() }
             PrimaryTabRow(
                 selectedTabIndex = uiState.activeTab.ordinal
             ) {

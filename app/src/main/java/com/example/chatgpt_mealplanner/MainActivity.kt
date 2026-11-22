@@ -457,7 +457,18 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                             val state by shoppingViewModel.uiState.collectAsState()
+                            val syncViewModel: InventoryViewModel = hiltViewModel()
+                            val syncState by syncViewModel.uiState.collectAsState()
                             ShoppingScreen(
+                                syncBar = {
+                                    val st = syncState.followerSyncStatus
+                                    if (syncState.isFollowerPaired && st != null) {
+                                        com.example.chatgpt_mealplanner.feature.inventory.ui.FollowerSyncStatusCard(
+                                            status = st,
+                                            onSyncNowClicked = { syncViewModel.onEvent(com.example.chatgpt_mealplanner.feature.inventory.InventoryUiEvent.TriggerManualSync) }
+                                        )
+                                    }
+                                },
                                 uiState = state,
                                 onEvent = shoppingViewModel::onEvent,
                                 modifier = Modifier.padding(innerPadding),
