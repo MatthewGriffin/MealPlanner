@@ -3,9 +3,11 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.CAMERA" />
-    <!-- Counts steps while shopping, only if the household turns shop mapping on. Nothing is sent to us. -->
+    <!-- Shop-layout sensing (step counter) is switched off for now: Play asks for a health-features declaration when
+         ACTIVITY_RECOGNITION is declared. To bring it back, restore these two lines and set ShopMotionTracker.SENSORS_ENABLED.
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
     <uses-feature android:name="android.hardware.sensor.stepdetector" android:required="false" />
+    -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- Lets a recipe step start the phone's own timer without opening the clock app. -->
