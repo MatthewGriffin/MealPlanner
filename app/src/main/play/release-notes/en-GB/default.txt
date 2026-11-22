@@ -1,4 +1,4 @@
-- New: Start shopping. Pick your shop and the list follows the order you found things in last time, by department, learning as you tick items off.
-- Followers can shop too; their trips go to the main phone. Both phones need this version.
-- Unknown barcode? Photograph the pack and Claude reads the details for you to check.
-- Pairing screens update as phones join, and sync problems on a follower are shown.
+- Followers sync every 30s while open, with a progress bar, "last synced" time and Sync now on pantry and shopping, so Main's deletes and edits show up.
+- Leave a household from a follower; Main can remove revoked followers for good.
+- Joining or leaving a household now refreshes the screens straight away (a new follower's pantry no longer stays empty).
+- Main's paired-devices list updates live. Both phones need this version.
