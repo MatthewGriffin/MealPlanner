@@ -228,4 +228,35 @@ class ScannerViewModelTest {
         viewModel.onEvent(ScannerUiEvent.ScanAnother)
         assertEquals(ScannerState.Ready, viewModel.state.value)
     }
+
+    @Test
+    fun aNotFoundBarcodeCanBeReadFromAPhoto_andLandsInTheConfirmScreenForChecking() = runTest {
+        val barcode = "5014284057044"
+        whenever(mockRepository.lookupBarcode(barcode)).thenReturn(ProductLookupResult.NotFound(barcode))
+        val provider: com.example.chatgpt_mealplanner.core.ai.provider.MealPlannerAiProvider = mock()
+        val photos: com.example.chatgpt_mealplanner.core.ai.packet.PacketPhotoSource = mock()
+        val uri: android.net.Uri = mock()
+        whenever(photos.prepare(uri)).thenReturn("BASE64")
+        whenever(provider.identifyProduct(listOf("BASE64"))).thenReturn(
+            com.example.chatgpt_mealplanner.core.ai.provider.ProductIdentifyResult.Read(
+                com.example.chatgpt_mealplanner.core.ai.provider.ReadProduct(
+                    name = "Fajita kit", brand = "Old El Paso", category = FoodCategory.KITS_MIXES,
+                    storage = StorageLocation.CUPBOARD, netQuantity = 500.0,
+                    netQuantityUnit = com.example.chatgpt_mealplanner.core.model.QuantityUnit.GRAM, packCount = null
+                )
+            )
+        )
+        val vm = ScannerViewModel(mockRepository, mockDomainService, null, provider, photos)
+        vm.onEvent(ScannerUiEvent.BarcodeScanned(barcode))
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertTrue(vm.state.value is ScannerState.NotFound)
+
+        vm.onEvent(ScannerUiEvent.IdentifyFromPhoto(uri))
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val confirming = vm.state.value as ScannerState.Confirming
+        assertEquals(barcode, confirming.barcode)
+        assertEquals("Fajita kit", confirming.editableMetadata.displayName)
+        assertEquals(FoodCategory.KITS_MIXES, confirming.editableMetadata.category)
+    }
 }

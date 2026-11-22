@@ -210,6 +210,20 @@ class ClaudeMealPlannerAiProvider @Inject constructor(
         else PantryListResult.Items(items)
     }
 
+    override suspend fun identifyProduct(imagesJpegBase64: List<String>): ProductIdentifyResult = withContext(ioDispatcher) {
+        val key = apiKey() ?: return@withContext ProductIdentifyResult.Failed(noKey().message)
+        if (imagesJpegBase64.isEmpty()) return@withContext ProductIdentifyResult.Failed("The photo couldn't be opened.")
+        val (json, error) = callSingleTool(
+            key, ProductIdentifyParsing.SYSTEM_PROMPT, "Identify this product.", ProductIdentifyParsing.TOOL_NAME,
+            "Records the product read from the photo of its pack.", ProductIdentifyParsing.schema(), ProductIdentifyParsing.REQUIRED,
+            imagesJpegBase64
+        )
+        if (json == null) return@withContext ProductIdentifyResult.Failed(error?.ifEmpty { "Claude couldn't identify the product." } ?: "Claude couldn't identify the product.")
+        ProductIdentifyParsing.parse(json.substringBefore('\u0000'))
+            ?.let { ProductIdentifyResult.Read(it) }
+            ?: ProductIdentifyResult.Failed("Claude couldn't read a product from that photo. Try again with the front of the pack in view.")
+    }
+
     override suspend fun readReceipt(imagesJpegBase64: List<String>): ReceiptReadResult = withContext(ioDispatcher) {
         val key = apiKey() ?: return@withContext ReceiptReadResult.Failed(noKey().message)
         if (imagesJpegBase64.isEmpty()) return@withContext ReceiptReadResult.Failed("The photo couldn't be opened.")
