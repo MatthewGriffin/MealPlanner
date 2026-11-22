@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.StarOutline
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -750,12 +751,9 @@ fun FollowerSyncStatusCard(
                 )
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (status.state in listOf(
-                            com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncState.PENDING_CHANGES,
-                            com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncState.SYNC_ERROR,
-                            com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncState.AUTHENTICATION_REQUIRED,
-                            com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncState.BOOTSTRAP_REQUIRED
-                        )
+                    if (status.state != com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncState.SYNCING &&
+                        status.state != com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncState.ACCESS_REVOKED &&
+                        status.state != com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncState.UNPAIRED
                     ) {
                         TextButton(onClick = onSyncNowClicked) {
                             Text(if (status.state == com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncState.BOOTSTRAP_REQUIRED) "Retry Bootstrap" else "Sync Now")
@@ -768,6 +766,25 @@ fun FollowerSyncStatusCard(
                 }
             }
 
+            if (status.state == com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncState.SYNCING) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp))
+            }
+            if (status.state != com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncState.ACCESS_REVOKED && status.state != com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncState.UNPAIRED) {
+                // Re-read the clock every 15 seconds so "x min ago" keeps counting up on its own.
+                var now by remember { mutableStateOf(System.currentTimeMillis()) }
+                LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(15_000); now = System.currentTimeMillis() } }
+                val last = status.lastSyncTime
+                Text(
+                    text = when {
+                        status.state == com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncState.SYNCING -> "Checking with Main\u2026"
+                        last == null -> "Not synced with Main yet"
+                        now - last < 15_000 -> "Synced just now"
+                        else -> "Last synced " + android.text.format.DateUtils.getRelativeTimeSpanString(last, now, android.text.format.DateUtils.MINUTE_IN_MILLIS)
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
             if (status.state == com.example.chatgpt_mealplanner.core.sync.follower.repository.FollowerSyncState.ACCESS_REVOKED) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
