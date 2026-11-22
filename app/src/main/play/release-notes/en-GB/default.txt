@@ -1,3 +1,5 @@
 - New: Start shopping on the Shopping list. Pick your shop and the list follows the order you found things in last time, grouped by department, and it learns as you tick items off.
 - Followers can shop too: their trips are sent to the main phone, which shares what it learns. Both phones need this version.
-- Optional: let the phone's step counter and compass learn a shop's layout (asks for the Physical activity permission; it stays in your household).
+- If a barcode isn't in any product database, you can photograph the pack and Claude reads the details for you to check.
+- Pairing screens now update as phones join, and a sync problem on a follower shows what went wrong.
+- Scanning a kit by barcode now offers to scan its packet; saving a kit's instructions no longer triggers a wrong "no plan changes saved" reply.

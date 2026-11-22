@@ -40,7 +40,7 @@ android {
         applicationId = "app.pantrypal.mealplanner"
         minSdk = 30
         targetSdk = 36
-        versionCode = 22
+        versionCode = 23
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

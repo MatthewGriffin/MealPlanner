@@ -34,8 +34,9 @@ class ShopMotionTracker @Inject constructor(
         android.os.Build.VERSION.SDK_INT < 29 ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACTIVITY_RECOGNITION) == PackageManager.PERMISSION_GRANTED
 
-    /** True when this phone has the sensors and the household wants them used. */
+    /** True when this phone has the sensors and the feature is switched on in this build. */
     fun available(): Boolean {
+        if (!SENSORS_ENABLED) return false
         val sm = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager ?: return false
         return sm.getDefaultSensor(Sensor.TYPE_STEP_DETECTOR) != null && sm.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR) != null
     }
@@ -77,7 +78,10 @@ class ShopMotionTracker @Inject constructor(
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
 
-    private companion object {
-        const val KEY_ENABLED = "enabled"
+    companion object {
+        private const val KEY_ENABLED = "enabled"
+
+        /** Off while the app does not declare the Physical activity permission (see the manifest). */
+        const val SENSORS_ENABLED = false
     }
 }
