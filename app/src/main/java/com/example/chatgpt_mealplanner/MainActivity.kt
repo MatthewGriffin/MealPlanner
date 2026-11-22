@@ -116,10 +116,23 @@ class MainActivity : ComponentActivity() {
 
     private val notificationRouteState = mutableStateOf<NotificationRoute?>(null)
 
+    /** A web address shared to Pantry Pal from another app (a recipe video or page), waiting to be sent to the assistant. */
+    private val sharedLinkState = mutableStateOf<String?>(null)
+
+    private fun readSharedLink(intent: android.content.Intent?) {
+        if (intent?.action != android.content.Intent.ACTION_SEND || intent.type?.startsWith("text/") != true) return
+        val text = intent.getStringExtra(android.content.Intent.EXTRA_TEXT) ?: return
+        val link = Regex("""https?://\S+""").find(text)?.value ?: return
+        sharedLinkState.value = link
+        // Handled once: recreating the activity must not send it again.
+        intent.action = null
+    }
+
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
         notificationRouteState.value = NotificationRoute.from(intent)
+        readSharedLink(intent)
     }
 
     @Inject
@@ -165,6 +178,7 @@ class MainActivity : ComponentActivity() {
         // Must be created before the activity starts: it registers for the update prompt's result.
         inAppUpdater
         notificationRouteState.value = NotificationRoute.from(intent)
+        readSharedLink(intent)
         // Household sync hosting (a foreground service with a notification) only runs once a device has been paired.
         lifecycleScope.launch {
             hostController.ensureHostStartedIfInUse(this@MainActivity) {
@@ -221,6 +235,14 @@ class MainActivity : ComponentActivity() {
                 // Set once this phone has joined a household, so leaving the join screen by any route restarts its screens.
                 var joinedHousehold by remember { mutableStateOf(false) }
                 var chatLaunch by remember { mutableStateOf<ChatLaunch?>(null) }
+                val sharedLink = sharedLinkState.value
+                LaunchedEffect(sharedLink) {
+                    if (sharedLink != null) {
+                        chatLaunch = ChatLaunch.Send("Please read this recipe and save it to my recipes: $sharedLink")
+                        currentScreen = Screen.CHAT
+                        sharedLinkState.value = null
+                    }
+                }
                 /** Where Back goes from the screens opened from the top bar. */
                 var returnScreen by remember { mutableStateOf(Screen.INVENTORY) }
                 fun openFromTopBar(screen: Screen) {
