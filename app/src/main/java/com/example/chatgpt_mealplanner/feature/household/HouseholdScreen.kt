@@ -56,18 +56,32 @@ fun HouseholdScreen(
     onApprovePendingDiscard: (String) -> Unit = {},
     onRejectPendingDiscard: (String) -> Unit = {},
     onLeaveHousehold: () -> Unit = {},
+    onRequestRemoval: (PairedDeviceEntity) -> Unit = {},
+    onConfirmRemoval: () -> Unit = {},
+    onCancelRemoval: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    uiState.deviceToRemove?.let { dev ->
+        AlertDialog(
+            onDismissRequest = onCancelRemoval,
+            title = { Text("Remove ${dev.deviceName}?") },
+            text = { Text("This forgets the revoked phone completely. To bring it back you would pair it again with a new code.") },
+            confirmButton = {
+                Button(onClick = onConfirmRemoval, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("Remove") }
+            },
+            dismissButton = { TextButton(onClick = onCancelRemoval) { Text("Cancel") } }
+        )
+    }
     val confirmLeave = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     if (confirmLeave.value) {
         AlertDialog(
             onDismissRequest = { confirmLeave.value = false },
-            title = { Text("Use this phone on its own?") },
+            title = { Text("Leave this household?") },
             text = {
-                Text("It stops following the main phone and keeps the pantry, plans and recipes it has now. Changes it never managed to upload stay only on this phone. You can join a household again at any time.")
+                Text("This phone stops following the main phone and keeps the pantry, plans and recipes it has now. The main phone is told, if it can be reached. Changes it never managed to upload stay only on this phone. You can join a household again at any time.")
             },
             confirmButton = {
-                TextButton(onClick = { confirmLeave.value = false; onLeaveHousehold() }) { Text("Use on its own") }
+                TextButton(onClick = { confirmLeave.value = false; onLeaveHousehold() }) { Text("Leave household") }
             },
             dismissButton = { TextButton(onClick = { confirmLeave.value = false }) { Text("Cancel") } }
         )
@@ -213,7 +227,7 @@ fun HouseholdScreen(
                                 style = MaterialTheme.typography.bodyMedium
                             )
                             Spacer(modifier = Modifier.height(12.dp))
-                            Button(onClick = { confirmLeave.value = true }) { Text("Use this phone on its own") }
+                            Button(onClick = { confirmLeave.value = true }) { Text("Leave household") }
                         } else {
                             Spacer(modifier = Modifier.height(12.dp))
                             Button(
@@ -222,6 +236,8 @@ fun HouseholdScreen(
                             ) {
                                 Text(if (uiState.isSyncing) "Syncing…" else "Sync now")
                             }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            OutlinedButton(onClick = { confirmLeave.value = true }) { Text("Leave household") }
                         }
                     }
                 }
@@ -258,6 +274,7 @@ fun HouseholdScreen(
                 PairedDeviceCard(
                     device = device,
                     onRevokeClicked = { onRequestRevocation(device) },
+                    onRemoveClicked = { onRequestRemoval(device) },
                     onReauthorizeClicked = { onReauthorizeDevice(device.deviceId) }
                 )
                 Spacer(modifier = Modifier.height(8.dp))
@@ -334,6 +351,7 @@ fun HouseholdScreen(
 fun PairedDeviceCard(
     device: PairedDeviceEntity,
     onRevokeClicked: () -> Unit,
+    onRemoveClicked: () -> Unit = {},
     onReauthorizeClicked: () -> Unit = {}
 ) {
     Card(
@@ -406,10 +424,12 @@ fun PairedDeviceCard(
                     color = MaterialTheme.colorScheme.error
                 )
                 Spacer(modifier = Modifier.height(4.dp))
-                OutlinedButton(
-                    onClick = onReauthorizeClicked
-                ) {
-                    Text("Re-authorize Device")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = onReauthorizeClicked) { Text("Re-authorize Device") }
+                    OutlinedButton(
+                        onClick = onRemoveClicked,
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                    ) { Text("Remove") }
                 }
             }
         }

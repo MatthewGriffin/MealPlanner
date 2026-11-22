@@ -8,6 +8,8 @@ import com.example.chatgpt_mealplanner.core.sync.HouseholdIdentityManager
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Before
@@ -56,6 +58,13 @@ class FakePairedDeviceDao : PairedDeviceDao {
             return 1
         }
         return 0
+    }
+
+    override suspend fun deleteIfRevoked(deviceId: String): Int {
+        val dev = devicesMap[deviceId] ?: return 0
+        if (dev.status != "REVOKED") return 0
+        devicesMap.remove(deviceId)
+        return 1
     }
 
     override suspend fun revokeDeviceIfActive(deviceId: String): Int {
@@ -130,5 +139,21 @@ class HouseholdIdentityAndDeviceTest {
 
         val revoked = pairedDeviceDao.getDeviceById("dev_roommate_1")
         assertEquals("REVOKED", revoked?.status)
+    }
+
+    @Test
+    fun onlyARevokedDeviceCanBeRemovedForGood() = runTest {
+        val repo = com.example.chatgpt_mealplanner.core.sync.repository.PairedDeviceRepository(pairedDeviceDao)
+        val device = PairedDeviceEntity(
+            deviceId = "dev_1", deviceName = "Tablet", devicePublicKey = "key", status = "ACTIVE",
+            pairedAt = 1L, lastSyncTimestamp = 0L
+        )
+        pairedDeviceDao.insertOrUpdateDevice(device)
+
+        assertFalse("An active device must be revoked first", repo.removeRevokedDevice("dev_1"))
+        repo.revokeDevice("dev_1")
+        assertTrue(repo.removeRevokedDevice("dev_1"))
+        assertTrue(repo.getAllDevices().isEmpty())
+        assertFalse(repo.removeRevokedDevice("dev_1"))
     }
 }
