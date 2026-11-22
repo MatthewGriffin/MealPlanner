@@ -87,6 +87,9 @@ fun ShoppingScreen(
         ShoppingItemDetailDialog(
             itemWithSources = uiState.selectedItemForDetail,
             onOpenMeal = { mealId, mealDate -> onOpenMeal(mealId, mealDate) },
+            department = uiState.departmentOverrides[com.example.chatgpt_mealplanner.core.shopping.StoreOrder.keyOf(uiState.selectedItemForDetail.item.displayName)],
+            guessedDepartment = com.example.chatgpt_mealplanner.core.shopping.Department.classify(uiState.selectedItemForDetail.item.displayName),
+            onDepartmentChange = { onEvent(ShoppingUiEvent.SetItemDepartment(uiState.selectedItemForDetail.item.displayName, it)) },
             onDismiss = { onEvent(ShoppingUiEvent.SelectItemDetail(null)) }
         )
     }
@@ -309,7 +312,7 @@ fun ShoppingScreen(
                                         val (done, todo) = rows.partition {
                                             it.item.status == ShoppingItemStatus.CHECKED || it.item.status == ShoppingItemStatus.PURCHASED_CONFIRMED
                                         }
-                                        val sections = com.example.chatgpt_mealplanner.core.shopping.StoreOrder.plan(todo, { r -> r.item.displayName }, shopOrder)
+                                        val sections = com.example.chatgpt_mealplanner.core.shopping.StoreOrder.plan(todo, { r -> r.item.displayName }, shopOrder, uiState.departmentOverrides)
                                         sections.flatMap { section -> section.items.mapIndexed { i, r -> Triple(date, if (i == 0) section.department.displayName else null, r) } } +
                                             done.map { Triple(date, null as String?, it) }
                                     }

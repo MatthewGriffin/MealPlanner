@@ -47,4 +47,15 @@ class StoreOrderTest {
         assertEquals(listOf("Milk", "Cheddar cheese"), plan[0].items)
         assertEquals(listOf("Bananas", "Apples"), plan[1].items)
     }
+
+    @Test
+    fun aDepartmentFixedByHandWinsOverTheAutomaticGuess() {
+        val items = listOf("Cornitos nachos", "Milk")
+        val auto = StoreOrder.plan(items, { it }, emptyMap())
+        assertEquals(Department.SNACKS, auto.first { "Cornitos nachos" in it.items }.department)
+
+        val fixed = StoreOrder.plan(items, { it }, emptyMap(), mapOf(StoreOrder.keyOf("Cornitos nachos") to Department.CUPBOARD))
+        assertEquals(Department.CUPBOARD, fixed.first { "Cornitos nachos" in it.items }.department)
+        assertEquals(Department.DAIRY_EGGS, fixed.first { "Milk" in it.items }.department)
+    }
 }

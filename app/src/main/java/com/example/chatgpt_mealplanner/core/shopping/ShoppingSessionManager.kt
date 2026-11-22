@@ -21,7 +21,8 @@ data class TickedItem(val displayName: String, val x: Double? = null, val y: Dou
 @Singleton
 class ShoppingSessionManager @Inject constructor(
     private val dao: StoreOrderDao,
-    private val appRoleResolver: AppRoleResolver? = null
+    private val appRoleResolver: AppRoleResolver? = null,
+    val departmentOverrides: DepartmentOverrides? = null
 ) {
     private fun isFollower(): Boolean = appRoleResolver?.isFollower() == true
 
