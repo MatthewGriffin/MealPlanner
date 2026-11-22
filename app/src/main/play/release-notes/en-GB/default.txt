@@ -1,4 +1,4 @@
-- Followers sync every 30s while open, with a progress bar, "last synced" time and Sync now on pantry and shopping, so Main's deletes and edits show up.
-- Leave a household from a follower; Main can remove revoked followers for good.
-- Joining or leaving a household now refreshes the screens straight away (a new follower's pantry no longer stays empty).
-- Main's paired-devices list updates live. Both phones need this version.
+- Shop-layout learning is back: while you shop, the phone's step sensor helps learn where departments are (Physical activity permission asked when you start).
+- Followers sync every 30s while open, with a progress bar and Sync now.
+- Leave a household from a follower; Main can remove revoked followers.
+- Joining or leaving refreshes screens straight away. Both phones need this version.

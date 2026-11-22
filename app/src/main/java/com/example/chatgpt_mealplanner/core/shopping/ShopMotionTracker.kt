@@ -82,6 +82,6 @@ class ShopMotionTracker @Inject constructor(
         private const val KEY_ENABLED = "enabled"
 
         /** Off while the app does not declare the Physical activity permission (see the manifest). */
-        const val SENSORS_ENABLED = false
+        const val SENSORS_ENABLED = true
     }
 }
