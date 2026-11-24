@@ -29,6 +29,7 @@ class FollowerMealPlanSyncEngine @Inject constructor(
     private val shoppingChanges: com.example.chatgpt_mealplanner.core.shopping.ShoppingChangeQueue? = null
 ) {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+    private companion object { const val MAX_TRIP_MS = 4L * 60 * 60 * 1000 }
 
     suspend fun refresh(host: String, port: Int, fingerprint: String?, token: String,
                         refreshToken: suspend (Boolean) -> String, expectedHouseholdId: String? = null): Boolean =
@@ -184,7 +185,10 @@ class FollowerMealPlanSyncEngine @Inject constructor(
                     )
                 })
             }
-            if (shoppingLists != null) {
+            // While a shopping trip is open here, the list stays as it is: replacing it from Main every half minute resets
+            // what was ticked and shuffles the list under the shopper. It catches up once the trip is finished.
+            val tripOpen = appDatabase.storeOrderDao().getOpenSession()?.let { System.currentTimeMillis() - it.startedAt < MAX_TRIP_MS } == true
+            if (shoppingLists != null && !tripOpen) {
                 require(shoppingLists.count { it.status == ShoppingListStatus.ACTIVE } <= 1) { "Multiple active shopping lists" }
                 appDatabase.shoppingDao().deleteAllShoppingLists()
                 if (shoppingLists.isNotEmpty()) appDatabase.shoppingDao().insertShoppingLists(shoppingLists)

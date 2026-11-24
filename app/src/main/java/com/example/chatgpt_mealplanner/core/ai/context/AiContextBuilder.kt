@@ -21,6 +21,8 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
+private const val MAX_KNOWN_NAMES = 200
+
 class AiContextBuilder @Inject constructor(
     private val inventoryDao: InventoryDao,
     private val mealDao: MealDao,
@@ -104,6 +106,10 @@ class AiContextBuilder @Inject constructor(
                 com.example.chatgpt_mealplanner.core.model.ItemStatus.LOW,
                 com.example.chatgpt_mealplanner.core.model.ItemStatus.USE_SOON
             ) }
+        // Items they have used up still carry the wording the household uses for them.
+        val knownNames = inventoryDao.getAllItems().first().map { it.toDomainModel() }
+            .filter { it.status == com.example.chatgpt_mealplanner.core.model.ItemStatus.OUT }
+            .map { it.displayName }.distinct().take(MAX_KNOWN_NAMES)
         val usableInventoryDtos = usableInventoryEntities.map {
             InventorySummaryContextDto(
                 canonicalIngredientId = it.canonicalIngredientId,
@@ -181,6 +187,7 @@ class AiContextBuilder @Inject constructor(
             availableLeftovers = leftoverDtos,
             useSoonItems = useSoonDtos,
             usableInventory = usableInventoryDtos,
+            knownIngredientNames = knownNames,
             kitInstructions = kitInstructionDtos,
             savedRecipes = savedRecipeDao?.getAll().orEmpty().map { com.example.chatgpt_mealplanner.contract.SavedRecipeContextDto(it.title, it.servings, it.source) },
             lowStockStaples = lowDtos,
