@@ -228,6 +228,7 @@ class ShoppingViewModel @Inject constructor(
             ShoppingUiEvent.ClearCompletedItems -> if (!appRoleResolver.isFollower()) clearCompletedItems()
             is ShoppingUiEvent.ToggleItemChecked -> toggleItemChecked(event.itemId, event.currentStatus)
             is ShoppingUiEvent.RemoveItem -> removeItem(event.itemId)
+            is ShoppingUiEvent.EditManualItem -> editManualItem(event.itemId, event.name, event.why)
             is ShoppingUiEvent.SetItemDepartment -> shoppingSessions?.departmentOverrides?.set(event.itemName, event.department)
             is ShoppingUiEvent.SelectItemDetail -> {
                 selectedItemDetailFlow.value = event.itemWithSources
@@ -345,6 +346,25 @@ class ShoppingViewModel @Inject constructor(
         manualItemNameFlow.value = item.displayName
         manualItemNotesFlow.value = "Low pantry stock. Check the amount on hand before choosing how much to buy."
         showAddManualDialogFlow.value = true
+    }
+
+    private fun editManualItem(itemId: String, name: String, why: String) {
+        viewModelScope.launch {
+            val clash = uiState.value.activeListWithItems?.items?.any {
+                it.item.id != itemId && it.item.displayName.trim().equals(name.trim(), ignoreCase = true)
+            } == true
+            if (clash) {
+                userMessageFlow.value = "$name is already on the shopping list"
+                return@launch
+            }
+            when (val result = shoppingDomainService.updateManualItem(itemId, displayName = name, reason = why)) {
+                is DomainResult.Success -> {
+                    selectedItemDetailFlow.value = null
+                    userMessageFlow.value = "Item updated"
+                }
+                is DomainResult.Failure -> userMessageFlow.value = formatDomainError(result.error)
+            }
+        }
     }
 
     private fun addManualItem(name: String, quantity: Double?, unit: QuantityUnit?, notes: String?) {

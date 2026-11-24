@@ -57,7 +57,9 @@ data class ShoppingListItemEntity(
     val requirementConfidence: RequirementConfidence,
     val wasteRisk: WasteRisk,
     val createdAt: Long,
-    val updatedAt: Long
+    val updatedAt: Long,
+    /** Who asked for a hand-added item (a phone's name), shown in the item's details. */
+    val requestedBy: String? = null
 )
 
 fun ShoppingListItemEntity.toDomainModel(): ShoppingListItem = ShoppingListItem(
@@ -86,7 +88,8 @@ fun ShoppingListItemEntity.toDomainModel(): ShoppingListItem = ShoppingListItem(
     requirementConfidence = requirementConfidence,
     wasteRisk = wasteRisk,
     createdAt = createdAt,
-    updatedAt = updatedAt
+    updatedAt = updatedAt,
+    requestedBy = requestedBy
 )
 
 fun ShoppingListItem.toEntity(): ShoppingListItemEntity = ShoppingListItemEntity(
@@ -115,7 +118,8 @@ fun ShoppingListItem.toEntity(): ShoppingListItemEntity = ShoppingListItemEntity
     requirementConfidence = requirementConfidence,
     wasteRisk = wasteRisk,
     createdAt = createdAt,
-    updatedAt = updatedAt
+    updatedAt = updatedAt,
+    requestedBy = requestedBy
 )
 
 fun ShoppingListWithItemEntities.toDomainModel(): ShoppingListWithItems {

@@ -25,7 +25,8 @@ class FollowerMealPlanSyncEngine @Inject constructor(
     private val client: PantrySyncTestClient,
     private val appDatabase: AppDatabase,
     private val notificationManager: AppNotificationManager? = null,
-    private val shoppingSessions: com.example.chatgpt_mealplanner.core.shopping.ShoppingSessionManager? = null
+    private val shoppingSessions: com.example.chatgpt_mealplanner.core.shopping.ShoppingSessionManager? = null,
+    private val shoppingChanges: com.example.chatgpt_mealplanner.core.shopping.ShoppingChangeQueue? = null
 ) {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
@@ -115,7 +116,7 @@ class FollowerMealPlanSyncEngine @Inject constructor(
                     expectedFinalInventoryUnit = dto.expectedFinalInventoryUnit?.let { enumValueOf<QuantityUnit>(it) },
                     quantityUncertain = dto.quantityUncertain, uncertaintyReason = dto.uncertaintyReason,
                     requirementConfidence = enumValueOf(dto.requirementConfidence), wasteRisk = enumValueOf(dto.wasteRisk),
-                    createdAt = dto.createdAt, updatedAt = dto.updatedAt
+                    createdAt = dto.createdAt, updatedAt = dto.updatedAt, requestedBy = dto.requestedBy
                 )
             }
         } else null
@@ -188,6 +189,11 @@ class FollowerMealPlanSyncEngine @Inject constructor(
                 appDatabase.shoppingDao().deleteAllShoppingLists()
                 if (shoppingLists.isNotEmpty()) appDatabase.shoppingDao().insertShoppingLists(shoppingLists)
                 if (!shoppingItems.isNullOrEmpty()) appDatabase.shoppingDao().insertShoppingListItems(shoppingItems)
+                // Changes Main has not confirmed yet are put back, so an item added here does not vanish before it is uploaded.
+                shoppingChanges?.pending()?.takeIf { it.isNotEmpty() }?.let { pending ->
+                    val applier = com.example.chatgpt_mealplanner.core.shopping.ShoppingChangeApplier(appDatabase.shoppingDao())
+                    pending.forEach { applier.apply(it, it.requestedBy) }
+                }
             }
             if (stapleRules != null) {
                 appDatabase.stapleRuleDao().deleteAllStapleRules()

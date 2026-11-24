@@ -30,7 +30,8 @@ open class FollowerSyncCoordinator @Inject constructor(
     private val mealPlanSyncEngine: FollowerMealPlanSyncEngine? = null,
     private val proxyAccount: com.example.chatgpt_mealplanner.core.ai.provider.ProxyAccount? = null,
     private val hostLocator: FollowerHostLocator? = null,
-    private val shopTripUploader: com.example.chatgpt_mealplanner.core.sync.follower.client.FollowerShopTripUploader? = null
+    private val shopTripUploader: com.example.chatgpt_mealplanner.core.sync.follower.client.FollowerShopTripUploader? = null,
+    private val shoppingChangeUploader: com.example.chatgpt_mealplanner.core.sync.follower.client.FollowerShoppingChangeUploader? = null
 ) {
     private val stateLock = Any()
 
@@ -254,6 +255,9 @@ open class FollowerSyncCoordinator @Inject constructor(
 
         // Shopping trips made on this phone go to Main. A failure here only means they are sent next time.
         runCatching { shopTripUploader?.upload(hostIp, port, pinnedCertFingerprint, tokenToUse, sessionRefreshLambda) }
+
+        // Changes made here to hand-added shopping items go to Main before its list replaces this phone's copy.
+        runCatching { shoppingChangeUploader?.upload(hostIp, port, pinnedCertFingerprint, tokenToUse, sessionRefreshLambda) }
 
         // Use the household's AI allowance and plan: ask the main phone for this phone's key until it has one.
         if (proxyAccount != null && !proxyAccount.usingSharedToken()) {

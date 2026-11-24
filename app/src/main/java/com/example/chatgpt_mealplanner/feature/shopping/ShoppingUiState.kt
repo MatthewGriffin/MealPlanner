@@ -48,6 +48,8 @@ sealed interface ShoppingUiEvent {
     data class ToggleItemChecked(val itemId: String, val currentStatus: ShoppingItemStatus) : ShoppingUiEvent
     data class RemoveItem(val itemId: String) : ShoppingUiEvent
     /** Fixes (or, with null, clears the fix for) the department an item is found in. */
+    /** Renames a hand-added item and changes its "why". */
+    data class EditManualItem(val itemId: String, val name: String, val why: String) : ShoppingUiEvent
     data class SetItemDepartment(val itemName: String, val department: com.example.chatgpt_mealplanner.core.shopping.Department?) : ShoppingUiEvent
     data class SelectItemDetail(val itemWithSources: ShoppingListItemWithSources?) : ShoppingUiEvent
     object RequestAddManualItem : ShoppingUiEvent

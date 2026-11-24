@@ -81,7 +81,8 @@ data class ShoppingListItem(
     val requirementConfidence: RequirementConfidence = RequirementConfidence.EXACT,
     val wasteRisk: WasteRisk = WasteRisk.LOW,
     val createdAt: Long = System.currentTimeMillis(),
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    val requestedBy: String? = null
 )
 
 data class StapleRule(

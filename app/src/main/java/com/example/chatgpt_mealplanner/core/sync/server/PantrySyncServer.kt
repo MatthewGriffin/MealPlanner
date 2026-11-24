@@ -110,6 +110,7 @@ open class PantrySyncServer @Inject constructor(
         const val MAX_BOOTSTRAP_ITEMS = 5000
         const val MAX_SYNCED_PRICES = 5000
         const val MAX_TRIP_TICKS = 1000
+        const val MAX_SHOPPING_CHANGES = 100
     }
 
     open suspend fun createBootstrapSnapshot(): BootstrapResponseDto {
@@ -158,7 +159,7 @@ open class PantrySyncServer @Inject constructor(
                 stapleReserveTopUpQuantity = item.stapleReserveTopUpQuantity, expectedFinalInventory = item.expectedFinalInventory,
                 expectedFinalInventoryUnit = item.expectedFinalInventoryUnit?.name, quantityUncertain = item.quantityUncertain,
                 uncertaintyReason = item.uncertaintyReason, requirementConfidence = item.requirementConfidence.name,
-                wasteRisk = item.wasteRisk.name, createdAt = item.createdAt, updatedAt = item.updatedAt
+                wasteRisk = item.wasteRisk.name, requestedBy = item.requestedBy, createdAt = item.createdAt, updatedAt = item.updatedAt
             )
         } }
         val shoppingSources = shoppingRows?.flatMap { row -> row.items.flatMap { wrapped -> wrapped.sources.map { src ->
@@ -598,6 +599,32 @@ open class PantrySyncServer @Inject constructor(
                                 ticksInOrder = trip.ticks.sortedBy { it.tickedAt }.map { com.example.chatgpt_mealplanner.core.shopping.TickedItem(it.displayName, it.x, it.y) }
                             )
                             call.respond(buildJsonObject { put("accepted", true) })
+                        }
+                    }
+
+                    // A follower's changes to hand-added shopping items. Main applies them and names the requester from the paired device.
+                    post("/sync/v1/shopping-changes") {
+                        val token = call.request.headers["X-Pantry-Session-Token"]
+                        val deviceId = sessionManager.validateSessionToken(token)
+                        if (deviceId == null) {
+                            call.respond(HttpStatusCode.Unauthorized, buildJsonObject { put("error", "UNAUTHORIZED") })
+                            return@post
+                        }
+                        val bodyText = call.receiveBoundedText() ?: return@post
+                        val upload = runCatching { json.decodeFromString<com.example.chatgpt_mealplanner.sync.contract.ShoppingChangesUploadDto>(bodyText) }.getOrNull()
+                        val dao = shoppingDao
+                        if (upload == null || upload.changes.size > MAX_SHOPPING_CHANGES || upload.changes.any { it.changeId.isBlank() || it.itemId.isBlank() }) {
+                            call.respond(HttpStatusCode.BadRequest, buildJsonObject { put("error", "INVALID_CHANGES") })
+                        } else if (dao == null) {
+                            call.respond(HttpStatusCode.ServiceUnavailable, buildJsonObject { put("error", "SHOPPING_UNAVAILABLE") })
+                        } else {
+                            val requester = pairedDeviceRepository?.getAllDevices()?.firstOrNull { it.deviceId == deviceId }?.deviceName
+                            val applier = com.example.chatgpt_mealplanner.core.shopping.ShoppingChangeApplier(dao)
+                            val applied = mutableListOf<String>()
+                            for (change in upload.changes) {
+                                if (runCatching { applier.apply(change, requester) }.getOrDefault(false)) applied.add(change.changeId)
+                            }
+                            call.respond(com.example.chatgpt_mealplanner.sync.contract.ShoppingChangesAckDto(applied))
                         }
                     }
 

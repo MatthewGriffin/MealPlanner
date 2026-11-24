@@ -182,6 +182,8 @@ data class ShoppingItemSyncDto(
     val uncertaintyReason: String? = null,
     val requirementConfidence: String,
     val wasteRisk: String,
+    /** Who asked for a hand-added item (a phone's name). Null for items worked out from meals, and from older hosts. */
+    val requestedBy: String? = null,
     val createdAt: Long,
     val updatedAt: Long
 )
@@ -389,3 +391,30 @@ data class EnrollmentResponseDto(
     val errorCode: String? = null,
     val errorMessage: String? = null
 )
+
+/** What a follower did to a hand-added shopping item, sent to Main so the list stays the same on every phone. */
+@Serializable
+enum class ShoppingChangeKind { ADD, EDIT, REMOVE, SET_STATUS }
+
+@Serializable
+data class ShoppingChangeDto(
+    /** Unique per change, so a change Main already has is not applied twice. */
+    val changeId: String,
+    val kind: ShoppingChangeKind,
+    val itemId: String,
+    val displayName: String? = null,
+    val quantity: Double? = null,
+    val unit: String? = null,
+    /** The optional "why" the item was asked for. */
+    val reason: String? = null,
+    val status: String? = null,
+    /** Only trusted by the phone that made the change; Main names the requester from the paired device. */
+    val requestedBy: String? = null,
+    val createdAt: Long = 0L
+)
+
+@Serializable
+data class ShoppingChangesUploadDto(val changes: List<ShoppingChangeDto>)
+
+@Serializable
+data class ShoppingChangesAckDto(val applied: List<String>)

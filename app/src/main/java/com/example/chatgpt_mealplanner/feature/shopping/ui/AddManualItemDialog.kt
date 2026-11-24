@@ -112,7 +112,7 @@ fun AddManualItemDialog(
                 OutlinedTextField(
                     value = notes,
                     onValueChange = { notes = it },
-                    label = { Text("Notes (Optional)") },
+                    label = { Text("Why do you need it? (optional)") },
                     modifier = Modifier.fillMaxWidth()
                 )
             }

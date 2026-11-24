@@ -89,6 +89,8 @@ fun ShoppingScreen(
             onOpenMeal = { mealId, mealDate -> onOpenMeal(mealId, mealDate) },
             department = uiState.departmentOverrides[com.example.chatgpt_mealplanner.core.shopping.StoreOrder.keyOf(uiState.selectedItemForDetail.item.displayName)],
             guessedDepartment = com.example.chatgpt_mealplanner.core.shopping.Department.classify(uiState.selectedItemForDetail.item.displayName),
+            onEditManual = { name, why -> onEvent(ShoppingUiEvent.EditManualItem(uiState.selectedItemForDetail.item.id, name, why)) },
+            onRemoveManual = { onEvent(ShoppingUiEvent.RemoveItem(uiState.selectedItemForDetail.item.id)); onEvent(ShoppingUiEvent.SelectItemDetail(null)) },
             onDepartmentChange = { onEvent(ShoppingUiEvent.SetItemDepartment(uiState.selectedItemForDetail.item.displayName, it)) },
             onDismiss = { onEvent(ShoppingUiEvent.SelectItemDetail(null)) }
         )
