@@ -1,4 +1,4 @@
-- Share a YouTube or TikTok recipe video to Pantry Pal and the assistant saves it as a recipe from the video's description (amounts it had to guess are marked).
-- Fix the department an item is found in from its shopping details; the list follows it while you shop.
-- Settings > About shows the version and build; Household shows this phone's build.
-- Followers show sync progress and time since last sync.
+- Smarter shop splits: fresh items needed on nearby days are bought in one trip if they keep long enough, and a later trip also takes anything not needed sooner, so you never go out for one item.
+- Share a YouTube or TikTok recipe video to Pantry Pal to save it as a recipe.
+- Fix an item's department from its shopping details.
+- Settings > About shows the build.
