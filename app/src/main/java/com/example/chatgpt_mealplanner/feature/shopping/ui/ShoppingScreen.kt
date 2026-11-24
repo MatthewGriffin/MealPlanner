@@ -318,12 +318,10 @@ fun ShoppingScreen(
                                 // While shopping the list is laid out by department in this shop's walking order, ticked items last.
                                 val ordered = trips.flatMap { (date, rows) ->
                                     if (shopOrder == null) rows.map { Triple(date, null as String?, it) } else {
-                                        val (done, todo) = rows.partition {
-                                            it.item.status == ShoppingItemStatus.CHECKED || it.item.status == ShoppingItemStatus.PURCHASED_CONFIRMED
-                                        }
-                                        val sections = com.example.chatgpt_mealplanner.core.shopping.StoreOrder.plan(todo, { r -> r.item.displayName }, shopOrder, uiState.departmentOverrides)
-                                        sections.flatMap { section -> section.items.mapIndexed { i, r -> Triple(date, if (i == 0) section.department.displayName else null, r) } } +
-                                            done.map { Triple(date, null as String?, it) }
+                                        // Ticked items stay where they are (struck through): moving them to the bottom made the list jump
+                                        // under the shopper's thumb with every tick.
+                                        val sections = com.example.chatgpt_mealplanner.core.shopping.StoreOrder.plan(rows, { r -> r.item.displayName }, shopOrder, uiState.departmentOverrides)
+                                        sections.flatMap { section -> section.items.mapIndexed { i, r -> Triple(date, if (i == 0) section.department.displayName else null, r) } }
                                     }
                                 }
                                 items(ordered, key = { it.third.item.id }) { (tripDate, departmentHeader, itemWithSources) ->

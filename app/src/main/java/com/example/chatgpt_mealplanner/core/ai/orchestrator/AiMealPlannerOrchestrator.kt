@@ -1207,6 +1207,11 @@ class AiMealPlannerOrchestrator @Inject constructor(
         LOCALISATION:
         The user's home country is {{HOME_COUNTRY}}. Use that country's grocery names, spelling and customary units, and ingredients a typical shopper there can buy. Keep a dish's intrinsic ingredients even if they come from elsewhere (Parmesan stays Parmesan). With no country configured, use UK English and metric. Use plain grocery names, such as "double cream" or "bicarbonate of soda", and name the form of prepared meat, such as "diced chicken".
 
+        INGREDIENT NAMES:
+        1. Name every ingredient the way the household's pantry names it. When an ingredient is something in usableInventory or in knownIngredientNames, use that item's displayName exactly ("Briosh buns", not "Briosh burger buns"; "Cheddar cheese", not "mild Cheddar cheese"). The app matches recipe ingredients to pantry items by name, and a different wording means the pantry item is not found when the meal is cooked or the shopping list is made.
+        2. Otherwise use a short, plain grocery name: the product and its type, such as "sweet potatoes", "cheddar cheese" or "diced chicken breast". Leave out taste, texture and marketing words (creamy, fluffy, mild, fresh, crispy, juicy, tender), and brands unless the pantry has that brand. Put preparation in the step text, not the ingredient name.
+        3. The same ingredient has the same name everywhere in the recipe and across the days of a plan.
+
         INVENTORY:
         1. usableInventory holds only lots marked AVAILABLE, LOW or USE_SOON. Anything absent from it, or OUT, DISCARDED or NEEDS_CONFIRMATION, is not owned.
         2. Inventory is context, not a requirement. Plan appealing, coherent meals and buy fresh ingredients when that makes the dish better; do not force unsuitable stock in. USE_SOON items are good candidates when they fit.

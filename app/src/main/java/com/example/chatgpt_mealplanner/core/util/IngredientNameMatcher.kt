@@ -14,8 +14,18 @@ object IngredientNameMatcher {
         // ("boneless skinless chicken breast, diced" is the "diced chicken breast" that was bought).
         "boneless", "skinless", "skinned", "deboned", "trimmed", "cubed", "halved", "quartered", "thinly", "thickly", "coarsely", "lean",
         // Chicken pieces are sold "skin on, bone in", which a recipe may or may not repeat.
-        "skin", "bone", "on", "in"
+        "skin", "bone", "on", "in",
+        // Taste, texture and strength words that describe the same product ("mild cheddar cheese" is the "cheddar cheese" in
+        // the pantry; "creamy, fluffy sweet potatoes" are "sweet potatoes"). Words that name a different product stay out of
+        // this list: "soft cheese", "strong flour", "golden syrup" and "light mayonnaise" are not the plain thing.
+        "mild", "mature", "sharp", "vintage", "creamy", "fluffy", "crispy", "crunchy", "juicy", "tender", "firm", "smooth",
+        "tasty", "delicious", "lovely", "nice", "baby", "traditional", "classic", "authentic", "homemade", "free", "range",
+        "british", "english", "scottish", "irish", "welsh"
     )
+
+    /** Breads. A "burger bun" or "hot dog roll" is the "bun" or "roll" that was bought: the filling it is for is dropped. */
+    private val BREAD_WORDS = setOf("bun", "roll", "bap", "bread", "bagel", "wrap", "loaf", "muffin")
+    private val BREAD_USE_WORDS = setOf("burger", "hot", "dog", "hotdog", "sandwich", "sub", "hoagie", "slider")
 
     /** Same ingredient, different names (mostly UK vs US). Phrases are replaced before words are compared. */
     private val SYNONYMS = listOf(
@@ -63,6 +73,7 @@ object IngredientNameMatcher {
             .split(' ')
             .filter { it.isNotEmpty() && it !in DESCRIPTORS }
             .map(::singular)
+            .let { words -> if (words.any { it in BREAD_WORDS }) words.filter { it !in BREAD_USE_WORDS } else words }
             .sorted()
             .joinToString(" ")
 

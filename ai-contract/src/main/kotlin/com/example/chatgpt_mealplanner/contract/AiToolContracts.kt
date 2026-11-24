@@ -240,6 +240,8 @@ data class AiContextPayload(
     val availableLeftovers: List<LeftoverContextDto> = emptyList(),
     val useSoonItems: List<InventorySummaryContextDto> = emptyList(),
     val usableInventory: List<InventorySummaryContextDto> = emptyList(),
+    /** Names of pantry items the household knows but has none of right now (out of stock), so recipes can reuse their wording. */
+    val knownIngredientNames: List<String> = emptyList(),
     /** Saved packet instructions for the kits in usableInventory. A kit missing here has no instructions on file yet. */
     val kitInstructions: List<KitInstructionContextDto> = emptyList(),
     /** Recipes the household saved from web pages and photos; the full text comes from get_saved_recipe. */

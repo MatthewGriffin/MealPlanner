@@ -68,4 +68,25 @@ class IngredientKitMatchTest {
         assertTrue(IngredientNameMatcher.matches("Sliced green jalapeños", "sliced green jalapenos"))
         assertTrue(IngredientNameMatcher.matches("jalapeño", "Jalapeno"))
     }
+
+    @Test fun tasteAndTextureWordsDoNotStopAMatch() {
+        assertTrue(IngredientNameMatcher.matches("Cheddar cheese", "Mild Cheddar cheese"))
+        assertTrue(IngredientNameMatcher.matches("Sweet potatoes", "Creamy, fluffy sweet potatoes"))
+        assertTrue(IngredientNameMatcher.matches("Butter", "Free range butter"))
+    }
+
+    @Test fun wordsThatNameADifferentProductStillStopAMatch() {
+        assertFalse(IngredientNameMatcher.matches("Cheese", "Soft cheese"))
+        assertFalse(IngredientNameMatcher.matches("Flour", "Strong flour"))
+        assertFalse(IngredientNameMatcher.matches("Syrup", "Golden syrup"))
+        assertFalse(IngredientNameMatcher.matches("Potatoes", "Sweet potatoes"))
+        assertFalse(IngredientNameMatcher.matches("Chicken", "Chicken stock"))
+    }
+
+    @Test fun aBurgerBunIsTheBunThatWasBought() {
+        assertTrue(IngredientNameMatcher.matches("Briosh buns", "Briosh burger buns"))
+        assertTrue(IngredientNameMatcher.matches("Rolls", "Hot dog rolls"))
+        // Only for breads: a burger is not the beef it is made of.
+        assertFalse(IngredientNameMatcher.matches("Beef", "Beef burger"))
+    }
 }
