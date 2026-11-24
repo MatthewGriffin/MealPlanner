@@ -300,11 +300,18 @@ fun ShoppingScreen(
 
                             if (isListExpanded) {
                                 val today = java.time.LocalDate.now()
-                                val trips = items.groupBy {
-                                    com.example.chatgpt_mealplanner.core.util.FreshnessPlanner.tripDate(
-                                        it.item.displayName, it.sources.map { s -> s.mealDate }, today
+                                val buyDays = run {
+                                    com.example.chatgpt_mealplanner.core.util.FreshnessPlanner.planTrips(
+                                        items.map {
+                                            com.example.chatgpt_mealplanner.core.util.FreshnessPlanner.TripNeed(
+                                                it.sources.map { s -> s.mealDate },
+                                                com.example.chatgpt_mealplanner.core.util.FreshnessPlanner.shelfLifeDays(it.item.displayName)
+                                            )
+                                        },
+                                        today
                                     )
-                                }.toSortedMap()
+                                }
+                                val trips = items.indices.groupBy({ buyDays[it] }, { items[it] }).toSortedMap()
                                 val shopOrder = uiState.activeShop?.orderByKey
                                 // While shopping the list is laid out by department in this shop's walking order, ticked items last.
                                 val ordered = trips.flatMap { (date, rows) ->
@@ -322,7 +329,7 @@ fun ShoppingScreen(
                                         Text(
                                             text = if (tripDate == today) "Shop today" else
                                                 "Shop on " + tripDate.format(java.time.format.DateTimeFormatter.ofPattern("EEE d MMM")) +
-                                                    " (fresh items for later meals)",
+                                                    " (fresh items and anything not needed sooner)",
                                             style = MaterialTheme.typography.titleSmall,
                                             fontWeight = FontWeight.Bold,
                                             modifier = Modifier.padding(top = 8.dp)

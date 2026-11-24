@@ -30,7 +30,9 @@ object FreshnessPlanner {
         for (entry in sorted) {
             val date = dateOf(entry)
             val current = buyOn
-            if (current == null || date.isAfter(current.plusDays(shelfLifeDays.toLong() - 1))) {
+            // Bought the day before the first meal, an item is still good for shelfLifeDays after that day, so on a 3 day
+            // life bought Thursday it is fine on Sunday.
+            if (current == null || date.isAfter(current.plusDays(shelfLifeDays.toLong()))) {
                 buyOn = buyDateFor(date, today)
                 batches.add(mutableListOf(entry))
             } else {
@@ -46,6 +48,49 @@ object FreshnessPlanner {
         val first = mealDates.mapNotNull { runCatching { LocalDate.parse(it.take(10)) }.getOrNull() }.minOrNull()
             ?: return today
         return buyDateFor(first, today)
+    }
+
+    /** What a shopping row needs for trip planning: when its meals are, and how long it keeps (null: long enough not to matter). */
+    data class TripNeed(val mealDates: List<String>, val shelfLifeDays: Int?)
+
+    /**
+     * Decides the day each row is bought, using as few shopping days as the freshness allows:
+     *  - A fresh row can be bought on any day from (its last meal minus its shelf life) to the day before its first meal,
+     *    so three fresh items for Friday, Saturday and Sunday can all be bought on Thursday if each keeps three days.
+     *  - Shopping days are placed as late as possible (fresher), and a fresh row joins the latest shopping day that suits it.
+     *  - Anything else (long-life items) whose first meal is after a later shopping day is bought on that day too, so a
+     *    later trip is never just for one fresh item. What is needed sooner is bought today.
+     * Returns the buy day for each index of [needs].
+     */
+    fun planTrips(needs: List<TripNeed>, today: LocalDate): List<LocalDate> {
+        fun parse(dates: List<String>) = dates.mapNotNull { runCatching { LocalDate.parse(it.take(10)) }.getOrNull() }
+        class Window(val index: Int, val earliest: LocalDate, val latest: LocalDate, val fresh: Boolean)
+        val windows = needs.mapIndexed { i, need ->
+            val dates = parse(need.mealDates)
+            val first = dates.minOrNull()
+            if (first == null) return@mapIndexed Window(i, today, today, false)
+            val latest = buyDateFor(first, today)
+            val life = need.shelfLifeDays
+            val earliest = if (life == null) latest else {
+                val e = dates.max().minusDays(life.toLong())
+                if (e.isBefore(today)) today else if (e.isAfter(latest)) latest else e
+            }
+            Window(i, earliest, latest, fresh = life != null)
+        }
+        // Fewest shopping days that cover every fresh row's window, each placed on the latest day it can be.
+        val trips = mutableListOf<LocalDate>()
+        for (w in windows.filter { it.fresh }.sortedBy { it.latest }) {
+            if (trips.none { !it.isBefore(w.earliest) && !it.isAfter(w.latest) }) trips.add(w.latest)
+        }
+        val result = MutableList(needs.size) { today }
+        for (w in windows) {
+            val fitting = trips.filter { !it.isBefore(w.earliest) && !it.isAfter(w.latest) }.maxOrNull()
+            result[w.index] = when {
+                w.fresh -> fitting ?: w.latest
+                else -> trips.filter { !it.isAfter(w.latest) && !it.isBefore(today) }.maxOrNull() ?: today
+            }
+        }
+        return result
     }
 
     /** Buy the day before the first meal that needs it, but never in the past. */
