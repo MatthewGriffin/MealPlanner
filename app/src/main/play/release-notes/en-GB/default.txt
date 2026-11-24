@@ -1,4 +1,4 @@
-- Smarter shop splits: fresh items needed on nearby days are bought in one trip if they keep long enough, and a later trip also takes anything not needed sooner, so you never go out for one item.
-- Share a YouTube or TikTok recipe video to Pantry Pal to save it as a recipe.
-- Fix an item's department from its shopping details.
-- Settings > About shows the build.
+- Things added to the shopping list by hand now sync between phones, with who asked and an optional why; edit, tick or remove them anywhere.
+- No pantry match? Pick the pantry item in Cook Now or from a shopping item; it is remembered. Mild cheddar, creamy sweet potatoes and burger buns now match.
+- Steadier shopping trips on followers: ticks stay put and the list stops jumping.
+- Claude names ingredients like your pantry. Update both phones.
