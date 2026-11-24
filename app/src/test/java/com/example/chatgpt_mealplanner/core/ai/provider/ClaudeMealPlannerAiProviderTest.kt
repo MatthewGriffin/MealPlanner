@@ -412,7 +412,7 @@ class ClaudeMealPlannerAiProviderTest {
         val account = FakeProxyAccount(server.url("/").toString().removeSuffix("/"))
         server.enqueue(
             MockResponse().setResponseCode(402).setHeader("Content-Type", "application/json")
-                .setHeader("x-pp-tier", "free").setHeader("x-pp-percent-left", "0").setHeader("x-pp-resets-on", "2026-11-23")
+                .setHeader("x-pp-tier", "free").setHeader("x-pp-percent-left", "0").setHeader("x-pp-resets-on", java.time.LocalDate.now().plusDays(3).toString())
                 .setBody("""{"type":"error","error":{"type":"usage_limit","message":"You have used this week's free AI allowance."}}""")
         )
 
