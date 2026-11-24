@@ -39,8 +39,21 @@ class ShoppingDomainServiceImpl @Inject constructor(
     private val mealDao: MealDao,
     private val inventoryDao: InventoryDao,
     private val stapleRuleDao: StapleRuleDao,
-    private val transactionRunner: DatabaseTransactionRunner
+    private val transactionRunner: DatabaseTransactionRunner,
+    private val appRoleResolver: com.example.chatgpt_mealplanner.core.sync.AppRoleResolver? = null,
+    private val changeQueue: com.example.chatgpt_mealplanner.core.shopping.ShoppingChangeQueue? = null
 ) : ShoppingDomainService {
+
+    private fun isFollower() = appRoleResolver?.isFollower() == true
+
+    /** The name shown as who asked for an item: this phone's model on a follower, "Main phone" on Main. */
+    private fun requesterName(): String =
+        if (isFollower()) (android.os.Build.MODEL?.takeIf { it.isNotBlank() } ?: "A follower phone") else "Main phone"
+
+    /** A follower keeps what it did to a hand-added item until Main confirms it. */
+    private fun queueForMain(change: com.example.chatgpt_mealplanner.sync.contract.ShoppingChangeDto) {
+        if (isFollower()) changeQueue?.record(change)
+    }
 
     override suspend fun calculateShoppingRequirements(
         startDate: String?,
@@ -328,35 +341,55 @@ class ShoppingDomainServiceImpl @Inject constructor(
         displayName: String,
         quantity: Double?,
         unit: QuantityUnit?,
-        notes: String?
+        notes: String?,
+        itemId: String?
     ): DomainResult<ShoppingListItem> {
-        val item = ShoppingListItem(
-            id = UUID.randomUUID().toString(),
-            shoppingListId = shoppingListId,
-            displayName = displayName,
-            requiredQuantity = quantity,
-            requiredUnit = unit,
-            suggestedPurchaseQuantity = quantity,
-            suggestedPurchaseUnit = unit,
-            reason = notes ?: "Manually added item",
-            priority = ShoppingPriority.ESSENTIAL,
-            status = ShoppingItemStatus.NEEDED,
-            optional = false,
-            sourceType = ShoppingSourceType.MANUAL,
-            hasMealRequirement = false,
-            hasStapleRestock = false,
-            mealShortfallQuantity = null,
-            stapleReserveTopUpQuantity = quantity,
-            expectedFinalInventory = null,
-            expectedFinalInventoryUnit = unit,
-            quantityUncertain = false,
-            uncertaintyReason = null,
-            requirementConfidence = RequirementConfidence.EXACT,
-            wasteRisk = WasteRisk.LOW
+        val id = itemId ?: UUID.randomUUID().toString()
+        shoppingDao.getShoppingListItemById(id)?.let { return DomainResult.Success(it.toDomainModel()) }
+        val requester = requesterName()
+        val entity = com.example.chatgpt_mealplanner.core.shopping.ShoppingChangeApplier.newManualItem(
+            id, shoppingListId, displayName.trim(), quantity, unit, notes, requester, System.currentTimeMillis()
         )
+        shoppingDao.insertShoppingListItem(entity)
+        queueForMain(
+            com.example.chatgpt_mealplanner.core.shopping.ShoppingChangeQueue.newChange(
+                com.example.chatgpt_mealplanner.sync.contract.ShoppingChangeKind.ADD, id, displayName = entity.displayName,
+                quantity = quantity, unit = unit?.name, reason = entity.reason, requestedBy = requester
+            )
+        )
+        return DomainResult.Success(entity.toDomainModel())
+    }
 
-        shoppingDao.insertShoppingListItem(item.toEntity())
-        return DomainResult.Success(item)
+    override suspend fun updateManualItem(
+        itemId: String,
+        displayName: String?,
+        quantity: Double?,
+        unit: QuantityUnit?,
+        reason: String?
+    ): DomainResult<Unit> {
+        val existing = shoppingDao.getShoppingListItemById(itemId)
+            ?: return DomainResult.Failure(DomainError.TransactionFailed("That item is no longer on the list."))
+        if (existing.sourceType != ShoppingSourceType.MANUAL) {
+            return DomainResult.Failure(DomainError.TransactionFailed("Only items you added by hand can be edited."))
+        }
+        val newName = displayName?.trim()?.takeIf { it.isNotEmpty() } ?: existing.displayName
+        val newUnit = unit ?: existing.requiredUnit
+        val newReason = reason?.trim()?.let { if (it.isEmpty()) com.example.chatgpt_mealplanner.core.shopping.ShoppingChangeApplier.DEFAULT_REASON else it } ?: existing.reason
+        shoppingDao.insertShoppingListItem(
+            existing.copy(
+                displayName = newName,
+                requiredQuantity = quantity ?: existing.requiredQuantity, requiredUnit = newUnit,
+                suggestedPurchaseQuantity = quantity ?: existing.suggestedPurchaseQuantity, suggestedPurchaseUnit = newUnit,
+                reason = newReason, updatedAt = System.currentTimeMillis()
+            )
+        )
+        queueForMain(
+            com.example.chatgpt_mealplanner.core.shopping.ShoppingChangeQueue.newChange(
+                com.example.chatgpt_mealplanner.sync.contract.ShoppingChangeKind.EDIT, itemId, displayName = newName,
+                quantity = quantity, unit = unit?.name, reason = newReason
+            )
+        )
+        return DomainResult.Success(Unit)
     }
 
     override suspend fun updateItemStatus(
@@ -364,11 +397,26 @@ class ShoppingDomainServiceImpl @Inject constructor(
         status: ShoppingItemStatus
     ): DomainResult<Unit> {
         shoppingDao.updateItemStatus(itemId, status.name)
+        if (shoppingDao.getShoppingListItemById(itemId)?.sourceType == ShoppingSourceType.MANUAL) {
+            queueForMain(
+                com.example.chatgpt_mealplanner.core.shopping.ShoppingChangeQueue.newChange(
+                    com.example.chatgpt_mealplanner.sync.contract.ShoppingChangeKind.SET_STATUS, itemId, status = status.name
+                )
+            )
+        }
         return DomainResult.Success(Unit)
     }
 
     override suspend fun removeShoppingItem(itemId: String): DomainResult<Unit> {
+        val wasManual = shoppingDao.getShoppingListItemById(itemId)?.sourceType == ShoppingSourceType.MANUAL
         shoppingDao.deleteShoppingListItem(itemId)
+        if (wasManual) {
+            queueForMain(
+                com.example.chatgpt_mealplanner.core.shopping.ShoppingChangeQueue.newChange(
+                    com.example.chatgpt_mealplanner.sync.contract.ShoppingChangeKind.REMOVE, itemId
+                )
+            )
+        }
         return DomainResult.Success(Unit)
     }
 

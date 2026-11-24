@@ -31,10 +31,45 @@ fun ShoppingItemDetailDialog(
     /** What the app works out on its own, shown as the "Automatic" choice. */
     guessedDepartment: com.example.chatgpt_mealplanner.core.shopping.Department = com.example.chatgpt_mealplanner.core.shopping.Department.OTHER,
     onDepartmentChange: (com.example.chatgpt_mealplanner.core.shopping.Department?) -> Unit = {},
+    /** For a hand-added item: save a new name and "why". */
+    onEditManual: (name: String, why: String) -> Unit = { _, _ -> },
+    onRemoveManual: () -> Unit = {},
     onDismiss: () -> Unit
 ) {
     val item = itemWithSources.item
     val sources = itemWithSources.sources
+    val isManual = item.sourceType == com.example.chatgpt_mealplanner.core.model.ShoppingSourceType.MANUAL
+    val editing = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    if (editing.value) {
+        val nameText = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(item.displayName) }
+        val whyText = androidx.compose.runtime.remember {
+            androidx.compose.runtime.mutableStateOf(item.reason.takeIf { it != com.example.chatgpt_mealplanner.core.shopping.ShoppingChangeApplier.DEFAULT_REASON }.orEmpty())
+        }
+        AlertDialog(
+            onDismissRequest = { editing.value = false },
+            title = { Text("Edit item") },
+            text = {
+                Column {
+                    androidx.compose.material3.OutlinedTextField(
+                        value = nameText.value, onValueChange = { nameText.value = it },
+                        label = { Text("Item name") }, singleLine = true, modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    androidx.compose.material3.OutlinedTextField(
+                        value = whyText.value, onValueChange = { whyText.value = it },
+                        label = { Text("Why do you need it? (optional)") }, modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                androidx.compose.material3.Button(
+                    enabled = nameText.value.isNotBlank(),
+                    onClick = { editing.value = false; onEditManual(nameText.value.trim(), whyText.value.trim()) }
+                ) { Text("Save") }
+            },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { editing.value = false }) { Text("Cancel") } }
+        )
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -74,6 +109,30 @@ fun ShoppingItemDetailDialog(
                 )
                 Spacer(modifier = Modifier.height(8.dp))
 
+                if (isManual) {
+                    Text(
+                        text = "Requested by ${item.requestedBy ?: "unknown"}",
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    val why = item.reason.takeIf { it.isNotBlank() && it != com.example.chatgpt_mealplanner.core.shopping.ShoppingChangeApplier.DEFAULT_REASON }
+                    Text(
+                        text = why?.let { "Why: $it" } ?: "No reason given",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    if (item.requiredQuantity != null) {
+                        Text("Quantity: ${item.requiredQuantity} ${item.requiredUnit?.name ?: ""}", style = MaterialTheme.typography.bodyMedium)
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+                        androidx.compose.material3.OutlinedButton(onClick = { editing.value = true }) { Text("Edit") }
+                        androidx.compose.material3.OutlinedButton(
+                            onClick = onRemoveManual,
+                            colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                        ) { Text("Remove") }
+                    }
+                } else {
                 Text(
                     text = "Suggested Purchase: ${item.suggestedPurchaseQuantity ?: 0.0} ${item.suggestedPurchaseUnit?.name ?: ""}",
                     style = MaterialTheme.typography.bodyLarge,
@@ -126,6 +185,7 @@ fun ShoppingItemDetailDialog(
                     )
                 }
 
+                }
                 if (sources.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(

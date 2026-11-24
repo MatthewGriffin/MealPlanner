@@ -1023,6 +1023,13 @@ val MIGRATION_29_30 = object : Migration(29, 30) {
     }
 }
 
+/** Hand-added shopping items remember who asked for them. */
+val MIGRATION_30_31 = object : Migration(30, 31) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `shopping_list_items` ADD COLUMN `requestedBy` TEXT")
+    }
+}
+
 const val MAIN_DATABASE_NAME = "pantry_planner.db"
 
 val ALL_MIGRATIONS = arrayOf(
@@ -1054,7 +1061,8 @@ val ALL_MIGRATIONS = arrayOf(
     MIGRATION_26_27,
     MIGRATION_27_28,
     MIGRATION_28_29,
-    MIGRATION_29_30
+    MIGRATION_29_30,
+    MIGRATION_30_31
 )
 
 @Database(
@@ -1099,7 +1107,7 @@ val ALL_MIGRATIONS = arrayOf(
         com.example.chatgpt_mealplanner.core.database.entity.KitInstructionEntity::class,
         com.example.chatgpt_mealplanner.core.database.entity.SavedRecipeEntity::class
     ],
-    version = 30,
+    version = 31,
     exportSchema = true
 )
 @TypeConverters(Converters::class)

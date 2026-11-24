@@ -26,8 +26,19 @@ interface ShoppingDomainService {
         displayName: String,
         quantity: Double? = null,
         unit: QuantityUnit? = null,
-        notes: String? = null
+        notes: String? = null,
+        /** A fixed id, so the same request (for example an assistant tool call) never adds the item twice. */
+        itemId: String? = null
     ): DomainResult<ShoppingListItem>
+
+    /** Renames a hand-added item or changes its quantity or its "why". Null leaves a field as it is. */
+    suspend fun updateManualItem(
+        itemId: String,
+        displayName: String? = null,
+        quantity: Double? = null,
+        unit: QuantityUnit? = null,
+        reason: String? = null
+    ): DomainResult<Unit>
 
     suspend fun updateItemStatus(
         itemId: String,

@@ -1042,37 +1042,12 @@ class AiToolDispatcher @Inject constructor(
         }
 
         val stableItemId = "manual_${conversationId}_${call.toolCallId}"
-
-        val item = ShoppingListItemEntity(
-            id = stableItemId,
-            shoppingListId = activeList.id,
-            canonicalIngredientId = extractStringArg(argsJson, "canonicalIngredientId"),
-            displayName = displayName,
-            requiredQuantity = extractDoubleArg(argsJson, "quantity"),
-            requiredUnit = extractStringArg(argsJson, "unit")?.let { QuantityUnit.valueOf(it) },
-            suggestedPurchaseQuantity = extractDoubleArg(argsJson, "quantity"),
-            suggestedPurchaseUnit = extractStringArg(argsJson, "unit")?.let { QuantityUnit.valueOf(it) },
-            packCount = 1,
-            reason = "Manual user addition",
-            priority = ShoppingPriority.ESSENTIAL,
-            status = ShoppingItemStatus.NEEDED,
-            optional = false,
-            sourceType = ShoppingSourceType.MANUAL,
-            hasMealRequirement = false,
-            hasStapleRestock = false,
-            mealShortfallQuantity = null,
-            stapleReserveTopUpQuantity = null,
-            expectedFinalInventory = null,
-            expectedFinalInventoryUnit = null,
-            quantityUncertain = false,
-            uncertaintyReason = null,
-            requirementConfidence = RequirementConfidence.EXACT,
-            wasteRisk = WasteRisk.LOW,
-            createdAt = System.currentTimeMillis(),
-            updatedAt = System.currentTimeMillis()
+        val unit = extractStringArg(argsJson, "unit")?.let { runCatching { QuantityUnit.valueOf(it) }.getOrNull() }
+        // Through the service so a follower also queues the item for Main.
+        shoppingDomainService.addManualShoppingItem(
+            activeList.id, displayName, extractDoubleArg(argsJson, "quantity"), unit,
+            extractStringArg(argsJson, "reason") ?: "Added by the assistant", stableItemId
         )
-
-        shoppingDao.insertShoppingListItem(item)
         return DomainResult.Success(AiToolPayload.TextPayload("Added manual item '$displayName' to shopping list"))
     }
 

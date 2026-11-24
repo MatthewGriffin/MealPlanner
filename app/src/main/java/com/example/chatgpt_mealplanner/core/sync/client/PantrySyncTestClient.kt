@@ -312,6 +312,35 @@ open class PantrySyncTestClient @Inject constructor(
         }.getOrNull()
     }
 
+    /** Follower: sends changes to hand-added shopping items. Returns the HTTP status and the change ids Main has, or null if unreachable. */
+    open suspend fun postShoppingChanges(
+        hostIp: String,
+        port: Int = 8443,
+        pinnedCertFingerprint: String?,
+        sessionToken: String,
+        changes: com.example.chatgpt_mealplanner.sync.contract.ShoppingChangesUploadDto
+    ): Pair<Int, List<String>>? = withContext(Dispatchers.IO) {
+        runCatching {
+            val client = createPinnedOkHttpClient(pinnedCertFingerprint)
+            val body = Json { encodeDefaults = true }.encodeToString(com.example.chatgpt_mealplanner.sync.contract.ShoppingChangesUploadDto.serializer(), changes)
+            val request = Request.Builder()
+                .url("https://$hostIp:$port/sync/v1/shopping-changes")
+                .header("X-Pantry-Session-Token", sessionToken)
+                .post(body.toRequestBody("application/json".toMediaType()))
+                .build()
+            client.newCall(request).execute().use { response ->
+                val ids = if (response.code == 200) {
+                    runCatching {
+                        Json { ignoreUnknownKeys = true }.decodeFromString(
+                            com.example.chatgpt_mealplanner.sync.contract.ShoppingChangesAckDto.serializer(), response.body?.string().orEmpty()
+                        ).applied
+                    }.getOrDefault(emptyList())
+                } else emptyList()
+                response.code to ids
+            }
+        }.getOrNull()
+    }
+
     /** Follower: asks the main phone for the household's AI key. Null if it is not available right now. */
     open suspend fun getAiAccessToken(
         hostIp: String,
