@@ -19,6 +19,10 @@ class MealPlannerApplication : Application(), Configuration.Provider {
     @Inject
     lateinit var followerNetworkCallbackListener: FollowerNetworkCallbackListener
 
+    /** Created here so the household's own ingredient name pairs are loaded before anything matches names. */
+    @Inject
+    lateinit var ingredientAliases: com.example.chatgpt_mealplanner.core.util.IngredientAliases
+
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
             .setWorkerFactory(workerFactory)

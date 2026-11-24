@@ -27,6 +27,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -62,6 +64,20 @@ fun CookNowScreen(
     LaunchedEffect(mealWithIngredients?.meal?.id) {
         stock.clear()
         stock.putAll(viewModel.stockFor(mealWithIngredients?.ingredients.orEmpty()))
+    }
+
+    // Ingredients whose name matched nothing in the pantry can be pointed at the pantry item that is the same thing.
+    val picked = remember(plannedMealId) { mutableStateMapOf<String, com.example.chatgpt_mealplanner.core.model.InventoryItem>() }
+    var pantry by remember { mutableStateOf<List<com.example.chatgpt_mealplanner.core.model.InventoryItem>>(emptyList()) }
+    var pickFor by remember { mutableStateOf<com.example.chatgpt_mealplanner.core.model.MealIngredient?>(null) }
+    LaunchedEffect(plannedMealId) { pantry = viewModel.pantryItems() }
+    pickFor?.let { target ->
+        com.example.chatgpt_mealplanner.feature.common.PantryItemPickerDialog(
+            title = "Which pantry item is \"${target.displayName}\"?",
+            items = pantry,
+            onPick = { picked[target.id] = it; pickFor = null },
+            onDismiss = { pickFor = null }
+        )
     }
 
     Column(
@@ -153,7 +169,8 @@ fun CookNowScreen(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            val inStock = stock[ing.id]
+                            val pickedItem = picked[ing.id]
+                            val inStock = stock[ing.id] ?: pickedItem?.takeIf { it.quantityUnit == ing.plannedUnit }?.quantity
                             val entered = currentActual.toDoubleOrNull() ?: ing.plannedQuantity
                             if (inStock != null) {
                                 Text(
@@ -174,12 +191,24 @@ fun CookNowScreen(
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
-                            } else {
+                            } else if (pickedItem == null) {
                                 Text(
-                                    text = "In stock: not recorded",
+                                    text = "Not found in your pantry under this name",
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = MaterialTheme.colorScheme.error
                                 )
+                            }
+                            if (pickedItem != null) {
+                                Text(
+                                    text = "Using ${pickedItem.displayName} from your pantry",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                            if (stock[ing.id] == null) {
+                                androidx.compose.material3.TextButton(onClick = { pickFor = ing }) {
+                                    Text(if (pickedItem == null) "Pick from pantry" else "Change pantry item")
+                                }
                             }
                             Spacer(modifier = Modifier.height(8.dp))
                             Row(
@@ -222,11 +251,21 @@ fun CookNowScreen(
                                     actualUnit = ing.plannedUnit
                                 )
                             }
+                            val substitutions = ingredients.mapNotNull { ing ->
+                                val item = picked[ing.id] ?: return@mapNotNull null
+                                viewModel.rememberSameIngredient(ing.displayName, item.displayName)
+                                com.example.chatgpt_mealplanner.core.model.IngredientSubstitution(
+                                    mealIngredientId = ing.id,
+                                    selectedInventoryItemId = item.id,
+                                    actualQuantity = actualQuantities[ing.id]?.toDoubleOrNull() ?: ing.plannedQuantity,
+                                    actualUnit = ing.plannedUnit
+                                )
+                            }
                             viewModel.onEvent(
                                 MealPlannerUiEvent.ConfirmCookMeal(
                                     mealId = meal.id,
                                     actualIngredientOverrides = overrides,
-                                    substitutions = emptyList(),
+                                    substitutions = substitutions,
                                     leftoverStorageLocation = null
                                 )
                             )

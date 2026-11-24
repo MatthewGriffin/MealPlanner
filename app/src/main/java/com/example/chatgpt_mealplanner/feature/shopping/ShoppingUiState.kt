@@ -31,6 +31,8 @@ data class ShoppingUiState(
     val shops: List<ShopChoice> = emptyList(),
     /** Departments fixed by hand, by item key. */
     val departmentOverrides: Map<String, com.example.chatgpt_mealplanner.core.shopping.Department> = emptyMap(),
+    /** The pantry, for pointing a list line at the item the household already has under another name. */
+    val pantryItems: List<InventoryItem> = emptyList(),
     val motion: MotionOptions = MotionOptions()
 )
 
@@ -49,6 +51,8 @@ sealed interface ShoppingUiEvent {
     data class RemoveItem(val itemId: String) : ShoppingUiEvent
     /** Fixes (or, with null, clears the fix for) the department an item is found in. */
     /** Renames a hand-added item and changes its "why". */
+    /** The list line is the pantry item the household already has under another name. */
+    data class MatchToPantry(val itemName: String, val pantryItemName: String) : ShoppingUiEvent
     data class EditManualItem(val itemId: String, val name: String, val why: String) : ShoppingUiEvent
     data class SetItemDepartment(val itemName: String, val department: com.example.chatgpt_mealplanner.core.shopping.Department?) : ShoppingUiEvent
     data class SelectItemDetail(val itemWithSources: ShoppingListItemWithSources?) : ShoppingUiEvent
