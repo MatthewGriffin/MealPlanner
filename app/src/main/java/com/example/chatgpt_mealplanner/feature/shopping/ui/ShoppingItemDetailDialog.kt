@@ -34,6 +34,8 @@ fun ShoppingItemDetailDialog(
     /** For a hand-added item: save a new name and "why". */
     onEditManual: (name: String, why: String) -> Unit = { _, _ -> },
     onRemoveManual: () -> Unit = {},
+    /** For a list line worked out from meals: pick the pantry item that is already the same thing. */
+    onMatchToPantry: () -> Unit = {},
     onDismiss: () -> Unit
 ) {
     val item = itemWithSources.item
@@ -133,6 +135,8 @@ fun ShoppingItemDetailDialog(
                         ) { Text("Remove") }
                     }
                 } else {
+                androidx.compose.material3.OutlinedButton(onClick = onMatchToPantry) { Text("I already have this in my pantry") }
+                Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = "Suggested Purchase: ${item.suggestedPurchaseQuantity ?: 0.0} ${item.suggestedPurchaseUnit?.name ?: ""}",
                     style = MaterialTheme.typography.bodyLarge,

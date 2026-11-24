@@ -26,7 +26,8 @@ class FollowerMealPlanSyncEngine @Inject constructor(
     private val appDatabase: AppDatabase,
     private val notificationManager: AppNotificationManager? = null,
     private val shoppingSessions: com.example.chatgpt_mealplanner.core.shopping.ShoppingSessionManager? = null,
-    private val shoppingChanges: com.example.chatgpt_mealplanner.core.shopping.ShoppingChangeQueue? = null
+    private val shoppingChanges: com.example.chatgpt_mealplanner.core.shopping.ShoppingChangeQueue? = null,
+    private val ingredientAliases: com.example.chatgpt_mealplanner.core.util.IngredientAliases? = null
 ) {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private companion object { const val MAX_TRIP_MS = 4L * 60 * 60 * 1000 }
@@ -175,6 +176,7 @@ class FollowerMealPlanSyncEngine @Inject constructor(
                 if (priceRows.isNotEmpty()) appDatabase.purchasePriceDao().upsertPriceObservations(priceRows)
             }
             snapshot.departmentOverrides?.let { shoppingSessions?.departmentOverrides?.install(it) }
+            snapshot.ingredientAliases?.let { ingredientAliases?.install(it) }
             // Main's learned shop order replaces what this phone holds; null (an older Main) leaves it alone.
             snapshot.storeOrders?.let { orders ->
                 shoppingSessions?.installOrders(orders.map { o ->

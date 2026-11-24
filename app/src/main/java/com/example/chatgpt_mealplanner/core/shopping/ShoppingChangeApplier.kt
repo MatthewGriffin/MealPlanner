@@ -55,6 +55,8 @@ class ShoppingChangeApplier(private val dao: ShoppingDao) {
             ShoppingChangeKind.REMOVE -> {
                 if (existing != null && existing.sourceType == ShoppingSourceType.MANUAL) dao.deleteShoppingListItem(change.itemId)
             }
+            // A name pairing is not about one list item: Main's sync route records it and rebuilds the list.
+            ShoppingChangeKind.ALIAS -> Unit
             ShoppingChangeKind.SET_STATUS -> {
                 val status = runCatching { ShoppingItemStatus.valueOf(change.status.orEmpty()) }.getOrNull()
                 if (existing != null && existing.sourceType == ShoppingSourceType.MANUAL && status != null) dao.updateItemStatus(change.itemId, status.name)

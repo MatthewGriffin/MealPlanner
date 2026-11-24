@@ -81,7 +81,9 @@ open class PantrySyncServer @Inject constructor(
     private val purchasePriceDao: com.example.chatgpt_mealplanner.core.database.dao.PurchasePriceDao? = null,
     private val followerAiKeys: com.example.chatgpt_mealplanner.core.ai.provider.FollowerAiKeys? = null,
     private val shoppingSessions: com.example.chatgpt_mealplanner.core.shopping.ShoppingSessionManager? = null,
-    private val pairedDeviceRepository: com.example.chatgpt_mealplanner.core.sync.repository.PairedDeviceRepository? = null
+    private val pairedDeviceRepository: com.example.chatgpt_mealplanner.core.sync.repository.PairedDeviceRepository? = null,
+    private val ingredientAliases: com.example.chatgpt_mealplanner.core.util.IngredientAliases? = null,
+    private val shoppingDomainService: com.example.chatgpt_mealplanner.core.service.ShoppingDomainService? = null
 ) {
     private var engine: io.ktor.server.engine.ApplicationEngine? = null
     private var serverState = PantryServerState.STOPPED
@@ -232,7 +234,8 @@ open class PantrySyncServer @Inject constructor(
             userStores = userStores,
             priceObservations = priceObservations,
             storeOrders = storeOrders,
-            departmentOverrides = shoppingSessions?.departmentOverrides?.asStrings()
+            departmentOverrides = shoppingSessions?.departmentOverrides?.asStrings(),
+            ingredientAliases = ingredientAliases?.snapshot()
         )
         onAfterSnapshotReadHook?.invoke()
         return dto
@@ -621,9 +624,18 @@ open class PantrySyncServer @Inject constructor(
                             val requester = pairedDeviceRepository?.getAllDevices()?.firstOrNull { it.deviceId == deviceId }?.deviceName
                             val applier = com.example.chatgpt_mealplanner.core.shopping.ShoppingChangeApplier(dao)
                             val applied = mutableListOf<String>()
+                            var pairedNames = false
                             for (change in upload.changes) {
-                                if (runCatching { applier.apply(change, requester) }.getOrDefault(false)) applied.add(change.changeId)
+                                if (change.kind == com.example.chatgpt_mealplanner.sync.contract.ShoppingChangeKind.ALIAS) {
+                                    // "This list item is that pantry item": remembered, and the list is worked out again with it.
+                                    val name = change.displayName; val pantry = change.reason
+                                    if (ingredientAliases != null && !name.isNullOrBlank() && !pantry.isNullOrBlank()) {
+                                        ingredientAliases.add(name, pantry); pairedNames = true
+                                    }
+                                    applied.add(change.changeId)
+                                } else if (runCatching { applier.apply(change, requester) }.getOrDefault(false)) applied.add(change.changeId)
                             }
+                            if (pairedNames) runCatching { shoppingDomainService?.generateOrRegenerateShoppingList() }
                             call.respond(com.example.chatgpt_mealplanner.sync.contract.ShoppingChangesAckDto(applied))
                         }
                     }

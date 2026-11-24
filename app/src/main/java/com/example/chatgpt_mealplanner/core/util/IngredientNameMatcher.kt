@@ -118,11 +118,21 @@ object IngredientNameMatcher {
         )
     }
 
+    /**
+     * Names the household has said are the same thing ("Briosh burger buns" is the "Briosh buns" in the pantry), by core name,
+     * both ways round. Set by IngredientAliases; empty until the household teaches it one.
+     */
+    @Volatile
+    var aliases: Map<String, Set<String>> = emptyMap()
+
     fun matches(a: String, b: String): Boolean {
         val ca = core(a)
         if (ca.isEmpty()) return false
-        if (ca == core(b)) return true
+        val cb = core(b)
+        if (ca == cb) return true
         val altsB = alternatives(b)
-        return alternatives(a).any { it.isNotEmpty() && it in altsB }
+        if (alternatives(a).any { it.isNotEmpty() && it in altsB }) return true
+        val known = aliases
+        return known[ca]?.contains(cb) == true || known[cb]?.contains(ca) == true
     }
 }

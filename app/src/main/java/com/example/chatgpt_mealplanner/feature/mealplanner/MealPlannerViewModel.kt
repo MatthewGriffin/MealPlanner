@@ -20,6 +20,7 @@ import com.example.chatgpt_mealplanner.core.sync.AppRoleResolver
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -45,7 +46,9 @@ class MealPlannerViewModel @Inject constructor(
     private val mealChangeRequestRepository: MealChangeRequestRepository,
     private val appRoleResolver: AppRoleResolver,
     @param:dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context? = null,
-    private val followerSyncScheduler: com.example.chatgpt_mealplanner.core.sync.follower.worker.FollowerSyncScheduler? = null
+    private val followerSyncScheduler: com.example.chatgpt_mealplanner.core.sync.follower.worker.FollowerSyncScheduler? = null,
+    private val inventoryRepository: com.example.chatgpt_mealplanner.core.repository.InventoryRepository? = null,
+    private val ingredientAliases: com.example.chatgpt_mealplanner.core.util.IngredientAliases? = null
 ) : ViewModel() {
 
     private val todayIsoDate: String = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE)
@@ -268,6 +271,21 @@ class MealPlannerViewModel @Inject constructor(
                 is DomainResult.Failure -> userMessageFlow.value = formatDomainError(result.error)
             }
         }
+    }
+
+    /** Pantry items that can be cooked with, for picking one when a recipe's wording doesn't match anything. */
+    suspend fun pantryItems(): List<com.example.chatgpt_mealplanner.core.model.InventoryItem> =
+        inventoryRepository?.getAllItems()?.first().orEmpty().filter {
+            it.status in listOf(
+                com.example.chatgpt_mealplanner.core.model.ItemStatus.AVAILABLE,
+                com.example.chatgpt_mealplanner.core.model.ItemStatus.LOW,
+                com.example.chatgpt_mealplanner.core.model.ItemStatus.USE_SOON
+            )
+        }
+
+    /** Remembers that a recipe's wording and a pantry item are the same thing, so it matches from now on. */
+    fun rememberSameIngredient(recipeName: String, pantryName: String) {
+        ingredientAliases?.add(recipeName, pantryName)
     }
 
     /** What is in stock for each ingredient of a meal (by ingredient id), for the cooking screen; ingredients with no known stock are left out. */

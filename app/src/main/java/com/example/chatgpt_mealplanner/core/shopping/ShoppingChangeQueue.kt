@@ -68,7 +68,7 @@ class ShoppingChangeQueue @Inject constructor(@ApplicationContext private val co
                     reason = change.reason ?: add.reason
                 ) else rest + forItem.filterNot { it.kind == ShoppingChangeKind.EDIT } + change
                 ShoppingChangeKind.SET_STATUS -> rest + forItem.filterNot { it.kind == ShoppingChangeKind.SET_STATUS } + change
-                ShoppingChangeKind.ADD -> rest + forItem + change
+                ShoppingChangeKind.ADD, ShoppingChangeKind.ALIAS -> rest + forItem + change
             }
         }
     }

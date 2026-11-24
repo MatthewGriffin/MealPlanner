@@ -113,6 +113,8 @@ data class BootstrapResponseDto(
     val priceObservations: List<PriceObservationSyncDto>? = null,
     /** Departments the user fixed by hand on Main, by item key. Null from older hosts. */
     val departmentOverrides: Map<String, String>? = null,
+    /** Names the household said are the same ingredient (by core name, both ways round). Null from older hosts. */
+    val ingredientAliases: Map<String, List<String>>? = null,
     val basketComparisonFingerprint: String? = null,
     val basketComparisonJson: String? = null,
     /** What the household has learned of each shop's order, read-only for followers. Null from older hosts. */
@@ -394,7 +396,7 @@ data class EnrollmentResponseDto(
 
 /** What a follower did to a hand-added shopping item, sent to Main so the list stays the same on every phone. */
 @Serializable
-enum class ShoppingChangeKind { ADD, EDIT, REMOVE, SET_STATUS }
+enum class ShoppingChangeKind { ADD, EDIT, REMOVE, SET_STATUS, ALIAS }
 
 @Serializable
 data class ShoppingChangeDto(

@@ -83,12 +83,23 @@ fun ShoppingScreen(
         }
     }
 
+    var matchName by remember { mutableStateOf<String?>(null) }
+    matchName?.let { name ->
+        com.example.chatgpt_mealplanner.feature.common.PantryItemPickerDialog(
+            title = "Which pantry item is \"$name\"?",
+            items = uiState.pantryItems,
+            onPick = { onEvent(ShoppingUiEvent.MatchToPantry(name, it.displayName)); matchName = null },
+            onDismiss = { matchName = null }
+        )
+    }
+
     if (uiState.selectedItemForDetail != null) {
         ShoppingItemDetailDialog(
             itemWithSources = uiState.selectedItemForDetail,
             onOpenMeal = { mealId, mealDate -> onOpenMeal(mealId, mealDate) },
             department = uiState.departmentOverrides[com.example.chatgpt_mealplanner.core.shopping.StoreOrder.keyOf(uiState.selectedItemForDetail.item.displayName)],
             guessedDepartment = com.example.chatgpt_mealplanner.core.shopping.Department.classify(uiState.selectedItemForDetail.item.displayName),
+            onMatchToPantry = { matchName = uiState.selectedItemForDetail.item.displayName },
             onEditManual = { name, why -> onEvent(ShoppingUiEvent.EditManualItem(uiState.selectedItemForDetail.item.id, name, why)) },
             onRemoveManual = { onEvent(ShoppingUiEvent.RemoveItem(uiState.selectedItemForDetail.item.id)); onEvent(ShoppingUiEvent.SelectItemDetail(null)) },
             onDepartmentChange = { onEvent(ShoppingUiEvent.SetItemDepartment(uiState.selectedItemForDetail.item.displayName, it)) },

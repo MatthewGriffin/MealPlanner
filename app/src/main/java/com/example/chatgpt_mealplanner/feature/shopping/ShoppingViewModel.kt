@@ -42,7 +42,10 @@ class ShoppingViewModel @Inject constructor(
     private val purchasePriceDao: PurchasePriceDao? = null,
     private val followerDatabase: com.example.chatgpt_mealplanner.core.sync.follower.database.FollowerDatabase? = null,
     private val shoppingSessions: com.example.chatgpt_mealplanner.core.shopping.ShoppingSessionManager? = null,
-    private val motionTracker: com.example.chatgpt_mealplanner.core.shopping.ShopMotionTracker? = null
+    private val motionTracker: com.example.chatgpt_mealplanner.core.shopping.ShopMotionTracker? = null,
+    private val inventoryRepository: com.example.chatgpt_mealplanner.core.repository.InventoryRepository? = null,
+    private val ingredientAliases: com.example.chatgpt_mealplanner.core.util.IngredientAliases? = null,
+    private val changeQueue: com.example.chatgpt_mealplanner.core.shopping.ShoppingChangeQueue? = null
 ) : ViewModel() {
 
     private val activeTabFlow = MutableStateFlow(ShoppingTab.SHOPPING_LIST)
@@ -121,6 +124,12 @@ class ShoppingViewModel @Inject constructor(
     private val departmentOverridesFlow: kotlinx.coroutines.flow.Flow<Map<String, com.example.chatgpt_mealplanner.core.shopping.Department>> =
         shoppingSessions?.departmentOverrides?.overrides ?: kotlinx.coroutines.flow.flowOf(emptyMap())
 
+    /** Pantry items a list line can be pointed at when the pantry knows it under another name. */
+    private val pantryItemsFlow: kotlinx.coroutines.flow.Flow<List<com.example.chatgpt_mealplanner.core.model.InventoryItem>> =
+        (inventoryRepository?.getAllItems() ?: kotlinx.coroutines.flow.flowOf(emptyList())).map { items ->
+            items.filter { it.status != com.example.chatgpt_mealplanner.core.model.ItemStatus.DISCARDED }
+        }
+
     @Suppress("UNCHECKED_CAST")
     val uiState: StateFlow<ShoppingUiState> = combine(
         activeShoppingListFlow,
@@ -135,7 +144,8 @@ class ShoppingViewModel @Inject constructor(
         shopPriceOptionsFlow,
         activeShopFlow,
         storesFlow,
-        departmentOverridesFlow
+        departmentOverridesFlow,
+        pantryItemsFlow
     ) { flows ->
         val listWithItems = flows[0] as ShoppingListWithItems?
         val stapleRules = flows[1] as List<StapleRule>
@@ -150,6 +160,7 @@ class ShoppingViewModel @Inject constructor(
         val activeShop = flows[10] as ActiveShop?
         val stores = flows[11] as List<com.example.chatgpt_mealplanner.core.database.entity.UserStoreEntity>
         val departmentOverrides = flows[12] as Map<String, com.example.chatgpt_mealplanner.core.shopping.Department>
+        val pantryItems = flows[13] as List<com.example.chatgpt_mealplanner.core.model.InventoryItem>
 
         ShoppingUiState(
             activeListWithItems = listWithItems,
@@ -165,6 +176,7 @@ class ShoppingViewModel @Inject constructor(
             manualItemNotes = manualItemNotes,
             activeShop = activeShop,
             departmentOverrides = departmentOverrides,
+            pantryItems = pantryItems,
             motion = motionTracker?.let { com.example.chatgpt_mealplanner.feature.shopping.MotionOptions(available = it.available(), enabled = it.enabled, hasPermission = it.hasPermission()) } ?: MotionOptions(),
             shops = stores.map { ShopChoice(it.id, it.name) }
         )
@@ -228,6 +240,7 @@ class ShoppingViewModel @Inject constructor(
             ShoppingUiEvent.ClearCompletedItems -> if (!appRoleResolver.isFollower()) clearCompletedItems()
             is ShoppingUiEvent.ToggleItemChecked -> toggleItemChecked(event.itemId, event.currentStatus)
             is ShoppingUiEvent.RemoveItem -> removeItem(event.itemId)
+            is ShoppingUiEvent.MatchToPantry -> matchToPantry(event.itemName, event.pantryItemName)
             is ShoppingUiEvent.EditManualItem -> editManualItem(event.itemId, event.name, event.why)
             is ShoppingUiEvent.SetItemDepartment -> shoppingSessions?.departmentOverrides?.set(event.itemName, event.department)
             is ShoppingUiEvent.SelectItemDetail -> {
@@ -346,6 +359,30 @@ class ShoppingViewModel @Inject constructor(
         manualItemNameFlow.value = item.displayName
         manualItemNotesFlow.value = "Low pantry stock. Check the amount on hand before choosing how much to buy."
         showAddManualDialogFlow.value = true
+    }
+
+    /** "This list line is that pantry item": remembered for good, and the list is worked out again with it (Main does that for a follower). */
+    private fun matchToPantry(itemName: String, pantryItemName: String) {
+        viewModelScope.launch {
+            selectedItemDetailFlow.value = null
+            if (ingredientAliases?.add(itemName, pantryItemName) != true) {
+                userMessageFlow.value = "$itemName already counts as $pantryItemName. If it is still listed, the pantry may be out of it."
+                return@launch
+            }
+            if (appRoleResolver.isFollower()) {
+                changeQueue?.record(
+                    com.example.chatgpt_mealplanner.core.shopping.ShoppingChangeQueue.newChange(
+                        com.example.chatgpt_mealplanner.sync.contract.ShoppingChangeKind.ALIAS,
+                        itemId = "alias:" + com.example.chatgpt_mealplanner.core.shopping.StoreOrder.keyOf(itemName),
+                        displayName = itemName, reason = pantryItemName
+                    )
+                )
+                userMessageFlow.value = "Matched $itemName to $pantryItemName. The list updates after the next sync."
+            } else {
+                regenerateShoppingList()
+                userMessageFlow.value = "Matched $itemName to $pantryItemName"
+            }
+        }
     }
 
     private fun editManualItem(itemId: String, name: String, why: String) {
