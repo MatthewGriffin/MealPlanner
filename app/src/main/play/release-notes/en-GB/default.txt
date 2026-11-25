@@ -1,4 +1,3 @@
-- Things added to the shopping list by hand now sync between phones, with who asked and an optional why; edit, tick or remove them anywhere.
-- No pantry match? Pick the pantry item in Cook Now or from a shopping item; it is remembered. Mild cheddar, creamy sweet potatoes and burger buns now match.
-- Steadier shopping trips on followers: ticks stay put and the list stops jumping.
-- Claude names ingredients like your pantry. Update both phones.
+- Better pantry matching: Frozen onion now counts as onion, chicken breast mini fillets as chicken breast, and full flavoured meatballs as beef meatballs.
+- Each shopping trip on your list now has its own section you can open and close, showing how many items are ticked.
+- After updating, refresh the shopping list on your main phone.
