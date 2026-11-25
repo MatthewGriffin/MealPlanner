@@ -6,6 +6,11 @@ import com.example.chatgpt_mealplanner.core.model.QuantityUnit
 
 object UnitConverter {
 
+    private val CONTAINERS = setOf(QuantityUnit.PACK, QuantityUnit.TIN, QuantityUnit.BOTTLE, QuantityUnit.BAG)
+
+    /** Units that count things rather than measure them. */
+    val WHOLE_ITEMS = CONTAINERS + QuantityUnit.UNIT
+
     fun convert(
         value: Double,
         from: QuantityUnit,
@@ -31,13 +36,26 @@ object UnitConverter {
             return DomainResult.Success(value / 1000.0)
         }
 
-        // Pack / Container Conversions when packSize metadata is present
-        if ((from == QuantityUnit.PACK || from == QuantityUnit.TIN || from == QuantityUnit.BOTTLE || from == QuantityUnit.BAG) &&
-            packSize != null && packSizeUnit != null
-        ) {
-            val totalInPackUnit = value * packSize
-            return convert(totalInPackUnit, packSizeUnit, to)
+        // What is inside one pack, when recorded: a weight or volume, or a number of items. Only for packs, tins, bottles and
+        // bags: "1 UNIT onion" is one onion, never the whole 1 kg bag whose size the pantry knows.
+        if (packSize != null && packSize > 0.0 && packSizeUnit != null) {
+            if (from in CONTAINERS && packSizeUnit !in WHOLE_ITEMS) {
+                val inner = convert(value * packSize, packSizeUnit, to)
+                if (inner is DomainResult.Success) return inner
+            }
+            if (to in CONTAINERS && packSizeUnit !in WHOLE_ITEMS) {
+                val inner = convert(value, from, packSizeUnit)
+                if (inner is DomainResult.Success) return DomainResult.Success(inner.value / packSize)
+            }
+            // A box of 6 eggs: 1 pack is 6 units.
+            if (packSizeUnit == QuantityUnit.UNIT) {
+                if (from in CONTAINERS && to == QuantityUnit.UNIT) return DomainResult.Success(value * packSize)
+                if (from == QuantityUnit.UNIT && to in CONTAINERS) return DomainResult.Success(value / packSize)
+            }
         }
+
+        // Otherwise a unit, a pack, a tin, a bottle and a bag each count one of the thing as bought.
+        if (from in WHOLE_ITEMS && to in WHOLE_ITEMS) return DomainResult.Success(value)
 
         // Disallowed conversion
         return DomainResult.Failure(

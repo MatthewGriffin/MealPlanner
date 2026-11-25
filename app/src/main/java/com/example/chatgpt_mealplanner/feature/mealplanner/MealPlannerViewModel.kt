@@ -313,6 +313,7 @@ class MealPlannerViewModel @Inject constructor(
     ) {
         viewModelScope.launch {
             isLoadingFlow.value = true
+            val notCompared = mealDomainService.stockNotCompared(mealId, overrides)
             val result = mealDomainService.markMealCooked(
                 mealId = mealId,
                 actualIngredientOverrides = overrides,
@@ -323,7 +324,8 @@ class MealPlannerViewModel @Inject constructor(
             mealToCookFlow.value = null
 
             when (result) {
-                is DomainResult.Success<*> -> userMessageFlow.value = "Meal cooked successfully! Inventory deducted."
+                is DomainResult.Success<*> -> userMessageFlow.value = "Meal cooked successfully! Inventory deducted." +
+                    if (notCompared.isEmpty()) "" else " Not changed, so update by hand: ${notCompared.joinToString("; ")}."
                 is DomainResult.Failure -> userMessageFlow.value = formatDomainError(result.error)
             }
         }

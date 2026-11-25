@@ -919,12 +919,14 @@ class ChatViewModel @Inject constructor(
 
     private fun confirmCookedMeal(mealId: String) {
         viewModelScope.launch {
+            val notCompared = mealDomainService.stockNotCompared(mealId)
             val cookResult = mealDomainService.markMealCooked(mealId)
             dismissCookConfirmation()
 
             when (cookResult) {
                 is DomainResult.Success -> {
-                    errorMessageFlow.value = "Marked meal cooked and deducted ingredients!"
+                    errorMessageFlow.value = "Marked meal cooked and deducted ingredients!" +
+                        if (notCompared.isEmpty()) "" else " Not changed, so update by hand: ${notCompared.joinToString("; ")}."
                 }
                 is DomainResult.Failure -> {
                     errorMessageFlow.value = formatDomainError(cookResult.error)
