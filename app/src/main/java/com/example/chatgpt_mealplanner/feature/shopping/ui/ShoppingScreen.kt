@@ -41,6 +41,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -64,8 +65,8 @@ fun ShoppingScreen(
     syncBar: @Composable () -> Unit = {}
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
-    // Store sections start collapsed so large multi-store lists stay compact.
-    var isListExpanded by remember { mutableStateOf(true) }
+    // Each shopping trip's section collapses on its own. Kept by date, so a list refresh or rotation doesn't reopen it.
+    var collapsedTrips by rememberSaveable { mutableStateOf(emptyList<String>()) }
     var showStartShopping by remember { mutableStateOf(false) }
     // The shop that was picked while the Physical activity permission is being asked for.
     var pendingStoreId by remember { mutableStateOf<String?>(null) }
@@ -262,105 +263,65 @@ fun ShoppingScreen(
                                 .padding(horizontal = 16.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            val checkedCount = items.count {
-                                it.item.status == ShoppingItemStatus.CHECKED ||
-                                    it.item.status == ShoppingItemStatus.PURCHASED_CONFIRMED
-                            }
-                            item(key = "shopping_list_header") {
-                                Card(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(top = 8.dp, bottom = 2.dp)
-                                        .clickable {
-                                            isListExpanded = !isListExpanded
-                                        },
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = MaterialTheme.colorScheme.secondaryContainer
+                            val today = java.time.LocalDate.now()
+                            val buyDays = com.example.chatgpt_mealplanner.core.util.FreshnessPlanner.planTrips(
+                                items.map {
+                                    com.example.chatgpt_mealplanner.core.util.FreshnessPlanner.TripNeed(
+                                        it.sources.map { s -> s.mealDate },
+                                        com.example.chatgpt_mealplanner.core.util.FreshnessPlanner.shelfLifeDays(it.item.displayName)
                                     )
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.weight(1f),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Icon(
-                                                imageVector = if (isListExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                                                contentDescription = if (isListExpanded) "Collapse Shopping List Items" else "Expand Shopping List Items"
+                                },
+                                today
+                            )
+                            val trips = items.indices.groupBy({ buyDays[it] }, { items[it] }).toSortedMap()
+                            val shopOrder = uiState.activeShop?.orderByKey
+                            trips.forEach { (tripDate, rows) ->
+                                val tripKey = tripDate.toString()
+                                val expanded = tripKey !in collapsedTrips
+                                val title = when {
+                                    trips.size == 1 -> "Shopping List Items"
+                                    tripDate == today -> "Shop today"
+                                    else -> "Shop on " + tripDate.format(java.time.format.DateTimeFormatter.ofPattern("EEE d MMM"))
+                                }
+                                val checkedCount = rows.count {
+                                    it.item.status == ShoppingItemStatus.CHECKED ||
+                                        it.item.status == ShoppingItemStatus.PURCHASED_CONFIRMED
+                                }
+                                item(key = "trip_$tripKey") {
+                                    TripHeader(
+                                        title = "$title · $checkedCount/${rows.size}",
+                                        subtitle = if (trips.size > 1 && tripDate != today) "Fresh items and anything not needed sooner" else null,
+                                        expanded = expanded,
+                                        onClick = { collapsedTrips = if (expanded) collapsedTrips + tripKey else collapsedTrips - tripKey }
+                                    )
+                                }
+                                if (expanded) {
+                                    // While shopping, each trip is laid out by department in this shop's walking order. Ticked
+                                    // items stay where they are (struck through): moving them made the list jump under the thumb.
+                                    val ordered: List<Pair<String?, ShoppingListItemWithSources>> = if (shopOrder == null) {
+                                        rows.map { null to it }
+                                    } else {
+                                        com.example.chatgpt_mealplanner.core.shopping.StoreOrder
+                                            .plan(rows, { r -> r.item.displayName }, shopOrder, uiState.departmentOverrides)
+                                            .flatMap { section -> section.items.mapIndexed { i, r -> (if (i == 0) section.department.displayName else null) to r } }
+                                    }
+                                    items(ordered, key = { it.second.item.id }) { (departmentHeader, itemWithSources) ->
+                                        if (departmentHeader != null) {
+                                            Text(
+                                                text = departmentHeader,
+                                                style = MaterialTheme.typography.labelLarge,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.padding(top = 6.dp)
                                             )
-                                            Column(modifier = Modifier.padding(start = 8.dp)) {
-                                                Text(
-                                                    text = "Shopping List Items · $checkedCount/${items.size}",
-                                                    style = MaterialTheme.typography.titleSmall,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = MaterialTheme.colorScheme.onSecondaryContainer
-                                                )
-                                                Text(
-                                                    text = if (isListExpanded) "Tap to collapse" else "Tap to expand",
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = MaterialTheme.colorScheme.onSecondaryContainer
-                                                )
-                                            }
                                         }
-                                    }
-                                }
-                            }
-
-                            if (isListExpanded) {
-                                val today = java.time.LocalDate.now()
-                                val buyDays = run {
-                                    com.example.chatgpt_mealplanner.core.util.FreshnessPlanner.planTrips(
-                                        items.map {
-                                            com.example.chatgpt_mealplanner.core.util.FreshnessPlanner.TripNeed(
-                                                it.sources.map { s -> s.mealDate },
-                                                com.example.chatgpt_mealplanner.core.util.FreshnessPlanner.shelfLifeDays(it.item.displayName)
-                                            )
-                                        },
-                                        today
-                                    )
-                                }
-                                val trips = items.indices.groupBy({ buyDays[it] }, { items[it] }).toSortedMap()
-                                val shopOrder = uiState.activeShop?.orderByKey
-                                // While shopping the list is laid out by department in this shop's walking order, ticked items last.
-                                val ordered = trips.flatMap { (date, rows) ->
-                                    if (shopOrder == null) rows.map { Triple(date, null as String?, it) } else {
-                                        // Ticked items stay where they are (struck through): moving them to the bottom made the list jump
-                                        // under the shopper's thumb with every tick.
-                                        val sections = com.example.chatgpt_mealplanner.core.shopping.StoreOrder.plan(rows, { r -> r.item.displayName }, shopOrder, uiState.departmentOverrides)
-                                        sections.flatMap { section -> section.items.mapIndexed { i, r -> Triple(date, if (i == 0) section.department.displayName else null, r) } }
-                                    }
-                                }
-                                items(ordered, key = { it.third.item.id }) { (tripDate, departmentHeader, itemWithSources) ->
-                                    if (trips.size > 1 && ordered.first { it.first == tripDate }.third === itemWithSources) {
-                                        Text(
-                                            text = if (tripDate == today) "Shop today" else
-                                                "Shop on " + tripDate.format(java.time.format.DateTimeFormatter.ofPattern("EEE d MMM")) +
-                                                    " (fresh items and anything not needed sooner)",
-                                            style = MaterialTheme.typography.titleSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            modifier = Modifier.padding(top = 8.dp)
+                                        ShoppingItemCard(
+                                            itemWithSources = itemWithSources,
+                                            onToggleChecked = { id, status -> onEvent(ShoppingUiEvent.ToggleItemChecked(id, status)) },
+                                            onRemove = { id -> onEvent(ShoppingUiEvent.RemoveItem(id)) },
+                                            onDetailClicked = { onEvent(ShoppingUiEvent.SelectItemDetail(itemWithSources)) }
                                         )
                                     }
-                                    if (departmentHeader != null) {
-                                        Text(
-                                            text = departmentHeader,
-                                            style = MaterialTheme.typography.labelLarge,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.padding(top = 6.dp)
-                                        )
-                                    }
-                                    ShoppingItemCard(
-                                        itemWithSources = itemWithSources,
-                                        onToggleChecked = { id, status -> onEvent(ShoppingUiEvent.ToggleItemChecked(id, status)) },
-                                        onRemove = { id -> onEvent(ShoppingUiEvent.RemoveItem(id)) },
-                                        onDetailClicked = { onEvent(ShoppingUiEvent.SelectItemDetail(itemWithSources)) }
-                                    )
                                 }
                             }
                         }
@@ -371,6 +332,42 @@ fun ShoppingScreen(
                         stapleRules = uiState.stapleRules,
                         onSaveRule = { onEvent(ShoppingUiEvent.SaveStapleRule(it)) },
                         onDeleteRule = { onEvent(ShoppingUiEvent.DeleteStapleRule(it)) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TripHeader(title: String, subtitle: String?, expanded: Boolean, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp, bottom = 2.dp)
+            .clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                contentDescription = (if (expanded) "Collapse " else "Expand ") + title
+            )
+            Column(modifier = Modifier.padding(start = 8.dp)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+                if (subtitle != null) {
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
                     )
                 }
             }

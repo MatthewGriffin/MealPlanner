@@ -89,4 +89,23 @@ class IngredientKitMatchTest {
         // Only for breads: a burger is not the beef it is made of.
         assertFalse(IngredientNameMatcher.matches("Beef", "Beef burger"))
     }
+
+    @Test fun frozenCutsAndPackWordingStillMatch() {
+        assertTrue(IngredientNameMatcher.matches("Frozen onion", "Onion"))
+        assertTrue(IngredientNameMatcher.matches("Frozen chopped onions", "Onion"))
+        assertTrue(IngredientNameMatcher.matches("Chicken breast mini fillets", "Chicken Breast"))
+        assertTrue(IngredientNameMatcher.matches("Chicken thigh fillets", "Chicken thighs"))
+        assertTrue(IngredientNameMatcher.matches("Salmon fillets", "Salmon"))
+        assertTrue(IngredientNameMatcher.matches("Full flavoured meatballs", "Beef meatballs"))
+    }
+
+    @Test fun looserMatchingDoesNotJoinDifferentFoods() {
+        assertFalse(IngredientNameMatcher.matches("Frozen yoghurt", "Yoghurt"))
+        assertFalse(IngredientNameMatcher.matches("Beef fillet", "Beef"))
+        assertFalse(IngredientNameMatcher.matches("Breaded chicken breast fillets", "Chicken breast"))
+        assertFalse(IngredientNameMatcher.matches("Pork meatballs", "Beef meatballs"))
+        assertFalse(IngredientNameMatcher.matches("Pork meatballs", "Meatballs"))
+        assertFalse(IngredientNameMatcher.matches("Full fat milk", "Milk"))
+        assertFalse(IngredientNameMatcher.matches("Frozen onion rings", "Onion"))
+    }
 }

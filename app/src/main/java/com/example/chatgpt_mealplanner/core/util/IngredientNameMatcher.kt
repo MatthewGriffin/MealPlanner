@@ -125,13 +125,37 @@ object IngredientNameMatcher {
     @Volatile
     var aliases: Map<String, Set<String>> = emptyMap()
 
+    private val NOT_JUST_FROZEN = setOf("yoghurt", "yogurt", "custard")
+    private val FLAVOURED = setOf("flavoured", "flavored", "flavour", "flavor")
+    private val POULTRY_CUTS = setOf("breast", "thigh")
+    private val FISH = setOf("salmon", "cod", "haddock", "hake", "basa", "pollock", "trout", "seabass", "plaice")
+
+    /**
+     * A looser form of a [core] name, used only to compare two names. Saved things (aliases, department fixes, shop order,
+     * receipt amounts) stay keyed by [core], so loosening this never orphans them.
+     */
+    private fun comparable(core: String): String {
+        var words = core.split(' ')
+        // Frozen onion is onion, but frozen yoghurt is its own thing.
+        if (words.none { it in NOT_JUST_FROZEN }) words = words - "frozen"
+        // "Full flavoured meatballs": pack wording. "Full fat milk" keeps its "full".
+        if ("full" in words && words.any { it in FLAVOURED }) words = words.filter { it != "full" && it !in FLAVOURED }
+        // "Chicken breast mini fillets" are chicken breast. "Beef fillet" is a cut of its own, so it keeps the word.
+        if (words.any { it in POULTRY_CUTS }) words = words.filter { it != "fillet" && it != "mini" }
+        if (words.any { it in FISH }) words = words.filter { it != "fillet" }
+        // Packs that just say "meatballs" are taken to be the beef ones. Pork, turkey and the like still have to say so.
+        if (words.toSet() == setOf("beef", "meatball")) words = listOf("meatball")
+        return words.joinToString(" ")
+    }
+
     fun matches(a: String, b: String): Boolean {
         val ca = core(a)
         if (ca.isEmpty()) return false
         val cb = core(b)
-        if (ca == cb) return true
-        val altsB = alternatives(b)
-        if (alternatives(a).any { it.isNotEmpty() && it in altsB }) return true
+        val looseA = comparable(ca)
+        if (ca == cb || (looseA.isNotEmpty() && looseA == comparable(cb))) return true
+        val altsB = alternatives(b).map(::comparable).toSet()
+        if (alternatives(a).map(::comparable).any { it.isNotEmpty() && it in altsB }) return true
         val known = aliases
         return known[ca]?.contains(cb) == true || known[cb]?.contains(ca) == true
     }
