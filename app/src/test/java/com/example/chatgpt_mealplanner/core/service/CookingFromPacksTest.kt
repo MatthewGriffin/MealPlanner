@@ -54,6 +54,20 @@ class CookingFromPacksTest {
     }
 
     @Test
+    fun aUnitAgainstAWeighedBagCooksTheMealAndLeavesTheBagAlone() = runTest {
+        inventoryDao.insertItem(stock(1000.0, QuantityUnit.GRAM, null, 1000.0, QuantityUnit.GRAM))
+        meals.createPlannedMeal(
+            Meal(id = "n", date = LocalDate.now().toString(), title = "Soup"),
+            listOf(MealIngredient(id = "j", mealId = "n", canonicalIngredientId = null, displayName = "Chicken breast", plannedQuantity = 1.0, plannedUnit = QuantityUnit.UNIT))
+        )
+        assertEquals(listOf("Chicken breast (pantry in gram, recipe in unit)"), meals.stockNotCompared("n"))
+        val result = meals.markMealCooked("n")
+        assertTrue("$result", result is DomainResult.Success)
+        assertEquals(1000.0, lots().single().quantity!!, 0.001)
+        assertEquals(ItemStatus.AVAILABLE, lots().single().status)
+    }
+
+    @Test
     fun gramsComeOutOfAPackOfKnownWeight() = runTest {
         inventoryDao.insertItem(stock(1.0, QuantityUnit.PACK, null, 500.0, QuantityUnit.GRAM))
         val result = cook(200.0, QuantityUnit.GRAM)

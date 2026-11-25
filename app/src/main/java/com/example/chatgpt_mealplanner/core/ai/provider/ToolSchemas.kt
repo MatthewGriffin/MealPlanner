@@ -84,7 +84,7 @@ internal object ToolSchemas {
                         putJsonObject("properties") {
                             string("displayName", "Ingredient display name")
                             number("quantity", "Quantity needed")
-                            choice("unit", "Use UNIT for foods used as whole items (onions, eggs, chicken breasts, sausages, meatballs, buns) unless the pantry records them by weight; GRAM or MILLILITRE for everything measured, including small amounts, not spoons", QuantityUnit.entries.map { it.name })
+                            choice("unit", "Use the unit the pantry records the item in. Otherwise UNIT for foods bought by the item (onions, eggs, lemons, buns), and GRAM or MILLILITRE for everything else, including meat, fish and small amounts, not spoons", QuantityUnit.entries.map { it.name })
                             string("measure", "Kitchen measure for small amounts, such as 1 tsp, matching the method")
                             boolean("optional", "True if the dish works without it")
                             string("substitute", "A good swap if there is one")

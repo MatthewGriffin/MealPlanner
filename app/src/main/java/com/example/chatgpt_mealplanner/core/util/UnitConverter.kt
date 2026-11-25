@@ -36,13 +36,14 @@ object UnitConverter {
             return DomainResult.Success(value / 1000.0)
         }
 
-        // What is inside one pack, when recorded: a weight or volume, or a number of items.
+        // What is inside one pack, when recorded: a weight or volume, or a number of items. Only for packs, tins, bottles and
+        // bags: "1 UNIT onion" is one onion, never the whole 1 kg bag whose size the pantry knows.
         if (packSize != null && packSize > 0.0 && packSizeUnit != null) {
-            if (from in WHOLE_ITEMS && packSizeUnit !in WHOLE_ITEMS) {
+            if (from in CONTAINERS && packSizeUnit !in WHOLE_ITEMS) {
                 val inner = convert(value * packSize, packSizeUnit, to)
                 if (inner is DomainResult.Success) return inner
             }
-            if (to in WHOLE_ITEMS && packSizeUnit !in WHOLE_ITEMS) {
+            if (to in CONTAINERS && packSizeUnit !in WHOLE_ITEMS) {
                 val inner = convert(value, from, packSizeUnit)
                 if (inner is DomainResult.Success) return DomainResult.Success(inner.value / packSize)
             }

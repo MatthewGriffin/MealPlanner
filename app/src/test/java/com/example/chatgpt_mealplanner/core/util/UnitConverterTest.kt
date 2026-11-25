@@ -61,7 +61,10 @@ class UnitConverterTest {
 
     @Test
     fun aRecordedPackSizeConvertsBothWays() {
-        assertEquals(800.0, value(2.0, QuantityUnit.UNIT, QuantityUnit.GRAM, 400.0, QuantityUnit.GRAM), 0.001)
+        assertEquals(800.0, value(2.0, QuantityUnit.TIN, QuantityUnit.GRAM, 400.0, QuantityUnit.GRAM), 0.001)
+        // One onion is not the whole bag.
+        assertTrue(UnitConverter.convert(1.0, QuantityUnit.UNIT, QuantityUnit.GRAM, 1000.0, QuantityUnit.GRAM) is DomainResult.Failure)
+        assertTrue(UnitConverter.convert(1000.0, QuantityUnit.GRAM, QuantityUnit.UNIT, 1000.0, QuantityUnit.GRAM) is DomainResult.Failure)
         assertEquals(0.4, value(200.0, QuantityUnit.GRAM, QuantityUnit.PACK, 500.0, QuantityUnit.GRAM), 0.001)
         assertEquals(6.0, value(1.0, QuantityUnit.PACK, QuantityUnit.UNIT, 6.0, QuantityUnit.UNIT), 0.001)
         assertEquals(0.5, value(3.0, QuantityUnit.UNIT, QuantityUnit.PACK, 6.0, QuantityUnit.UNIT), 0.001)
