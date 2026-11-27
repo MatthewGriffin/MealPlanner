@@ -178,17 +178,25 @@ class MealDomainServiceImpl @Inject constructor(
         return total
     }
 
-    override suspend fun stockNotCompared(mealId: String, overrides: List<ActualIngredientOverride>): List<String> {
+    override suspend fun stockNotCompared(
+        mealId: String,
+        overrides: List<ActualIngredientOverride>,
+        substitutions: List<IngredientSubstitution>
+    ): List<String> {
         val meal = mealDao.getMealWithIngredients(mealId) ?: return emptyList()
         if (LeftoverMeals.sourceMealId(meal.meal.notes) != null) return emptyList()
         val usable = listOf(ItemStatus.AVAILABLE, ItemStatus.LOW, ItemStatus.USE_SOON)
-        return meal.ingredients.map { it.toDomainModel() }.mapNotNull { ingredient ->
+        val usedUpKits = mutableListOf<String>()
+        val unchanged = meal.ingredients.map { it.toDomainModel() }.mapNotNull { ingredient ->
             val override = overrides.find { it.mealIngredientId == ingredient.id }
             val quantity = override?.actualQuantity ?: ingredient.actualQuantity
                 ?: if (ingredient.optional) 0.0 else ingredient.plannedQuantity
             val unit = override?.actualUnit ?: ingredient.actualUnit ?: ingredient.plannedUnit
             if (quantity <= 0.0) return@mapNotNull null
-            val byId = ingredient.canonicalIngredientId?.let { inventoryDao.getUsableItemsByCanonicalIngredientId(it) }.orEmpty()
+            val pickedLot = substitutions.find { it.mealIngredientId == ingredient.id }?.selectedInventoryItemId
+                ?.let { inventoryDao.getItemById(it) }?.takeIf { it.status in usable }
+            val byId = pickedLot?.let { listOf(it) }
+                ?: ingredient.canonicalIngredientId?.let { inventoryDao.getUsableItemsByCanonicalIngredientId(it) }.orEmpty()
             val lots = byId.ifEmpty {
                 inventoryDao.getAllItemsSync().filter { lot ->
                     lot.status in usable && (
@@ -204,11 +212,23 @@ class MealDomainServiceImpl @Inject constructor(
                 val converted = UnitConverter.convert(lot.quantity ?: 0.0, lot.quantityUnit ?: unit, unit, lot.packSize, lot.packSizeUnit)
                 if (converted is DomainResult.Success) total += converted.value else uncompared += lot
             }
-            uncompared.firstOrNull()?.takeIf { total < quantity }?.let { lot ->
-                "${lot.displayName} (pantry in ${lot.quantityUnit?.name?.lowercase()}, recipe in ${unit.name.lowercase()})"
+            if (total >= quantity) return@mapNotNull null
+            lots.firstOrNull { it.status in usable && isUnrecordedKit(it) }?.let {
+                usedUpKits += it.displayName
+                return@mapNotNull null
             }
+            uncompared.firstOrNull()?.let { lot ->
+                "${lot.displayName} (pantry in ${lot.quantityUnit?.name?.lowercase()}, recipe in ${unit.name.lowercase()})"
+            } ?: lots.firstOrNull { it.quantityConfidence == QuantityConfidence.UNKNOWN }
+                ?.let { "${it.displayName} (amount in pantry not recorded)" }
         }
+        return usedUpKits.distinct().map { "Marked $it as used up; if you have another, set its amount in your pantry." } +
+            if (unchanged.isEmpty()) emptyList() else listOf("Not changed, so update by hand: ${unchanged.joinToString("; ")}.")
     }
+
+    private fun isUnrecordedKit(lot: InventoryItemEntity) =
+        lot.category == com.example.chatgpt_mealplanner.core.model.FoodCategory.KITS_MIXES &&
+            lot.quantityConfidence == QuantityConfidence.UNKNOWN
 
     override suspend fun leftoverDaysFor(sourceMealId: String): List<Meal> =
         mealDao.getAllMealsWithIngredientsSync().map { it.meal.toDomainModel() }.filter {
@@ -601,28 +621,17 @@ class MealDomainServiceImpl @Inject constructor(
                 }
             }
 
-            // Stock that can't be compared may well cover the rest, so it never stops the meal being marked cooked.
-            // [stockNotCompared] tells the user which amounts to update.
-            if (usableTotal < req.effectiveQty && !hasUncomparableLot) {
-                if (hasUnknownLot) {
-                    return DomainResult.Failure(
-                        DomainError.NeedsConfirmation(
-                            itemId = req.ingredient.id,
-                            displayName = req.ingredient.displayName,
-                            requiredQuantity = req.effectiveQty,
-                            unit = req.effectiveUnit
-                        )
+            // Stock that can't be compared, or whose amount nobody recorded, may well cover the rest, so neither stops
+            // the meal being marked cooked. [stockNotCompared] tells the user which amounts to update.
+            if (usableTotal < req.effectiveQty && !hasUncomparableLot && !hasUnknownLot) {
+                return DomainResult.Failure(
+                    DomainError.InsufficientQuantity(
+                        available = usableTotal,
+                        requested = req.effectiveQty,
+                        unit = req.effectiveUnit,
+                        displayName = req.ingredient.displayName
                     )
-                } else {
-                    return DomainResult.Failure(
-                        DomainError.InsufficientQuantity(
-                            available = usableTotal,
-                            requested = req.effectiveQty,
-                            unit = req.effectiveUnit,
-                            displayName = req.ingredient.displayName
-                        )
-                    )
-                }
+                )
             }
 
             planSteps.add(PlanDeductionStep(req, comparableLots))
@@ -716,7 +725,9 @@ class MealDomainServiceImpl @Inject constructor(
                         val takeAll = !lot.staple && com.example.chatgpt_mealplanner.core.util.StockRemainder.isSmallRemainder(lotQty, needed, lot.quantityUnit)
                         val actualDeductInLotUnit = if (takeAll) lotQty else needed
                         // Part-pack sums can leave a rounding crumb such as 0.0000000001 of a pack.
-                        val newQty = (lotQty - actualDeductInLotUnit).let { if (it < ROUNDING_CRUMB) 0.0 else it }
+                        // Packs are shown to three places, so three thirds leave 0.001 of a pack: that is used up too.
+                        val crumb = if (lotUnit in UnitConverter.WHOLE_ITEMS) PART_PACK_CRUMB else ROUNDING_CRUMB
+                        val newQty = (lotQty - actualDeductInLotUnit).let { if (it < crumb) 0.0 else it }
                         val newStatus = if (newQty <= 0.0) ItemStatus.OUT else lot.status
 
                         val updatedLot = lot.copy(
@@ -883,6 +894,29 @@ class MealDomainServiceImpl @Inject constructor(
                         }
                     }
                 }
+
+                // A kit is used in one go, so one with no recorded amount is used up by the meal that draws on it. Left
+                // in stock, the shopping list would think the household still had it.
+                if (remainingToDeduct > ROUNDING_CRUMB) {
+                    step.candidateLots.firstOrNull { isUnrecordedKit(it) }?.let { kit ->
+                        inventoryDao.updateItem(
+                            kit.copy(quantity = 0.0, packCount = null, status = ItemStatus.OUT, updatedAt = now, revision = kit.revision + 1L)
+                        )
+                        publishSetQuantity(kit, 0.0)
+                        transactionDao.insertTransaction(
+                            InventoryTransactionEntity(
+                                id = UUID.randomUUID().toString(),
+                                inventoryItemId = kit.id,
+                                type = TransactionType.COOKED,
+                                quantityChange = -(kit.quantity ?: 0.0),
+                                unit = kit.quantityUnit ?: step.requirement.effectiveUnit,
+                                mealId = mealId,
+                                note = "Used up kit for cooked meal: ${meal.title}",
+                                timestamp = now
+                            )
+                        )
+                    }
+                }
             }
 
             // Leftover Creation
@@ -988,6 +1022,7 @@ class MealDomainServiceImpl @Inject constructor(
     }
 
     private val ROUNDING_CRUMB = 1e-9
+    private val PART_PACK_CRUMB = 0.01
 
     private fun validatePortionInvariants(meal: Meal): DomainResult.Failure? {
         if (meal.servings <= 0 || meal.batchPortions <= 0 || meal.immediatePortions < 0 || meal.leftoverPortions < 0) {

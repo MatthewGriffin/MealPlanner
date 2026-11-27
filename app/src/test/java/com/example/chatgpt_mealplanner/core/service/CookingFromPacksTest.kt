@@ -1,7 +1,9 @@
 package com.example.chatgpt_mealplanner.core.service
 
 import com.example.chatgpt_mealplanner.core.database.entity.InventoryItemEntity
+import com.example.chatgpt_mealplanner.core.model.ActualIngredientOverride
 import com.example.chatgpt_mealplanner.core.model.DomainResult
+import com.example.chatgpt_mealplanner.core.model.IngredientSubstitution
 import com.example.chatgpt_mealplanner.core.model.FoodCategory
 import com.example.chatgpt_mealplanner.core.model.ItemStatus
 import com.example.chatgpt_mealplanner.core.model.Meal
@@ -60,11 +62,57 @@ class CookingFromPacksTest {
             Meal(id = "n", date = LocalDate.now().toString(), title = "Soup"),
             listOf(MealIngredient(id = "j", mealId = "n", canonicalIngredientId = null, displayName = "Chicken breast", plannedQuantity = 1.0, plannedUnit = QuantityUnit.UNIT))
         )
-        assertEquals(listOf("Chicken breast (pantry in gram, recipe in unit)"), meals.stockNotCompared("n"))
+        assertEquals(listOf("Not changed, so update by hand: Chicken breast (pantry in gram, recipe in unit)."), meals.stockNotCompared("n"))
         val result = meals.markMealCooked("n")
         assertTrue("$result", result is DomainResult.Success)
         assertEquals(1000.0, lots().single().quantity!!, 0.001)
         assertEquals(ItemStatus.AVAILABLE, lots().single().status)
+    }
+
+    @Test
+    fun stockWithNoRecordedAmountDoesNotBlockCooking() = runTest {
+        inventoryDao.insertItem(stock(1.0, QuantityUnit.PACK, null, null, null).copy(quantity = null, quantityConfidence = QuantityConfidence.UNKNOWN))
+        meals.createPlannedMeal(
+            Meal(id = "k", date = LocalDate.now().toString(), title = "Pasta"),
+            listOf(MealIngredient(id = "l", mealId = "k", canonicalIngredientId = null, displayName = "Chicken breast", plannedQuantity = 1.0, plannedUnit = QuantityUnit.PACK))
+        )
+        assertEquals(listOf("Not changed, so update by hand: Chicken breast (amount in pantry not recorded)."), meals.stockNotCompared("k"))
+        val result = meals.markMealCooked("k")
+        assertTrue("$result", result is DomainResult.Success)
+        assertEquals(ItemStatus.AVAILABLE, lots().single().status)
+    }
+
+    @Test
+    fun aKitWithNoRecordedAmountIsUsedUp() = runTest {
+        inventoryDao.insertItem(
+            stock(1.0, QuantityUnit.PACK, null, null, null)
+                .copy(quantity = null, quantityConfidence = QuantityConfidence.UNKNOWN, category = FoodCategory.KITS_MIXES)
+        )
+        meals.createPlannedMeal(
+            Meal(id = "k", date = LocalDate.now().toString(), title = "Pasta"),
+            listOf(MealIngredient(id = "l", mealId = "k", canonicalIngredientId = null, displayName = "Chicken breast", plannedQuantity = 1.0, plannedUnit = QuantityUnit.PACK))
+        )
+        assertEquals(listOf("Marked Chicken breast as used up; if you have another, set its amount in your pantry."), meals.stockNotCompared("k"))
+        val result = meals.markMealCooked("k")
+        assertTrue("$result", result is DomainResult.Success)
+        assertEquals(ItemStatus.OUT, lots().single().status)
+    }
+
+    @Test
+    fun aPickedItemInAnotherUnitIsDeductedInThatUnit() = runTest {
+        inventoryDao.insertItem(stock(1000.0, QuantityUnit.GRAM, null, null, null).copy(displayName = "Frozen onion", canonicalName = "frozen onion"))
+        meals.createPlannedMeal(
+            Meal(id = "o", date = LocalDate.now().toString(), title = "Soup"),
+            listOf(MealIngredient(id = "p", mealId = "o", canonicalIngredientId = null, displayName = "Shallot", plannedQuantity = 1.0, plannedUnit = QuantityUnit.UNIT))
+        )
+        val result = meals.markMealCooked(
+            "o",
+            actualIngredientOverrides = listOf(ActualIngredientOverride("p", 150.0, QuantityUnit.GRAM)),
+            substitutions = listOf(IngredientSubstitution(mealIngredientId = "p", selectedInventoryItemId = "lot", actualQuantity = 150.0, actualUnit = QuantityUnit.GRAM))
+        )
+        assertTrue("$result", result is DomainResult.Success)
+        assertEquals(850.0, lots().single().quantity!!, 0.001)
+        assertEquals(QuantityUnit.GRAM, mealDao.getMealWithIngredients("o")!!.ingredients.last().actualUnit)
     }
 
     @Test

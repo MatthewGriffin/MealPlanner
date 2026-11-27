@@ -926,7 +926,7 @@ class ChatViewModel @Inject constructor(
             when (cookResult) {
                 is DomainResult.Success -> {
                     errorMessageFlow.value = "Marked meal cooked and deducted ingredients!" +
-                        if (notCompared.isEmpty()) "" else " Not changed, so update by hand: ${notCompared.joinToString("; ")}."
+                        notCompared.joinToString("") { " $it" }
                 }
                 is DomainResult.Failure -> {
                     errorMessageFlow.value = formatDomainError(cookResult.error)
