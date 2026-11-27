@@ -325,7 +325,7 @@ class MealPlannerViewModel @Inject constructor(
 
             when (result) {
                 is DomainResult.Success<*> -> userMessageFlow.value = "Meal cooked successfully! Inventory deducted." +
-                    if (notCompared.isEmpty()) "" else " Not changed, so update by hand: ${notCompared.joinToString("; ")}."
+                    notCompared.joinToString("") { " $it" }
                 is DomainResult.Failure -> userMessageFlow.value = formatDomainError(result.error)
             }
         }

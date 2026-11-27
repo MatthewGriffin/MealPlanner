@@ -37,6 +37,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.example.chatgpt_mealplanner.core.model.ActualIngredientOverride
 import com.example.chatgpt_mealplanner.core.util.CookAmounts
+import com.example.chatgpt_mealplanner.core.util.IngredientNameMatcher
 import com.example.chatgpt_mealplanner.core.util.formatQuantityAndUnit
 import com.example.chatgpt_mealplanner.core.util.formatQuantityNumber
 import com.example.chatgpt_mealplanner.feature.mealplanner.MealPlannerUiEvent
@@ -210,7 +211,13 @@ fun CookNowScreen(
                                 }
                             } else if (pickedItem == null) {
                                 Text(
-                                    text = "No pantry amount to compare with. Pick the pantry item to use its unit.",
+                                    text = if (pantry.any {
+                                            IngredientNameMatcher.matches(it.displayName, ing.displayName) ||
+                                                (it.category == com.example.chatgpt_mealplanner.core.model.FoodCategory.KITS_MIXES &&
+                                                    IngredientNameMatcher.matchesKit(it.displayName, ing.displayName))
+                                        }
+                                    ) "Your pantry amount can't be compared. Pick the pantry item to use its unit."
+                                    else "Not found in your pantry under this name",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.error
                                 )
