@@ -1,3 +1,2 @@
-- Marking a meal as cooked no longer fails on "pack" and "unit": they now count as the same thing.
-- If an amount can't be compared (such as 1 onion against grams), the meal is still marked cooked. That stock is left as it was and named so you can update it.
-- Claude is now asked to use your pantry's units in new recipes.
+- Fixed "Confirmation required" stopping you marking a meal as cooked. A kit with no recorded amount is marked used up; other unrecorded stock is left as it was. You'll be told which.
+- In Cook Now, picking a pantry item switches the ingredient to that item's unit. If the amount can't be converted, you enter it yourself.
