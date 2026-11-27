@@ -47,9 +47,13 @@ interface MealDomainService {
 
     /**
      * Pantry items that cooking this meal will leave unchanged because their unit can't be compared with the recipe's
-     * (grams against a count). Ask before [markMealCooked], then tell the user to update them.
+     * (grams against a count) or whose amount isn't recorded. Ask before [markMealCooked], then tell the user to update them.
      */
-    suspend fun stockNotCompared(mealId: String, overrides: List<ActualIngredientOverride> = emptyList()): List<String> = emptyList()
+    suspend fun stockNotCompared(
+        mealId: String,
+        overrides: List<ActualIngredientOverride> = emptyList(),
+        substitutions: List<IngredientSubstitution> = emptyList()
+    ): List<String> = emptyList()
 
     suspend fun markMealCooked(
         mealId: String,

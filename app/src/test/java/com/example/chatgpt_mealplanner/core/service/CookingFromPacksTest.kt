@@ -68,6 +68,19 @@ class CookingFromPacksTest {
     }
 
     @Test
+    fun stockWithNoRecordedAmountDoesNotBlockCooking() = runTest {
+        inventoryDao.insertItem(stock(1.0, QuantityUnit.PACK, null, null, null).copy(quantity = null, quantityConfidence = QuantityConfidence.UNKNOWN))
+        meals.createPlannedMeal(
+            Meal(id = "k", date = LocalDate.now().toString(), title = "Pasta"),
+            listOf(MealIngredient(id = "l", mealId = "k", canonicalIngredientId = null, displayName = "Chicken breast", plannedQuantity = 1.0, plannedUnit = QuantityUnit.PACK))
+        )
+        assertEquals(listOf("Chicken breast (amount in pantry not recorded)"), meals.stockNotCompared("k"))
+        val result = meals.markMealCooked("k")
+        assertTrue("$result", result is DomainResult.Success)
+        assertEquals(ItemStatus.AVAILABLE, lots().single().status)
+    }
+
+    @Test
     fun gramsComeOutOfAPackOfKnownWeight() = runTest {
         inventoryDao.insertItem(stock(1.0, QuantityUnit.PACK, null, 500.0, QuantityUnit.GRAM))
         val result = cook(200.0, QuantityUnit.GRAM)

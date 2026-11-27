@@ -178,7 +178,11 @@ class MealDomainServiceImpl @Inject constructor(
         return total
     }
 
-    override suspend fun stockNotCompared(mealId: String, overrides: List<ActualIngredientOverride>): List<String> {
+    override suspend fun stockNotCompared(
+        mealId: String,
+        overrides: List<ActualIngredientOverride>,
+        substitutions: List<IngredientSubstitution>
+    ): List<String> {
         val meal = mealDao.getMealWithIngredients(mealId) ?: return emptyList()
         if (LeftoverMeals.sourceMealId(meal.meal.notes) != null) return emptyList()
         val usable = listOf(ItemStatus.AVAILABLE, ItemStatus.LOW, ItemStatus.USE_SOON)
@@ -188,7 +192,10 @@ class MealDomainServiceImpl @Inject constructor(
                 ?: if (ingredient.optional) 0.0 else ingredient.plannedQuantity
             val unit = override?.actualUnit ?: ingredient.actualUnit ?: ingredient.plannedUnit
             if (quantity <= 0.0) return@mapNotNull null
-            val byId = ingredient.canonicalIngredientId?.let { inventoryDao.getUsableItemsByCanonicalIngredientId(it) }.orEmpty()
+            val pickedLot = substitutions.find { it.mealIngredientId == ingredient.id }?.selectedInventoryItemId
+                ?.let { inventoryDao.getItemById(it) }?.takeIf { it.status in usable }
+            val byId = pickedLot?.let { listOf(it) }
+                ?: ingredient.canonicalIngredientId?.let { inventoryDao.getUsableItemsByCanonicalIngredientId(it) }.orEmpty()
             val lots = byId.ifEmpty {
                 inventoryDao.getAllItemsSync().filter { lot ->
                     lot.status in usable && (
@@ -204,9 +211,11 @@ class MealDomainServiceImpl @Inject constructor(
                 val converted = UnitConverter.convert(lot.quantity ?: 0.0, lot.quantityUnit ?: unit, unit, lot.packSize, lot.packSizeUnit)
                 if (converted is DomainResult.Success) total += converted.value else uncompared += lot
             }
-            uncompared.firstOrNull()?.takeIf { total < quantity }?.let { lot ->
+            if (total >= quantity) return@mapNotNull null
+            uncompared.firstOrNull()?.let { lot ->
                 "${lot.displayName} (pantry in ${lot.quantityUnit?.name?.lowercase()}, recipe in ${unit.name.lowercase()})"
-            }
+            } ?: lots.firstOrNull { it.quantityConfidence == QuantityConfidence.UNKNOWN }
+                ?.let { "${it.displayName} (amount in pantry not recorded)" }
         }
     }
 
@@ -601,28 +610,17 @@ class MealDomainServiceImpl @Inject constructor(
                 }
             }
 
-            // Stock that can't be compared may well cover the rest, so it never stops the meal being marked cooked.
-            // [stockNotCompared] tells the user which amounts to update.
-            if (usableTotal < req.effectiveQty && !hasUncomparableLot) {
-                if (hasUnknownLot) {
-                    return DomainResult.Failure(
-                        DomainError.NeedsConfirmation(
-                            itemId = req.ingredient.id,
-                            displayName = req.ingredient.displayName,
-                            requiredQuantity = req.effectiveQty,
-                            unit = req.effectiveUnit
-                        )
+            // Stock that can't be compared, or whose amount nobody recorded, may well cover the rest, so neither stops
+            // the meal being marked cooked. [stockNotCompared] tells the user which amounts to update.
+            if (usableTotal < req.effectiveQty && !hasUncomparableLot && !hasUnknownLot) {
+                return DomainResult.Failure(
+                    DomainError.InsufficientQuantity(
+                        available = usableTotal,
+                        requested = req.effectiveQty,
+                        unit = req.effectiveUnit,
+                        displayName = req.ingredient.displayName
                     )
-                } else {
-                    return DomainResult.Failure(
-                        DomainError.InsufficientQuantity(
-                            available = usableTotal,
-                            requested = req.effectiveQty,
-                            unit = req.effectiveUnit,
-                            displayName = req.ingredient.displayName
-                        )
-                    )
-                }
+                )
             }
 
             planSteps.add(PlanDeductionStep(req, comparableLots))

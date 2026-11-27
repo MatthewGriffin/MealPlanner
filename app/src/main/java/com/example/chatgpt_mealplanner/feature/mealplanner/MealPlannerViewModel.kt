@@ -313,7 +313,7 @@ class MealPlannerViewModel @Inject constructor(
     ) {
         viewModelScope.launch {
             isLoadingFlow.value = true
-            val notCompared = mealDomainService.stockNotCompared(mealId, overrides)
+            val notCompared = mealDomainService.stockNotCompared(mealId, overrides, substitutions)
             val result = mealDomainService.markMealCooked(
                 mealId = mealId,
                 actualIngredientOverrides = overrides,

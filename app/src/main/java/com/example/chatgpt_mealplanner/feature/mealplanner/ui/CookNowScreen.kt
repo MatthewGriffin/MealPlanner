@@ -36,7 +36,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.example.chatgpt_mealplanner.core.model.ActualIngredientOverride
+import com.example.chatgpt_mealplanner.core.util.CookAmounts
 import com.example.chatgpt_mealplanner.core.util.formatQuantityAndUnit
+import com.example.chatgpt_mealplanner.core.util.formatQuantityNumber
 import com.example.chatgpt_mealplanner.feature.mealplanner.MealPlannerUiEvent
 import com.example.chatgpt_mealplanner.feature.mealplanner.MealPlannerViewModel
 
@@ -51,13 +53,22 @@ fun CookNowScreen(
     val allMeals = uiState.mealsForSelectedDate + uiState.recentCookedMeals
     val mealWithIngredients = allMeals.firstOrNull { it.meal.id == plannedMealId }
 
+    // Ingredients whose name matched nothing in the pantry can be pointed at the pantry item that is the same thing.
+    val picked = remember(plannedMealId) { mutableStateMapOf<String, com.example.chatgpt_mealplanner.core.model.InventoryItem>() }
+
     val actualQuantities = remember(plannedMealId, mealWithIngredients) {
         mutableStateMapOf<String, String>().apply {
             mealWithIngredients?.ingredients?.forEach { ing ->
-                this[ing.id] = ing.plannedQuantity.toString()
+                val item = picked[ing.id]
+                this[ing.id] = if (item == null) ing.plannedQuantity.toString()
+                else CookAmounts.inPantryUnit(ing.plannedQuantity, ing.plannedUnit, item).quantity?.let(::formatQuantityNumber).orEmpty()
             }
         }
     }
+
+    // Once a pantry item is picked, the ingredient is counted in that item's unit.
+    fun unitOf(ing: com.example.chatgpt_mealplanner.core.model.MealIngredient) =
+        picked[ing.id]?.let { CookAmounts.inPantryUnit(ing.plannedQuantity, ing.plannedUnit, it).unit } ?: ing.plannedUnit
 
     // What the household has of each ingredient, so a short stock is seen before cooking and a scrap can be used up.
     val stock = remember(plannedMealId) { mutableStateMapOf<String, Double>() }
@@ -66,8 +77,6 @@ fun CookNowScreen(
         stock.putAll(viewModel.stockFor(mealWithIngredients?.ingredients.orEmpty()))
     }
 
-    // Ingredients whose name matched nothing in the pantry can be pointed at the pantry item that is the same thing.
-    val picked = remember(plannedMealId) { mutableStateMapOf<String, com.example.chatgpt_mealplanner.core.model.InventoryItem>() }
     var pantry by remember { mutableStateOf<List<com.example.chatgpt_mealplanner.core.model.InventoryItem>>(emptyList()) }
     var pickFor by remember { mutableStateOf<com.example.chatgpt_mealplanner.core.model.MealIngredient?>(null) }
     LaunchedEffect(plannedMealId) { pantry = viewModel.pantryItems() }
@@ -75,7 +84,12 @@ fun CookNowScreen(
         com.example.chatgpt_mealplanner.feature.common.PantryItemPickerDialog(
             title = "Which pantry item is \"${target.displayName}\"?",
             items = pantry,
-            onPick = { picked[target.id] = it; pickFor = null },
+            onPick = {
+                picked[target.id] = it
+                actualQuantities[target.id] = CookAmounts.inPantryUnit(target.plannedQuantity, target.plannedUnit, it)
+                    .quantity?.let(::formatQuantityNumber).orEmpty()
+                pickFor = null
+            },
             onDismiss = { pickFor = null }
         )
     }
@@ -170,30 +184,33 @@ fun CookNowScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             val pickedItem = picked[ing.id]
-                            val inStock = stock[ing.id] ?: pickedItem?.takeIf { it.quantityUnit == ing.plannedUnit }?.quantity
-                            val entered = currentActual.toDoubleOrNull() ?: ing.plannedQuantity
+                            val unit = unitOf(ing)
+                            val inStock = if (pickedItem == null) stock[ing.id] else pickedItem
+                                .takeIf { it.quantityUnit == unit && it.quantityConfidence != com.example.chatgpt_mealplanner.core.model.QuantityConfidence.UNKNOWN }?.quantity
+                            // A cleared box is waiting for the user, so it isn't compared with the stock.
+                            val entered = currentActual.toDoubleOrNull() ?: if (unit == ing.plannedUnit) ing.plannedQuantity else 0.0
                             if (inStock != null) {
                                 Text(
-                                    text = "In stock: ${formatQuantityAndUnit(inStock, ing.plannedUnit)}",
+                                    text = "In stock: ${formatQuantityAndUnit(inStock, unit)}",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = if (entered > inStock + 1e-9) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 if (entered > inStock + 1e-9) {
                                     Text(
-                                        text = "That is more than you have: ${formatQuantityAndUnit(entered - inStock, ing.plannedUnit)} short.",
+                                        text = "That is more than you have: ${formatQuantityAndUnit(entered - inStock, unit)} short.",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.error
                                     )
-                                } else if (com.example.chatgpt_mealplanner.core.util.StockRemainder.isSmallRemainder(inStock, entered, ing.plannedUnit)) {
+                                } else if (com.example.chatgpt_mealplanner.core.util.StockRemainder.isSmallRemainder(inStock, entered, unit)) {
                                     Text(
-                                        text = "Only ${formatQuantityAndUnit(inStock - entered, ing.plannedUnit)} would be left, so it will be used up.",
+                                        text = "Only ${formatQuantityAndUnit(inStock - entered, unit)} would be left, so it will be used up.",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             } else if (pickedItem == null) {
                                 Text(
-                                    text = "Not found in your pantry under this name",
+                                    text = "No pantry amount to compare with. Pick the pantry item to use its unit.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.error
                                 )
@@ -204,6 +221,13 @@ fun CookNowScreen(
                                     style = MaterialTheme.typography.bodySmall,
                                     fontWeight = FontWeight.SemiBold
                                 )
+                                if (currentActual.isBlank()) {
+                                    Text(
+                                        text = "The recipe's $plannedFormatted can't be converted. Enter how much you used, in the pantry's unit (0 for none).",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.error
+                                    )
+                                }
                             }
                             if (stock[ing.id] == null) {
                                 androidx.compose.material3.TextButton(onClick = { pickFor = ing }) {
@@ -224,7 +248,7 @@ fun CookNowScreen(
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = ing.plannedUnit.name,
+                                    text = unit.name,
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Bold
                                 )
@@ -232,7 +256,7 @@ fun CookNowScreen(
                             if (inStock != null && inStock > 0.0) {
                                 androidx.compose.material3.TextButton(
                                     onClick = { actualQuantities[ing.id] = com.example.chatgpt_mealplanner.core.util.formatQuantityNumber(inStock) }
-                                ) { Text("Use all (${formatQuantityAndUnit(inStock, ing.plannedUnit)})") }
+                                ) { Text("Use all (${formatQuantityAndUnit(inStock, unit)})") }
                             }
                         }
                     }
@@ -240,7 +264,17 @@ fun CookNowScreen(
 
                 item {
                     Spacer(modifier = Modifier.height(16.dp))
+                    // An amount in a new unit can't fall back to the recipe's number: "500" grams is not 500 packs.
+                    val needsAmount = ingredients.filter { unitOf(it) != it.plannedUnit && actualQuantities[it.id]?.toDoubleOrNull() == null }
+                    if (needsAmount.isNotEmpty()) {
+                        Text(
+                            text = "Enter the amount used for: ${needsAmount.joinToString { it.displayName }}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
                     Button(
+                        enabled = needsAmount.isEmpty(),
                         onClick = {
                             val overrides = ingredients.mapNotNull { ing ->
                                 val qtyStr = actualQuantities[ing.id]
@@ -248,7 +282,7 @@ fun CookNowScreen(
                                 ActualIngredientOverride(
                                     mealIngredientId = ing.id,
                                     actualQuantity = qty,
-                                    actualUnit = ing.plannedUnit
+                                    actualUnit = unitOf(ing)
                                 )
                             }
                             val substitutions = ingredients.mapNotNull { ing ->
@@ -258,7 +292,7 @@ fun CookNowScreen(
                                     mealIngredientId = ing.id,
                                     selectedInventoryItemId = item.id,
                                     actualQuantity = actualQuantities[ing.id]?.toDoubleOrNull() ?: ing.plannedQuantity,
-                                    actualUnit = ing.plannedUnit
+                                    actualUnit = unitOf(ing)
                                 )
                             }
                             viewModel.onEvent(
